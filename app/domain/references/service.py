@@ -1361,7 +1361,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> tuple[BlobStorageFile, int]:
         """Stream matching references to blob storage as JSONL."""
         chunk_size = settings.upload_file_chunk_size_override.get(
-            UploadFile.ROBOT_ENHANCEMENT_REFERENCE_DATA,
+            UploadFile.REFERENCE_DOWNLOAD,
             settings.default_upload_file_chunk_size,
         )
         # A reference id with no SQL row produces no JSONL line, so the file
