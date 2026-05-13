@@ -577,7 +577,21 @@ class FullTextEnhancement(BaseModel):
     license: str | None = Field(
         default=None,
         description="The publishing license for this full text.",
-        examples=["cc0", "cc-by"],
+        examples=[
+            "apache-2-0",
+            "cc-by",
+            "cc-by-nc",
+            "cc-by-nc-nd",
+            "cc-by-nc-sa",
+            "cc-by-nd",
+            "cc-by-sa",
+            "gpl-v2",
+            "gpl-v3",
+            "isc",
+            "mit",
+            "other-oa",
+            "public-domain",
+        ],
     )
     source: str | None = Field(
         default=None,
