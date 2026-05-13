@@ -108,7 +108,7 @@ class BlobRepository:
             config = MinioBlobStorageClient(
                 settings.minio_config, settings.presigned_url_expiry_seconds
             )
-        elif file.location == BlobStorageLocation.REMOTE:
+        elif file.is_remote:
             if self._remote_client is None:
                 self._remote_client = RemoteBlobStorageClient()
             config = self._remote_client
@@ -216,9 +216,6 @@ class BlobRepository:
     ) -> BlobCopyResult:
         """
         Stream a file from source to destination, computing sha256 and size.
-
-        Source may be any location (including REMOTE); destination must be
-        on the active write backend.
 
         :param source: The source file to copy.
         :type source: BlobStorageFile

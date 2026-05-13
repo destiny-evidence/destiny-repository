@@ -29,7 +29,13 @@ class BlobStorageLocation(StrEnum):
 
     AZURE = auto()
     MINIO = auto()
-    REMOTE = auto()
+    HTTP = auto()
+    HTTPS = auto()
+
+    @classmethod
+    def remote(cls) -> frozenset["BlobStorageLocation"]:
+        """Return the set of remote blob storage locations."""
+        return frozenset({cls.HTTP, cls.HTTPS})
 
 
 class BlobContainer(StrEnum):
@@ -76,13 +82,9 @@ class BlobStorageFile(BaseModel):
     )
 
     @property
-    def scheme(self) -> str:
-        """URI scheme for this blob. REMOTE blobs are always https."""
-        return (
-            "https"
-            if self.location == BlobStorageLocation.REMOTE
-            else self.location.value
-        )
+    def is_remote(self) -> bool:
+        """Whether this blob lives at a URL we don't own (http/https)."""
+        return self.location in BlobStorageLocation.remote()
 
     @model_validator(mode="before")
     @classmethod
@@ -111,7 +113,7 @@ class BlobStorageFile(BaseModel):
     def to_uri(self) -> str:
         """Return the URI representation of the file."""
         path_segment = f"{self.path}/{self.filename}" if self.path else self.filename
-        return f"{self.scheme}://{self.container}/{path_segment}"
+        return f"{self.location.value}://{self.container}/{path_segment}"
 
     @classmethod
     def from_uri(cls, uri: str) -> Self:
@@ -127,18 +129,14 @@ class BlobStorageFile(BaseModel):
             msg = f"Invalid blob URI {uri!r} for BlobStorageFile."
             raise BlobStorageError(msg)
         try:
-            location = (
-                BlobStorageLocation.REMOTE
-                if scheme == "https"
-                else BlobStorageLocation(scheme)
-            )
+            location = BlobStorageLocation(scheme)
         except ValueError as e:
             msg = f"Invalid blob URI {uri!r}: unknown scheme {scheme!r}."
             raise BlobStorageError(msg) from e
         return {
             "location": location,
             "container": parts[0],
-            "path": "/".join(parts[1:-1]),
+            "path": "/".join(parts[1:-1]),  # empty string if no path
             "filename": parts[-1],
         }
 
