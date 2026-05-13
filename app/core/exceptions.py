@@ -486,6 +486,21 @@ class RemoteBlobStorageError(BlobStorageError):
         super().__init__(detail, *args)
 
 
+class BlobSizeExceededError(BlobStorageError):
+    """A blob operation exceeded the caller-supplied maximum byte size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the BlobSizeExceededError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class FullTextIngestionError(DestinyRepositoryError):
     """Base exception for failures storing a full-text enhancement."""
 
@@ -522,6 +537,21 @@ class FullTextIntegrityError(FullTextIngestionError):
     def __init__(self, detail: str, *args: object) -> None:
         """
         Initialize the FullTextIntegrityError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextSizeExceededError(FullTextIngestionError):
+    """Remote full-text source exceeded the configured maximum byte size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextSizeExceededError exception.
 
         Args:
             detail (str): The detail message for the exception.

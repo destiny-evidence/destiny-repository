@@ -1,10 +1,11 @@
 """Service for managing files in blob storage."""
 
 import hashlib
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
 from functools import cached_property
 from io import BytesIO
+from typing import Protocol
 
 from cachetools import LRUCache
 from pydantic import HttpUrl
@@ -17,6 +18,7 @@ from app.core.config import (
 )
 from app.core.exceptions import (
     AzureBlobStorageError,
+    BlobSizeExceededError,
     BlobStorageError,
     MinioBlobStorageError,
 )
@@ -38,7 +40,17 @@ settings = get_settings()
 logger = get_logger(__name__)
 
 
-type URLSigner = Callable[[BlobStorageFile, BlobSignedUrlType], Awaitable[HttpUrl]]
+class URLSigner(Protocol):
+    """Callable signature for signing a blob storage file into a URL."""
+
+    async def __call__(
+        self,
+        file: BlobStorageFile,
+        interaction_type: BlobSignedUrlType,
+        content_disposition: str | None = "attachment",
+    ) -> HttpUrl:
+        """Sign ``file`` for ``interaction_type``, returning a presigned URL."""
+        ...
 
 
 class BlobRepository:
@@ -197,6 +209,7 @@ class BlobRepository:
         self,
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
+        content_disposition: str | None = "attachment",
     ) -> HttpUrl:
         """
         Generate a signed URL for a file in Blob Storage.
@@ -205,14 +218,26 @@ class BlobRepository:
         :type file: BlobStorageFile
         :param interaction_type: The type of interaction (upload or download).
         :type interaction_type: BlobSignedUrlType
+        :param content_disposition: Override for the signed download's
+            Content-Disposition response header. Defaults to ``"attachment"``
+            so browsers never render fetched bytes inline.
+            Pass ``None`` to opt out if a future caller wants inline rendering.
+        :type content_disposition: str | None
         :return: The signed URL for the file.
         :rtype: HttpUrl
         """
         client = await self._preload_config(file)
-        return HttpUrl(await client.generate_signed_url(file, interaction_type))
+        return HttpUrl(
+            await client.generate_signed_url(
+                file, interaction_type, content_disposition
+            )
+        )
 
     async def copy(
-        self, source: BlobStorageFile, destination: BlobStorageFile
+        self,
+        source: BlobStorageFile,
+        destination: BlobStorageFile,
+        max_bytes: int | None = None,
     ) -> BlobCopyResult:
         """
         Stream a file from source to destination, computing sha256 and size.
@@ -221,6 +246,13 @@ class BlobRepository:
         :type source: BlobStorageFile
         :param destination: The destination to copy the file to.
         :type destination: BlobStorageFile
+        :param max_bytes: Optional cap on the total bytes streamed. The stream
+            is aborted (raising :class:`BlobSizeExceededError`) once the
+            cumulative chunk size strictly exceeds this. ``None`` disables the
+            check.
+        :type max_bytes: int | None
+        :raises BlobSizeExceededError: if ``max_bytes`` is set and the source
+            yields more bytes than allowed.
         """
         if destination.location != self._write_backend.location:
             msg = (
@@ -240,6 +272,12 @@ class BlobRepository:
             async for chunk in src_client.stream_chunks(source):
                 hasher.update(chunk)
                 size += len(chunk)
+                if max_bytes is not None and size > max_bytes:
+                    msg = (
+                        f"Source {source.to_uri()} exceeds max_bytes={max_bytes} "
+                        f"(streamed at least {size} bytes before abort)."
+                    )
+                    raise BlobSizeExceededError(msg)
                 yield chunk
 
         await dest_client.upload_file(hashed_chunks(), destination)

@@ -8,10 +8,13 @@ from uuid import UUID
 import destiny_sdk
 from opentelemetry import trace
 
+from app.core.config import get_settings
 from app.core.exceptions import (
+    BlobSizeExceededError,
     FullTextDownloadError,
     FullTextIngestionError,
     FullTextIntegrityError,
+    FullTextSizeExceededError,
     RemoteBlobStorageError,
     VocabularyFetchError,
 )
@@ -48,6 +51,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 class ProcessedResults(NamedTuple):
@@ -120,7 +124,17 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         try:
-            result = await blob_repository.copy(source, destination)
+            result = await blob_repository.copy(
+                source,
+                destination,
+                max_bytes=settings.full_text_max_byte_size,
+            )
+        except BlobSizeExceededError as exc:
+            msg = (
+                f"Full text from {source.to_uri()} exceeds the configured "
+                f"maximum of {settings.full_text_max_byte_size} bytes."
+            )
+            raise FullTextSizeExceededError(msg) from exc
         except RemoteBlobStorageError as exc:
             msg = f"Failed to fetch full text from {source.to_uri()}: {exc.detail}"
             raise FullTextDownloadError(msg) from exc
