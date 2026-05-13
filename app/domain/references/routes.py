@@ -60,7 +60,7 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
-    run_reference_download_task,
+    run_reference_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.service import RobotService
@@ -194,9 +194,9 @@ search_router = APIRouter(
     tags=["search"],
     dependencies=[Depends(reference_reader_auth)],
 )
-download_router = APIRouter(
-    prefix="/download",
-    tags=["download"],
+exports_router = APIRouter(
+    prefix="/exports",
+    tags=["exports"],
     dependencies=[Depends(reference_reader_auth)],
 )
 enhancement_request_router = APIRouter(
@@ -371,17 +371,17 @@ async def search_references(
     )
 
 
-@download_router.post(
-    "/",
+@exports_router.post(
+    "/search/",
     status_code=status.HTTP_202_ACCEPTED,
     description=(
-        "Queue a download job that produces a JSONL file of references matching the "
+        "Queue an export job that produces a JSONL file of references matching the "
         "given search. Accepts the same filter parameters as `/references/search/` "
         "without pagination. Returns the job id with `status: pending`; poll "
-        "`GET /references/download/{id}/` until the job completes."
+        "`GET /references/exports/{id}/` until the job completes."
     ),
 )
-async def request_reference_download(
+async def request_reference_export(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
@@ -408,9 +408,9 @@ async def request_reference_download(
             "in the order given. Sort fields cannot be `text` fields.",
         ),
     ] = None,
-) -> destiny_sdk.references.ReferenceDownloadRead:
-    """Queue a reference download job and return its id and pending status."""
-    reference_download = await reference_service.request_reference_download(
+) -> destiny_sdk.references.ReferenceExportRead:
+    """Queue a reference export job and return its id and pending status."""
+    reference_export = await reference_service.request_reference_export(
         query=q,
         annotation_filters=annotation_filters or None,
         publication_year_range=publication_year_range,
@@ -418,9 +418,9 @@ async def request_reference_download(
     )
     try:
         await queue_task_with_trace(
-            run_reference_download_task,
+            run_reference_export_task,
             long_running=True,
-            reference_download_id=reference_download.id,
+            reference_export_id=reference_export.id,
             otel_enabled=settings.otel_enabled,
         )
     except Exception as exc:
@@ -428,51 +428,50 @@ async def request_reference_download(
         # `pending` forever, so flip it to `failed` and surface a retryable
         # error to the caller.
         logger.exception(
-            "Failed to enqueue reference download task",
-            reference_download_id=str(reference_download.id),
+            "Failed to enqueue reference export task",
+            reference_export_id=str(reference_export.id),
         )
-        reference_download = await reference_service.fail_reference_download(
-            reference_download.id,
-            f"Failed to enqueue download task: {exc}",
+        reference_export = await reference_service.fail_reference_export(
+            reference_export.id,
+            f"Failed to enqueue export task: {exc}",
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not enqueue reference download job; please retry.",
+            detail="Could not enqueue reference export job; please retry.",
         ) from exc
-    return await anti_corruption_service.reference_download_to_sdk(reference_download)
+    return await anti_corruption_service.reference_export_to_sdk(reference_export)
 
 
-@download_router.get(
-    "/{reference_download_id}/",
+@exports_router.get(
+    "/{reference_export_id}/",
     description=(
-        "Get the status of a reference download job. Once `status` is "
+        "Get the status of a reference export job. Once `status` is "
         "`completed`, the response includes a signed `result_url` for the "
         "produced JSONL file, and `truncated: true` if the matching set "
-        "exceeded the 10,000-result cap (the file contains only the first "
-        "10,000 matches). The URL is re-signed on each call, so an expired "
-        "URL can be refreshed by polling again."
+        f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
+        f"file contains only the first {SearchService.MAX_RESULT_WINDOW:,} "
+        "matches). The URL is re-signed on each call, so an expired URL can "
+        "be refreshed by polling again."
     ),
 )
-async def get_reference_download(
-    reference_download_id: Annotated[
-        destiny_sdk.UUID, Path(description="The ID of the reference download job.")
+async def get_reference_export(
+    reference_export_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the reference export job.")
     ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-) -> destiny_sdk.references.ReferenceDownloadRead:
-    """Get the status of a reference download job, including its signed URL."""
-    reference_download = await reference_service.get_reference_download(
-        reference_download_id
-    )
-    return await anti_corruption_service.reference_download_to_sdk(reference_download)
+) -> destiny_sdk.references.ReferenceExportRead:
+    """Get the status of a reference export job, including its signed URL."""
+    reference_export = await reference_service.get_reference_export(reference_export_id)
+    return await anti_corruption_service.reference_export_to_sdk(reference_export)
 
 
 # NB it's important these occur before defining `/references/{reference_id}/` route
 # to avoid route conflicts. Order matters for FastAPI route matching.
 reference_router.include_router(search_router)
-reference_router.include_router(download_router)
+reference_router.include_router(exports_router)
 
 
 @reference_router.get("/{reference_id}/")

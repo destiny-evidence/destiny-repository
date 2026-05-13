@@ -301,7 +301,7 @@ class UploadFile(StrEnum):
 
     ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
     ROBOT_ENHANCEMENT_REFERENCE_DATA = auto()
-    REFERENCE_DOWNLOAD = auto()
+    REFERENCE_EXPORT = auto()
 
 
 class TOML(BaseModel):

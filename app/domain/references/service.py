@@ -35,9 +35,9 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     PublicationYearRange,
     Reference,
-    ReferenceDownload,
-    ReferenceDownloadStatus,
     ReferenceDuplicateDecision,
+    ReferenceExport,
+    ReferenceExportStatus,
     ReferenceIds,
     ReferenceWithChangeset,
     RobotAutomation,
@@ -71,7 +71,7 @@ from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -1231,35 +1231,33 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def request_reference_download(
+    async def request_reference_export(
         self,
         query: str,
         annotation_filters: list[AnnotationFilter] | None,
         publication_year_range: PublicationYearRange | None,
         sort: list[str] | None,
-    ) -> ReferenceDownload:
-        """Create a pending reference download job."""
-        reference_download = ReferenceDownload(
+    ) -> ReferenceExport:
+        """Create a pending reference export job."""
+        reference_export = ReferenceExport(
             query=query,
             annotation_filters=annotation_filters,
             start_year=publication_year_range.start if publication_year_range else None,
             end_year=publication_year_range.end if publication_year_range else None,
             sort=sort,
         )
-        await self.sql_uow.reference_downloads.add(reference_download)
-        return reference_download
+        await self.sql_uow.reference_exports.add(reference_export)
+        return reference_export
 
     @sql_unit_of_work
-    async def get_reference_download(
-        self, reference_download_id: UUID
-    ) -> ReferenceDownload:
-        """Get a reference download job by id."""
-        return await self.sql_uow.reference_downloads.get_by_pk(reference_download_id)
+    async def get_reference_export(self, reference_export_id: UUID) -> ReferenceExport:
+        """Get a reference export job by id."""
+        return await self.sql_uow.reference_exports.get_by_pk(reference_export_id)
 
     @sql_unit_of_work
-    async def _claim_reference_download(
-        self, reference_download_id: UUID
-    ) -> ReferenceDownload | None:
+    async def _claim_reference_export(
+        self, reference_export_id: UUID
+    ) -> ReferenceExport | None:
         """
         Atomically transition pending → running, returning the claimed row.
 
@@ -1267,125 +1265,98 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         the same UoW as the update so the caller can't see a row that has
         since been mutated by another transaction.
         """
-        updated = await self.sql_uow.reference_downloads.bulk_update_by_filter(
+        updated = await self.sql_uow.reference_exports.bulk_update_by_filter(
             filter_conditions={
-                "id": reference_download_id,
-                "status": ReferenceDownloadStatus.PENDING,
+                "id": reference_export_id,
+                "status": ReferenceExportStatus.PENDING,
             },
-            status=ReferenceDownloadStatus.RUNNING,
+            status=ReferenceExportStatus.RUNNING,
         )
         if updated == 0:
             return None
-        return await self.sql_uow.reference_downloads.get_by_pk(reference_download_id)
+        return await self.sql_uow.reference_exports.get_by_pk(reference_export_id)
 
     @sql_unit_of_work
-    async def _complete_reference_download(
+    async def _complete_reference_export(
         self,
-        reference_download_id: UUID,
+        reference_export_id: UUID,
         result_file: BlobStorageFile,
         n_references: int,
         *,
         truncated: bool,
-    ) -> ReferenceDownload:
-        """Mark a reference download as completed."""
-        return await self.sql_uow.reference_downloads.update_by_pk(
-            pk=reference_download_id,
-            status=ReferenceDownloadStatus.COMPLETED,
+    ) -> ReferenceExport:
+        """Mark a reference export as completed."""
+        return await self.sql_uow.reference_exports.update_by_pk(
+            pk=reference_export_id,
+            status=ReferenceExportStatus.COMPLETED,
             result_file=result_file,
             n_references=n_references,
             truncated=truncated,
         )
 
     @sql_unit_of_work
-    async def fail_reference_download(
-        self, reference_download_id: UUID, error: str
-    ) -> ReferenceDownload:
-        """Mark a reference download as failed with the given error message."""
-        return await self.sql_uow.reference_downloads.update_by_pk(
-            pk=reference_download_id,
-            status=ReferenceDownloadStatus.FAILED,
+    async def fail_reference_export(
+        self, reference_export_id: UUID, error: str
+    ) -> ReferenceExport:
+        """Mark a reference export as failed with the given error message."""
+        return await self.sql_uow.reference_exports.update_by_pk(
+            pk=reference_export_id,
+            status=ReferenceExportStatus.FAILED,
             error=error,
         )
 
     @es_unit_of_work
-    async def _collect_reference_download_ids(
-        self, reference_download: ReferenceDownload
+    async def _collect_reference_export_ids(
+        self, reference_export: ReferenceExport
     ) -> tuple[list[UUID], bool]:
         """
-        Page through ES to gather every reference ID matching the download query.
+        Run the matching search once at the full result window.
 
-        Returns the deduplicated list of IDs and a flag indicating whether the
-        matching set was larger than the 10,000-result cap.
+        Returns the list of reference IDs and a flag indicating whether the
+        matching set exceeded the server's result-window cap (in which case
+        only the first window's worth of matches is included). Deep
+        pagination beyond the cap will be addressed by #661.
         """
         publication_year_range = (
             PublicationYearRange(
-                start=reference_download.start_year,
-                end=reference_download.end_year,
+                start=reference_export.start_year,
+                end=reference_export.end_year,
             )
-            if reference_download.start_year or reference_download.end_year
+            if reference_export.start_year or reference_export.end_year
             else None
         )
 
-        page_size = 1000
-        max_results = SearchService.MAX_RESULT_WINDOW
-        max_page = max_results // page_size
-
-        seen_ids: dict[UUID, None] = {}
-        first_total: ESSearchTotal | None = None
-        truncated = False
-        for page in range(1, max_page + 1):
-            search_result = await self._search_service.search_with_query_string(
-                reference_download.query,
-                page=page,
-                page_size=page_size,
-                annotations=reference_download.annotation_filters,
-                publication_year_range=publication_year_range,
-                sort=reference_download.sort,
-            )
-            if first_total is None:
-                first_total = search_result.total
-            if not search_result.hits:
-                break
-            # ES from/size can repeat an id across pages if the index changes mid-walk.
-            for hit in search_result.hits:
-                seen_ids.setdefault(hit.id, None)
-            if len(search_result.hits) < page_size:
-                break
-        else:
-            # Loop consumed all max_page iterations of full pages — we hit the
-            # cap. `gte` covers the common case (ES stopped counting at
-            # `track_total_hits`); `value > max_results` covers a raised
-            # `max_results` where ES still tracks the exact count past our cap.
-            truncated = first_total is not None and (
-                first_total.relation == "gte" or first_total.value > max_results
-            )
-
-        return list(seen_ids), truncated
+        search_result = await self._search_service.search_with_query_string(
+            reference_export.query,
+            page=1,
+            page_size=SearchService.MAX_RESULT_WINDOW,
+            annotations=reference_export.annotation_filters,
+            publication_year_range=publication_year_range,
+            sort=reference_export.sort,
+        )
+        # `relation == "gte"` is the common case (ES stopped counting at the
+        # track_total_hits threshold); `value > window` covers a server that
+        # tracks exact totals beyond our cap.
+        total = search_result.total
+        truncated = total is not None and (
+            total.relation == "gte" or total.value > SearchService.MAX_RESULT_WINDOW
+        )
+        return [hit.id for hit in search_result.hits], truncated
 
     @sql_unit_of_work
-    async def _stream_reference_download_jsonl(
+    async def _stream_reference_export_jsonl(
         self,
-        reference_download_id: UUID,
+        reference_export_id: UUID,
         reference_ids: list[UUID],
         blob_repository: BlobRepository,
     ) -> tuple[BlobStorageFile, int]:
         """Stream matching references to blob storage as JSONL."""
         chunk_size = settings.upload_file_chunk_size_override.get(
-            UploadFile.REFERENCE_DOWNLOAD,
+            UploadFile.REFERENCE_EXPORT,
             settings.default_upload_file_chunk_size,
         )
-        # A reference id with no SQL row produces no JSONL line, so the file
-        # can have fewer lines than `reference_ids` has entries.
-        n_emitted = 0
-
-        async def emit_jsonl_chunk(reference_ids: list[UUID]) -> list[str]:
-            nonlocal n_emitted
-            lines = await self._get_jsonl_deduplicated_references(reference_ids)
-            n_emitted += len(lines)
-            return lines
-
         file_stream = FileStream(
-            emit_jsonl_chunk,
+            self._get_jsonl_deduplicated_references,
             [
                 {"reference_ids": chunk}
                 for chunk in list_chunker(reference_ids, chunk_size)
@@ -1393,46 +1364,46 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         result_file = await blob_repository.upload_file_to_blob_storage(
             content=file_stream,
-            path="reference_downloads",
-            filename=f"{reference_download_id}.jsonl",
+            path="reference_exports",
+            filename=f"{reference_export_id}.jsonl",
         )
-        return result_file, n_emitted
+        return result_file, len(reference_ids)
 
-    async def run_reference_download(
+    async def run_reference_export(
         self,
-        reference_download_id: UUID,
+        reference_export_id: UUID,
         blob_repository: BlobRepository,
     ) -> None:
-        """Run a queued reference download job end-to-end."""
+        """Run a queued reference export job end-to-end."""
         # Conditional pending→running keeps redeliveries from clobbering a row
         # that's already running, completed, or failed.
-        reference_download = await self._claim_reference_download(reference_download_id)
-        if reference_download is None:
+        reference_export = await self._claim_reference_export(reference_export_id)
+        if reference_export is None:
             logger.info(
-                "Skipping reference download — not in pending state",
-                reference_download_id=str(reference_download_id),
+                "Skipping reference export — not in pending state",
+                reference_export_id=str(reference_export_id),
             )
             return
         try:
-            reference_ids, truncated = await self._collect_reference_download_ids(
-                reference_download
+            reference_ids, truncated = await self._collect_reference_export_ids(
+                reference_export
             )
-            result_file, n_references = await self._stream_reference_download_jsonl(
-                reference_download_id, reference_ids, blob_repository
+            result_file, n_references = await self._stream_reference_export_jsonl(
+                reference_export_id, reference_ids, blob_repository
             )
-            await self._complete_reference_download(
-                reference_download_id,
+            await self._complete_reference_export(
+                reference_export_id,
                 result_file,
                 n_references,
                 truncated=truncated,
             )
         except Exception as exc:
             logger.exception(
-                "Reference download job failed",
-                reference_download_id=str(reference_download_id),
+                "Reference export job failed",
+                reference_export_id=str(reference_export_id),
             )
-            await self.fail_reference_download(
-                reference_download_id, f"Failed to run download task: {exc}"
+            await self.fail_reference_export(
+                reference_export_id, f"Failed to run export task: {exc}"
             )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")

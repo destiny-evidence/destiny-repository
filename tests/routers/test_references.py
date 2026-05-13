@@ -36,7 +36,7 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
-    ReferenceDownload,
+    ReferenceExport,
     Visibility,
 )
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -49,17 +49,17 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import (
-    ReferenceDownload as SQLReferenceDownload,
+    ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
 from app.domain.references.models.sql import (
-    ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
+    ReferenceExport as SQLReferenceExport,
 )
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.search_service import SearchService
-from app.domain.references.tasks import run_reference_download_task
+from app.domain.references.tasks import run_reference_export_task
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
@@ -935,39 +935,39 @@ async def test_search_references_with_annotation_filters(
     assert call_kwargs["annotations"][3].score is None
 
 
-async def test_request_reference_download_happy_path(
+async def test_request_reference_export_happy_path(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
-    """Test queuing a reference download, then polling its completed status."""
+    """Test queuing a reference export, then polling its completed status."""
     fake_reference_id = uuid7()
     fake_result_file = BlobStorageFile(
         location="minio",
         container="destiny-repository",
-        path="reference_downloads",
+        path="reference_exports",
         filename="fake.jsonl",
     )
 
     monkeypatch.setattr(
         ReferenceService,
-        "_collect_reference_download_ids",
+        "_collect_reference_export_ids",
         AsyncMock(return_value=([fake_reference_id], False)),
     )
     monkeypatch.setattr(
         ReferenceService,
-        "_stream_reference_download_jsonl",
+        "_stream_reference_export_jsonl",
         AsyncMock(return_value=(fake_result_file, 1)),
     )
 
     response = await client.post(
-        "/v1/references/download/",
+        "/v1/references/exports/search/",
         params={"q": "climate", "start_year": 2020},
     )
     assert response.status_code == status.HTTP_202_ACCEPTED
     body = response.json()
-    download_id = body["id"]
+    export_id = body["id"]
     assert body["status"] == "pending"
     assert body["result_url"] is None
     assert body["truncated"] is False
@@ -975,7 +975,7 @@ async def test_request_reference_download_happy_path(
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
 
-    status_response = await client.get(f"/v1/references/download/{download_id}/")
+    status_response = await client.get(f"/v1/references/exports/{export_id}/")
     assert status_response.status_code == status.HTTP_200_OK
     status_body = status_response.json()
     assert status_body["status"] == "completed"
@@ -985,27 +985,29 @@ async def test_request_reference_download_happy_path(
     assert status_body["error"] is None
 
 
-async def test_request_reference_download_marks_failed_on_error(
+async def test_request_reference_export_marks_failed_on_error(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
-    """Test that a failure during the download job is reflected via the status API."""
+    """Test that a failure during the export job is reflected via the status API."""
     monkeypatch.setattr(
         ReferenceService,
-        "_collect_reference_download_ids",
+        "_collect_reference_export_ids",
         AsyncMock(side_effect=RuntimeError("kaboom")),
     )
 
-    response = await client.post("/v1/references/download/", params={"q": "climate"})
+    response = await client.post(
+        "/v1/references/exports/search/", params={"q": "climate"}
+    )
     assert response.status_code == status.HTTP_202_ACCEPTED
-    download_id = response.json()["id"]
+    export_id = response.json()["id"]
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
 
-    status_response = await client.get(f"/v1/references/download/{download_id}/")
+    status_response = await client.get(f"/v1/references/exports/{export_id}/")
     status_body = status_response.json()
     assert status_body["status"] == "failed"
     assert status_body["result_url"] is None
@@ -1013,175 +1015,62 @@ async def test_request_reference_download_marks_failed_on_error(
 
 
 # Undecorated body — tests drive the implementation with mocks instead of a UoW.
-_collect_download_ids = ReferenceService._collect_reference_download_ids.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
+_collect_export_ids = ReferenceService._collect_reference_export_ids.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
 
 
-async def test_collect_reference_download_ids_pages_at_1000(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Pages at size=1000 and stops on the first partial page."""
-    page_one_ids = [uuid7() for _ in range(1000)]
-    page_two_ids = [uuid7() for _ in range(1000)]
-    page_three_ids = [uuid7() for _ in range(500)]
-    pages = [
-        ESSearchResult(
-            hits=[ESHit(id=i, score=1.0) for i in page_one_ids],
-            total=ESSearchTotal(value=2500, relation="eq"),
-            page=1,
-        ),
-        ESSearchResult(
-            hits=[ESHit(id=i, score=1.0) for i in page_two_ids],
-            total=ESSearchTotal(value=2500, relation="eq"),
-            page=2,
-        ),
-        ESSearchResult(
-            hits=[ESHit(id=i, score=1.0) for i in page_three_ids],
-            total=ESSearchTotal(value=2500, relation="eq"),
-            page=3,
-        ),
-    ]
-    mock_search = AsyncMock(side_effect=pages)
-    monkeypatch.setattr(SearchService, "search_with_query_string", mock_search)
-
-    service = ReferenceService.__new__(ReferenceService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    download = ReferenceDownload(query="climate")
-
-    # Bypass the @es_unit_of_work decorator since we're testing the body directly.
-    ids, truncated = await _collect_download_ids(service, download)
-
-    assert ids == page_one_ids + page_two_ids + page_three_ids
-    assert truncated is False
-    assert mock_search.await_count == 3
-    for call_idx, expected_page in enumerate((1, 2, 3), start=0):
-        kwargs = mock_search.call_args_list[call_idx].kwargs
-        assert kwargs["page"] == expected_page
-        assert kwargs["page_size"] == 1000
-
-
-async def test_collect_reference_download_ids_flags_truncated_on_gte_total(
+async def test_collect_reference_export_ids_flags_truncated_on_gte_total(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """When ES reports `gte` at the cap, the result is flagged as truncated."""
-    pages = [
-        ESSearchResult(
-            hits=[ESHit(id=uuid7(), score=1.0) for _ in range(1000)],
-            total=ESSearchTotal(value=10_000, relation="gte"),
-            page=p,
-        )
-        for p in range(1, 11)
-    ]
-    mock_search = AsyncMock(side_effect=pages)
-    monkeypatch.setattr(SearchService, "search_with_query_string", mock_search)
-
-    service = ReferenceService.__new__(ReferenceService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    download = ReferenceDownload(query="climate")
-
-    ids, truncated = await _collect_download_ids(service, download)
-
-    assert len(ids) == 10_000
-    assert truncated is True
-    assert mock_search.await_count == 10
-
-
-async def test_collect_reference_download_ids_dedupes_across_pages(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """IDs that appear on multiple pages (ES race) are deduplicated."""
-    shared_id = uuid7()
-    page_one_ids = [uuid7() for _ in range(999)] + [shared_id]
-    page_two_ids = [shared_id] + [uuid7() for _ in range(500)]
-    pages = [
-        ESSearchResult(
-            hits=[ESHit(id=i, score=1.0) for i in page_one_ids],
-            total=ESSearchTotal(value=1500, relation="eq"),
-            page=1,
-        ),
-        ESSearchResult(
-            hits=[ESHit(id=i, score=1.0) for i in page_two_ids],
-            total=ESSearchTotal(value=1500, relation="eq"),
-            page=2,
-        ),
-    ]
     monkeypatch.setattr(
-        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
+        SearchService,
+        "search_with_query_string",
+        AsyncMock(
+            return_value=ESSearchResult(
+                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
+                total=ESSearchTotal(value=10_000, relation="gte"),
+                page=1,
+            )
+        ),
     )
 
     service = ReferenceService.__new__(ReferenceService)
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    download = ReferenceDownload(query="climate")
+    export = ReferenceExport(query="climate")
 
-    ids, truncated = await _collect_download_ids(service, download)
+    ids, truncated = await _collect_export_ids(service, export)
 
-    # 999 unique on page 1 + shared + 500 unique on page 2 = 1500.
-    assert len(ids) == 1500
-    assert len(set(ids)) == len(ids)
-    assert truncated is False
+    assert len(ids) == 10_000
+    assert truncated is True
 
 
-async def test_collect_reference_download_ids_flags_truncated_on_eq_above_cap(
+async def test_collect_reference_export_ids_flags_truncated_on_eq_above_cap(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """If ES tracks the exact count past the cap, `eq` total > cap is truncated."""
-    # Simulates an ES setup where `track_total_hits` exceeds our `max_results`:
-    # ES reports relation=eq with a value larger than the cap.
-    pages = [
-        ESSearchResult(
-            hits=[ESHit(id=uuid7(), score=1.0) for _ in range(1000)],
-            total=ESSearchTotal(value=25_000, relation="eq"),
-            page=p,
-        )
-        for p in range(1, 11)
-    ]
     monkeypatch.setattr(
-        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
+        SearchService,
+        "search_with_query_string",
+        AsyncMock(
+            return_value=ESSearchResult(
+                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
+                total=ESSearchTotal(value=25_000, relation="eq"),
+                page=1,
+            )
+        ),
     )
 
     service = ReferenceService.__new__(ReferenceService)
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    download = ReferenceDownload(query="climate")
+    export = ReferenceExport(query="climate")
 
-    ids, truncated = await _collect_download_ids(service, download)
+    ids, truncated = await _collect_export_ids(service, export)
 
     assert len(ids) == 10_000
     assert truncated is True
 
 
-async def test_collect_reference_download_ids_dedup_does_not_flag_truncated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Dedup shrinking len(ids) below total.value must not mis-flag truncated."""
-    # 10 full pages of 1000, each repeating one id from the previous page.
-    # Pre-dedup hits == 10_000 (matches total.value=eq), post-dedup == 9_991.
-    base_ids = [uuid7() for _ in range(9_991)]
-    pages = [
-        ESSearchResult(
-            hits=[
-                ESHit(id=i, score=1.0) for i in base_ids[p * 999 : (p + 1) * 999 + 1]
-            ],
-            total=ESSearchTotal(value=10_000, relation="eq"),
-            page=p + 1,
-        )
-        for p in range(10)
-    ]
-    monkeypatch.setattr(
-        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
-    )
-
-    service = ReferenceService.__new__(ReferenceService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    download = ReferenceDownload(query="climate")
-
-    ids, truncated = await _collect_download_ids(service, download)
-
-    assert len(ids) == 9_991
-    # ES reported exactly 10_000 matches and we paged the full window. Dedup
-    # collapsed duplicates rather than truncating — must not be flagged.
-    assert truncated is False
-
-
-async def test_collect_reference_download_ids_handles_empty_result_set(
+async def test_collect_reference_export_ids_handles_empty_result_set(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Zero hits returns ([], False) without crashing."""
@@ -1199,48 +1088,48 @@ async def test_collect_reference_download_ids_handles_empty_result_set(
 
     service = ReferenceService.__new__(ReferenceService)
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    download = ReferenceDownload(query="climate")
+    export = ReferenceExport(query="climate")
 
-    ids, truncated = await _collect_download_ids(service, download)
+    ids, truncated = await _collect_export_ids(service, export)
 
     assert ids == []
     assert truncated is False
 
 
-async def test_collect_reference_download_ids_exactly_at_cap_not_truncated(
+async def test_collect_reference_export_ids_exactly_at_cap_not_truncated(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A result set of exactly 10,000 with `eq` total must not be flagged truncated."""
-    pages = [
-        ESSearchResult(
-            hits=[ESHit(id=uuid7(), score=1.0) for _ in range(1000)],
-            total=ESSearchTotal(value=10_000, relation="eq"),
-            page=p,
-        )
-        for p in range(1, 11)
-    ]
     monkeypatch.setattr(
-        SearchService, "search_with_query_string", AsyncMock(side_effect=pages)
+        SearchService,
+        "search_with_query_string",
+        AsyncMock(
+            return_value=ESSearchResult(
+                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
+                total=ESSearchTotal(value=10_000, relation="eq"),
+                page=1,
+            )
+        ),
     )
 
     service = ReferenceService.__new__(ReferenceService)
     service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    download = ReferenceDownload(query="climate")
+    export = ReferenceExport(query="climate")
 
-    ids, truncated = await _collect_download_ids(service, download)
+    ids, truncated = await _collect_export_ids(service, export)
 
     assert len(ids) == 10_000
     # ES says eq=10_000: it counted exactly to the cap, so we got everything.
     assert truncated is False
 
 
-async def test_request_reference_download_rejects_empty_query(
+async def test_request_reference_export_rejects_empty_query(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """Empty `q` returns 422 from FastAPI's min_length validation."""
-    response = await client.post("/v1/references/download/", params={"q": ""})
+    response = await client.post("/v1/references/exports/search/", params={"q": ""})
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
@@ -1268,33 +1157,33 @@ async def test_search_references_rejects_inverted_year_range(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-async def test_request_reference_download_rejects_malformed_annotation(
+async def test_request_reference_export_rejects_malformed_annotation(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """A malformed annotation filter returns 400 at request time, not job failure."""
     response = await client.post(
-        "/v1/references/download/",
+        "/v1/references/exports/search/",
         params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-async def test_request_reference_download_rejects_inverted_year_range(
+async def test_request_reference_export_rejects_inverted_year_range(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """An inverted publication year range returns 400 at request time."""
     response = await client.post(
-        "/v1/references/download/",
+        "/v1/references/exports/search/",
         params={"q": "climate", "start_year": 2025, "end_year": 2020},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-async def test_request_reference_download_marks_failed_when_enqueue_fails(
+async def test_request_reference_export_marks_failed_when_enqueue_fails(
     session: AsyncSession,
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -1307,16 +1196,18 @@ async def test_request_reference_download_marks_failed_when_enqueue_fails(
         AsyncMock(side_effect=RuntimeError("broker down")),
     )
 
-    response = await client.post("/v1/references/download/", params={"q": "climate"})
+    response = await client.post(
+        "/v1/references/exports/search/", params={"q": "climate"}
+    )
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
 
-    rows = (await session.execute(select(SQLReferenceDownload))).scalars().all()
+    rows = (await session.execute(select(SQLReferenceExport))).scalars().all()
     assert len(rows) == 1
     assert rows[0].status == "failed"
     assert "broker down" in rows[0].error
 
 
-async def test_run_reference_download_task_skips_non_pending_row(
+async def test_run_reference_export_task_skips_non_pending_row(
     session: AsyncSession,
     mock_blob_repository: None,  # noqa: ARG001
     monkeypatch: pytest.MonkeyPatch,
@@ -1325,56 +1216,52 @@ async def test_run_reference_download_task_skips_non_pending_row(
     existing_file = BlobStorageFile(
         location="minio",
         container="destiny-repository",
-        path="reference_downloads",
+        path="reference_exports",
         filename="prior.jsonl",
     )
-    download = SQLReferenceDownload(
+    export = SQLReferenceExport(
         query="climate",
         status="completed",
         result_file=existing_file.to_sql(),
         n_references=42,
         truncated=False,
     )
-    session.add(download)
+    session.add(export)
     await session.commit()
-    download_id = download.id
+    export_id = export.id
 
     collect_mock = AsyncMock()
     stream_mock = AsyncMock()
-    monkeypatch.setattr(
-        ReferenceService, "_collect_reference_download_ids", collect_mock
-    )
-    monkeypatch.setattr(
-        ReferenceService, "_stream_reference_download_jsonl", stream_mock
-    )
+    monkeypatch.setattr(ReferenceService, "_collect_reference_export_ids", collect_mock)
+    monkeypatch.setattr(ReferenceService, "_stream_reference_export_jsonl", stream_mock)
 
     assert isinstance(broker, InMemoryBroker)
-    await run_reference_download_task.kiq(reference_download_id=download_id)
+    await run_reference_export_task.kiq(reference_export_id=export_id)
     await broker.wait_all()
 
     collect_mock.assert_not_awaited()
     stream_mock.assert_not_awaited()
 
-    await session.refresh(download)
-    assert download.status == "completed"
-    assert download.result_file == existing_file.to_sql()
-    assert download.n_references == 42
+    await session.refresh(export)
+    assert export.status == "completed"
+    assert export.result_file == existing_file.to_sql()
+    assert export.n_references == 42
 
 
-async def test_get_reference_download_pending_has_no_url(
+async def test_get_reference_export_pending_has_no_url(
     session: AsyncSession,
     client: AsyncClient,
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
-    """A pending download exposes no signed URL until the file is ready."""
-    download = SQLReferenceDownload(
+    """A pending export exposes no signed URL until the file is ready."""
+    export = SQLReferenceExport(
         query="climate",
         status="pending",
     )
-    session.add(download)
+    session.add(export)
     await session.commit()
 
-    response = await client.get(f"/v1/references/download/{download.id}/")
+    response = await client.get(f"/v1/references/exports/{export.id}/")
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body["status"] == "pending"

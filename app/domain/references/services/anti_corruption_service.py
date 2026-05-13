@@ -15,8 +15,8 @@ from app.domain.references.models.models import (
     LinkedExternalIdentifier,
     PublicationYearRange,
     Reference,
-    ReferenceDownload,
     ReferenceDuplicateDecision,
+    ReferenceExport,
     RobotAutomation,
     RobotEnhancementBatch,
     RobotResultValidationEntry,
@@ -193,20 +193,20 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
-    async def reference_download_to_sdk(
+    async def reference_export_to_sdk(
         self,
-        reference_download: ReferenceDownload,
-    ) -> destiny_sdk.references.ReferenceDownloadRead:
-        """Convert the reference download to the SDK model."""
+        reference_export: ReferenceExport,
+    ) -> destiny_sdk.references.ReferenceExportRead:
+        """Convert the reference export to the SDK model."""
         try:
-            return destiny_sdk.references.ReferenceDownloadRead.model_validate(
-                reference_download.model_dump()
+            return destiny_sdk.references.ReferenceExportRead.model_validate(
+                reference_export.model_dump()
                 | {
                     "result_url": await self._blob_repository.get_signed_url(
-                        reference_download.result_file,
+                        reference_export.result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
-                    if reference_download.result_file
+                    if reference_export.result_file
                     else None,
                 },
             )

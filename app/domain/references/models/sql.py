@@ -29,7 +29,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     PendingEnhancementStatus,
-    ReferenceDownloadStatus,
+    ReferenceExportStatus,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -48,10 +48,10 @@ from app.domain.references.models.models import (
     Reference as DomainReference,
 )
 from app.domain.references.models.models import (
-    ReferenceDownload as DomainReferenceDownload,
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
-    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
+    ReferenceExport as DomainReferenceExport,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
@@ -439,10 +439,10 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         )
 
 
-class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
-    """SQL Persistence model for a ReferenceDownload job."""
+class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
+    """SQL Persistence model for a ReferenceExport job."""
 
-    __tablename__ = "reference_download"
+    __tablename__ = "reference_export"
 
     query: Mapped[str] = mapped_column(String, nullable=False)
     annotation_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
@@ -452,7 +452,7 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
-    status: Mapped[ReferenceDownloadStatus] = mapped_column(String, nullable=False)
+    status: Mapped[ReferenceExportStatus] = mapped_column(String, nullable=False)
 
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
     n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -462,8 +462,8 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
-    def from_domain(cls, domain_obj: DomainReferenceDownload) -> Self:
-        """Create a persistence model from a domain ReferenceDownload object."""
+    def from_domain(cls, domain_obj: DomainReferenceExport) -> Self:
+        """Create a persistence model from a domain ReferenceExport object."""
         return cls(
             id=domain_obj.id,
             query=domain_obj.query,
@@ -485,9 +485,9 @@ class ReferenceDownload(GenericSQLPersistence[DomainReferenceDownload]):
     def to_domain(
         self,
         preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
-    ) -> DomainReferenceDownload:
-        """Convert the persistence model into a Domain ReferenceDownload object."""
-        return DomainReferenceDownload(
+    ) -> DomainReferenceExport:
+        """Convert the persistence model into a Domain ReferenceExport object."""
+        return DomainReferenceExport(
             id=self.id,
             query=self.query,
             annotation_filters=[

@@ -54,10 +54,10 @@ from app.domain.references.models.models import (
     Reference as DomainReference,
 )
 from app.domain.references.models.models import (
-    ReferenceDownload as DomainReferenceDownload,
+    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
-    ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
+    ReferenceExport as DomainReferenceExport,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
@@ -79,10 +79,10 @@ from app.domain.references.models.sql import (
     PendingEnhancement as SQLPendingEnhancement,
 )
 from app.domain.references.models.sql import Reference as SQLReference
-from app.domain.references.models.sql import ReferenceDownload as SQLReferenceDownload
 from app.domain.references.models.sql import (
     ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
+from app.domain.references.models.sql import ReferenceExport as SQLReferenceExport
 from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
@@ -515,31 +515,31 @@ class EnhancementRequestSQLRepository(
         return enhancement_request
 
 
-class ReferenceDownloadRepositoryBase(
-    GenericAsyncRepository[DomainReferenceDownload, GenericPersistenceType],
+class ReferenceExportRepositoryBase(
+    GenericAsyncRepository[DomainReferenceExport, GenericPersistenceType],
     ABC,
 ):
-    """Abstract implementation of a repository for reference download jobs."""
+    """Abstract implementation of a repository for reference export jobs."""
 
 
-class ReferenceDownloadSQLRepository(
+class ReferenceExportSQLRepository(
     GenericAsyncSqlRepository[
-        DomainReferenceDownload, SQLReferenceDownload, Literal["__none__"]
+        DomainReferenceExport, SQLReferenceExport, Literal["__none__"]
     ],
-    ReferenceDownloadRepositoryBase,
+    ReferenceExportRepositoryBase,
 ):
-    """Concrete implementation of a repository for reference downloads using SQL."""
+    """Concrete implementation of a repository for reference exports using SQL."""
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize the repository with the database session."""
         super().__init__(
             session,
-            DomainReferenceDownload,
-            SQLReferenceDownload,
+            DomainReferenceExport,
+            SQLReferenceExport,
         )
 
     @trace_repository_method(tracer)
-    async def update_by_pk(self, pk: UUID, **kwargs: object) -> DomainReferenceDownload:
+    async def update_by_pk(self, pk: UUID, **kwargs: object) -> DomainReferenceExport:
         """Encode any BlobStorageFile field at the persistence boundary."""
         result_file = kwargs.get("result_file")
         if isinstance(result_file, BlobStorageFile):
