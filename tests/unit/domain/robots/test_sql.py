@@ -37,7 +37,7 @@ async def test_robot_to_and_from_domain():
     assert sql_robot.description == dummy_robot.description
     assert sql_robot.name == dummy_robot.name
     assert sql_robot.owner == dummy_robot.owner
-    assert sql_robot.entitlements == [Entitlement.FULL_TEXT.value]
+    assert sql_robot.entitlements == {Entitlement.FULL_TEXT}
 
     # Convert from SQL model to domain
     domain_ref = sql_robot.to_domain()

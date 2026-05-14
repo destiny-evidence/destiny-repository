@@ -6,6 +6,7 @@ from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.api.auth import Entitlement
 from app.domain.robots.models.models import (
     Robot as DomainRobot,
 )
@@ -31,7 +32,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
 
     owner: Mapped[str] = mapped_column(String, nullable=False)
 
-    entitlements: Mapped[list[str]] = mapped_column(
+    entitlements: Mapped[set[Entitlement]] = mapped_column(
         ARRAY(String), nullable=False, server_default="{}"
     )
 
@@ -54,7 +55,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
             description=domain_obj.description,
             name=domain_obj.name,
             owner=domain_obj.owner,
-            entitlements=sorted(e.value for e in domain_obj.entitlements),
+            entitlements=domain_obj.entitlements,
         )
 
     def to_domain(
