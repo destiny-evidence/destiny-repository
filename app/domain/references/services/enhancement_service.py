@@ -128,6 +128,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 source,
                 destination,
                 max_bytes=settings.full_text_max_byte_size,
+                content_type=content.mime_type,
             )
         except BlobSizeExceededError as exc:
             msg = (

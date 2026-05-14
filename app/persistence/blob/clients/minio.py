@@ -18,6 +18,7 @@ from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
+    infer_content_type,
 )
 from app.persistence.blob.stream import FileStream
 
@@ -54,6 +55,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
         self,
         content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
+        content_type: str | None = None,
     ) -> None:
         """Upload a file to MinIO."""
         try:
@@ -73,7 +75,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
                 object_name=f"{file.path}/{file.filename}",
                 data=buffer,
                 length=buffer.getbuffer().nbytes,
-                content_type=file.content_type or "application/octet-stream",
+                content_type=content_type or infer_content_type(file.filename),
             )
         except S3Error as e:
             msg = f"Failed to upload file to MinIO: {e}"

@@ -6,7 +6,12 @@ from collections.abc import AsyncGenerator, AsyncIterator
 from io import BytesIO
 
 from azure.identity.aio import DefaultAzureCredential
-from azure.storage.blob import BlobSasPermissions, UserDelegationKey, generate_blob_sas
+from azure.storage.blob import (
+    BlobSasPermissions,
+    ContentSettings,
+    UserDelegationKey,
+    generate_blob_sas,
+)
 from azure.storage.blob.aio import BlobServiceClient
 from cachetools import TTLCache
 from opentelemetry import trace
@@ -22,6 +27,7 @@ from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
+    infer_content_type,
 )
 from app.persistence.blob.stream import FileStream
 
@@ -67,16 +73,28 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         self,
         content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
+        content_type: str | None = None,
     ) -> None:
         """Upload a file to Azure Blob Storage using async streaming."""
         blob_client = self.blob_service_client.get_blob_client(
             container=file.container, blob=f"{file.path}/{file.filename}"
         )
+        content_settings = ContentSettings(
+            content_type=content_type or infer_content_type(file.filename)
+        )
         try:
             if isinstance(content, FileStream):
-                await blob_client.upload_blob(content.stream(), overwrite=True)
+                await blob_client.upload_blob(
+                    content.stream(),
+                    overwrite=True,
+                    content_settings=content_settings,
+                )
             else:
-                await blob_client.upload_blob(content, overwrite=True)
+                await blob_client.upload_blob(
+                    content,
+                    overwrite=True,
+                    content_settings=content_settings,
+                )
         except Exception as e:
             msg = f"Failed to upload file to Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
