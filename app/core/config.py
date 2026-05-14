@@ -537,6 +537,14 @@ class Settings(BaseSettings):
         description="The number of seconds a signed URL is valid for.",
     )
 
+    full_text_max_byte_size: int = Field(
+        default=1024**3,
+        description=(
+            "Maximum size in bytes accepted when fetching a remote full-text "
+            "source. Aborts the stream and rejects the enhancement if exceeded."
+        ),
+    )
+
     default_pending_enhancement_lease_duration: datetime.timedelta = Field(
         default=iso8601_duration_adapter.validate_python("PT10M"),
         description=(
