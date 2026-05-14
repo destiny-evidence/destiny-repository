@@ -6,12 +6,12 @@ from destiny_sdk.enhancements import EnhancementType
 
 from app.api.auth import Entitlement
 from app.domain.references.models.models import Enhancement, Reference
-from app.domain.service import AccessControlService
+from app.domain.service import GenericAccessControlService
 
 RedactedReference = NewType("RedactedReference", Reference)
 
 
-class ReferenceAccessControlService(AccessControlService):
+class ReferenceAccessControlService(GenericAccessControlService):
     """Redact references for a principal's entitlements."""
 
     def redact_reference(self, reference: Reference) -> RedactedReference:

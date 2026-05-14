@@ -17,7 +17,7 @@ class GenericAntiCorruptionService:
     """
 
 
-class AccessControlService:
+class GenericAccessControlService:
     """Base class for access control services."""
 
     def __init__(self, entitlements: frozenset[Entitlement] = frozenset()) -> None:
