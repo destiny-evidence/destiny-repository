@@ -93,6 +93,7 @@ class GenericBlobStorageClient(ABC):
         self,
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
+        content_disposition: str | None,
     ) -> str:
         """
         Generate a signed URL for the file in blob storage.
@@ -101,6 +102,11 @@ class GenericBlobStorageClient(ABC):
         :type file: BlobStorageFile
         :param interaction_type: The type of interaction (upload or download).
         :type interaction_type: BlobSignedUrlType
+        :param content_disposition: Override for the Content-Disposition response
+            header served when the signed URL is fetched. Set to ``"attachment"``
+            for untrusted content (e.g. full-text blobs) to neutralize inline
+            browser rendering. Ignored for ``UPLOAD``.
+        :type content_disposition: str | None
         :return: The signed URL for the file.
         :rtype: str
         """

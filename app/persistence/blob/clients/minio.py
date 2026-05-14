@@ -103,16 +103,25 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
         self,
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
+        content_disposition: str | None,
     ) -> str:
         """Get a signed URL for a file in MinIO."""
         try:
             if interaction_type == BlobSignedUrlType.DOWNLOAD:
+                # S3-style `response-content-disposition` override, signed into
+                # the URL so the server returns this header on fetch.
+                response_headers: dict[str, str | list[str] | tuple[str]] | None = (
+                    {"response-content-disposition": content_disposition}
+                    if content_disposition is not None
+                    else None
+                )
                 url = self.client.presigned_get_object(
                     bucket_name=file.container,
                     object_name=f"{file.path}/{file.filename}",
                     expires=datetime.timedelta(
                         seconds=self.presigned_url_expiry_seconds
                     ),
+                    response_headers=response_headers,
                 )
             if interaction_type == BlobSignedUrlType.UPLOAD:
                 url = self.client.presigned_put_object(
