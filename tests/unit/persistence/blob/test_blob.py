@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
-from app.core.exceptions import BlobStorageError
+from app.core.exceptions import BlobSizeExceededError, BlobStorageError
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobContainer,
@@ -215,7 +215,7 @@ class _RecordingClient(GenericBlobStorageClient):
         for chunk in self._chunks:
             yield chunk
 
-    async def generate_signed_url(self, file, interaction_type):
+    async def generate_signed_url(self, file, interaction_type, content_disposition):
         return "http://unused"
 
 
@@ -282,6 +282,57 @@ async def test_copy_empty_source_yields_known_sha256():
 
 
 @pytest.mark.asyncio
+async def test_copy_aborts_when_max_bytes_exceeded():
+    """Cumulative chunk size strictly above max_bytes aborts the stream."""
+
+    source = BlobStorageFile.from_uri("https://example.com/big.pdf")
+    destination = BlobStorageFile(
+        location=BlobStorageLocation.MINIO,
+        container="full-texts",
+        path="p",
+        filename="big.pdf",
+    )
+    src_client = _RecordingClient(chunks=[b"a" * 100, b"b" * 100])
+    dest_client = _RecordingClient()
+
+    repo = BlobRepository()
+    with (
+        patch.object(
+            repo,
+            "_preload_config",
+            side_effect=lambda f: src_client if f is source else dest_client,
+        ),
+        pytest.raises(BlobSizeExceededError, match="max_bytes=150"),
+    ):
+        await repo.copy(source, destination, max_bytes=150)
+
+
+@pytest.mark.asyncio
+async def test_copy_max_bytes_none_disables_check():
+    """A None max_bytes does not enforce any cap."""
+
+    source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
+    destination = BlobStorageFile(
+        location=BlobStorageLocation.MINIO,
+        container="full-texts",
+        path="p",
+        filename="foo.pdf",
+    )
+    src_client = _RecordingClient(chunks=[b"x" * 100_000])
+    dest_client = _RecordingClient()
+
+    repo = BlobRepository()
+    with patch.object(
+        repo,
+        "_preload_config",
+        side_effect=lambda f: src_client if f is source else dest_client,
+    ):
+        result = await repo.copy(source, destination, max_bytes=None)
+
+    assert result.byte_size == 100_000
+
+
+@pytest.mark.asyncio
 async def test_copy_rejects_destination_on_other_backend():
     """A destination not on the active write backend should be refused."""
     source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
@@ -305,7 +356,9 @@ class DummyClient(GenericBlobStorageClient):
     async def stream_chunks(self, file):
         yield b"dummy"
 
-    async def generate_signed_url(self, file, interaction_type):
+    async def generate_signed_url(
+        self, file, interaction_type, content_disposition=None
+    ):
         return f"http://signed/{file.filename}/{interaction_type}"
 
 
@@ -327,5 +380,6 @@ async def test_generic_blob_storage_client_interface():
             filename="f.txt",
         ),
         BlobSignedUrlType.DOWNLOAD,
+        None,
     )
     assert url.startswith("http://signed/")

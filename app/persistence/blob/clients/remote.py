@@ -27,7 +27,7 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
 
     def __init__(self) -> None:
         """Initialize RemoteBlobStorageClient."""
-        self._client = httpx.AsyncClient()
+        self._client = httpx.AsyncClient(follow_redirects=False)
         HTTPXClientInstrumentor().instrument_client(self._client)
 
     @trace_blob_client_method(tracer)
@@ -66,9 +66,10 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
         self,
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
+        content_disposition: str | None,
     ) -> str:
         """Raise, remote URLs are themselves already URLs."""
-        del file, interaction_type
+        del file, interaction_type, content_disposition
         msg = "Signed URL generation is not supported for RemoteBlobStorageClient."
         raise RemoteBlobStorageError(msg)
 
