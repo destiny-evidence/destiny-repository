@@ -10,6 +10,7 @@ import pytest
 
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
+    BlobContainer,
     BlobSignedUrlType,
     BlobStorageFile,
     BlobStorageLocation,
@@ -23,17 +24,19 @@ async def test_upload_file_to_blob_storage():
     repo = BlobRepository()
     content = BytesIO(b"test data")
     dummy_client = DummyClient()
+    expected_container = repo._write_backend.containers[BlobContainer.FULL_TEXTS]  # noqa: SLF001
+    expected_location = repo._write_backend.location  # noqa: SLF001
     with patch.object(repo, "_preload_config", return_value=dummy_client):
         result = await repo.upload_file_to_blob_storage(
             content=content,
             path="test/path",
             filename="test.txt",
-            container="test-container",
-            location=BlobStorageLocation.MINIO,
+            container=BlobContainer.FULL_TEXTS,
         )
         assert hasattr(dummy_client, "uploaded")
         assert result.filename == "test.txt"
-        assert result.container == "test-container"
+        assert result.container == expected_container
+        assert result.location == expected_location
 
 
 @pytest.mark.asyncio

@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
+from app.persistence.blob.models import BlobContainer
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -58,7 +59,7 @@ async def healthcheck(
                     ) as client,
                 ):
                     await client.get_container_client(
-                        settings.azure_blob_config.container
+                        settings.azure_blob_config.containers[BlobContainer.OPERATIONS]
                     ).get_container_properties()
             else:
                 async with BlobServiceClient(
@@ -66,7 +67,7 @@ async def healthcheck(
                     credential=settings.azure_blob_config.credential,
                 ) as client:
                     await client.get_container_client(
-                        settings.azure_blob_config.container
+                        settings.azure_blob_config.containers[BlobContainer.OPERATIONS]
                     ).get_container_properties()
 
         except Exception:
