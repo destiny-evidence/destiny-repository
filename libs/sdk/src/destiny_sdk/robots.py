@@ -320,6 +320,13 @@ If the URL expires, a new one can be generated using
     )
 
 
+class RobotEntitlement(StrEnum):
+    """Entitlements that can be granted to a robot."""
+
+    FULL_TEXT = auto()
+    """The robot is entitled to read full texts in order to derive enhancements."""
+
+
 class _RobotBase(BaseModel):
     """
     Base Robot class.
@@ -334,6 +341,14 @@ class _RobotBase(BaseModel):
         description="Description of the enhancement the robot provides."
     )
     owner: str = Field(description="The owner/publisher of the robot.")
+    entitlements: set[RobotEntitlement] = Field(
+        default_factory=set,
+        description=(
+            "Entitlements granted to this robot. This field can only be set or updated "
+            "by a user with the appropriate permissions. Attempting to set or update "
+            "this field without the appropriate permissions will result in an error."
+        ),
+    )
 
 
 class RobotIn(_RobotBase):

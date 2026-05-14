@@ -3,6 +3,7 @@
 from typing import Self
 
 from sqlalchemy import String, UniqueConstraint
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.domain.robots.models.models import (
@@ -30,6 +31,10 @@ class Robot(GenericSQLPersistence[DomainRobot]):
 
     owner: Mapped[str] = mapped_column(String, nullable=False)
 
+    entitlements: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=False, server_default="{}"
+    )
+
     __table_args__ = (
         UniqueConstraint(
             "name",
@@ -49,6 +54,7 @@ class Robot(GenericSQLPersistence[DomainRobot]):
             description=domain_obj.description,
             name=domain_obj.name,
             owner=domain_obj.owner,
+            entitlements=sorted(e.value for e in domain_obj.entitlements),
         )
 
     def to_domain(
@@ -62,4 +68,5 @@ class Robot(GenericSQLPersistence[DomainRobot]):
             description=self.description,
             name=self.name,
             owner=self.owner,
+            entitlements=frozenset(self.entitlements),
         )
