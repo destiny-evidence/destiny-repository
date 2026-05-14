@@ -1,61 +1,17 @@
-"""Unit tests for RobotService entitlement handling."""
+"""Unit tests for RobotService."""
 
 import pytest
 
 from app.api.auth import Entitlement
 from app.core.exceptions import AuthError
-from app.domain.robots.service import RobotService, _resolve_robot_entitlements
+from app.domain.robots.service import RobotService
+from app.domain.robots.services.access_control_service import (
+    RobotAccessControlService,
+)
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
 )
 from tests.factories import RobotFactory
-
-
-def test_resolve_writer_can_set_arbitrary_entitlements():
-    result = _resolve_robot_entitlements(
-        submitted=frozenset({Entitlement.FULL_TEXT}),
-        existing=frozenset(),
-        caller_entitlements=frozenset({Entitlement.ROBOT_ENTITLEMENT_WRITER}),
-    )
-    assert result == frozenset({Entitlement.FULL_TEXT})
-
-
-def test_resolve_writer_can_revoke_via_empty():
-    result = _resolve_robot_entitlements(
-        submitted=frozenset(),
-        existing=frozenset({Entitlement.FULL_TEXT}),
-        caller_entitlements=frozenset({Entitlement.ROBOT_ENTITLEMENT_WRITER}),
-    )
-    assert result == frozenset()
-
-
-def test_resolve_non_writer_empty_preserves_existing():
-    result = _resolve_robot_entitlements(
-        submitted=frozenset(),
-        existing=frozenset({Entitlement.FULL_TEXT}),
-        caller_entitlements=frozenset(),
-    )
-    assert result == frozenset({Entitlement.FULL_TEXT})
-
-
-def test_resolve_non_writer_matching_passes_through():
-    existing = frozenset({Entitlement.FULL_TEXT})
-    result = _resolve_robot_entitlements(
-        submitted=existing,
-        existing=existing,
-        caller_entitlements=frozenset(),
-    )
-    assert result == existing
-
-
-def test_resolve_non_writer_mismatched_non_empty_raises():
-    with pytest.raises(AuthError) as exc:
-        _resolve_robot_entitlements(
-            submitted=frozenset({Entitlement.FULL_TEXT}),
-            existing=frozenset(),
-            caller_entitlements=frozenset(),
-        )
-    assert exc.value.status_code == 403
 
 
 @pytest.mark.asyncio
@@ -70,11 +26,10 @@ async def test_update_robot_preserves_entitlements_for_non_writer(
     repo = fake_repository(init_entries=[existing])
     uow = fake_uow(robots=repo)
     service = RobotService(RobotAntiCorruptionService(), uow)
+    acl = RobotAccessControlService(entitlements=frozenset())
 
     submitted = existing.model_copy(update={"entitlements": frozenset()})
-    result = await service.update_robot(
-        robot=submitted, caller_entitlements=frozenset()
-    )
+    result = await service.update_robot(robot=submitted, access_control_service=acl)
 
     assert result.entitlements == frozenset({Entitlement.FULL_TEXT})
 
@@ -88,13 +43,14 @@ async def test_update_robot_rejects_non_writer_attempting_grant(
     repo = fake_repository(init_entries=[existing])
     uow = fake_uow(robots=repo)
     service = RobotService(RobotAntiCorruptionService(), uow)
+    acl = RobotAccessControlService(entitlements=frozenset())
 
     submitted = existing.model_copy(
         update={"entitlements": frozenset({Entitlement.FULL_TEXT})}
     )
 
     with pytest.raises(AuthError):
-        await service.update_robot(robot=submitted, caller_entitlements=frozenset())
+        await service.update_robot(robot=submitted, access_control_service=acl)
 
 
 @pytest.mark.asyncio
