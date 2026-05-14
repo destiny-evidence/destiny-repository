@@ -58,6 +58,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.export_service import ReferenceExportService
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
     run_reference_export_task,
@@ -121,6 +122,25 @@ def reference_service(
         sql_uow=sql_uow,
         es_uow=es_uow,
         anti_corruption_service=reference_anti_corruption_service,
+    )
+
+
+def reference_export_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+) -> ReferenceExportService:
+    """Return the reference export service."""
+    return ReferenceExportService(
+        anti_corruption_service=reference_anti_corruption_service,
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        get_jsonl_deduplicated_references=(
+            reference_service.get_jsonl_deduplicated_references
+        ),
     )
 
 
@@ -382,7 +402,9 @@ async def search_references(
     ),
 )
 async def request_reference_export(
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    reference_export_service: Annotated[
+        ReferenceExportService, Depends(reference_export_service)
+    ],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
@@ -410,7 +432,7 @@ async def request_reference_export(
     ] = None,
 ) -> destiny_sdk.references.ReferenceExportRead:
     """Queue a reference export job and return its id and pending status."""
-    reference_export = await reference_service.request_reference_export(
+    reference_export = await reference_export_service.request_reference_export(
         query=q,
         annotation_filters=annotation_filters or None,
         publication_year_range=publication_year_range,
@@ -431,7 +453,7 @@ async def request_reference_export(
             "Failed to enqueue reference export task",
             reference_export_id=str(reference_export.id),
         )
-        reference_export = await reference_service.fail_reference_export(
+        reference_export = await reference_export_service.fail_reference_export(
             reference_export.id,
             f"Failed to enqueue export task: {exc}",
         )
@@ -458,13 +480,17 @@ async def get_reference_export(
     reference_export_id: Annotated[
         destiny_sdk.UUID, Path(description="The ID of the reference export job.")
     ],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    reference_export_service: Annotated[
+        ReferenceExportService, Depends(reference_export_service)
+    ],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
 ) -> destiny_sdk.references.ReferenceExportRead:
     """Get the status of a reference export job, including its signed URL."""
-    reference_export = await reference_service.get_reference_export(reference_export_id)
+    reference_export = await reference_export_service.get_reference_export(
+        reference_export_id
+    )
     return await anti_corruption_service.reference_export_to_sdk(reference_export)
 
 

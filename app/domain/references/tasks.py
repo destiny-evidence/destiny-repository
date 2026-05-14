@@ -26,6 +26,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.export_service import ReferenceExportService
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -190,7 +191,15 @@ async def run_reference_export_task(reference_export_id: UUID) -> None:
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
         )
-        await reference_service.run_reference_export(
+        reference_export_service = ReferenceExportService(
+            anti_corruption_service=reference_anti_corruption_service,
+            sql_uow=sql_uow,
+            es_uow=es_uow,
+            get_jsonl_deduplicated_references=(
+                reference_service.get_jsonl_deduplicated_references
+            ),
+        )
+        await reference_export_service.run_reference_export(
             reference_export_id, blob_repository
         )
 

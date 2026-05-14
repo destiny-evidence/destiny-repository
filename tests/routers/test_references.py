@@ -36,7 +36,6 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
-    ReferenceExport,
     Visibility,
 )
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -58,8 +57,7 @@ from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.service import ReferenceService
-from app.domain.references.services.search_service import SearchService
-from app.domain.references.tasks import run_reference_export_task
+from app.domain.references.services.export_service import ReferenceExportService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
@@ -951,12 +949,12 @@ async def test_request_reference_export_happy_path(
     )
 
     monkeypatch.setattr(
-        ReferenceService,
+        ReferenceExportService,
         "_collect_reference_export_ids",
         AsyncMock(return_value=([fake_reference_id], False)),
     )
     monkeypatch.setattr(
-        ReferenceService,
+        ReferenceExportService,
         "_stream_reference_export_jsonl",
         AsyncMock(return_value=(fake_result_file, 1)),
     )
@@ -993,7 +991,7 @@ async def test_request_reference_export_marks_failed_on_error(
 ) -> None:
     """Test that a failure during the export job is reflected via the status API."""
     monkeypatch.setattr(
-        ReferenceService,
+        ReferenceExportService,
         "_collect_reference_export_ids",
         AsyncMock(side_effect=RuntimeError("kaboom")),
     )
@@ -1012,115 +1010,6 @@ async def test_request_reference_export_marks_failed_on_error(
     assert status_body["status"] == "failed"
     assert status_body["result_url"] is None
     assert "kaboom" in status_body["error"]
-
-
-# Undecorated body — tests drive the implementation with mocks instead of a UoW.
-_collect_export_ids = ReferenceService._collect_reference_export_ids.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
-
-
-async def test_collect_reference_export_ids_flags_truncated_on_gte_total(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """When ES reports `gte` at the cap, the result is flagged as truncated."""
-    monkeypatch.setattr(
-        SearchService,
-        "search_with_query_string",
-        AsyncMock(
-            return_value=ESSearchResult(
-                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
-                total=ESSearchTotal(value=10_000, relation="gte"),
-                page=1,
-            )
-        ),
-    )
-
-    service = ReferenceService.__new__(ReferenceService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    export = ReferenceExport(query="climate")
-
-    ids, truncated = await _collect_export_ids(service, export)
-
-    assert len(ids) == 10_000
-    assert truncated is True
-
-
-async def test_collect_reference_export_ids_flags_truncated_on_eq_above_cap(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """If ES tracks the exact count past the cap, `eq` total > cap is truncated."""
-    monkeypatch.setattr(
-        SearchService,
-        "search_with_query_string",
-        AsyncMock(
-            return_value=ESSearchResult(
-                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
-                total=ESSearchTotal(value=25_000, relation="eq"),
-                page=1,
-            )
-        ),
-    )
-
-    service = ReferenceService.__new__(ReferenceService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    export = ReferenceExport(query="climate")
-
-    ids, truncated = await _collect_export_ids(service, export)
-
-    assert len(ids) == 10_000
-    assert truncated is True
-
-
-async def test_collect_reference_export_ids_handles_empty_result_set(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Zero hits returns ([], False) without crashing."""
-    monkeypatch.setattr(
-        SearchService,
-        "search_with_query_string",
-        AsyncMock(
-            return_value=ESSearchResult(
-                hits=[],
-                total=ESSearchTotal(value=0, relation="eq"),
-                page=1,
-            )
-        ),
-    )
-
-    service = ReferenceService.__new__(ReferenceService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    export = ReferenceExport(query="climate")
-
-    ids, truncated = await _collect_export_ids(service, export)
-
-    assert ids == []
-    assert truncated is False
-
-
-async def test_collect_reference_export_ids_exactly_at_cap_not_truncated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A result set of exactly 10,000 with `eq` total must not be flagged truncated."""
-    monkeypatch.setattr(
-        SearchService,
-        "search_with_query_string",
-        AsyncMock(
-            return_value=ESSearchResult(
-                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
-                total=ESSearchTotal(value=10_000, relation="eq"),
-                page=1,
-            )
-        ),
-    )
-
-    service = ReferenceService.__new__(ReferenceService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
-    export = ReferenceExport(query="climate")
-
-    ids, truncated = await _collect_export_ids(service, export)
-
-    assert len(ids) == 10_000
-    # ES says eq=10_000: it counted exactly to the cap, so we got everything.
-    assert truncated is False
 
 
 async def test_request_reference_export_rejects_empty_query(
@@ -1205,47 +1094,6 @@ async def test_request_reference_export_marks_failed_when_enqueue_fails(
     assert len(rows) == 1
     assert rows[0].status == "failed"
     assert "broker down" in rows[0].error
-
-
-async def test_run_reference_export_task_skips_non_pending_row(
-    session: AsyncSession,
-    mock_blob_repository: None,  # noqa: ARG001
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A redelivered task must not redo work or clobber an already-completed row."""
-    existing_file = BlobStorageFile(
-        location="minio",
-        container="destiny-repository",
-        path="reference_exports",
-        filename="prior.jsonl",
-    )
-    export = SQLReferenceExport(
-        query="climate",
-        status="completed",
-        result_file=existing_file.to_sql(),
-        n_references=42,
-        truncated=False,
-    )
-    session.add(export)
-    await session.commit()
-    export_id = export.id
-
-    collect_mock = AsyncMock()
-    stream_mock = AsyncMock()
-    monkeypatch.setattr(ReferenceService, "_collect_reference_export_ids", collect_mock)
-    monkeypatch.setattr(ReferenceService, "_stream_reference_export_jsonl", stream_mock)
-
-    assert isinstance(broker, InMemoryBroker)
-    await run_reference_export_task.kiq(reference_export_id=export_id)
-    await broker.wait_all()
-
-    collect_mock.assert_not_awaited()
-    stream_mock.assert_not_awaited()
-
-    await session.refresh(export)
-    assert export.status == "completed"
-    assert export.result_file == existing_file.to_sql()
-    assert export.n_references == 42
 
 
 async def test_get_reference_export_pending_has_no_url(

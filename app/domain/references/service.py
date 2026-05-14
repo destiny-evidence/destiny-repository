@@ -36,8 +36,6 @@ from app.domain.references.models.models import (
     PublicationYearRange,
     Reference,
     ReferenceDuplicateDecision,
-    ReferenceExport,
-    ReferenceExportStatus,
     ReferenceIds,
     ReferenceWithChangeset,
     RobotAutomation,
@@ -68,7 +66,6 @@ from app.domain.references.services.synchronizer_service import (
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
-from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import ESSearchResult
@@ -383,7 +380,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement)
 
-    async def _get_jsonl_deduplicated_references(
+    async def get_jsonl_deduplicated_references(
         self,
         reference_ids: list[UUID],
     ) -> list[str]:
@@ -1131,7 +1128,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         file_stream = FileStream(
-            self._get_jsonl_deduplicated_references,
+            self.get_jsonl_deduplicated_references,
             [
                 {
                     "reference_ids": reference_id_chunk,
@@ -1229,182 +1226,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             publication_year_range=publication_year_range,
             sort=sort,
         )
-
-    @sql_unit_of_work
-    async def request_reference_export(
-        self,
-        query: str,
-        annotation_filters: list[AnnotationFilter] | None,
-        publication_year_range: PublicationYearRange | None,
-        sort: list[str] | None,
-    ) -> ReferenceExport:
-        """Create a pending reference export job."""
-        reference_export = ReferenceExport(
-            query=query,
-            annotation_filters=annotation_filters,
-            start_year=publication_year_range.start if publication_year_range else None,
-            end_year=publication_year_range.end if publication_year_range else None,
-            sort=sort,
-        )
-        await self.sql_uow.reference_exports.add(reference_export)
-        return reference_export
-
-    @sql_unit_of_work
-    async def get_reference_export(self, reference_export_id: UUID) -> ReferenceExport:
-        """Get a reference export job by id."""
-        return await self.sql_uow.reference_exports.get_by_pk(reference_export_id)
-
-    @sql_unit_of_work
-    async def _claim_reference_export(
-        self, reference_export_id: UUID
-    ) -> ReferenceExport | None:
-        """
-        Atomically transition pending → running, returning the claimed row.
-
-        Returns ``None`` if the row was not in `pending`. The fetch happens in
-        the same UoW as the update so the caller can't see a row that has
-        since been mutated by another transaction.
-        """
-        updated = await self.sql_uow.reference_exports.bulk_update_by_filter(
-            filter_conditions={
-                "id": reference_export_id,
-                "status": ReferenceExportStatus.PENDING,
-            },
-            status=ReferenceExportStatus.RUNNING,
-        )
-        if updated == 0:
-            return None
-        return await self.sql_uow.reference_exports.get_by_pk(reference_export_id)
-
-    @sql_unit_of_work
-    async def _complete_reference_export(
-        self,
-        reference_export_id: UUID,
-        result_file: BlobStorageFile,
-        n_references: int,
-        *,
-        truncated: bool,
-    ) -> ReferenceExport:
-        """Mark a reference export as completed."""
-        return await self.sql_uow.reference_exports.update_by_pk(
-            pk=reference_export_id,
-            status=ReferenceExportStatus.COMPLETED,
-            result_file=result_file,
-            n_references=n_references,
-            truncated=truncated,
-        )
-
-    @sql_unit_of_work
-    async def fail_reference_export(
-        self, reference_export_id: UUID, error: str
-    ) -> ReferenceExport:
-        """Mark a reference export as failed with the given error message."""
-        return await self.sql_uow.reference_exports.update_by_pk(
-            pk=reference_export_id,
-            status=ReferenceExportStatus.FAILED,
-            error=error,
-        )
-
-    @es_unit_of_work
-    async def _collect_reference_export_ids(
-        self, reference_export: ReferenceExport
-    ) -> tuple[list[UUID], bool]:
-        """
-        Run the matching search once at the full result window.
-
-        Returns the list of reference IDs and a flag indicating whether the
-        matching set exceeded the server's result-window cap (in which case
-        only the first window's worth of matches is included). Deep
-        pagination beyond the cap will be addressed by #661.
-        """
-        publication_year_range = (
-            PublicationYearRange(
-                start=reference_export.start_year,
-                end=reference_export.end_year,
-            )
-            if reference_export.start_year or reference_export.end_year
-            else None
-        )
-
-        search_result = await self._search_service.search_with_query_string(
-            reference_export.query,
-            page=1,
-            page_size=SearchService.MAX_RESULT_WINDOW,
-            annotations=reference_export.annotation_filters,
-            publication_year_range=publication_year_range,
-            sort=reference_export.sort,
-        )
-        # `relation == "gte"` is the common case (ES stopped counting at the
-        # track_total_hits threshold); `value > window` covers a server that
-        # tracks exact totals beyond our cap.
-        total = search_result.total
-        truncated = total is not None and (
-            total.relation == "gte" or total.value > SearchService.MAX_RESULT_WINDOW
-        )
-        return [hit.id for hit in search_result.hits], truncated
-
-    @sql_unit_of_work
-    async def _stream_reference_export_jsonl(
-        self,
-        reference_export_id: UUID,
-        reference_ids: list[UUID],
-        blob_repository: BlobRepository,
-    ) -> tuple[BlobStorageFile, int]:
-        """Stream matching references to blob storage as JSONL."""
-        chunk_size = settings.upload_file_chunk_size_override.get(
-            UploadFile.REFERENCE_EXPORT,
-            settings.default_upload_file_chunk_size,
-        )
-        file_stream = FileStream(
-            self._get_jsonl_deduplicated_references,
-            [
-                {"reference_ids": chunk}
-                for chunk in list_chunker(reference_ids, chunk_size)
-            ],
-        )
-        result_file = await blob_repository.upload_file_to_blob_storage(
-            content=file_stream,
-            path="reference_exports",
-            filename=f"{reference_export_id}.jsonl",
-        )
-        return result_file, len(reference_ids)
-
-    async def run_reference_export(
-        self,
-        reference_export_id: UUID,
-        blob_repository: BlobRepository,
-    ) -> None:
-        """Run a queued reference export job end-to-end."""
-        # Conditional pending→running keeps redeliveries from clobbering a row
-        # that's already running, completed, or failed.
-        reference_export = await self._claim_reference_export(reference_export_id)
-        if reference_export is None:
-            logger.info(
-                "Skipping reference export — not in pending state",
-                reference_export_id=str(reference_export_id),
-            )
-            return
-        try:
-            reference_ids, truncated = await self._collect_reference_export_ids(
-                reference_export
-            )
-            result_file, n_references = await self._stream_reference_export_jsonl(
-                reference_export_id, reference_ids, blob_repository
-            )
-            await self._complete_reference_export(
-                reference_export_id,
-                result_file,
-                n_references,
-                truncated=truncated,
-            )
-        except Exception as exc:
-            logger.exception(
-                "Reference export job failed",
-                reference_export_id=str(reference_export_id),
-            )
-            await self.fail_reference_export(
-                reference_export_id, f"Failed to run export task: {exc}"
-            )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
     async def _detect_and_dispatch_robot_automations(
