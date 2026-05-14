@@ -6,9 +6,11 @@ from uuid import UUID, uuid7
 import pytest
 
 from app.core.exceptions import (
+    BlobSizeExceededError,
     FullTextDownloadError,
     FullTextIngestionError,
     FullTextIntegrityError,
+    FullTextSizeExceededError,
     RemoteBlobStorageError,
 )
 from app.domain.references.models.models import (
@@ -975,6 +977,21 @@ async def test_store_full_text_remote_fetch_failure_raises_download_error():
     ft = _ft_enhancement(remote=True, sha256_declared=False, byte_size_declared=False)
 
     with pytest.raises(FullTextDownloadError, match="publisher is down"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_oversize_raises_size_exceeded():
+    """A BlobSizeExceededError from copy is re-raised as FullTextSizeExceededError."""
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=_owned_destination())
+    blob_repo.copy = AsyncMock(
+        side_effect=BlobSizeExceededError("source exceeds max_bytes")
+    )
+
+    ft = _ft_enhancement(remote=True, sha256_declared=False, byte_size_declared=False)
+
+    with pytest.raises(FullTextSizeExceededError, match="exceeds the configured"):
         await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
 
 

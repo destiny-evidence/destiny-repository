@@ -124,6 +124,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         self,
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
+        content_disposition: str | None,
     ) -> str:
         """Get a signed URL for a file in Azure Blob Storage."""
         try:
@@ -133,6 +134,11 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
                 BlobSasPermissions(read=True)
                 if interaction_type == BlobSignedUrlType.DOWNLOAD
                 else BlobSasPermissions(write=True)
+            )
+            sas_content_disposition = (
+                content_disposition
+                if interaction_type == BlobSignedUrlType.DOWNLOAD
+                else None
             )
             sas_token = generate_blob_sas(
                 account_name=self.account_name,
@@ -145,6 +151,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
                 permission=permission,
                 expiry=datetime.datetime.now(datetime.UTC)
                 + datetime.timedelta(seconds=self.presigned_url_expiry_seconds),
+                content_disposition=sas_content_disposition,
             )
         except Exception as e:
             msg = f"Failed to generate signed URL for Azure Blob Storage: {e}"

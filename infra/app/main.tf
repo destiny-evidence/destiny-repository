@@ -387,6 +387,7 @@ resource "azurerm_servicebus_queue" "taskiq" {
   namespace_id = azurerm_servicebus_namespace.this.id
 
   partitioning_enabled = true
+  lock_duration        = "PT5M"
 }
 
 resource "azurerm_servicebus_namespace" "premium" {
@@ -409,6 +410,7 @@ resource "azurerm_servicebus_queue" "taskiq_premium" {
   namespace_id = azurerm_servicebus_namespace.premium[0].id
 
   partitioning_enabled = true
+  lock_duration        = "PT5M"
 }
 
 resource "azurerm_storage_account" "this" {
@@ -423,10 +425,10 @@ resource "azurerm_storage_account" "this" {
 
   blob_properties {
     delete_retention_policy {
-      days = 7
+      days = 30
     }
     container_delete_retention_policy {
-      days = 7
+      days = 30
     }
   }
 

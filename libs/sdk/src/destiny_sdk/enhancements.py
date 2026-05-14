@@ -520,7 +520,13 @@ class LinkedDataEnhancement(BaseModel):
 
 
 class FullTextEnhancement(BaseModel):
-    """An enhancement for storing a link to the full text and its metadata."""
+    """
+    An enhancement for storing a link to the full text and its metadata.
+
+    Full texts are not for the sharing of copyrighted material without a license.
+    They are to maintain files for validation and to allow permitted text and data
+    mining activities.
+    """
 
     enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
     file_url: HttpUrl = Field(
@@ -562,7 +568,21 @@ class FullTextEnhancement(BaseModel):
     license: str | None = Field(
         default=None,
         description="The publishing license for this full text.",
-        examples=["cc0", "cc-by"],
+        examples=[
+            "apache-2-0",
+            "cc-by",
+            "cc-by-nc",
+            "cc-by-nc-nd",
+            "cc-by-nc-sa",
+            "cc-by-nd",
+            "cc-by-sa",
+            "gpl-v2",
+            "gpl-v3",
+            "isc",
+            "mit",
+            "other-oa",
+            "public-domain",
+        ],
     )
     source: str | None = Field(
         default=None,
