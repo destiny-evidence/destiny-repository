@@ -155,17 +155,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     ) -> destiny_sdk.references.Enhancement:
         """Convert the enhancement to an Enhancement SDK model."""
         try:
+            dumped = enhancement.model_dump()
             if enhancement.content.enhancement_type == EnhancementType.FULL_TEXT:
-                content = await self.full_text_enhancement_content_to_sdk(
-                    enhancement.content
-                )
-                return destiny_sdk.references.Enhancement(
-                    **enhancement.model_dump(exclude={"content"}),
-                    content=content,
-                )
-            return destiny_sdk.references.Enhancement.model_validate(
-                enhancement.model_dump()
-            )
+                dumped["content"] = (
+                    await self.full_text_enhancement_content_to_sdk(enhancement.content)
+                ).model_dump()
+            return destiny_sdk.references.Enhancement.model_validate(dumped)
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
