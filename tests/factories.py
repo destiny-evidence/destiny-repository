@@ -322,6 +322,7 @@ class BlobStorageFileFactory(factory.Factory):
     container = factory.Faker("word")
     path = factory.LazyFunction(lambda: "/".join(fake.words(nb=2)))
     filename = factory.LazyFunction(lambda: f"{fake.word()}.pdf")
+    content_type = factory.Faker("mime_type")
 
 
 class FullTextEnhancementFactory(factory.Factory):
