@@ -216,7 +216,10 @@ class BlobRepository:
         return HttpUrl(await client.generate_signed_url(file, interaction_type))
 
     async def copy(
-        self, source: BlobStorageFile, destination: BlobStorageFile
+        self,
+        source: BlobStorageFile,
+        destination: BlobStorageFile,
+        content_type: str | None = None,
     ) -> BlobCopyResult:
         """
         Stream a file from source to destination, computing sha256 and size.
@@ -225,6 +228,12 @@ class BlobRepository:
         :type source: BlobStorageFile
         :param destination: The destination to copy the file to.
         :type destination: BlobStorageFile
+        :param content_type: MIME type to attach to the uploaded destination.
+            If the caller has an authoritative content type (e.g. declared on
+            a full-text enhancement), pass it here so it isn't lossily
+            re-derived from the destination filename. Defaults to ``None``,
+            which lets the backend infer from ``destination.filename``.
+        :type content_type: str | None
         """
         if destination.location != self._write_backend.location:
             msg = (
@@ -246,7 +255,9 @@ class BlobRepository:
                 size += len(chunk)
                 yield chunk
 
-        await dest_client.upload_file(hashed_chunks(), destination)
+        await dest_client.upload_file(
+            hashed_chunks(), destination, content_type=content_type
+        )
 
         return BlobCopyResult(
             source=source,
