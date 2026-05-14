@@ -1,6 +1,7 @@
 """Unit tests for the models in the references module."""
 
 from datetime import UTC, datetime
+from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import destiny_sdk
@@ -74,6 +75,19 @@ def test_full_text_enhancement_discriminator_resolves_to_domain():
     assert restored.content.blob == full_text.blob
 
 
+def test_full_text_enhancement_json_mode_round_trip():
+    """blob serializes to a URI string in JSON mode and re-parses on validate."""
+    full_text = FullTextEnhancementFactory.build()
+    enhancement = EnhancementFactory.build(content=full_text)
+
+    dumped = enhancement.model_dump(mode="json")
+    assert isinstance(dumped["content"]["blob"], str)
+
+    restored = Enhancement.model_validate(dumped)
+    assert isinstance(restored.content, FullTextEnhancement)
+    assert restored.content.blob == full_text.blob
+
+
 def test_full_text_enhancement_fingerprint_stable_across_identical_content():
     """Two full-texts with identical content fields share a fingerprint."""
     a = FullTextEnhancementFactory.build()
@@ -101,8 +115,8 @@ def test_full_text_enhancement_fingerprint_changes_with_content():
 
 
 @pytest.fixture
-def anti_corruption_service(fake_repository) -> ReferenceAntiCorruptionService:
-    return ReferenceAntiCorruptionService(fake_repository)
+def anti_corruption_service() -> ReferenceAntiCorruptionService:
+    return ReferenceAntiCorruptionService(sign_url=AsyncMock())
 
 
 async def test_linked_external_identifier_roundtrip(
