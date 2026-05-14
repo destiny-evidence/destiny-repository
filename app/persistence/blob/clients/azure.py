@@ -1,5 +1,6 @@
 """Azure implementation for Blob Storage operations."""
 
+import asyncio
 import datetime
 from collections.abc import AsyncGenerator
 from io import BytesIO
@@ -46,7 +47,6 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         """
         self.account_url = config.account_url
         self.account_name = config.storage_account_name
-        self.container = config.container
         self.credential = config.credential
         self.presigned_url_expiry_seconds = presigned_url_expiry_seconds
         self.uses_managed_identity = config.uses_managed_identity
@@ -57,15 +57,10 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             if self.uses_managed_identity
             else self.credential,
         )
-        self._user_delegation_key_cache: TTLCache[None, GenericBlobStorageClient] = (
-            TTLCache(maxsize=1, ttl=self.user_delegation_key_duration / 2)
+        self._user_delegation_key_cache: TTLCache[None, UserDelegationKey] = TTLCache(
+            maxsize=1, ttl=self.user_delegation_key_duration / 2
         )
-        self.presigned_url_cache: TTLCache[
-            tuple[BlobStorageFile, BlobSignedUrlType], str
-        ] = TTLCache(
-            maxsize=1000,
-            ttl=self.presigned_url_expiry_seconds / 2,
-        )
+        self._user_delegation_key_lock = asyncio.Lock()
 
     @trace_blob_client_method(tracer)
     async def upload_file(
@@ -75,7 +70,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
     ) -> None:
         """Upload a file to Azure Blob Storage using async streaming."""
         blob_client = self.blob_service_client.get_blob_client(
-            container=self.container, blob=f"{file.path}/{file.filename}"
+            container=file.container, blob=f"{file.path}/{file.filename}"
         )
         try:
             if isinstance(content, FileStream):
@@ -97,7 +92,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         Splits the file content by newline.
         """
         blob_client = self.blob_service_client.get_blob_client(
-            container=self.container, blob=f"{file.path}/{file.filename}"
+            container=file.container, blob=f"{file.path}/{file.filename}"
         )
         try:
             stream = await blob_client.download_blob()
@@ -115,16 +110,25 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             raise AzureBlobStorageError(msg) from e
 
     async def _get_user_delegation_key(self) -> UserDelegationKey:
-        """Get a user delegation key from managed identity."""
-        user_delegation_key = await self.blob_service_client.get_user_delegation_key(
-            datetime.datetime.now(datetime.UTC),
-            datetime.datetime.now(datetime.UTC)
-            + datetime.timedelta(seconds=self.user_delegation_key_duration),
-        )
-        if not user_delegation_key.value:
-            msg = "Failed to get user delegation key from Azure Blob Storage."
-            raise AzureBlobStorageError(msg)
-        return user_delegation_key
+        """Get a user delegation key from managed identity, cached."""
+        if cached := self._user_delegation_key_cache.get(None):
+            return cached
+        async with self._user_delegation_key_lock:
+            # Re-check under the lock so concurrent callers single-flight the fetch.
+            if cached := self._user_delegation_key_cache.get(None):
+                return cached
+            user_delegation_key = (
+                await self.blob_service_client.get_user_delegation_key(
+                    datetime.datetime.now(datetime.UTC),
+                    datetime.datetime.now(datetime.UTC)
+                    + datetime.timedelta(seconds=self.user_delegation_key_duration),
+                )
+            )
+            if not user_delegation_key.value:
+                msg = "Failed to get user delegation key from Azure Blob Storage."
+                raise AzureBlobStorageError(msg)
+            self._user_delegation_key_cache[None] = user_delegation_key
+            return user_delegation_key
 
     @trace_blob_client_method(tracer)
     async def generate_signed_url(
@@ -133,8 +137,6 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         interaction_type: BlobSignedUrlType,
     ) -> str:
         """Get a signed URL for a file in Azure Blob Storage."""
-        if url := self.presigned_url_cache.get(lookup_key := (file, interaction_type)):
-            return url
         try:
             blob_name = f"{file.path}/{file.filename}"
 
@@ -145,7 +147,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             )
             sas_token = generate_blob_sas(
                 account_name=self.account_name,
-                container_name=self.container,
+                container_name=file.container,
                 blob_name=blob_name,
                 account_key=self.credential if not self.uses_managed_identity else None,
                 user_delegation_key=await self._get_user_delegation_key()
@@ -159,6 +161,4 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to generate signed URL for Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
         else:
-            url = f"{self.account_url}/{self.container}/{blob_name}?{sas_token}"
-            self.presigned_url_cache[lookup_key] = url
-            return url
+            return f"{self.account_url}/{file.container}/{blob_name}?{sas_token}"

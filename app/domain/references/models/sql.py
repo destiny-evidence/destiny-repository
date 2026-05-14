@@ -59,7 +59,6 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
-from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import (
     GenericSQLPersistence,
@@ -394,13 +393,13 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
-            reference_data_file=domain_obj.reference_data_file.to_sql()
+            reference_data_file=domain_obj.reference_data_file.to_uri()
             if domain_obj.reference_data_file
             else None,
-            result_file=domain_obj.result_file.to_sql()
+            result_file=domain_obj.result_file.to_uri()
             if domain_obj.result_file
             else None,
-            validation_result_file=domain_obj.validation_result_file.to_sql()
+            validation_result_file=domain_obj.validation_result_file.to_uri()
             if domain_obj.validation_result_file
             else None,
             pending_enhancements=[
@@ -424,15 +423,9 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             if self.enhancement_parameters
             else {},
             error=self.error,
-            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
-            if self.reference_data_file
-            else None,
-            result_file=BlobStorageFile.from_sql(self.result_file)
-            if self.result_file
-            else None,
-            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
-            if self.validation_result_file
-            else None,
+            reference_data_file=self.reference_data_file,
+            result_file=self.result_file,
+            validation_result_file=self.validation_result_file,
             pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
             if "pending_enhancements" in (preload or [])
             else [],
@@ -768,13 +761,13 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return cls(
             id=domain_obj.id,
             robot_id=domain_obj.robot_id,
-            reference_data_file=domain_obj.reference_data_file.to_sql()
+            reference_data_file=domain_obj.reference_data_file.to_uri()
             if domain_obj.reference_data_file
             else None,
-            result_file=domain_obj.result_file.to_sql()
+            result_file=domain_obj.result_file.to_uri()
             if domain_obj.result_file
             else None,
-            validation_result_file=domain_obj.validation_result_file.to_sql()
+            validation_result_file=domain_obj.validation_result_file.to_uri()
             if domain_obj.validation_result_file
             else None,
             error=domain_obj.error,
@@ -794,15 +787,9 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return DomainRobotEnhancementBatch(
             id=self.id,
             robot_id=self.robot_id,
-            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
-            if self.reference_data_file
-            else None,
-            result_file=BlobStorageFile.from_sql(self.result_file)
-            if self.result_file
-            else None,
-            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
-            if self.validation_result_file
-            else None,
+            reference_data_file=self.reference_data_file,
+            result_file=self.result_file,
+            validation_result_file=self.validation_result_file,
             error=self.error,
             pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
             if "pending_enhancements" in (preload or [])

@@ -99,7 +99,7 @@ async def validate_and_import_robot_enhancement_batch_result(
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -213,7 +213,7 @@ async def repair_reference_index() -> None:
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -258,7 +258,7 @@ async def repair_reference_index_for_chunk(
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -279,7 +279,7 @@ async def repair_robot_automation_percolation_index() -> None:
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -305,7 +305,7 @@ async def process_reference_duplicate_decision(
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -393,7 +393,7 @@ async def expire_and_replace_stale_pending_enhancements() -> None:
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow

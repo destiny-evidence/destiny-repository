@@ -102,7 +102,7 @@ def reference_anti_corruption_service(
     blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
 ) -> ReferenceAntiCorruptionService:
     """Return the reference anti-corruption service."""
-    return ReferenceAntiCorruptionService(blob_repository=blob_repository)
+    return ReferenceAntiCorruptionService(sign_url=blob_repository.get_signed_url)
 
 
 def robot_anti_corruption_service() -> RobotAntiCorruptionService:
@@ -386,7 +386,7 @@ async def search_references(
         if search_result.hits
         else []
     )
-    return anti_corruption_service.two_stage_reference_search_result_to_sdk(
+    return await anti_corruption_service.two_stage_reference_search_result_to_sdk(
         search_result, references
     )
 
@@ -512,7 +512,7 @@ async def get_reference(
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    return anti_corruption_service.reference_to_sdk(reference)
+    return await anti_corruption_service.reference_to_sdk(reference)
 
 
 class IdentifierLookupQueryParams(BaseModel):
@@ -572,7 +572,7 @@ async def lookup_references(
         identifiers
     )
     return [
-        anti_corruption_service.reference_to_sdk(reference)
+        await anti_corruption_service.reference_to_sdk(reference)
         for reference in await reference_service.get_references_from_identifiers(
             identifier_lookups
         )

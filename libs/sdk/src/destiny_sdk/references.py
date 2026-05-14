@@ -10,7 +10,9 @@ from destiny_sdk.enhancements import Enhancement, EnhancementFileInput
 from destiny_sdk.identifiers import ExternalIdentifier
 from destiny_sdk.visibility import Visibility
 
-external_identifier_adapter = TypeAdapter(ExternalIdentifier)
+external_identifier_adapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
+    ExternalIdentifier
+)
 
 
 class Reference(_JsonlFileInputMixIn, BaseModel):

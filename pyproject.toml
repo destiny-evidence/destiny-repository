@@ -88,6 +88,7 @@ version = "2.0.0"
 
 [tool.mypy]
 explicit_package_bases = true
+mypy_path = "libs/sdk/src"
 namespace_packages = true
 plugins = ["pydantic.mypy"]
 
