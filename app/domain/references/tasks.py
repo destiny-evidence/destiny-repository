@@ -206,17 +206,14 @@ async def run_reference_export_task(
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
         )
-
-        async def _get_jsonl(reference_ids: list[UUID]) -> list[str]:
-            return await reference_service.get_jsonl_deduplicated_references(
-                access_control_service, reference_ids
-            )
-
         reference_export_service = ReferenceExportService(
             anti_corruption_service=reference_anti_corruption_service,
             sql_uow=sql_uow,
             es_uow=es_uow,
-            get_jsonl_deduplicated_references=_get_jsonl,
+            access_control_service=access_control_service,
+            get_jsonl_deduplicated_references=(
+                reference_service.get_jsonl_deduplicated_references
+            ),
         )
         await reference_export_service.run_reference_export(
             reference_export_id, blob_repository

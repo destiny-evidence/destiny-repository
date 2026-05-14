@@ -13,6 +13,9 @@ from app.domain.references.models.models import (
     ReferenceExport,
     ReferenceExportStatus,
 )
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -40,11 +43,15 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
         es_uow: AsyncESUnitOfWork,
-        get_jsonl_deduplicated_references: Callable[[list[UUID]], Awaitable[list[str]]],
+        access_control_service: ReferenceAccessControlService,
+        get_jsonl_deduplicated_references: Callable[
+            [ReferenceAccessControlService, list[UUID]], Awaitable[list[str]]
+        ],
     ) -> None:
         """Initialize the service with a unit of work and a JSONL fetch helper."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
         self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
+        self._access_control_service = access_control_service
         self._get_jsonl_deduplicated_references = get_jsonl_deduplicated_references
 
     @sql_unit_of_work
@@ -175,7 +182,10 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         file_stream = FileStream(
             self._get_jsonl_deduplicated_references,
             [
-                {"reference_ids": chunk}
+                {
+                    "access_control_service": self._access_control_service,
+                    "reference_ids": chunk,
+                }
                 for chunk in list_chunker(reference_ids, chunk_size)
             ],
         )

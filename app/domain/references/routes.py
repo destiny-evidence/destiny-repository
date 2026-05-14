@@ -10,7 +10,6 @@
 
 import datetime
 from typing import Annotated
-from uuid import UUID
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
@@ -210,17 +209,14 @@ def reference_export_service(
     ],
 ) -> ReferenceExportService:
     """Return the reference export service."""
-
-    async def _get_jsonl(reference_ids: list[UUID]) -> list[str]:
-        return await reference_service.get_jsonl_deduplicated_references(
-            access_control_service, reference_ids
-        )
-
     return ReferenceExportService(
         anti_corruption_service=reference_anti_corruption_service,
         sql_uow=sql_uow,
         es_uow=es_uow,
-        get_jsonl_deduplicated_references=_get_jsonl,
+        access_control_service=access_control_service,
+        get_jsonl_deduplicated_references=(
+            reference_service.get_jsonl_deduplicated_references
+        ),
     )
 
 
