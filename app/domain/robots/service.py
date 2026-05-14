@@ -3,7 +3,6 @@
 import secrets
 from uuid import UUID
 
-from destiny_sdk.robots import RobotEntitlement
 from fastapi import status
 from pydantic import SecretStr
 
@@ -21,10 +20,10 @@ ENOUGH_BYTES_FOR_SAFETY = 32
 
 
 def _resolve_robot_entitlements(
-    submitted: frozenset[RobotEntitlement],
-    existing: frozenset[RobotEntitlement],
+    submitted: frozenset[Entitlement],
+    existing: frozenset[Entitlement],
     caller_entitlements: frozenset[Entitlement],
-) -> frozenset[RobotEntitlement]:
+) -> frozenset[Entitlement]:
     """Return the entitlements to persist, enforcing the writer requirement."""
     # Writers may set entitlements freely, including revoking via an empty set.
     if Entitlement.ROBOT_ENTITLEMENT_WRITER in caller_entitlements:

@@ -1,8 +1,8 @@
 """Domain model for robots."""
 
-from destiny_sdk.robots import RobotEntitlement
 from pydantic import ConfigDict, Field, SecretStr
 
+from app.api.auth import Entitlement
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
@@ -17,7 +17,7 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
 
     owner: str = Field(description="Owner of the robot.")
 
-    entitlements: frozenset[RobotEntitlement] = Field(
+    entitlements: frozenset[Entitlement] = Field(
         default_factory=frozenset,
         description="Entitlements granted to this robot.",
     )

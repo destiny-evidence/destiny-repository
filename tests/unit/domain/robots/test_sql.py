@@ -2,9 +2,9 @@
 from uuid import uuid7
 
 import pytest
-from destiny_sdk.robots import RobotEntitlement
 from pydantic import SecretStr
 
+from app.api.auth import Entitlement
 from app.domain.robots.models.sql import Robot
 
 
@@ -27,7 +27,7 @@ async def test_robot_to_and_from_domain():
         description="description",
         name="name",
         owner="owner",
-        entitlements=frozenset({RobotEntitlement.FULL_TEXT}),
+        entitlements=frozenset({Entitlement.FULL_TEXT}),
     )
 
     # Convert from domain to SQL model
@@ -37,7 +37,7 @@ async def test_robot_to_and_from_domain():
     assert sql_robot.description == dummy_robot.description
     assert sql_robot.name == dummy_robot.name
     assert sql_robot.owner == dummy_robot.owner
-    assert sql_robot.entitlements == [RobotEntitlement.FULL_TEXT.value]
+    assert sql_robot.entitlements == [Entitlement.FULL_TEXT.value]
 
     # Convert from SQL model to domain
     domain_ref = sql_robot.to_domain()

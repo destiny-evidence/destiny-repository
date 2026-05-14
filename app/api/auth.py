@@ -20,7 +20,6 @@ from uuid import UUID
 
 import destiny_sdk
 from cachetools import TTLCache
-from destiny_sdk.robots import RobotEntitlement
 from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
@@ -842,7 +841,7 @@ class ClientAuthInfo(NamedTuple):
     """HMAC client credentials and entitlements as returned by the lookup callable."""
 
     secret: str
-    entitlements: frozenset[RobotEntitlement]
+    entitlements: frozenset[Entitlement]
 
 
 class HMACMultiClientAuth(AuthMethod):
@@ -909,7 +908,7 @@ class HMACMultiClientAuth(AuthMethod):
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature is invalid."
             )
 
-        return frozenset(Entitlement(e.value) for e in auth_info.entitlements)
+        return auth_info.entitlements
 
 
 def choose_hmac_auth_strategy(
