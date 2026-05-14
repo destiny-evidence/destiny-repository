@@ -576,7 +576,7 @@ async def test_run_reference_export_task_skips_non_pending_row(
     export = SQLReferenceExport(
         query="climate",
         status="completed",
-        result_file=existing_file.to_sql(),
+        result_file=existing_file.to_uri(),
         n_references=42,
         truncated=False,
     )
@@ -602,5 +602,5 @@ async def test_run_reference_export_task_skips_non_pending_row(
 
     await session.refresh(export)
     assert export.status == "completed"
-    assert export.result_file == existing_file.to_sql()
+    assert export.result_file == existing_file.to_uri()
     assert export.n_references == 42

@@ -59,6 +59,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import (
     GenericSQLPersistence,
@@ -467,7 +468,7 @@ class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
             end_year=domain_obj.end_year,
             sort=domain_obj.sort,
             status=domain_obj.status,
-            result_file=domain_obj.result_file.to_sql()
+            result_file=domain_obj.result_file.to_uri()
             if domain_obj.result_file
             else None,
             n_references=domain_obj.n_references,
@@ -492,7 +493,7 @@ class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
             end_year=self.end_year,
             sort=self.sort,
             status=self.status,
-            result_file=BlobStorageFile.from_sql(self.result_file)
+            result_file=BlobStorageFile.from_uri(self.result_file)
             if self.result_file
             else None,
             n_references=self.n_references,

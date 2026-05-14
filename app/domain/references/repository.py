@@ -543,7 +543,7 @@ class ReferenceExportSQLRepository(
         """Encode any BlobStorageFile field at the persistence boundary."""
         result_file = kwargs.get("result_file")
         if isinstance(result_file, BlobStorageFile):
-            kwargs["result_file"] = result_file.to_sql()
+            kwargs["result_file"] = result_file.to_uri()
         return await super().update_by_pk(pk, **kwargs)
 
 

@@ -230,7 +230,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.references.ReferenceExportRead.model_validate(
                 reference_export.model_dump()
                 | {
-                    "result_url": await self._blob_repository.get_signed_url(
+                    "result_url": await self._sign_url(
                         reference_export.result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
