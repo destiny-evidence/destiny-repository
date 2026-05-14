@@ -35,13 +35,14 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
         self,
         content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
+        content_type: str | None = None,
     ) -> None:
         """
         Raise, uploads to remote URLs are not supported.
 
         (They could be in the future if we wanted to support PUTs to arbitrary URLs).
         """
-        del content, file
+        del content, file, content_type
         msg = "Upload is not supported for RemoteBlobStorageClient."
         raise RemoteBlobStorageError(msg)
 
