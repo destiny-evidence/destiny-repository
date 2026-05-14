@@ -10,6 +10,7 @@
 
 import datetime
 from typing import Annotated
+from uuid import UUID
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
@@ -129,25 +130,6 @@ def reference_service(
     )
 
 
-def reference_export_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
-    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
-    reference_anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> ReferenceExportService:
-    """Return the reference export service."""
-    return ReferenceExportService(
-        anti_corruption_service=reference_anti_corruption_service,
-        sql_uow=sql_uow,
-        es_uow=es_uow,
-        get_jsonl_deduplicated_references=(
-            reference_service.get_jsonl_deduplicated_references
-        ),
-    )
-
-
 def robot_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     robot_anti_corruption_service: Annotated[
@@ -214,6 +196,32 @@ def reference_reader_access_control_service(
 ) -> ReferenceAccessControlService:
     """Build the reference ACL for routes guarded by the reference-reader auth."""
     return ReferenceAccessControlService(entitlements=entitlements)
+
+
+def reference_export_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
+) -> ReferenceExportService:
+    """Return the reference export service."""
+
+    async def _get_jsonl(reference_ids: list[UUID]) -> list[str]:
+        return await reference_service.get_jsonl_deduplicated_references(
+            access_control_service, reference_ids
+        )
+
+    return ReferenceExportService(
+        anti_corruption_service=reference_anti_corruption_service,
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        get_jsonl_deduplicated_references=_get_jsonl,
+    )
 
 
 def reference_hybrid_access_control_service(
@@ -436,6 +444,7 @@ async def request_reference_export(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
     q: Annotated[
         str,
         Query(min_length=1, description="The query string."),
@@ -471,6 +480,7 @@ async def request_reference_export(
             run_reference_export_task,
             long_running=True,
             reference_export_id=reference_export.id,
+            entitlements=sorted(e.value for e in entitlements),
             otel_enabled=settings.otel_enabled,
         )
     except Exception as exc:

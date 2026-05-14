@@ -594,7 +594,7 @@ async def test_run_reference_export_task_skips_non_pending_row(
     )
 
     assert isinstance(broker, InMemoryBroker)
-    await run_reference_export_task.kiq(reference_export_id=export_id)
+    await run_reference_export_task.kiq(reference_export_id=export_id, entitlements=[])
     await broker.wait_all()
 
     collect_mock.assert_not_awaited()
