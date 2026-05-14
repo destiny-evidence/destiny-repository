@@ -70,7 +70,7 @@ async def es_reference_repository(
     return ReferenceESRepository(client=es_client)
 
 
-async def test_reference_export_end_to_end(
+async def test_search_export_end_to_end(
     session: AsyncSession,
     client: AsyncClient,
     es_reference_repository: ReferenceESRepository,
@@ -153,7 +153,7 @@ async def test_reference_export_end_to_end(
     monkeypatch.setattr(BlobRepository, "get_signed_url", fake_signed_url)
 
     post_response = await client.post(
-        "/v1/references/exports/search/", params={"q": "Climate"}
+        "/v1/references/search/exports/", params={"q": "Climate"}
     )
     assert post_response.status_code == status.HTTP_202_ACCEPTED
     export_id = post_response.json()["id"]
@@ -161,7 +161,7 @@ async def test_reference_export_end_to_end(
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
 
-    get_response = await client.get(f"/v1/references/exports/{export_id}/")
+    get_response = await client.get(f"/v1/references/search/exports/{export_id}/")
     assert get_response.status_code == status.HTTP_200_OK
     body = get_response.json()
     assert body["status"] == "completed"

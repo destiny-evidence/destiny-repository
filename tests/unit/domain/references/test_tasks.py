@@ -18,16 +18,16 @@ from app.domain.references.models.models import (
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
 )
-from app.domain.references.models.sql import ReferenceExport as SQLReferenceExport
+from app.domain.references.models.sql import SearchExport as SQLSearchExport
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.enhancement_service import ProcessedResults
-from app.domain.references.services.export_service import ReferenceExportService
+from app.domain.references.services.export_service import SearchExportService
 from app.domain.references.tasks import (
     process_reference_duplicate_decision,
-    run_reference_export_task,
+    run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.persistence.blob.models import BlobStorageFile
@@ -562,7 +562,7 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
 
 
-async def test_run_reference_export_task_skips_non_pending_row(
+async def test_run_search_export_task_skips_non_pending_row(
     session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -570,10 +570,10 @@ async def test_run_reference_export_task_skips_non_pending_row(
     existing_file = BlobStorageFile(
         location="minio",
         container="destiny-repository",
-        path="reference_exports",
+        path="search_exports",
         filename="prior.jsonl",
     )
-    export = SQLReferenceExport(
+    export = SQLSearchExport(
         query="climate",
         status="completed",
         result_file=existing_file.to_uri(),
@@ -586,15 +586,11 @@ async def test_run_reference_export_task_skips_non_pending_row(
 
     collect_mock = AsyncMock()
     stream_mock = AsyncMock()
-    monkeypatch.setattr(
-        ReferenceExportService, "_collect_reference_export_ids", collect_mock
-    )
-    monkeypatch.setattr(
-        ReferenceExportService, "_stream_reference_export_jsonl", stream_mock
-    )
+    monkeypatch.setattr(SearchExportService, "_collect_search_export_ids", collect_mock)
+    monkeypatch.setattr(SearchExportService, "_stream_search_export_jsonl", stream_mock)
 
     assert isinstance(broker, InMemoryBroker)
-    await run_reference_export_task.kiq(reference_export_id=export_id)
+    await run_search_export_task.kiq(search_export_id=export_id)
     await broker.wait_all()
 
     collect_mock.assert_not_awaited()

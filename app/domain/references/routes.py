@@ -58,10 +58,10 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.export_service import ReferenceExportService
+from app.domain.references.services.export_service import SearchExportService
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
-    run_reference_export_task,
+    run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.service import RobotService
@@ -125,16 +125,16 @@ def reference_service(
     )
 
 
-def reference_export_service(
+def search_export_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
     reference_anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> ReferenceExportService:
-    """Return the reference export service."""
-    return ReferenceExportService(
+) -> SearchExportService:
+    """Return the search export service."""
+    return SearchExportService(
         anti_corruption_service=reference_anti_corruption_service,
         sql_uow=sql_uow,
         es_uow=es_uow,
@@ -392,18 +392,18 @@ async def search_references(
 
 
 @exports_router.post(
-    "/search/",
+    "/",
     status_code=status.HTTP_202_ACCEPTED,
     description=(
         "Queue an export job that produces a JSONL file of references matching the "
         "given search. Accepts the same filter parameters as `/references/search/` "
         "without pagination. Returns the job id with `status: pending`; poll "
-        "`GET /references/exports/{id}/` until the job completes."
+        "`GET /references/search/exports/{id}/` until the job completes."
     ),
 )
-async def request_reference_export(
-    reference_export_service: Annotated[
-        ReferenceExportService, Depends(reference_export_service)
+async def request_search_export(
+    search_export_service: Annotated[
+        SearchExportService, Depends(search_export_service)
     ],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
@@ -430,9 +430,9 @@ async def request_reference_export(
             "in the order given. Sort fields cannot be `text` fields.",
         ),
     ] = None,
-) -> destiny_sdk.references.ReferenceExportRead:
-    """Queue a reference export job and return its id and pending status."""
-    reference_export = await reference_export_service.request_reference_export(
+) -> destiny_sdk.references.SearchExportRead:
+    """Queue a search export job and return its id and pending status."""
+    search_export = await search_export_service.request_search_export(
         query=q,
         annotation_filters=annotation_filters or None,
         publication_year_range=publication_year_range,
@@ -440,9 +440,9 @@ async def request_reference_export(
     )
     try:
         await queue_task_with_trace(
-            run_reference_export_task,
+            run_search_export_task,
             long_running=True,
-            reference_export_id=reference_export.id,
+            search_export_id=search_export.id,
             otel_enabled=settings.otel_enabled,
         )
     except Exception as exc:
@@ -450,24 +450,24 @@ async def request_reference_export(
         # `pending` forever, so flip it to `failed` and surface a retryable
         # error to the caller.
         logger.exception(
-            "Failed to enqueue reference export task",
-            reference_export_id=str(reference_export.id),
+            "Failed to enqueue search export task",
+            search_export_id=str(search_export.id),
         )
-        reference_export = await reference_export_service.fail_reference_export(
-            reference_export.id,
+        search_export = await search_export_service.fail_search_export(
+            search_export.id,
             f"Failed to enqueue export task: {exc}",
         )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not enqueue reference export job; please retry.",
+            detail="Could not enqueue search export job; please retry.",
         ) from exc
-    return await anti_corruption_service.reference_export_to_sdk(reference_export)
+    return await anti_corruption_service.search_export_to_sdk(search_export)
 
 
 @exports_router.get(
-    "/{reference_export_id}/",
+    "/{search_export_id}/",
     description=(
-        "Get the status of a reference export job. Once `status` is "
+        "Get the status of a search export job. Once `status` is "
         "`completed`, the response includes a signed `result_url` for the "
         "produced JSONL file, and `truncated: true` if the matching set "
         f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
@@ -476,28 +476,26 @@ async def request_reference_export(
         "be refreshed by polling again."
     ),
 )
-async def get_reference_export(
-    reference_export_id: Annotated[
-        destiny_sdk.UUID, Path(description="The ID of the reference export job.")
+async def get_search_export(
+    search_export_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the search export job.")
     ],
-    reference_export_service: Annotated[
-        ReferenceExportService, Depends(reference_export_service)
+    search_export_service: Annotated[
+        SearchExportService, Depends(search_export_service)
     ],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-) -> destiny_sdk.references.ReferenceExportRead:
-    """Get the status of a reference export job, including its signed URL."""
-    reference_export = await reference_export_service.get_reference_export(
-        reference_export_id
-    )
-    return await anti_corruption_service.reference_export_to_sdk(reference_export)
+) -> destiny_sdk.references.SearchExportRead:
+    """Get the status of a search export job, including its signed URL."""
+    search_export = await search_export_service.get_search_export(search_export_id)
+    return await anti_corruption_service.search_export_to_sdk(search_export)
 
 
 # NB it's important these occur before defining `/references/{reference_id}/` route
 # to avoid route conflicts. Order matters for FastAPI route matching.
+search_router.include_router(exports_router)
 reference_router.include_router(search_router)
-reference_router.include_router(exports_router)
 
 
 @reference_router.get("/{reference_id}/")

@@ -66,8 +66,8 @@ class EnhancementRequestStatus(StrEnum):
     """All enhancements have been created."""
 
 
-class ReferenceExportStatus(StrEnum):
-    """The status of a reference export job."""
+class SearchExportStatus(StrEnum):
+    """The status of a search export job."""
 
     PENDING = auto()
     """Export job has been queued."""
@@ -522,7 +522,7 @@ Errors for individual references are provided <TBC>.
         return len(self.reference_ids)
 
 
-class ReferenceExport(DomainBaseModel, SQLAttributeMixin):
+class SearchExport(DomainBaseModel, SQLAttributeMixin):
     """A queued job that produces a JSONL file of references matching a search."""
 
     query: str = Field(
@@ -544,8 +544,8 @@ class ReferenceExport(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Sort fields, in the same form `/references/search/` accepts.",
     )
-    status: ReferenceExportStatus = Field(
-        default=ReferenceExportStatus.PENDING,
+    status: SearchExportStatus = Field(
+        default=SearchExportStatus.PENDING,
         description="The current status of the export job.",
     )
     result_file: BlobStorageFile | None = Field(
