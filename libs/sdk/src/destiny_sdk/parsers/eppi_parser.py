@@ -79,7 +79,7 @@ class EPPIParser:
     def _parse_identifiers(
         self, ref_to_import: dict[str, Any]
     ) -> list[ExternalIdentifier]:
-        identifiers = []
+        identifiers: list[ExternalIdentifier] = []
         if doi := ref_to_import.get("DOI"):
             doi_identifier = self._parse_doi(doi=doi)
             if doi_identifier:
@@ -111,7 +111,7 @@ class EPPIParser:
     def _parse_url_to_identifier(self, url: str) -> ExternalIdentifier | None:
         """Attempt to parse an external identifier from a url string."""
         url = url.strip()
-        identifier_cls = None
+        identifier_cls: type[ExternalIdentifier] | None = None
         if "eric" in url:
             identifier_cls = ERICIdentifier
         elif "proquest" in url:

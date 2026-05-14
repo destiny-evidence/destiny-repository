@@ -188,8 +188,8 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
         return await self.sql_uow.robot_enhancement_batches.update_by_pk(
             pk=robot_enhancement_batch.id,
-            reference_data_file=reference_data_file.to_sql(),
-            result_file=result_file.to_sql(),
+            reference_data_file=reference_data_file.to_uri(),
+            result_file=result_file.to_uri(),
         )
 
     async def add_validation_result_file_to_enhancement_request(
@@ -200,7 +200,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """Add a validation result file to a enhancement request."""
         return await self.sql_uow.enhancement_requests.update_by_pk(
             pk=enhancement_request_id,
-            validation_result_file=validation_result_file.to_sql(),
+            validation_result_file=validation_result_file.to_uri(),
         )
 
     async def add_validation_result_file_to_robot_enhancement_batch(
@@ -211,7 +211,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """Add a validation result file to a robot enhancement batch."""
         return await self.sql_uow.robot_enhancement_batches.update_by_pk(
             pk=robot_enhancement_batch_id,
-            validation_result_file=validation_result_file.to_sql(),
+            validation_result_file=validation_result_file.to_uri(),
         )
 
     async def build_robot_request(
@@ -238,8 +238,8 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
         enhancement_request = await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
-            reference_data_file=enhancement_request.reference_data_file.to_sql(),
-            result_file=enhancement_request.result_file.to_sql(),
+            reference_data_file=enhancement_request.reference_data_file.to_uri(),
+            result_file=enhancement_request.result_file.to_uri(),
         )
 
         return await self._anti_corruption_service.enhancement_request_to_sdk_robot(

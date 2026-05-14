@@ -125,20 +125,40 @@ def test_blobstoragefile_content_type(
 
 
 @pytest.mark.asyncio
-async def test_blobstoragefile_to_sql_and_from_sql():
+async def test_blobstoragefile_to_uri_and_from_uri():
     file = BlobStorageFile(
         location=BlobStorageLocation.AZURE,
         container="cont",
         path="some/path",
         filename="file.txt",
     )
-    sql = file.to_sql()
-    assert sql == "azure://cont/some/path/file.txt"
-    new_file = BlobStorageFile.from_sql(sql)
+    uri = file.to_uri()
+    assert uri == "azure://cont/some/path/file.txt"
+    new_file = BlobStorageFile.from_uri(uri)
     assert new_file.location == "azure"
     assert new_file.container == "cont"
     assert new_file.path == "some/path"
     assert new_file.filename == "file.txt"
+
+
+@pytest.mark.asyncio
+async def test_blobstoragefile_coerces_from_uri_string():
+    """Pydantic validation accepts the URI string form transparently."""
+    uri = "azure://cont/some/path/file.txt"
+    file = BlobStorageFile.model_validate(uri)
+    assert file.location == "azure"
+    assert file.filename == "file.txt"
+
+
+@pytest.mark.asyncio
+async def test_blobstoragefile_serializes_to_uri_in_json_mode():
+    file = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
+        container="cont",
+        path="some/path",
+        filename="file.txt",
+    )
+    assert file.model_dump(mode="json") == "azure://cont/some/path/file.txt"
 
 
 class DummyClient(GenericBlobStorageClient):

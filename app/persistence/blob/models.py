@@ -3,7 +3,7 @@
 from enum import StrEnum, auto
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from app.core.exceptions import BlobStorageError
 from app.core.telemetry.logger import get_logger
@@ -61,17 +61,17 @@ class BlobStorageFile(BaseModel):
                 logger.warning(msg, filename=self.filename)
                 return "application/octet-stream"
 
-    def to_sql(self) -> str:
-        """Return the SQL persistence representation of the file."""
+    def to_uri(self) -> str:
+        """Return the URI representation of the file."""
         return f"{self.location}://{self.container}/{self.path}/{self.filename}"
 
     @classmethod
-    def from_sql(cls, sql: str) -> Self:
-        """Populate the model from a SQL representation."""
-        location, url = sql.split("://")
-        parts = url.split("/")
+    def from_uri(cls, uri: str) -> Self:
+        """Populate the model from its URI representation."""
+        location, _, rest = uri.partition("://")
+        parts = rest.split("/")
         if len(parts) < 3:  # noqa: PLR2004
-            msg = f"Invalid SQL representation {sql} for BlobStorageFile."
+            msg = f"Invalid blob URI {uri!r} for BlobStorageFile."
             raise BlobStorageError(msg)
         return cls(
             location=location,
@@ -79,5 +79,18 @@ class BlobStorageFile(BaseModel):
             path="/".join(parts[1:-1]),
             filename=parts[-1],
         )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_from_uri(cls, value: object) -> object:
+        """Allow construction/validation from a URI string."""
+        if isinstance(value, str):
+            return cls.from_uri(value).model_dump()
+        return value
+
+    @model_serializer(mode="plain", when_used="json")
+    def _serialize_to_uri(self) -> str:
+        """Serialize to a URI string when dumping in JSON mode."""
+        return self.to_uri()
 
     model_config = ConfigDict(frozen=True)

@@ -9,11 +9,19 @@ import pytest
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    Enhancement,
+    FullTextEnhancement,
     GenericExternalIdentifier,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
+)
+from app.persistence.blob.models import BlobStorageFile
+from tests.factories import (
+    BlobStorageFileFactory,
+    EnhancementFactory,
+    FullTextEnhancementFactory,
 )
 
 
@@ -46,6 +54,63 @@ def test_reference_create_result_error_str_multiple():
     result = ReferenceCreateResult(errors=["first error", " second error "])
     # strips and joins with blank line
     assert result.error_str == "first error\n\nsecond error"
+
+
+def test_full_text_enhancement_discriminator_resolves_to_domain():
+    """
+    A FULL_TEXT payload resolves to the domain FullTextEnhancement.
+
+    The SDK ships its own FullTextEnhancement with file_url: HttpUrl. The
+    domain variant uses BlobStorageFile. If someone reorders the union or
+    accidentally lists the SDK type in EnhancementContent, this round trip
+    would fail.
+    """
+    full_text = FullTextEnhancementFactory.build()
+    enhancement = EnhancementFactory.build(content=full_text)
+
+    restored = Enhancement.model_validate(enhancement.model_dump())
+    assert isinstance(restored.content, FullTextEnhancement)
+    assert isinstance(restored.content.blob, BlobStorageFile)
+    assert restored.content.blob == full_text.blob
+
+
+def test_full_text_enhancement_json_mode_round_trip():
+    """blob serializes to a URI string in JSON mode and re-parses on validate."""
+    full_text = FullTextEnhancementFactory.build()
+    enhancement = EnhancementFactory.build(content=full_text)
+
+    dumped = enhancement.model_dump(mode="json")
+    assert isinstance(dumped["content"]["blob"], str)
+
+    restored = Enhancement.model_validate(dumped)
+    assert isinstance(restored.content, FullTextEnhancement)
+    assert restored.content.blob == full_text.blob
+
+
+def test_full_text_enhancement_fingerprint_stable_across_identical_content():
+    """Two full-texts with identical content fields share a fingerprint."""
+    a = FullTextEnhancementFactory.build()
+    b = a.model_copy(deep=True)
+    assert a.fingerprint == b.fingerprint
+
+
+def test_full_text_enhancement_fingerprint_ignores_retrieved_at_and_blob():
+    """blob describes where we stored it, not what it is."""
+    a = FullTextEnhancementFactory.build()
+    b = a.model_copy(
+        update={
+            "retrieved_at": datetime(2020, 1, 1, tzinfo=UTC),
+            "blob": BlobStorageFileFactory.build(),
+        }
+    )
+    assert a.fingerprint == b.fingerprint
+
+
+def test_full_text_enhancement_fingerprint_changes_with_content():
+    """Changing the sha256 (the canonical content-identity field) shifts it."""
+    a = FullTextEnhancementFactory.build()
+    b = a.model_copy(update={"sha256_checksum": "different"})
+    assert a.fingerprint != b.fingerprint
 
 
 @pytest.fixture
