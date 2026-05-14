@@ -3,8 +3,12 @@
 import secrets
 from uuid import UUID
 
+from destiny_sdk.robots import RobotEntitlement
+from fastapi import status
 from pydantic import SecretStr
 
+from app.api.auth import Entitlement
+from app.core.exceptions import AuthError
 from app.domain.robots.models.models import Robot
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -14,6 +18,28 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
 ENOUGH_BYTES_FOR_SAFETY = 32
+
+
+def _resolve_robot_entitlements(
+    submitted: frozenset[RobotEntitlement],
+    existing: frozenset[RobotEntitlement],
+    caller_entitlements: frozenset[Entitlement],
+) -> frozenset[RobotEntitlement]:
+    """Return the entitlements to persist, enforcing the writer requirement."""
+    # Writers may set entitlements freely, including revoking via an empty set.
+    if Entitlement.ROBOT_ENTITLEMENT_WRITER in caller_entitlements:
+        return submitted
+    # Everyone else may only submit no-op inputs: an empty set (treated as
+    # "field not specified") or the existing value (round-trip from GET).
+    if not submitted or submitted == existing:
+        return existing
+    raise AuthError(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail=(
+            "Changing robot entitlements requires the "
+            "robot.entitlement.writer scope or role."
+        ),
+    )
 
 
 class RobotService(GenericService[RobotAntiCorruptionService]):
@@ -54,14 +80,33 @@ class RobotService(GenericService[RobotAntiCorruptionService]):
         return await self.get_robot_secret(robot_id=robot_id)
 
     @sql_unit_of_work
-    async def add_robot(self, robot: Robot) -> Robot:
+    async def add_robot(
+        self,
+        robot: Robot,
+        caller_entitlements: frozenset[Entitlement],
+    ) -> Robot:
         """Register a new robot."""
+        robot.entitlements = _resolve_robot_entitlements(
+            submitted=robot.entitlements,
+            existing=frozenset(),
+            caller_entitlements=caller_entitlements,
+        )
         robot.client_secret = SecretStr(secrets.token_hex(ENOUGH_BYTES_FOR_SAFETY))
         return await self.sql_uow.robots.add(robot)
 
     @sql_unit_of_work
-    async def update_robot(self, robot: Robot) -> Robot:
+    async def update_robot(
+        self,
+        robot: Robot,
+        caller_entitlements: frozenset[Entitlement],
+    ) -> Robot:
         """Update an existing robot."""
+        existing = await self.sql_uow.robots.get_by_pk(robot.id)
+        robot.entitlements = _resolve_robot_entitlements(
+            submitted=robot.entitlements,
+            existing=existing.entitlements,
+            caller_entitlements=caller_entitlements,
+        )
         return await self.sql_uow.robots.merge(robot)
 
     @sql_unit_of_work

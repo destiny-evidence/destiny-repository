@@ -10,6 +10,7 @@ from app.api.auth import (
     AuthMethod,
     AuthScope,
     CachingStrategyAuth,
+    Entitlement,
     choose_auth_strategy,
 )
 from app.core.config import get_settings
@@ -81,10 +82,13 @@ async def update_robot(
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
     ],
+    caller_entitlements: Annotated[frozenset[Entitlement], Depends(robot_writer_auth)],
 ) -> destiny_sdk.robots.Robot:
     """Update an existing robot."""
     robot = anti_corruption_service.robot_from_sdk(robot_update, robot_id=robot_id)
-    updated_robot = await robot_service.update_robot(robot=robot)
+    updated_robot = await robot_service.update_robot(
+        robot=robot, caller_entitlements=caller_entitlements
+    )
     return anti_corruption_service.robot_to_sdk(updated_robot)
 
 
@@ -95,10 +99,13 @@ async def register_robot(
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
     ],
+    caller_entitlements: Annotated[frozenset[Entitlement], Depends(robot_writer_auth)],
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Register a new robot."""
     robot = anti_corruption_service.robot_from_sdk(robot_create)
-    provisioned_robot = await robot_service.add_robot(robot=robot)
+    provisioned_robot = await robot_service.add_robot(
+        robot=robot, caller_entitlements=caller_entitlements
+    )
     return anti_corruption_service.robot_to_sdk_provisioned(provisioned_robot)
 
 
