@@ -69,7 +69,9 @@ async def get_reference_service(
     return ReferenceService(
         sql_uow=sql_uow,
         es_uow=es_uow,
-        anti_corruption_service=ReferenceAntiCorruptionService(BlobRepository()),
+        anti_corruption_service=ReferenceAntiCorruptionService(
+            sign_url=BlobRepository().get_signed_url
+        ),
     )
 
 

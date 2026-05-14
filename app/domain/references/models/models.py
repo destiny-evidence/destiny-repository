@@ -3,17 +3,20 @@
 import datetime
 import json
 from enum import StrEnum, auto
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 import destiny_sdk
 
-# Explicitly import these models for easy use in the rest of the codebase
-from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
+# Explicitly import these models for easy importing in the rest of the codebase
+# This allows us to abstract them later if we need (as has already happened with
+# EnhancementContent!)
+from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
     BaseModel,
     Field,
+    HttpUrl,
     PositiveInt,
     TypeAdapter,
     field_validator,
@@ -296,6 +299,114 @@ class GenericExternalIdentifier(DomainBaseModel):
 
 class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
+
+
+class FullTextEnhancement(DomainBaseModel):
+    """
+    An enhancement for storing a link to the full text and its metadata.
+
+    We separate this from the SDK model as it contains a file pointer, not
+    the URL to the file itself.
+    """
+
+    enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
+    blob: BlobStorageFile = Field(
+        description="Blob storage pointer to the full text file.",
+    )
+    byte_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the file in bytes. "
+            "If provided on import, will be used to validate the file size. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    sha256_checksum: str | None = Field(
+        default=None,
+        description=(
+            "SHA256 checksum of the file. "
+            "If provided on import, will be used to verify the integrity of the file. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    mime_type: str = Field(
+        default="application/pdf",
+        description="The MIME type of the file.",
+    )
+    version: destiny_sdk.enhancements.DriverVersion | None = Field(
+        default=None,
+        description=(
+            "The version (according to the DRIVER versioning scheme) of this full text."
+        ),
+    )
+    is_oa: bool | None = Field(
+        default=None,
+        description=(
+            "If this full text is Open Access. "
+            "May be left as null if this is unknown."
+        ),
+    )
+    license: str | None = Field(
+        default=None,
+        description="The publishing license for this full text.",
+        examples=[
+            "apache-2-0",
+            "cc-by",
+            "cc-by-nc",
+            "cc-by-nc-nd",
+            "cc-by-nc-sa",
+            "cc-by-nd",
+            "cc-by-sa",
+            "gpl-v2",
+            "gpl-v3",
+            "isc",
+            "mit",
+            "other-oa",
+            "public-domain",
+        ],
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source from which this full text was obtained.",
+    )
+    source_url: HttpUrl | None = Field(
+        default=None,
+        description="The URL of the source from which this full text was obtained.",
+    )
+    retrieved_at: datetime.datetime | None = Field(
+        default=None,
+        description="The timestamp when this full text was retrieved.",
+    )
+
+    @property
+    def fingerprint(self) -> str:
+        """
+        The unique fingerprint of this full text enhancement.
+
+        Excludes retrieved_at and blob location.
+        """
+        return json.dumps(
+            self.model_dump(
+                mode="json",
+                exclude={"retrieved_at", "blob"},
+                exclude_none=True,
+            ),
+            sort_keys=True,
+        )
+
+
+EnhancementContent = Annotated[
+    destiny_sdk.enhancements.BibliographicMetadataEnhancement
+    | destiny_sdk.enhancements.AbstractContentEnhancement
+    | destiny_sdk.enhancements.AnnotationEnhancement
+    | destiny_sdk.enhancements.LocationEnhancement
+    | destiny_sdk.enhancements.ReferenceAssociationEnhancement
+    | destiny_sdk.enhancements.LinkedDataEnhancement
+    # Domain defines its own FullTextEnhancement
+    | FullTextEnhancement
+    | destiny_sdk.enhancements.RawEnhancement,
+    Field(discriminator="enhancement_type"),
+]
 
 
 class Enhancement(DomainBaseModel, SQLTimestampMixin):
