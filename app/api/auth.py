@@ -94,7 +94,7 @@ class Entitlement(StrEnum):
     FULL_TEXT = auto()
 
 
-_ROBOT_ENTITLEMENTS: frozenset[Entitlement] = frozenset({Entitlement.FULL_TEXT})
+_ROBOT_ENTITLEMENTS: frozenset[Entitlement] = frozenset()
 
 _ENTITLEMENT_TO_GRANTS: dict[Entitlement, frozenset[str]] = {
     Entitlement.FULL_TEXT: frozenset(
