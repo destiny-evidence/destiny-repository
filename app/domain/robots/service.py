@@ -7,7 +7,7 @@ from destiny_sdk.robots import RobotEntitlement
 from fastapi import status
 from pydantic import SecretStr
 
-from app.api.auth import Entitlement
+from app.api.auth import ClientAuthInfo, Entitlement
 from app.core.exceptions import AuthError
 from app.domain.robots.models.models import Robot
 from app.domain.robots.services.anti_corruption_service import (
@@ -67,17 +67,14 @@ class RobotService(GenericService[RobotAntiCorruptionService]):
         """Return a given robot."""
         return await self.get_robot(robot_id)
 
-    async def get_robot_secret(self, robot_id: UUID) -> str:
-        """Return secret used for signing requests sent to this robot."""
-        # Secret to be stored in the azure keyvault
-        # Currently just using secret name while testing
-        robot = await self.get_robot(robot_id)
-        return robot.get_client_secret()
-
     @sql_unit_of_work
-    async def get_robot_secret_standalone(self, robot_id: UUID) -> str:
-        """Return secret used for signing requests sent to this robot."""
-        return await self.get_robot_secret(robot_id=robot_id)
+    async def get_robot_auth_info(self, robot_id: UUID) -> ClientAuthInfo:
+        """Return the HMAC secret and entitlements for a given robot."""
+        robot = await self.get_robot(robot_id)
+        return ClientAuthInfo(
+            secret=robot.get_client_secret(),
+            entitlements=robot.entitlements,
+        )
 
     @sql_unit_of_work
     async def add_robot(
