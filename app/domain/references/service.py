@@ -396,7 +396,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return [
             (
                 await self._anti_corruption_service.reference_to_sdk(
-                    access_control_service.redact(ref)
+                    access_control_service.redact_reference(ref)
                 )
             ).to_jsonl()
             for ref in deduplicated

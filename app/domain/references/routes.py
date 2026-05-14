@@ -380,7 +380,10 @@ async def search_references(
     )
     return await anti_corruption_service.two_stage_reference_search_result_to_sdk(
         search_result,
-        [access_control_service.redact(reference) for reference in references],
+        [
+            access_control_service.redact_reference(reference)
+            for reference in references
+        ],
     )
 
 
@@ -405,7 +408,7 @@ async def get_reference(
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
     return await anti_corruption_service.reference_to_sdk(
-        access_control_service.redact(reference)
+        access_control_service.redact_reference(reference)
     )
 
 
@@ -470,7 +473,7 @@ async def lookup_references(
     )
     return [
         await anti_corruption_service.reference_to_sdk(
-            access_control_service.redact(reference)
+            access_control_service.redact_reference(reference)
         )
         for reference in await reference_service.get_references_from_identifiers(
             identifier_lookups

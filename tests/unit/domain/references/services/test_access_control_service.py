@@ -24,7 +24,7 @@ def test_redact_passes_through_when_principal_has_full_text():
     acl = ReferenceAccessControlService(entitlements=frozenset({Entitlement.FULL_TEXT}))
     reference, _, _ = _reference_with_mixed_enhancements()
 
-    redacted = acl.redact(reference)
+    redacted = acl.redact_reference(reference)
 
     assert redacted.enhancements is not None
     assert len(redacted.enhancements) == 2
@@ -38,7 +38,7 @@ def test_redact_strips_full_text_when_principal_lacks_entitlement():
     acl = ReferenceAccessControlService(entitlements=frozenset())
     reference, _, abstract = _reference_with_mixed_enhancements()
 
-    redacted = acl.redact(reference)
+    redacted = acl.redact_reference(reference)
 
     assert redacted.enhancements is not None
     assert len(redacted.enhancements) == 1
@@ -52,6 +52,6 @@ def test_redact_returns_empty_list_when_only_full_text_present():
         enhancements=[EnhancementFactory(content=FullTextEnhancementFactory())]
     )
 
-    redacted = acl.redact(reference)
+    redacted = acl.redact_reference(reference)
 
     assert redacted.enhancements == []
