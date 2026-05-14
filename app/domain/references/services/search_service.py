@@ -30,6 +30,11 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         "abstract",
     )
 
+    # ES's default `track_total_hits` threshold. Pagination beyond this
+    # produces `relation == "gte"` totals rather than exact counts. Lifting
+    # the cap is tracked in destiny-repository#661.
+    MAX_RESULT_WINDOW = 10_000
+
     def __init__(
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
@@ -77,10 +82,11 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         label = escape_lucene_quoted_term(annotation.label)
         return f'annotations:"{scheme}/{label}"'
 
-    async def search_with_query_string(
+    async def search_with_query_string(  # noqa: PLR0913
         self,
         query_string: str,
         page: int = 1,
+        page_size: int = 20,
         annotations: list[AnnotationFilter] | None = None,
         publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
@@ -104,6 +110,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             query_string,
             fields=self.default_search_fields,
             page=page,
+            page_size=page_size,
             sort=sort,
             parse_document=False,
         )

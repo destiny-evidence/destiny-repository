@@ -853,7 +853,7 @@ async def test_claim_and_create_robot_enhancement_batch(
 
 @pytest.mark.asyncio
 async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
-    """Test that _get_jsonl_deduplicated_references returns flattened JSONL
+    """Test that get_jsonl_deduplicated_references returns flattened JSONL
     containing enhancements and identifiers from both canonical and duplicate
     references, with duplicate_references stripped from output.
     """
@@ -865,7 +865,7 @@ async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    result = await service._get_jsonl_deduplicated_references(  # noqa: SLF001
+    result = await service.get_jsonl_deduplicated_references(
         ReferenceAccessControlService(), [canonical_ref.id]
     )
 

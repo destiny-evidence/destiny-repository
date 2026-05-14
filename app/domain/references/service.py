@@ -384,7 +384,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement)
 
-    async def _get_jsonl_deduplicated_references(
+    async def get_jsonl_deduplicated_references(
         self,
         access_control_service: ReferenceAccessControlService,
         reference_ids: list[UUID],
@@ -1162,7 +1162,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         file_stream = FileStream(
-            self._get_jsonl_deduplicated_references,
+            self.get_jsonl_deduplicated_references,
             [
                 {
                     "access_control_service": access_control_service,

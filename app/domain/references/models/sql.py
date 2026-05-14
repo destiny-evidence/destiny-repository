@@ -8,9 +8,11 @@ from sqlalchemy import (
     UUID as SQL_UUID,
 )
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
 )
@@ -20,12 +22,14 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
 from app.domain.references.models.models import (
+    AnnotationFilter,
     DuplicateDetermination,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     PendingEnhancementStatus,
+    ReferenceExportStatus,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -47,11 +51,15 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
+    ReferenceExport as DomainReferenceExport,
+)
+from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.generics import GenericSQLPreloadableType
 from app.persistence.sql.persistence import (
     GenericSQLPersistence,
@@ -431,6 +439,75 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
             if "pending_enhancements" in (preload or [])
             else [],
+        )
+
+
+class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
+    """SQL Persistence model for a ReferenceExport job."""
+
+    __tablename__ = "reference_export"
+
+    query: Mapped[str] = mapped_column(String, nullable=False)
+    annotation_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+
+    status: Mapped[ReferenceExportStatus] = mapped_column(String, nullable=False)
+
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    truncated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainReferenceExport) -> Self:
+        """Create a persistence model from a domain ReferenceExport object."""
+        return cls(
+            id=domain_obj.id,
+            query=domain_obj.query,
+            annotation_filters=[f.model_dump() for f in domain_obj.annotation_filters]
+            if domain_obj.annotation_filters
+            else None,
+            start_year=domain_obj.start_year,
+            end_year=domain_obj.end_year,
+            sort=domain_obj.sort,
+            status=domain_obj.status,
+            result_file=domain_obj.result_file.to_uri()
+            if domain_obj.result_file
+            else None,
+            n_references=domain_obj.n_references,
+            truncated=domain_obj.truncated,
+            error=domain_obj.error,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainReferenceExport:
+        """Convert the persistence model into a Domain ReferenceExport object."""
+        return DomainReferenceExport(
+            id=self.id,
+            query=self.query,
+            annotation_filters=[
+                AnnotationFilter.model_validate(f) for f in self.annotation_filters
+            ]
+            if self.annotation_filters
+            else None,
+            start_year=self.start_year,
+            end_year=self.end_year,
+            sort=self.sort,
+            status=self.status,
+            result_file=BlobStorageFile.from_uri(self.result_file)
+            if self.result_file
+            else None,
+            n_references=self.n_references,
+            truncated=self.truncated,
+            error=self.error,
         )
 
 

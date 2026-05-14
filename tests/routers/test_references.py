@@ -11,6 +11,7 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -50,9 +51,13 @@ from app.domain.references.models.sql import (
     ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
 from app.domain.references.models.sql import (
+    ReferenceExport as SQLReferenceExport,
+)
+from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.export_service import ReferenceExportService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
@@ -928,6 +933,190 @@ async def test_search_references_with_annotation_filters(
     assert call_kwargs["annotations"][3].scheme == "test:scheme"
     assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
     assert call_kwargs["annotations"][3].score is None
+
+
+async def test_request_reference_export_happy_path(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test queuing a reference export, then polling its completed status."""
+    fake_reference_id = uuid7()
+    fake_result_file = BlobStorageFile(
+        location="minio",
+        container="destiny-repository",
+        path="reference_exports",
+        filename="fake.jsonl",
+    )
+
+    monkeypatch.setattr(
+        ReferenceExportService,
+        "_collect_reference_export_ids",
+        AsyncMock(return_value=([fake_reference_id], False)),
+    )
+    monkeypatch.setattr(
+        ReferenceExportService,
+        "_stream_reference_export_jsonl",
+        AsyncMock(return_value=(fake_result_file, 1)),
+    )
+
+    response = await client.post(
+        "/v1/references/exports/search/",
+        params={"q": "climate", "start_year": 2020},
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    body = response.json()
+    export_id = body["id"]
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+    assert body["truncated"] is False
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/exports/{export_id}/")
+    assert status_response.status_code == status.HTTP_200_OK
+    status_body = status_response.json()
+    assert status_body["status"] == "completed"
+    assert status_body["n_references"] == 1
+    assert status_body["truncated"] is False
+    assert status_body["result_url"] is not None
+    assert status_body["error"] is None
+
+
+async def test_request_reference_export_marks_failed_on_error(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test that a failure during the export job is reflected via the status API."""
+    monkeypatch.setattr(
+        ReferenceExportService,
+        "_collect_reference_export_ids",
+        AsyncMock(side_effect=RuntimeError("kaboom")),
+    )
+
+    response = await client.post(
+        "/v1/references/exports/search/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    export_id = response.json()["id"]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/exports/{export_id}/")
+    status_body = status_response.json()
+    assert status_body["status"] == "failed"
+    assert status_body["result_url"] is None
+    assert "kaboom" in status_body["error"]
+
+
+async def test_request_reference_export_rejects_empty_query(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Empty `q` returns 422 from FastAPI's min_length validation."""
+    response = await client.post("/v1/references/exports/search/", params={"q": ""})
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_references_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on malformed annotation — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_search_references_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on end < start — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_reference_export_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A malformed annotation filter returns 400 at request time, not job failure."""
+    response = await client.post(
+        "/v1/references/exports/search/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_reference_export_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """An inverted publication year range returns 400 at request time."""
+    response = await client.post(
+        "/v1/references/exports/search/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_reference_export_marks_failed_when_enqueue_fails(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """If queueing the task fails, the row is flipped to failed and 503 returned."""
+    monkeypatch.setattr(
+        references,
+        "queue_task_with_trace",
+        AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    response = await client.post(
+        "/v1/references/exports/search/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+    rows = (await session.execute(select(SQLReferenceExport))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert "broker down" in rows[0].error
+
+
+async def test_get_reference_export_pending_has_no_url(
+    session: AsyncSession,
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A pending export exposes no signed URL until the file is ready."""
+    export = SQLReferenceExport(
+        query="climate",
+        status="pending",
+    )
+    session.add(export)
+    await session.commit()
+
+    response = await client.get(f"/v1/references/exports/{export.id}/")
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+    assert body["n_references"] is None
 
 
 async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
