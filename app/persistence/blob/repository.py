@@ -242,6 +242,7 @@ class BlobRepository:
         source: BlobStorageFile,
         destination: BlobStorageFile,
         max_bytes: int | None = None,
+        content_type: str | None = None,
     ) -> BlobCopyResult:
         """
         Stream a file from source to destination, computing sha256 and size.
@@ -255,6 +256,12 @@ class BlobRepository:
             cumulative chunk size strictly exceeds this. ``None`` disables the
             check.
         :type max_bytes: int | None
+        :param content_type: MIME type to attach to the uploaded destination.
+            If the caller has an authoritative content type (e.g. declared on
+            a full-text enhancement), pass it here so it isn't lossily
+            re-derived from the destination filename. Defaults to ``None``,
+            which lets the backend infer from ``destination.filename``.
+        :type content_type: str | None
         :raises BlobSizeExceededError: if ``max_bytes`` is set and the source
             yields more bytes than allowed.
         """
@@ -284,7 +291,9 @@ class BlobRepository:
                     raise BlobSizeExceededError(msg)
                 yield chunk
 
-        await dest_client.upload_file(hashed_chunks(), destination)
+        await dest_client.upload_file(
+            hashed_chunks(), destination, content_type=content_type
+        )
 
         return BlobCopyResult(
             source=source,
