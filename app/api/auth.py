@@ -55,6 +55,7 @@ class AuthRole(StrEnum):
     REFERENCE_DEDUPLICATOR = "reference.deduplicator"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
     ROBOT_WRITER = "robot.writer"
+    ROBOT_ENTITLEMENT_WRITER = "robot.entitlement.writer"
 
 
 class AuthScope(StrEnum):
@@ -67,6 +68,7 @@ class AuthScope(StrEnum):
     REFERENCE_DEDUPLICATOR = "reference.deduplicator.all"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer.all"
     ROBOT_WRITER = "robot.writer.all"
+    ROBOT_ENTITLEMENT_WRITER = "robot.entitlement.writer.all"
 
 
 class HMACClientType(StrEnum):
@@ -89,9 +91,10 @@ class SubjectType(StrEnum):
 
 
 class Entitlement(StrEnum):
-    """Enum describing the entitlements that can be granted to users or clients."""
+    """Capabilities that can be granted to an authenticated principal."""
 
     FULL_TEXT = auto()
+    ROBOT_ENTITLEMENT_WRITER = auto()
 
 
 _ROBOT_ENTITLEMENTS: frozenset[Entitlement] = frozenset()
@@ -101,6 +104,12 @@ _ENTITLEMENT_TO_GRANTS: dict[Entitlement, frozenset[str]] = {
         {
             AuthScope.REFERENCE_FULL_TEXT_READER.value,
             AuthRole.REFERENCE_FULL_TEXT_READER.value,
+        }
+    ),
+    Entitlement.ROBOT_ENTITLEMENT_WRITER: frozenset(
+        {
+            AuthScope.ROBOT_ENTITLEMENT_WRITER.value,
+            AuthRole.ROBOT_ENTITLEMENT_WRITER.value,
         }
     ),
 }

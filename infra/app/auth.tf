@@ -5,6 +5,7 @@ resource "random_uuid" "reference_reader_role" {}
 resource "random_uuid" "reference_full_text_reader_role" {}
 resource "random_uuid" "reference_deduplicator_role" {}
 resource "random_uuid" "robot_writer_role" {}
+resource "random_uuid" "robot_entitlement_writer_role" {}
 resource "random_uuid" "enhancement_request_writer_role" {}
 
 # Unique UUIDs for oauth2_permission_scope (delegated permissions)
@@ -14,6 +15,7 @@ resource "random_uuid" "reference_reader_scope" {}
 resource "random_uuid" "reference_full_text_reader_scope" {}
 resource "random_uuid" "reference_deduplicator_scope" {}
 resource "random_uuid" "robot_writer_scope" {}
+resource "random_uuid" "robot_entitlement_writer_scope" {}
 resource "random_uuid" "enhancement_request_writer_scope" {}
 
 # AD application for destiny repository
@@ -92,6 +94,16 @@ resource "azuread_application" "destiny_repository" {
       user_consent_description   = "Allow you to register robots and rotate robot client secrets"
       user_consent_display_name  = "Robot Writer"
     }
+
+    oauth2_permission_scope {
+      admin_consent_description  = "Allow the app to write entitlements on robots as the signed-in user"
+      admin_consent_display_name = "Robot Entitlement Writer as user"
+      id                         = random_uuid.robot_entitlement_writer_scope.result
+      type                       = "User"
+      value                      = "robot.entitlement.writer.all"
+      user_consent_description   = "Allow you to write entitlements on robots"
+      user_consent_display_name  = "Robot Entitlement Writer"
+    }
   }
 
   lifecycle {
@@ -155,6 +167,15 @@ resource "azuread_application_app_role" "enhancement_request_writer" {
   display_name         = "Enhancement Request Writer"
   role_id              = random_uuid.enhancement_request_writer_role.result
   value                = "enhancement_request.writer"
+}
+
+resource "azuread_application_app_role" "robot_entitlement_writer" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can write entitlements on robots"
+  display_name         = "Robot Entitlement Writer"
+  role_id              = random_uuid.robot_entitlement_writer_role.result
+  value                = "robot.entitlement.writer"
 }
 
 resource "azuread_service_principal" "destiny_repository" {
