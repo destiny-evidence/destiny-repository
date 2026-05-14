@@ -16,6 +16,7 @@ from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
     BlobStorageLocation,
+    infer_content_type,
 )
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
@@ -101,46 +102,22 @@ async def test_filestream_stream_and_read_gen():
 
 
 @pytest.mark.parametrize(
-    ("location", "container", "path", "filename", "expected_content_type"),
+    ("filename", "expected_content_type"),
     [
-        (BlobStorageLocation.AZURE, "cont", "p", "file.jsonl", "application/jsonl"),
-        (BlobStorageLocation.MINIO, "cont", "p", "file.json", "application/json"),
-        (BlobStorageLocation.AZURE, "cont", "p", "file.csv", "text/csv"),
-        (BlobStorageLocation.MINIO, "cont", "p", "file.txt", "text/plain"),
-        (BlobStorageLocation.AZURE, "cont", "p", "paper.pdf", "application/pdf"),
-        (BlobStorageLocation.AZURE, "cont", "p", "feed.xml", "application/xml"),
-        (BlobStorageLocation.AZURE, "cont", "p", "page.html", "text/html"),
-        (
-            BlobStorageLocation.AZURE,
-            "cont",
-            "p",
-            "file.unknown",
-            "application/octet-stream",
-        ),
+        ("file.jsonl", "application/jsonl"),
+        ("file.json", "application/json"),
+        ("file.csv", "text/csv"),
+        ("file.txt", "text/plain"),
+        ("paper.pdf", "application/pdf"),
+        ("feed.xml", "application/xml"),
+        ("page.html", "text/html"),
+        ("file.unknown", "application/octet-stream"),
+        ("noextension", "application/octet-stream"),
+        ("MIXED.Pdf", "application/pdf"),
     ],
 )
-def test_blobstoragefile_content_type_inferred(
-    location, container, path, filename, expected_content_type
-):
-    file = BlobStorageFile(
-        location=location,
-        container=container,
-        path=path,
-        filename=filename,
-    )
-    assert file.content_type == expected_content_type
-
-
-def test_blobstoragefile_content_type_explicit_overrides_extension():
-    """An explicit content_type wins over extension-based inference."""
-    file = BlobStorageFile(
-        location=BlobStorageLocation.AZURE,
-        container="cont",
-        path="p",
-        filename="paper.pdf",
-        content_type="application/x-custom",
-    )
-    assert file.content_type == "application/x-custom"
+def test_infer_content_type(filename, expected_content_type):
+    assert infer_content_type(filename) == expected_content_type
 
 
 @pytest.mark.asyncio
@@ -209,11 +186,6 @@ def test_blobstoragefile_remote_coerces_from_url_string():
     assert file.filename == "foo.pdf"
 
 
-def test_blobstoragefile_remote_content_type_inferred_from_extension():
-    file = BlobStorageFile.from_uri("https://example.com/papers/foo.pdf")
-    assert file.content_type == "application/pdf"
-
-
 def test_from_uri_rejects_unknown_scheme():
     with pytest.raises(BlobStorageError):
         BlobStorageFile.from_uri("ftp://example.com/foo.pdf")
@@ -232,8 +204,9 @@ class _RecordingClient(GenericBlobStorageClient):
         self.uploaded_chunks: list[bytes] = []
         self.uploaded_to: BlobStorageFile | None = None
 
-    async def upload_file(self, content, file):  # type: ignore[no-untyped-def]
+    async def upload_file(self, content, file, content_type=None):  # type: ignore[no-untyped-def]
         # `copy` passes an async iterator of bytes
+        del content_type
         async for chunk in content:
             self.uploaded_chunks.append(chunk)
         self.uploaded_to = file
@@ -326,8 +299,8 @@ async def test_copy_rejects_destination_on_other_backend():
 
 
 class DummyClient(GenericBlobStorageClient):
-    async def upload_file(self, content, file):
-        self.uploaded = (content, file)
+    async def upload_file(self, content, file, content_type=None):
+        self.uploaded = (content, file, content_type)
 
     async def stream_chunks(self, file):
         yield b"dummy"

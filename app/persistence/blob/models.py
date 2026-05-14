@@ -12,9 +12,6 @@ from pydantic import (
 )
 
 from app.core.exceptions import BlobStorageError
-from app.core.telemetry.logger import get_logger
-
-logger = get_logger(__name__)
 
 
 class BlobSignedUrlType(StrEnum):
@@ -56,6 +53,16 @@ _CONTENT_TYPE_BY_EXTENSION: dict[str, str] = {
 }
 
 
+def infer_content_type(filename: str) -> str:
+    """
+    Infer the MIME content type for ``filename`` from its extension.
+
+    Falls back to ``application/octet-stream`` for unknown extensions.
+    """
+    extension = filename.rsplit(".", 1)[-1].casefold() if "." in filename else ""
+    return _CONTENT_TYPE_BY_EXTENSION.get(extension, "application/octet-stream")
+
+
 class BlobStorageFile(BaseModel):
     """Model to represent Blob Storage files."""
 
@@ -73,13 +80,6 @@ class BlobStorageFile(BaseModel):
         pattern=r"^[^/]*$",  # Ensure no slashes are present
         description="The name of the file in blob storage.",
     )
-    content_type: str | None = Field(
-        default=None,
-        description=(
-            "The content type of the file, e.g. 'application/jsonl'. "
-            "If not provided, it will be inferred from the file extension."
-        ),
-    )
 
     @property
     def is_remote(self) -> bool:
@@ -88,26 +88,10 @@ class BlobStorageFile(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def _coerce_and_default(cls, value: object) -> object:
-        """Accept a URI string; default content_type from filename extension."""
+    def _coerce_from_uri(cls, value: object) -> object:
+        """Accept a URI string in place of a dict for validation."""
         if isinstance(value, str):
             return cls._parse_uri(value)
-        if not isinstance(value, dict):
-            return value
-
-        if not value.get("content_type"):
-            filename = value.get("filename") or ""
-            extension = (
-                filename.rsplit(".", 1)[-1].casefold() if "." in filename else ""
-            )
-            content_type = _CONTENT_TYPE_BY_EXTENSION.get(extension)
-            if content_type is None:
-                logger.warning(
-                    "No content type defined. Defaulting to application/octet-stream.",
-                    filename=filename,
-                )
-                content_type = "application/octet-stream"
-            value["content_type"] = content_type
         return value
 
     def to_uri(self) -> str:

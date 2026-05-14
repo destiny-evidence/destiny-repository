@@ -31,6 +31,7 @@ class GenericBlobStorageClient(ABC):
         self,
         content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
+        content_type: str | None = None,
     ) -> None:
         """
         Upload a file to the blob storage.
@@ -39,6 +40,10 @@ class GenericBlobStorageClient(ABC):
         :type content: FileStream | BytesIO | AsyncIterator[bytes]
         :param file: The file to upload.
         :type file: BlobStorageFile
+        :param content_type: Optional MIME type to attach to the uploaded
+            object. If not provided, implementations infer it from
+            ``file.filename``.
+        :type content_type: str | None
         """
 
     @trace_blob_client_generator(tracer)

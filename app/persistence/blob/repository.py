@@ -143,6 +143,7 @@ class BlobRepository:
         path: str,
         filename: str,
         container: BlobContainer = BlobContainer.OPERATIONS,
+        content_type: str | None = None,
     ) -> BlobStorageFile:
         """
         Upload a file to Blob Storage.
@@ -159,12 +160,15 @@ class BlobRepository:
         :param container: The logical container to upload the file to. The
             physical container name is resolved via the active blob backend.
         :type container: BlobContainer
+        :param content_type: Optional MIME type to attach to the uploaded
+            object. If not provided, it is inferred from ``filename``.
+        :type content_type: str | None
         :return: The information of the uploaded file.
         :rtype: BlobStorageFile
         """
         file = self.destination(path=path, filename=filename, container=container)
         client = await self._preload_config(file)
-        await client.upload_file(content, file)
+        await client.upload_file(content, file, content_type=content_type)
         return file
 
     @asynccontextmanager
