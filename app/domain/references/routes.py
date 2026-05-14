@@ -476,7 +476,7 @@ async def request_reference_export(
             run_reference_export_task,
             long_running=True,
             reference_export_id=reference_export.id,
-            entitlements=sorted(e.value for e in entitlements),
+            entitlements=entitlements,
             otel_enabled=settings.otel_enabled,
         )
     except Exception as exc:
