@@ -305,6 +305,19 @@ module "container_app_tasks" {
         trigger_parameter = "connection"
       }
     },
+    {
+      name             = "priority-queue-length-scale-rule"
+      custom_rule_type = "azure-servicebus"
+      metadata = {
+        namespace    = local.active_servicebus_ns.name
+        queueName    = local.active_servicebus_priority_queue.name
+        messageCount = var.priority_queue_active_jobs_scaling_threshold
+      }
+      authentication = {
+        secret_name       = "servicebus-connection-string"
+        trigger_parameter = "connection"
+      }
+    },
   ]
 }
 
