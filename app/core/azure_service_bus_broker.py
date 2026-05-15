@@ -172,7 +172,7 @@ class AzureServiceBusBroker(AsyncBroker):
         Resolve the ``priority`` label on a broker message to a TaskPriority.
 
         Unrecognised or unparseable values log a warning and fall back to
-        ``TaskPriority.NORMAL`` so an unknown sender can never block routing.
+        ``TaskPriority.NORMAL``.
         """
         raw_priority = parse_val(int, message.labels.get("priority"))
         if raw_priority is None:
@@ -260,8 +260,7 @@ class AzureServiceBusBroker(AsyncBroker):
         Wrap a received Service Bus message as an AckableMessage.
 
         Captures ``receiver`` in the ack closure so completion and lock
-        renewal re-registration target the queue the message actually came
-        from — critical now that we listen on two queues.
+        renewal re-registration target queue message was received from.
         """
         if self.auto_lock_renewer is None:
             msg = "auto_lock_renewer must be set on the worker process"
@@ -343,9 +342,11 @@ class AzureServiceBusBroker(AsyncBroker):
         Listen on the priority queue first, then the default queue.
 
         Each iteration drains the priority queue with a short wait, then
-        polls the default queue with a longer wait. A backlog of priority
-        messages keeps re-entering the priority branch via ``continue``, so
-        normal work cannot leak through while priority work is available.
+        polls the default queue with a longer wait.
+
+        If priority messages are received, re-enter priority branch to ensure
+        full consumption of priority messages before moving to
+        normal priority queue.
 
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
@@ -372,7 +373,7 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 async with self._receive_lock:
                     batch_messages = await self.receiver.receive_messages(
-                        max_wait_time=5
+                        max_wait_time=2
                     )
                 for sb_message in batch_messages:
                     logger.info("Yielding message")
