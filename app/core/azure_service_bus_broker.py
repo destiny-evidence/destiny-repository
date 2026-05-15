@@ -32,6 +32,7 @@ from taskiq import AckableMessage, AsyncBroker, BrokerMessage
 from app.core.config import get_settings
 from app.core.exceptions import MessageBrokerError, MessageTooLargeError
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import TaskPriority
 
 _T = TypeVar("_T")
 
@@ -83,8 +84,9 @@ class AzureServiceBusBroker(AsyncBroker):
             If None, the namespace parameter must be provided.
         :param namespace: The fully qualified namespace of the Service Bus.
             Used with DefaultAzureCredential if connection_string is None.
-        :param queue_name: queue that used to get incoming messages.
-        :param connection_kwargs: additional keyword arguments.
+        :param queue_name: queue used to get normal priority incoming messages with.
+        :param priority_queue_name: queue used to get high priority incoming
+            messages with.
         """
         super().__init__()
 
@@ -165,6 +167,26 @@ class AzureServiceBusBroker(AsyncBroker):
         if self.credential:
             await self.credential.close()
 
+    def _resolve_priority(self, message: BrokerMessage) -> TaskPriority:
+        """
+        Resolve the ``priority`` label on a broker message to a TaskPriority.
+
+        Unrecognised or unparseable values log a warning and fall back to
+        ``TaskPriority.NORMAL`` so an unknown sender can never block routing.
+        """
+        raw_priority = parse_val(int, message.labels.get("priority"))
+        if raw_priority is None:
+            return TaskPriority.NORMAL
+        try:
+            return TaskPriority(raw_priority)
+        except ValueError:
+            logger.warning(
+                "Unknown priority value, defaulting to NORMAL",
+                priority=raw_priority,
+                task_id=message.task_id,
+            )
+            return TaskPriority.NORMAL
+
     async def kick(self, message: BrokerMessage) -> None:
         """
         Send message to the queue.
@@ -172,17 +194,21 @@ class AzureServiceBusBroker(AsyncBroker):
         This function constructs a service bus message and sends it with the
         appropriate metadata and routing.
 
+        Messages with TaskPriority.HIGH label are sent to the priority queue;
+
         :raises MessageBrokerError:detail= if startup wasn't called.
         :raises MessageTooLargeError:detail= if the message is too large.
         :param message: message to send.
         """
-        if self.sender is None or self.service_bus_client is None:
+        if (
+            self.sender is None
+            or self.priority_sender is None
+            or self.service_bus_client is None
+        ):
             raise MessageBrokerError(detail="Please run startup before kicking.")
 
-        headers = {}
-        priority = parse_val(int, message.labels.get("priority"))
-        if priority is not None:
-            headers["priority"] = priority
+        priority = self._resolve_priority(message)
+        sender = self.priority_sender if priority > TaskPriority.NORMAL else self.sender
 
         body = message.message
         compressed = False
@@ -193,7 +219,6 @@ class AzureServiceBusBroker(AsyncBroker):
         # Create service bus message
         service_bus_message = AmqpAnnotatedMessage(
             data_body=body,
-            header=headers,
             properties={
                 "message_id": message.task_id,
                 "correlation_id": message.task_id,
@@ -208,134 +233,150 @@ class AzureServiceBusBroker(AsyncBroker):
         try:
             # Handle delay
             delay = parse_val(int, message.labels.get("delay"))
-            logger.debug("Sending message...", task_id=message.task_id, delay=delay)
+            logger.debug(
+                "Sending message...",
+                task_id=message.task_id,
+                delay=delay,
+                priority=priority,
+            )
 
             if delay is None:
-                # Send message directly to main queue
                 async with self._send_lock:
-                    await self.sender.send_messages(service_bus_message)
+                    await sender.send_messages(service_bus_message)
             else:
                 # Use Azure's built-in scheduled messages feature
                 scheduled_time = datetime.now(UTC) + timedelta(seconds=delay)
                 async with self._send_lock:
-                    await self.sender.schedule_messages(
-                        service_bus_message, scheduled_time
-                    )
+                    await sender.schedule_messages(service_bus_message, scheduled_time)
         except MessageSizeExceededError as exc:
             raise MessageTooLargeError(detail=exc.message) from exc
 
+    def _build_ackable(
+        self,
+        sb_message: ServiceBusReceivedMessage,
+        receiver: ServiceBusReceiver,
+    ) -> AckableMessage:
+        """
+        Wrap a received Service Bus message as an AckableMessage.
+
+        Captures ``receiver`` in the ack closure so completion and lock
+        renewal re-registration target the queue the message actually came
+        from — critical now that we listen on two queues.
+        """
+        if self.auto_lock_renewer is None:
+            msg = "auto_lock_renewer must be set on the worker process"
+            raise MessageBrokerError(detail=msg)
+
+        async def ack_message(
+            sb_message: ServiceBusReceivedMessage = sb_message,
+            receiver: ServiceBusReceiver = receiver,
+        ) -> None:
+            task_id = sb_message.application_properties.get(
+                b"message_id",
+                sb_message.application_properties.get("message_id"),
+            )
+            logger.info("Attempting to complete message", task_id=task_id)
+            async with self._receive_lock:
+                logger.info("Completing message", task_id=task_id)
+                await receiver.complete_message(sb_message)
+                logger.info("Completed message", task_id=task_id)
+
+        async def lock_renewal_failure_callback(
+            sb_message: ServiceBusReceivedMessage | ServiceBusSession,
+            exception: Exception | None = None,
+        ) -> None:
+            logger.error(
+                "Lock renewal failed for message",
+                task_id=sb_message.application_properties.get(
+                    b"message_id",
+                    sb_message.application_properties.get("message_id"),
+                ),
+                exception=exception,
+            )
+            logger.info("Attempting to re-register lock renewal")
+            if self.auto_lock_renewer is not None:
+                self.auto_lock_renewer.register(
+                    receiver,
+                    sb_message,
+                    # Don't try it again if it fails
+                    on_lock_renew_failure=None,
+                )
+                logger.info("Re-registered lock renewal")
+
+        properties = sb_message.application_properties
+        if properties and TypeAdapter(bool).validate_python(
+            # Try binary then string key
+            properties.get(b"renew_lock", properties.get("renew_lock", False))
+        ):
+            logger.info("Registering message for auto lock renewal")
+            self.auto_lock_renewer.register(
+                receiver,
+                sb_message,
+                on_lock_renew_failure=lock_renewal_failure_callback,
+            )
+            logger.info("Registered message for auto lock renewal")
+
+        body_type = sb_message.body_type
+        raw_body = sb_message.body
+
+        if body_type == AmqpMessageBodyType.DATA:
+            # Join all byte chunks together
+            data = b"".join(raw_body)
+        else:
+            logger.warning(
+                "Unsupported body type, defaulting to string encoding",
+                body_type=body_type,
+            )
+            data = str(raw_body).encode("utf-8")
+
+        if TypeAdapter(bool).validate_python(
+            properties.get(b"compressed", properties.get("compressed", False))
+            if properties
+            else False
+        ):
+            data = gzip.decompress(data)
+
+        return AckableMessage(data=data, ack=ack_message)
+
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
-        Listen to queue.
+        Listen on the priority queue first, then the default queue.
 
-        This function listens to the queue and yields every new message.
+        Each iteration drains the priority queue with a short wait, then
+        polls the default queue with a longer wait. A backlog of priority
+        messages keeps re-entering the priority branch via ``continue``, so
+        normal work cannot leak through while priority work is available.
 
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
         """
-        if self.receiver is None or self.auto_lock_renewer is None:
+        if (
+            self.receiver is None
+            or self.priority_receiver is None
+            or self.auto_lock_renewer is None
+        ):
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
         while True:
             try:
-                # Receive a batch of messages
+                async with self._receive_lock:
+                    priority_batch = await self.priority_receiver.receive_messages(
+                        max_wait_time=1
+                    )
+                for sb_message in priority_batch:
+                    logger.info("Yielding priority message")
+                    yield self._build_ackable(sb_message, self.priority_receiver)
+                if priority_batch:
+                    # Keep draining priority before touching the default queue
+                    continue
+
                 async with self._receive_lock:
                     batch_messages = await self.receiver.receive_messages(
-                        max_wait_time=10
+                        max_wait_time=5
                     )
-
-                # Process each message
                 for sb_message in batch_messages:
-
-                    async def ack_message(
-                        sb_message: ServiceBusReceivedMessage = sb_message,
-                    ) -> None:
-                        task_id = sb_message.application_properties.get(
-                            b"message_id",
-                            sb_message.application_properties.get("message_id"),
-                        )
-                        logger.info("Attempting to complete message", task_id=task_id)
-                        if self.receiver is not None:
-                            async with self._receive_lock:
-                                logger.info("Completing message", task_id=task_id)
-                                await self.receiver.complete_message(sb_message)
-                                logger.info("Completed message", task_id=task_id)
-                        else:
-                            logger.error(
-                                "Receiver is None. Cannot complete the message.",
-                                task_id=task_id,
-                            )
-
-                    async def lock_renewal_failure_callback(
-                        sb_message: ServiceBusReceivedMessage | ServiceBusSession,
-                        exception: Exception | None = None,
-                    ) -> None:
-                        logger.error(
-                            "Lock renewal failed for message",
-                            task_id=sb_message.application_properties.get(
-                                b"message_id",
-                                sb_message.application_properties.get("message_id"),
-                            ),
-                            exception=exception,
-                        )
-                        logger.info("Attempting to re-register lock renewal")
-                        if (
-                            self.auto_lock_renewer is not None
-                            and self.receiver is not None
-                        ):
-                            self.auto_lock_renewer.register(
-                                self.receiver,
-                                sb_message,
-                                # Don't try it again if it fails
-                                on_lock_renew_failure=None,
-                            )
-                            logger.info("Re-registered lock renewal")
-
-                    properties = sb_message.application_properties
-                    if properties and TypeAdapter(bool).validate_python(
-                        # Try binary then string key
-                        properties.get(
-                            b"renew_lock", properties.get("renew_lock", False)
-                        )
-                    ):
-                        logger.info("Registering message for auto lock renewal")
-                        self.auto_lock_renewer.register(
-                            self.receiver,
-                            sb_message,
-                            on_lock_renew_failure=lock_renewal_failure_callback,
-                        )
-                        logger.info("Registered message for auto lock renewal")
-
-                    body_type = sb_message.body_type
-                    raw_body = sb_message.body
-
-                    if body_type == AmqpMessageBodyType.DATA:
-                        # Join all byte chunks together
-                        data = b"".join(raw_body)
-                    else:
-                        logger.warning(
-                            "Unsupported body type, defaulting to string encoding",
-                            body_type=body_type,
-                        )
-                        data = str(raw_body).encode("utf-8")
-
-                    if TypeAdapter(bool).validate_python(
-                        properties.get(
-                            b"compressed", properties.get("compressed", False)
-                        )
-                        if properties
-                        else False
-                    ):
-                        data = gzip.decompress(data)
-
-                    ackable = AckableMessage(
-                        data=data,
-                        ack=ack_message,
-                    )
-
                     logger.info("Yielding message")
-                    yield ackable
-                    logger.info("Yielded message")
+                    yield self._build_ackable(sb_message, self.receiver)
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying

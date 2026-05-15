@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextvars
 import importlib
+from enum import IntEnum
 from typing import Any
 
 from opentelemetry import context, trace
@@ -23,10 +24,25 @@ tracer = trace.get_tracer(__name__)
 logger = get_logger(__name__)
 
 
+class TaskPriority(IntEnum):
+    """
+    Priority levels for queued tasks.
+
+    The integer value is the on-wire ``priority`` label brokers read: the
+    Azure Service Bus broker routes any value > 0 to its priority queue, and
+    the RabbitMQ (``AioPikaBroker``) consumer uses it as the AMQP priority
+    property when ``max_priority`` is set on the queue.
+    """
+
+    NORMAL = 0
+    HIGH = 5
+
+
 async def queue_task_with_trace(
     task: AsyncTaskiqDecoratedTask | tuple[str, str],
     *args: object,
     long_running: bool = False,
+    priority: TaskPriority = TaskPriority.NORMAL,
     otel_enabled: bool,
     **kwargs: object,
 ) -> None:
@@ -39,6 +55,8 @@ async def queue_task_with_trace(
     :type args: object
     :param long_running: Whether the task is long-running and needs lock renewal.
     :type long_running: bool
+    :param priority: Priority of the class.
+    :type priority: TaskPriority
     :param kwargs: Keyword arguments for the task.
     :type kwargs: object
 
@@ -54,16 +72,22 @@ async def queue_task_with_trace(
             raise TypeError(msg)
         task = imported_task
 
-    task.labels["renew_lock"] = long_running
+    # Use a per-call kicker so labels don't leak across submissions of the
+    # same task (the decorated task object's labels dict is shared state).
+    kicker = task.kicker().with_labels(
+        renew_lock=long_running,
+        priority=priority.value,
+    )
 
     logger.info(
         "Queueing task",
         task_name=task.task_name,
+        priority=priority.name,
         **{k: str(v) for k, v in kwargs.items()},
     )
     if not otel_enabled:
         # If OpenTelemetry is not enabled, just queue the task normally
-        await task.kiq(*args, **kwargs)
+        await kicker.kiq(*args, **kwargs)
         return
 
     # Pass span context for linking (not propagation) so tasks
@@ -73,7 +97,7 @@ async def queue_task_with_trace(
         "trace_id": format(span_context.trace_id, "032x"),
         "span_id": format(span_context.span_id, "016x"),
     }
-    await task.kiq(
+    await kicker.kiq(
         *args,
         **kwargs,
         trace_link=trace_link,
