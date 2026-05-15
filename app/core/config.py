@@ -443,6 +443,7 @@ class Settings(BaseSettings):
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
+    message_broker_priority_queue_name = "taskiq-priority"
     cli_client_id: str | None = None
     app_name: str
 
