@@ -1,8 +1,9 @@
 """Reference classes for the Destiny SDK."""
 
+from enum import StrEnum, auto
 from typing import Self
 
-from pydantic import BaseModel, Field, TypeAdapter
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter
 
 from destiny_sdk.core import UUID, SearchResultMixIn, _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement, EnhancementFileInput
@@ -74,4 +75,52 @@ class ReferenceSearchResult(SearchResultMixIn, BaseModel):
 
     references: list[Reference] = Field(
         description="The references returned by the search.",
+    )
+
+
+class SearchExportStatus(StrEnum):
+    """The status of a search export job."""
+
+    PENDING = auto()
+    """The export job has been queued but not yet started."""
+    RUNNING = auto()
+    """The export job is currently being processed."""
+    COMPLETED = auto()
+    """The export job completed and the file is available."""
+    FAILED = auto()
+    """The export job failed before producing a file."""
+
+
+class SearchExportRead(BaseModel):
+    """A search export job, used to poll for status and a signed URL."""
+
+    id: UUID = Field(description="The ID of the export job.")
+    status: SearchExportStatus = Field(
+        description="The current status of the export job.",
+    )
+    result_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            "Signed download URL for the produced JSONL file. Each line is a "
+            ":class:`Reference <destiny_sdk.references.Reference>` "
+            "matching the `/references/search/` response shape. Populated once "
+            "``status`` is ``completed``; the URL is re-signed on every poll, so "
+            "an expired URL can be refreshed by polling again."
+        ),
+    )
+    n_references: int | None = Field(
+        default=None,
+        description="The number of references included in the produced file.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the matching result set exceeded the server's result-window "
+            "cap. When true, the JSONL contains only the first window's worth of "
+            "matches."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered while producing the export.",
     )

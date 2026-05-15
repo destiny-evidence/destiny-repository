@@ -21,6 +21,7 @@ from app.domain.references.models.models import (
     RobotAutomation,
     RobotEnhancementBatch,
     RobotResultValidationEntry,
+    SearchExport,
 )
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType
@@ -214,6 +215,26 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if enhancement_request.validation_result_file
+                    else None,
+                },
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def search_export_to_sdk(
+        self,
+        search_export: SearchExport,
+    ) -> destiny_sdk.references.SearchExportRead:
+        """Convert the reference export to the SDK model."""
+        try:
+            return destiny_sdk.references.SearchExportRead.model_validate(
+                search_export.model_dump()
+                | {
+                    "result_url": await self._sign_url(
+                        search_export.result_file,
+                        BlobSignedUrlType.DOWNLOAD,
+                    )
+                    if search_export.result_file
                     else None,
                 },
             )
