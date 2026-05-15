@@ -123,7 +123,9 @@ async def test_happy_startup(broker: AzureServiceBusBroker) -> None:
     """
     assert broker.service_bus_client is not None
     assert broker.sender is not None
+    assert broker.priority_sender is not None
     assert broker.receiver is not None
+    assert broker.priority_receiver is not None
 
 
 @pytest.mark.anyio

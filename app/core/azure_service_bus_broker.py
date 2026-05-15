@@ -74,6 +74,7 @@ class AzureServiceBusBroker(AsyncBroker):
         connection_string: str | None = None,
         namespace: str | None = None,
         queue_name: str = "taskiq",
+        priority_queue_name: str = "taskiq-priority",
     ) -> None:
         """
         Construct a new broker.
@@ -90,11 +91,14 @@ class AzureServiceBusBroker(AsyncBroker):
         self.connection_string = connection_string
         self.namespace = namespace
         self._queue_name = queue_name
+        self._priority_queue_name = priority_queue_name
         self.max_lock_renewal_duration = max_lock_renewal_duration
 
         self.service_bus_client: ServiceBusClient | None = None
         self.sender: ServiceBusSender | None = None
         self.receiver: ServiceBusReceiver | None = None
+        self.priority_sender: ServiceBusSender | None = None
+        self.priority_receiver: ServiceBusReceiver | None = None
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
 
@@ -124,11 +128,21 @@ class AzureServiceBusBroker(AsyncBroker):
             queue_name=self._queue_name
         )
 
+        self.priority_sender = self.service_bus_client.get_queue_sender(
+            queue_name=self._priority_queue_name
+        )
+
         if self.is_worker_process:
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
                 receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
             )
+
+            self.priority_receiver = self.service_bus_client.get_queue_receiver(
+                queue_name=self._priority_queue_name,
+                receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
+            )
+
             if not self.auto_lock_renewer:
                 self.auto_lock_renewer = AutoLockRenewer(
                     max_lock_renewal_duration=self.max_lock_renewal_duration
@@ -140,8 +154,12 @@ class AzureServiceBusBroker(AsyncBroker):
 
         if self.sender:
             await self.sender.close()
+        if self.priority_sender:
+            await self.priority_sender.close()
         if self.receiver:
             await self.receiver.close()
+        if self.priority_receiver:
+            await self.priority_receiver.close()
         if self.service_bus_client:
             await self.service_bus_client.close()
         if self.credential:
