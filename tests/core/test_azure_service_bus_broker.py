@@ -211,12 +211,7 @@ async def test_priority_message_routes_to_priority_sender(
     broker: AzureServiceBusBroker,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    Priority messages go to the priority queue, normal messages to default.
-
-    Azure Service Bus does not honour the AMQP priority header — the queue
-    choice IS the priority signal.
-    """
+    """Priority messages go to the priority queue, normal messages to default."""
     assert broker.sender is not None
     assert broker.priority_sender is not None
     default_sends: list[AmqpAnnotatedMessage] = []
