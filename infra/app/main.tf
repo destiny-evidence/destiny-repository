@@ -48,8 +48,8 @@ resource "azuread_group_member" "container_app_tasks_to_crud" {
 locals {
   # When external directory is enabled, use the external directory app and tenant
   # Otherwise, use the application tenant
-  auth_application_id = var.external_directory_enabled ? azuread_application.external_directory_destiny_repository.client_id : azuread_application.destiny_repository.client_id
-  auth_login_url      = var.external_directory_enabled ? var.azure_login_url : "https://login.microsoftonline.com/${var.azure_tenant_id}"
+  auth_application_id = azuread_application.destiny_repository.client_id
+  auth_login_url      = "https://login.microsoftonline.com/${var.azure_tenant_id}"
 
   env_vars = [
     {
@@ -326,7 +326,7 @@ module "container_app_ui" {
   env_vars = [
     {
       name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
-      value = var.external_directory_enabled ? azuread_application_registration.external_directory_destiny_repository_auth_ui.client_id : azuread_application_registration.destiny_repository_auth_ui.client_id
+      value = azuread_application_registration.destiny_repository_auth_ui.client_id
     },
     {
       name  = "NEXT_PUBLIC_AZURE_LOGIN_URL"
