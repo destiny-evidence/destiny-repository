@@ -28,10 +28,8 @@ class TaskPriority(IntEnum):
     """
     Priority levels for queued tasks.
 
-    The integer value is the on-wire ``priority`` label brokers read: the
-    Azure Service Bus broker routes any value > 0 to its priority queue, and
-    the RabbitMQ (``AioPikaBroker``) consumer uses it as the AMQP priority
-    property when ``max_priority`` is set on the queue.
+    May be used to set on-wire priority header, or to route to different
+    queues depending on broker implementation.
     """
 
     NORMAL = 0
@@ -72,12 +70,8 @@ async def queue_task_with_trace(
             raise TypeError(msg)
         task = imported_task
 
-    # Use a per-call kicker so labels don't leak across submissions of the
-    # same task (the decorated task object's labels dict is shared state).
-    kicker = task.kicker().with_labels(
-        renew_lock=long_running,
-        priority=priority.value,
-    )
+    task.labels["renew_lock"] = long_running
+    task.labels["priority"] = priority.value
 
     logger.info(
         "Queueing task",
@@ -87,7 +81,7 @@ async def queue_task_with_trace(
     )
     if not otel_enabled:
         # If OpenTelemetry is not enabled, just queue the task normally
-        await kicker.kiq(*args, **kwargs)
+        await task.kiq(*args, **kwargs)
         return
 
     # Pass span context for linking (not propagation) so tasks
@@ -97,7 +91,7 @@ async def queue_task_with_trace(
         "trace_id": format(span_context.trace_id, "032x"),
         "span_id": format(span_context.span_id, "016x"),
     }
-    await kicker.kiq(
+    await task.kiq(
         *args,
         **kwargs,
         trace_link=trace_link,
