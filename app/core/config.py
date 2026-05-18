@@ -444,6 +444,21 @@ class Settings(BaseSettings):
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
     message_broker_priority_queue_name: str = "taskiq-priority"
+    message_broker_queue_max_wait: int = Field(
+        default=2,
+        description=(
+            "Max time to wait to receive messages on the normal priority task queue "
+            "(in seconds)."
+        ),
+    )
+    message_broker_priority_queue_max_wait: int = Field(
+        default=1,
+        description=(
+            "Max time to wait to receive messages on the high priority task queue "
+            "(in seconds)."
+        ),
+    )
+
     cli_client_id: str | None = None
     app_name: str
 

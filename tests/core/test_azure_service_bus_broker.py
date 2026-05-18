@@ -156,9 +156,9 @@ async def test_kick_success(
 
     await broker.kick(sent)
 
-    # listen() drains the priority queue first (max_wait_time=1s) before
-    # falling through to the default queue, so allow >1s for the message
-    # to land here even when nothing is in priority.
+    # listen() drains the priority queue first (max_wait_time default is 1s)
+    # before falling through to the default queue.
+    # So allow >1s for the message to land here even when nothing is in priority.
     message = await asyncio.wait_for(get_first_task(broker), timeout=3.0)
 
     assert message.data == sent.message
