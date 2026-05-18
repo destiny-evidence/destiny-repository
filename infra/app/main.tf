@@ -143,11 +143,8 @@ locals {
       value = var.auth_provider != "azure" ? "destiny-repository-client-${var.environment}" : ""
     },
     {
-      name = "CORS_ALLOW_ORIGINS",
-      value = jsonencode(concat(var.cors_allow_origins, [
-        "https://${local.ui_hostname}",
-        "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
-      ]))
+      name  = "CORS_ALLOW_ORIGINS",
+      value = jsonencode(local.cors_allow_origins)
     },
   ]
 
@@ -427,6 +424,15 @@ resource "azurerm_storage_account" "this" {
     }
     container_delete_retention_policy {
       days = 30
+    }
+
+    cors_rule {
+      allowed_origins = local.cors_allow_origins
+      allowed_methods = ["GET", "HEAD"]
+      allowed_headers = ["*"]
+      exposed_headers = ["*"]
+      # Match chrome maximum of two hours
+      max_age_in_seconds = 7200
     }
   }
 
