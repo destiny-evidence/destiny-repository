@@ -53,7 +53,7 @@ async def queue_task_with_trace(
     :type args: object
     :param long_running: Whether the task is long-running and needs lock renewal.
     :type long_running: bool
-    :param priority: Priority of the class.
+    :param priority: Priority of the task.
     :type priority: TaskPriority
     :param kwargs: Keyword arguments for the task.
     :type kwargs: object

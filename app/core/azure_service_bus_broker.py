@@ -194,7 +194,7 @@ class AzureServiceBusBroker(AsyncBroker):
         This function constructs a service bus message and sends it with the
         appropriate metadata and routing.
 
-        Messages with TaskPriority.HIGH label are sent to the priority queue;
+        Messages with TaskPriority.HIGH label are sent to the priority queue.
 
         :raises MessageBrokerError:detail= if startup wasn't called.
         :raises MessageTooLargeError:detail= if the message is too large.
@@ -260,7 +260,7 @@ class AzureServiceBusBroker(AsyncBroker):
         Wrap a received Service Bus message as an AckableMessage.
 
         Captures ``receiver`` in the ack closure so completion and lock
-        renewal re-registration target queue message was received from.
+        renewal re-registration target the queue the message was received from.
         """
         if self.auto_lock_renewer is None:
             msg = "auto_lock_renewer must be set on the worker process"
