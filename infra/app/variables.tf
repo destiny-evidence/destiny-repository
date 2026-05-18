@@ -107,16 +107,6 @@ variable "azure_tenant_id" {
   type        = string
 }
 
-variable "external_directory_tenant_id" {
-  description = "ID of the external directory tenant for the Azure AD provider. Required when external_directory_enabled is true."
-  type        = string
-}
-
-variable "external_directory_client_id" {
-  description = "Client ID of the external directory application. Required when external_directory_enabled is true."
-  type        = string
-}
-
 variable "budget_code" {
   description = "Budget code for tagging resource groups. Required tag for resource groups"
   type        = string
