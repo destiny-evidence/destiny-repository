@@ -286,7 +286,16 @@ async def test_unknown_priority_warns_and_falls_back_to_default(
             )
         )
 
-    assert len(default_sends) == 1
+        await broker.kick(
+            BrokerMessage(
+                task_id="unknown-priority-string",
+                task_name="unknown-priority-string",
+                message=b"oddball",
+                labels={"priority": "normal"},
+            )
+        )
+
+    assert len(default_sends) == 2
     assert len(priority_sends) == 0
     assert any("Unknown priority value" in record.message for record in caplog.records)
 

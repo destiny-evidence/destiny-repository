@@ -174,11 +174,13 @@ class AzureServiceBusBroker(AsyncBroker):
         Unrecognised or unparseable values log a warning and fall back to
         ``TaskPriority.NORMAL``.
         """
-        raw_priority = parse_val(int, message.labels.get("priority"))
+        raw_priority = parse_val(str, message.labels.get("priority"))
+
         if raw_priority is None:
             return TaskPriority.NORMAL
+
         try:
-            return TaskPriority(raw_priority)
+            return TaskPriority(int(raw_priority))
         except ValueError:
             logger.warning(
                 "Unknown priority value, defaulting to NORMAL",
