@@ -364,7 +364,7 @@ class AzureServiceBusBroker(AsyncBroker):
             try:
                 async with self._receive_lock:
                     priority_batch = await self.priority_receiver.receive_messages(
-                        max_wait_time=settings.message_broker_queue_max_wait
+                        max_wait_time=settings.message_broker_priority_queue_max_wait
                     )
                 for sb_message in priority_batch:
                     logger.info("Yielding priority message")
@@ -375,7 +375,7 @@ class AzureServiceBusBroker(AsyncBroker):
 
                 async with self._receive_lock:
                     batch_messages = await self.receiver.receive_messages(
-                        max_wait_time=settings.message_broker_priority_queue_max_wait
+                        max_wait_time=settings.message_broker_queue_max_wait
                     )
                 for sb_message in batch_messages:
                     logger.info("Yielding message")
