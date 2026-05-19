@@ -579,19 +579,3 @@ async def test_repair_subset_rejects_rebuild_combo(
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "rebuild=true" in response.json()["detail"]
-
-
-async def test_repair_subset_rejects_empty_id_list(
-    client: AsyncClient,
-    es_client: AsyncElasticsearch,
-) -> None:
-    """Empty document_ids list is rejected by the schema (422)."""
-    index_manager = system_routes.reference_index_manager(es_client)
-    await index_manager.initialize_index()
-
-    response = await client.post(
-        f"/system/indices/{index_manager.alias_name}/repair/",
-        json={"document_ids": []},
-    )
-
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

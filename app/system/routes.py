@@ -155,6 +155,14 @@ async def repair_elasticsearch_index(
             detail="rebuild=true cannot be combined with document_ids.",
         )
 
+    if document_ids is not None and index_manager.repair_subset_task is None:
+        raise InvalidPayloadError(
+            detail=(
+                f"Subset repair is not supported for index "
+                f"{index_manager.alias_name}."
+            ),
+        )
+
     if document_ids is not None:
         await index_manager.repair_index(document_ids=document_ids)
         message = (

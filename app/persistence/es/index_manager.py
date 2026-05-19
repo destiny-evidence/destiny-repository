@@ -11,7 +11,7 @@ from elasticsearch.dsl import AsyncDocument, AsyncIndex
 from opentelemetry import trace
 from taskiq import AsyncTaskiqDecoratedTask
 
-from app.core.exceptions import InvalidPayloadError, NotFoundError
+from app.core.exceptions import NotFoundError
 from app.core.telemetry.attributes import (
     Attributes,
     set_span_status,
@@ -169,9 +169,9 @@ class IndexManager:
                 attribute=Attributes.DB_RECORD_COUNT, value=len(document_ids)
             )
             if not self.repair_subset_task:
-                msg = f"Subset repair is not supported for index {self.alias_name}"
+                msg = f"No subset repair task configured for index {self.alias_name}"
                 set_span_status(status=trace.StatusCode.ERROR, detail=msg)
-                raise InvalidPayloadError(msg)
+                raise NotFoundError(msg)
             await queue_task_with_trace(
                 self.repair_subset_task,
                 document_ids,
