@@ -169,13 +169,11 @@ async def repair_elasticsearch_index(
             f"Subset repair task for {len(document_ids)} document(s) in index "
             f"{index_manager.alias_name} has been initiated."
         )
-    elif rebuild:
-        await index_manager.rebuild_index()
-        message = (
-            f"Rebuild task for index {index_manager.alias_name} has been initiated."
-        )
     else:
-        await index_manager.repair_index()
+        if rebuild:
+            await index_manager.rebuild_index()
+        else:
+            await index_manager.repair_index()
         message = (
             f"Repair task for index {index_manager.alias_name} has been initiated."
         )
