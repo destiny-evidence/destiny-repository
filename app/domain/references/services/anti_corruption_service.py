@@ -23,6 +23,7 @@ from app.domain.references.models.models import (
     RobotResultValidationEntry,
     SearchExport,
 )
+from app.domain.references.services.access_control_service import RedactedReference
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
@@ -71,7 +72,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return reference
 
     async def reference_to_sdk(
-        self, reference: Reference
+        self, reference: RedactedReference
     ) -> destiny_sdk.references.Reference:
         """Convert the reference to a Reference SDK model."""
         try:
@@ -396,7 +397,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     async def two_stage_reference_search_result_to_sdk(
         self,
         search_result: ESSearchResult,
-        references: list[Reference],
+        references: list[RedactedReference],
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert a search result and retrieved references to the SDK model."""
         try:

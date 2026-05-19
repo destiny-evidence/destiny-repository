@@ -318,7 +318,7 @@ async def test_requires_scope_success(
     token = generate_keycloak_token(scope=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
     credentials.credentials = token
-    assert await auth(fake_request, credentials) is True
+    assert isinstance(await auth(fake_request, credentials), frozenset)
 
 
 async def test_requires_role_success(
@@ -334,7 +334,7 @@ async def test_requires_role_success(
     token = generate_keycloak_token(role=FakeAuthRoles.READER.value)
     credentials = Mock()
     credentials.credentials = token
-    assert await auth_with_role(fake_request, credentials) is True
+    assert isinstance(await auth_with_role(fake_request, credentials), frozenset)
 
 
 async def test_requires_scope_not_found(
@@ -398,7 +398,7 @@ async def test_scope_fallback_to_role(  # noqa: PLR0913
     token = generate_keycloak_token(scope="openid", role=FakeAuthRoles.READER.value)
     credentials = Mock()
     credentials.credentials = token
-    assert await auth(fake_request, credentials) is True
+    assert isinstance(await auth(fake_request, credentials), frozenset)
 
 
 async def test_missing_credentials(
