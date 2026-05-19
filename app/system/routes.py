@@ -1,7 +1,7 @@
 """Router for system utility endpoints."""
 
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid7
 
 from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
@@ -136,17 +136,22 @@ async def repair_elasticsearch_index(
         ),
     ] = False,
     document_ids: Annotated[
-        list[UUID] | None,
+        list[UUID],  # noqa: RUF013: docs are more accurately generated with this transgression
         Body(
             embed=True,
             min_length=1,
             max_length=settings.es_reference_repair_chunk_size,
+            title="Document IDs to repair",
             description=(
                 "If provided, only the documents with these IDs will be repaired. "
                 "Cannot be combined with rebuild=true."
             ),
+            examples=[
+                [uuid7(), uuid7()],
+                None,
+            ],
         ),
-    ] = None,
+    ] = None,  # type: ignore[assignment]
     index_manager: Annotated[IndexManager, Depends(get_index_manager)],
 ) -> JSONResponse:
     """Repair an index (update all documents per their SQL counterparts)."""
