@@ -1,5 +1,6 @@
 """Service for managing batch enhancements."""
 
+import mimetypes
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import NamedTuple
 from uuid import UUID
@@ -7,7 +8,16 @@ from uuid import UUID
 import destiny_sdk
 from opentelemetry import trace
 
-from app.core.exceptions import VocabularyFetchError
+from app.core.config import get_settings
+from app.core.exceptions import (
+    BlobSizeExceededError,
+    FullTextDownloadError,
+    FullTextIngestionError,
+    FullTextIntegrityError,
+    FullTextSizeExceededError,
+    RemoteBlobStorageError,
+    VocabularyFetchError,
+)
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.otel import new_linked_trace
@@ -32,6 +42,7 @@ from app.domain.references.services.linked_data_validation_service import (
 )
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
+    BlobContainer,
     BlobStorageFile,
 )
 from app.persistence.blob.repository import BlobRepository
@@ -40,6 +51,7 @@ from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 class ProcessedResults(NamedTuple):
@@ -63,6 +75,102 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
         self._linked_data_validation_service = linked_data_validation_service
+
+    async def store_full_text(
+        self,
+        enhancement: Enhancement,
+        blob_repository: BlobRepository,
+    ) -> None:
+        """
+        Copy a full-text enhancement's remote content into our blob storage.
+
+        Mutates ``enhancement.content`` in place: ``blob`` is swapped to the
+        owned location and ``byte_size`` / ``sha256_checksum`` are populated
+        from the copy result if they were not declared.
+
+        :raises ValueError: if ``enhancement`` is not a full-text enhancement.
+            Callers are expected to filter by type before calling.
+        :raises FullTextIngestionError: if the blob is not remote, the remote
+            fetch fails, or declared sha256/byte_size disagrees with the
+            computed value.
+        """
+        content = enhancement.content
+        if content.enhancement_type != EnhancementType.FULL_TEXT:
+            msg = (
+                f"store_full_text called with non-full-text enhancement "
+                f"{enhancement.id} (type {content.enhancement_type})"
+            )
+            raise ValueError(msg)
+        if not content.blob.is_remote:
+            msg = (
+                f"store_full_text called with non-remote blob for enhancement "
+                f"{enhancement.id}: {content.blob.to_uri()}"
+            )
+            raise FullTextIngestionError(msg)
+
+        source = content.blob
+        extension = mimetypes.guess_extension(content.mime_type) or ".bin"
+        destination = blob_repository.destination(
+            path=str(enhancement.id),
+            filename=f"{enhancement.reference_id}{extension}",
+            container=BlobContainer.FULL_TEXTS,
+        )
+        logger.info(
+            "Storing full text enhancement.",
+            reference_id=str(enhancement.reference_id),
+            enhancement_id=str(enhancement.id),
+            source_uri=source.to_uri(),
+            destination_uri=destination.to_uri(),
+        )
+
+        try:
+            result = await blob_repository.copy(
+                source,
+                destination,
+                max_bytes=settings.full_text_max_byte_size,
+                content_type=content.mime_type,
+            )
+        except BlobSizeExceededError as exc:
+            msg = (
+                f"Full text from {source.to_uri()} exceeds the configured "
+                f"maximum of {settings.full_text_max_byte_size} bytes."
+            )
+            raise FullTextSizeExceededError(msg) from exc
+        except RemoteBlobStorageError as exc:
+            msg = f"Failed to fetch full text from {source.to_uri()}: {exc.detail}"
+            raise FullTextDownloadError(msg) from exc
+
+        if (
+            content.sha256_checksum is not None
+            and content.sha256_checksum != result.sha256_checksum
+        ):
+            msg = (
+                f"sha256 mismatch for full text from {source.to_uri()}: "
+                f"declared {content.sha256_checksum!r}, "
+                f"computed {result.sha256_checksum!r}"
+            )
+            raise FullTextIntegrityError(msg)
+
+        if content.byte_size is not None and content.byte_size != result.byte_size:
+            msg = (
+                f"byte_size mismatch for full text from {source.to_uri()}: "
+                f"declared {content.byte_size}, computed {result.byte_size}"
+            )
+            raise FullTextIntegrityError(msg)
+
+        content.blob = result.destination
+        if content.sha256_checksum is None:
+            content.sha256_checksum = result.sha256_checksum
+        if content.byte_size is None:
+            content.byte_size = result.byte_size
+
+        logger.info(
+            "Stored full text enhancement.",
+            reference_id=str(enhancement.reference_id),
+            enhancement_id=str(enhancement.id),
+            byte_size=result.byte_size,
+            sha256_checksum=result.sha256_checksum,
+        )
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
@@ -321,6 +429,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         add_enhancement: Callable[
             [Enhancement], Awaitable[tuple[PendingEnhancementStatus, str]]
         ],
+        blob_repository: BlobRepository,
         line_no: int,
         attempted_reference_ids: set[UUID],
         results: ProcessedResults,
@@ -340,6 +449,27 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_to_add
         )
         trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
+
+        # Store remote FT blobs before they reach the persistence boundary.
+        if enhancement.content.enhancement_type == EnhancementType.FULL_TEXT:
+            try:
+                await self.store_full_text(enhancement, blob_repository)
+            except FullTextIngestionError as exc:
+                logger.warning(
+                    "Failed to store full text enhancement from robot result.",
+                    line_no=line_no,
+                    reference_id=str(enhancement.reference_id),
+                    enhancement_id=str(enhancement.id),
+                    exc=repr(exc),
+                )
+                return (
+                    self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+                        RobotResultValidationEntry(
+                            reference_id=enhancement_to_add.reference_id,
+                            error=str(exc),
+                        )
+                    ).to_jsonl()
+                )
 
         status, message = await add_enhancement(enhancement)
 
@@ -480,6 +610,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                                 result_entry = await self._process_enhancement_line(
                                     validated_result.enhancement_to_add,
                                     add_enhancement,
+                                    blob_repository,
                                     line_no,
                                     attempted_reference_ids,
                                     results,

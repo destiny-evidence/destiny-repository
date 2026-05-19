@@ -88,30 +88,26 @@ def test_full_text_enhancement_json_mode_round_trip():
     assert restored.content.blob == full_text.blob
 
 
-def test_full_text_enhancement_fingerprint_stable_across_identical_content():
-    """Two full-texts with identical content fields share a fingerprint."""
-    a = FullTextEnhancementFactory.build()
-    b = a.model_copy(deep=True)
-    assert a.fingerprint == b.fingerprint
+def test_full_text_enhancement_fingerprint_is_content_identity():
+    """Fingerprint excludes transient storage details and tracks content fields.
 
-
-def test_full_text_enhancement_fingerprint_ignores_retrieved_at_and_blob():
-    """blob describes where we stored it, not what it is."""
+    blob (where we stored it) and retrieved_at (when we fetched it) are
+    incidental; sha256_checksum is the canonical content-identity field.
+    """
     a = FullTextEnhancementFactory.build()
-    b = a.model_copy(
+
+    # Same content, different storage/timing: fingerprint matches.
+    same_content = a.model_copy(
         update={
             "retrieved_at": datetime(2020, 1, 1, tzinfo=UTC),
             "blob": BlobStorageFileFactory.build(),
         }
     )
-    assert a.fingerprint == b.fingerprint
+    assert a.fingerprint == same_content.fingerprint
 
-
-def test_full_text_enhancement_fingerprint_changes_with_content():
-    """Changing the sha256 (the canonical content-identity field) shifts it."""
-    a = FullTextEnhancementFactory.build()
-    b = a.model_copy(update={"sha256_checksum": "different"})
-    assert a.fingerprint != b.fingerprint
+    # Different sha256: fingerprint diverges.
+    different_content = a.model_copy(update={"sha256_checksum": "different"})
+    assert a.fingerprint != different_content.fingerprint
 
 
 @pytest.fixture

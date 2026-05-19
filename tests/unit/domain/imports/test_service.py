@@ -95,7 +95,9 @@ async def test_import_reference_happy_path(fake_repository, fake_uow, import_res
         reference=destiny_sdk.references.ReferenceFileInput(),
     )
 
-    await service.import_reference(fake_reference_service, import_result, "nonsense", 1)
+    await service.import_reference(
+        fake_reference_service, AsyncMock(), import_result, "nonsense", 1
+    )
 
     import_result = repo_results.get_first_record()
     assert import_result.id
@@ -119,7 +121,9 @@ async def test_import_reference_reference_not_created(
         errors=[import_reference_error]
     )
 
-    await service.import_reference(fake_reference_service, import_result, "nonsense", 1)
+    await service.import_reference(
+        fake_reference_service, AsyncMock(), import_result, "nonsense", 1
+    )
 
     import_result = repo_results.get_first_record()
 
@@ -145,7 +149,9 @@ async def test_import_reference_reference_created_with_errors(
         errors=[import_reference_error],
     )
 
-    await service.import_reference(fake_reference_service, import_result, "nonsense", 1)
+    await service.import_reference(
+        fake_reference_service, AsyncMock(), import_result, "nonsense", 1
+    )
 
     import_result = repo_results.get_first_record()
     assert import_result.status == ImportResultStatus.PARTIALLY_FAILED
@@ -174,7 +180,7 @@ async def test_import_reference_sql_integrity_error(
     )
 
     result, _ = await service.import_reference(
-        fake_reference_service, import_result, "nonsense", 1
+        fake_reference_service, AsyncMock(), import_result, "nonsense", 1
     )
 
     assert result.status == ImportResultStatus.RETRYING

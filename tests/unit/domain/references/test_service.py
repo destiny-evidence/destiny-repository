@@ -35,9 +35,13 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.robots.models.models import Robot
-from app.persistence.blob.models import BlobStorageFile
+from app.persistence.blob.models import (
+    BlobStorageFile,
+)
 from app.utils.time_and_date import utc_now
-from tests.factories import ReferenceFactory
+from tests.factories import (
+    ReferenceFactory,
+)
 from tests.unit.domain.conftest import FakeRepository
 
 
@@ -374,7 +378,7 @@ async def test_ingest_reference(
     )
     dummy_parsed = ReferenceCreateResult(reference=dummy_reference_input)
 
-    mock_reference = Mock(id="reference-id")
+    mock_reference = Mock(id="reference-id", enhancements=[])
 
     # Patch deduplication service methods
     with (
@@ -398,7 +402,7 @@ async def test_ingest_reference(
             AsyncMock(return_value=find_exact_duplicate_return),
         ) as mock_find,
     ):
-        result = await service.ingest_reference("{}", 1)
+        result = await service.ingest_reference("{}", 1, AsyncMock())
         mock_find.assert_awaited_once()
         mock_register.assert_awaited_once()
         if should_merge:
