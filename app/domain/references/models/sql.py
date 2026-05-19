@@ -29,7 +29,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     PendingEnhancementStatus,
-    ReferenceExportStatus,
+    SearchExportStatus,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -51,13 +51,13 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
-    ReferenceExport as DomainReferenceExport,
-)
-from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
+)
+from app.domain.references.models.models import (
+    SearchExport as DomainSearchExport,
 )
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.generics import GenericSQLPreloadableType
@@ -442,10 +442,10 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         )
 
 
-class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
-    """SQL Persistence model for a ReferenceExport job."""
+class SearchExport(GenericSQLPersistence[DomainSearchExport]):
+    """SQL Persistence model for a SearchExport job."""
 
-    __tablename__ = "reference_export"
+    __tablename__ = "search_export"
 
     query: Mapped[str] = mapped_column(String, nullable=False)
     annotation_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
@@ -455,7 +455,7 @@ class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
-    status: Mapped[ReferenceExportStatus] = mapped_column(String, nullable=False)
+    status: Mapped[SearchExportStatus] = mapped_column(String, nullable=False)
 
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
     n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -465,8 +465,8 @@ class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
     error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
-    def from_domain(cls, domain_obj: DomainReferenceExport) -> Self:
-        """Create a persistence model from a domain ReferenceExport object."""
+    def from_domain(cls, domain_obj: DomainSearchExport) -> Self:
+        """Create a persistence model from a domain SearchExport object."""
         return cls(
             id=domain_obj.id,
             query=domain_obj.query,
@@ -488,9 +488,9 @@ class ReferenceExport(GenericSQLPersistence[DomainReferenceExport]):
     def to_domain(
         self,
         preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
-    ) -> DomainReferenceExport:
-        """Convert the persistence model into a Domain ReferenceExport object."""
-        return DomainReferenceExport(
+    ) -> DomainSearchExport:
+        """Convert the persistence model into a Domain SearchExport object."""
+        return DomainSearchExport(
             id=self.id,
             query=self.query,
             annotation_filters=[

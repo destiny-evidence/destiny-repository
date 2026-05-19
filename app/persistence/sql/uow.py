@@ -23,10 +23,10 @@ from app.domain.references.repository import (
     ExternalIdentifierSQLRepository,
     PendingEnhancementSQLRepository,
     ReferenceDuplicateDecisionSQLRepository,
-    ReferenceExportSQLRepository,
     ReferenceSQLRepository,
     RobotAutomationSQLRepository,
     RobotEnhancementBatchSQLRepository,
+    SearchExportSQLRepository,
 )
 from app.domain.robots.repository import (
     RobotSQLRepository,
@@ -49,7 +49,7 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
     external_identifiers: ExternalIdentifierSQLRepository
     enhancements: EnhancementSQLRepository
     enhancement_requests: EnhancementRequestSQLRepository
-    reference_exports: ReferenceExportSQLRepository
+    search_exports: SearchExportSQLRepository
     robots: RobotSQLRepository
     robot_automations: RobotAutomationSQLRepository
     reference_duplicate_decisions: ReferenceDuplicateDecisionSQLRepository
@@ -71,7 +71,7 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
         self.external_identifiers = ExternalIdentifierSQLRepository(self.session)
         self.enhancements = EnhancementSQLRepository(self.session)
         self.enhancement_requests = EnhancementRequestSQLRepository(self.session)
-        self.reference_exports = ReferenceExportSQLRepository(self.session)
+        self.search_exports = SearchExportSQLRepository(self.session)
         self.robots = RobotSQLRepository(self.session)
         self.robot_automations = RobotAutomationSQLRepository(self.session)
         self.reference_duplicate_decisions = ReferenceDuplicateDecisionSQLRepository(

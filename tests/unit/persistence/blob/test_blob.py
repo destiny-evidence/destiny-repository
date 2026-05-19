@@ -215,7 +215,7 @@ class _RecordingClient(GenericBlobStorageClient):
         for chunk in self._chunks:
             yield chunk
 
-    async def generate_signed_url(self, file, interaction_type):
+    async def generate_signed_url(self, file, interaction_type, content_disposition):
         return "http://unused"
 
 
@@ -380,5 +380,6 @@ async def test_generic_blob_storage_client_interface():
             filename="f.txt",
         ),
         BlobSignedUrlType.DOWNLOAD,
+        None,
     )
     assert url.startswith("http://signed/")

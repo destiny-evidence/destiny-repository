@@ -78,8 +78,8 @@ class ReferenceSearchResult(SearchResultMixIn, BaseModel):
     )
 
 
-class ReferenceExportStatus(StrEnum):
-    """The status of a reference export job."""
+class SearchExportStatus(StrEnum):
+    """The status of a search export job."""
 
     PENDING = auto()
     """The export job has been queued but not yet started."""
@@ -91,11 +91,11 @@ class ReferenceExportStatus(StrEnum):
     """The export job failed before producing a file."""
 
 
-class ReferenceExportRead(BaseModel):
-    """A reference export job, used to poll for status and a signed URL."""
+class SearchExportRead(BaseModel):
+    """A search export job, used to poll for status and a signed URL."""
 
     id: UUID = Field(description="The ID of the export job.")
-    status: ReferenceExportStatus = Field(
+    status: SearchExportStatus = Field(
         description="The current status of the export job.",
     )
     result_url: HttpUrl | None = Field(
