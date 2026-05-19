@@ -7,6 +7,7 @@ from uuid import UUID
 from opentelemetry import trace
 from structlog.contextvars import bound_contextvars
 
+from app.api.auth import Entitlement
 from app.core.config import Environment, get_settings
 from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import (
@@ -23,6 +24,9 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -175,13 +179,23 @@ async def validate_and_import_robot_enhancement_batch_result(
 
 
 @broker.task
-async def run_search_export_task(search_export_id: UUID) -> None:
-    """Run a search export job and write its result to blob storage."""
+async def run_search_export_task(
+    search_export_id: UUID, entitlements: list[str]
+) -> None:
+    """
+    Run a search export job and write its result to blob storage.
+
+    ``entitlements`` is the caller's entitlement snapshot, taken at enqueue
+    time, used to redact references before they're streamed to blob storage.
+    """
     name_span("Run search export")
     trace_attribute(Attributes.SEARCH_EXPORT_ID, str(search_export_id))
     logger.info(
         "Running search export",
         search_export_id=str(search_export_id),
+    )
+    access_control_service = ReferenceAccessControlService(
+        entitlements=frozenset(Entitlement(e) for e in entitlements)
     )
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
@@ -195,6 +209,7 @@ async def run_search_export_task(search_export_id: UUID) -> None:
             anti_corruption_service=reference_anti_corruption_service,
             sql_uow=sql_uow,
             es_uow=es_uow,
+            access_control_service=access_control_service,
             get_jsonl_deduplicated_references=(
                 reference_service.get_jsonl_deduplicated_references
             ),

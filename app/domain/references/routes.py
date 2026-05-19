@@ -129,25 +129,6 @@ def reference_service(
     )
 
 
-def search_export_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
-    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
-    reference_anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> SearchExportService:
-    """Return the search export service."""
-    return SearchExportService(
-        anti_corruption_service=reference_anti_corruption_service,
-        sql_uow=sql_uow,
-        es_uow=es_uow,
-        get_jsonl_deduplicated_references=(
-            reference_service.get_jsonl_deduplicated_references
-        ),
-    )
-
-
 def robot_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     robot_anti_corruption_service: Annotated[
@@ -214,6 +195,29 @@ def reference_reader_access_control_service(
 ) -> ReferenceAccessControlService:
     """Build the reference ACL for routes guarded by the reference-reader auth."""
     return ReferenceAccessControlService(entitlements=entitlements)
+
+
+def search_export_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
+) -> SearchExportService:
+    """Return the search export service."""
+    return SearchExportService(
+        anti_corruption_service=reference_anti_corruption_service,
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        access_control_service=access_control_service,
+        get_jsonl_deduplicated_references=(
+            reference_service.get_jsonl_deduplicated_references
+        ),
+    )
 
 
 def reference_hybrid_access_control_service(
@@ -436,6 +440,7 @@ async def request_search_export(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
     q: Annotated[
         str,
         Query(min_length=1, description="The query string."),
@@ -471,6 +476,7 @@ async def request_search_export(
             run_search_export_task,
             long_running=True,
             search_export_id=search_export.id,
+            entitlements=entitlements,
             otel_enabled=settings.otel_enabled,
         )
     except Exception as exc:
