@@ -11,8 +11,11 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
-from app.api.exception_handlers import not_found_exception_handler
-from app.core.exceptions import NotFoundError
+from app.api.exception_handlers import (
+    invalid_payload_exception_handler,
+    not_found_exception_handler,
+)
+from app.core.exceptions import InvalidPayloadError, NotFoundError
 from app.domain.references import tasks as reference_tasks
 from app.domain.references.models.models import Visibility
 from app.domain.references.models.sql import (
@@ -255,6 +258,7 @@ def app() -> FastAPI:
     app = FastAPI(
         exception_handlers={
             NotFoundError: not_found_exception_handler,
+            InvalidPayloadError: invalid_payload_exception_handler,
         }
     )
     app.include_router(system_routes.router)
@@ -480,3 +484,114 @@ async def test_repair_auth_failure(
     # Clean up
     system_routes.system_utility_auth.reset()
     system_routes.settings.__init__()  # type: ignore[call-args, misc]
+
+
+async def test_repair_reference_index_subset_indexes_only_supplied_ids(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+    session: AsyncSession,
+) -> None:
+    """Subset repair re-indexes only the supplied reference IDs."""
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.initialize_index()
+    index_name = index_manager.alias_name
+
+    targeted_ids: list[UUID] = []
+    untargeted_ids: list[UUID] = []
+    for i in range(4):
+        reference_id = uuid7()
+        session.add(SQLReference(id=reference_id, visibility=Visibility.PUBLIC))
+        session.add(
+            SQLExternalIdentifier.from_domain(
+                LinkedExternalIdentifierFactory.build(
+                    reference_id=reference_id,
+                    identifier=DOIIdentifierFactory.build(
+                        identifier=f"10.1234/subset-ref-{i}"
+                    ),
+                )
+            )
+        )
+        session.add(
+            SQLEnhancement.from_domain(
+                EnhancementFactory.build(
+                    reference_id=reference_id,
+                    source="test_source",
+                    content=AnnotationEnhancementFactory.build(),
+                )
+            )
+        )
+        (targeted_ids if i < 2 else untargeted_ids).append(reference_id)
+    await session.commit()
+
+    response = await client.post(
+        f"/system/indices/{index_name}/repair/",
+        json={"document_ids": [str(rid) for rid in targeted_ids]},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    response_data = response.json()
+    assert response_data["status"] == "ok"
+    assert "Subset repair task for 2 document(s)" in response_data["message"]
+    assert index_name in response_data["message"]
+
+    await wait_for_all_tasks()
+    await es_client.indices.refresh(index=index_name)
+
+    es_response = await es_client.search(
+        index=index_name, body={"query": {"match_all": {}}, "size": 100}
+    )
+    indexed_ids = {hit["_id"] for hit in es_response["hits"]["hits"]}
+    assert indexed_ids == {str(rid) for rid in targeted_ids}
+    for rid in untargeted_ids:
+        assert str(rid) not in indexed_ids
+
+
+async def test_repair_subset_rejects_unsupported_index(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """Subset repair against an index without a subset task returns 422."""
+    index_manager = system_routes.robot_automation_percolation_index_manager(es_client)
+    await index_manager.initialize_index()
+
+    response = await client.post(
+        f"/system/indices/{index_manager.alias_name}/repair/",
+        json={"document_ids": [str(uuid7())]},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "Subset repair is not supported" in response.json()["detail"]
+
+
+async def test_repair_subset_rejects_rebuild_combo(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """Subset body + rebuild=true is incoherent and returns 422."""
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.initialize_index()
+
+    response = await client.post(
+        f"/system/indices/{index_manager.alias_name}/repair/",
+        params={"rebuild": True},
+        json={"document_ids": [str(uuid7())]},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "rebuild=true" in response.json()["detail"]
+
+
+async def test_repair_subset_rejects_empty_id_list(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """Empty document_ids list is rejected by the schema (422)."""
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.initialize_index()
+
+    response = await client.post(
+        f"/system/indices/{index_manager.alias_name}/repair/",
+        json={"document_ids": []},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

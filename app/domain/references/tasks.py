@@ -269,6 +269,27 @@ async def repair_reference_index_for_chunk(
 
 
 @broker.task
+async def repair_reference_index_subset(reference_ids: list[UUID]) -> None:
+    """Re-index a caller-supplied subset of references."""
+    name_span("Repair index subset")
+    trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
+    trace_attribute(Attributes.DB_RECORD_COUNT, len(reference_ids))
+    logger.info(
+        "Repairing reference index subset",
+        n_references=len(reference_ids),
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        await reference_service.index_references(reference_ids)
+
+
+@broker.task
 async def repair_robot_automation_percolation_index() -> None:
     """Async logic for repairing the robot automation percolation index."""
     name_span("Repair index")

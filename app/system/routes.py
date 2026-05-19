@@ -1,9 +1,10 @@
 """Router for system utility endpoints."""
 
 from typing import Annotated
+from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,7 @@ from app.api.auth import (
     choose_auth_strategy,
 )
 from app.core.config import get_settings
-from app.core.exceptions import ESNotFoundError
+from app.core.exceptions import ESNotFoundError, InvalidPayloadError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -23,6 +24,7 @@ from app.domain.references.models.es import (
 )
 from app.domain.references.tasks import (
     repair_reference_index,
+    repair_reference_index_subset,
     repair_robot_automation_percolation_index,
 )
 from app.persistence.es.client import get_client
@@ -41,6 +43,7 @@ def reference_index_manager(es_client: AsyncElasticsearch) -> IndexManager:
     return IndexManager(
         document_class=ReferenceDocument,
         repair_task=repair_reference_index,
+        repair_subset_task=repair_reference_index_subset,
         client=es_client,
         otel_enabled=settings.otel_enabled,
     )
@@ -128,24 +131,51 @@ async def repair_elasticsearch_index(
             "repaired. This involves downtime but is generally useful for updating "
             "index mappings or persisting a bulk delete at the SQL level. If false, "
             "the existing index will be updated in place without downtime, but removed"
-            " documents in SQL will not be removed from the index.",
+            " documents in SQL will not be removed from the index. Cannot be combined "
+            "with document_ids.",
         ),
     ] = False,
+    document_ids: Annotated[
+        list[UUID] | None,
+        Body(
+            embed=True,
+            min_length=1,
+            max_length=settings.es_reference_repair_chunk_size,
+            description=(
+                "If provided, only the documents with these IDs will be repaired. "
+                "Cannot be combined with rebuild=true."
+            ),
+        ),
+    ] = None,
     index_manager: Annotated[IndexManager, Depends(get_index_manager)],
 ) -> JSONResponse:
     """Repair an index (update all documents per their SQL counterparts)."""
-    if rebuild:
+    if rebuild and document_ids is not None:
+        raise InvalidPayloadError(
+            detail="rebuild=true cannot be combined with document_ids.",
+        )
+
+    if document_ids is not None:
+        await index_manager.repair_index(document_ids=document_ids)
+        message = (
+            f"Subset repair task for {len(document_ids)} document(s) in index "
+            f"{index_manager.alias_name} has been initiated."
+        )
+    elif rebuild:
         await index_manager.rebuild_index()
+        message = (
+            f"Rebuild task for index {index_manager.alias_name} has been initiated."
+        )
     else:
         await index_manager.repair_index()
+        message = (
+            f"Repair task for index {index_manager.alias_name} has been initiated."
+        )
 
     return JSONResponse(
         content={
             "status": "ok",
-            "message": (
-                f"Repair task for index {index_manager.alias_name} "
-                "has been initiated."
-            ),
+            "message": message,
         },
         status_code=status.HTTP_202_ACCEPTED,
     )
