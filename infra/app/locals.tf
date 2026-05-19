@@ -95,4 +95,9 @@ locals {
     "http://localhost",
     "https://oauth.pstmn.io/v1/callback",
   ]
+
+  cors_allow_origins = concat(var.cors_allow_origins, [
+    "https://${local.ui_hostname}",
+    "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
+  ])
 }
