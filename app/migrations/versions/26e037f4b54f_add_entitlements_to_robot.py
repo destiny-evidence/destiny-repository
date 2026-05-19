@@ -2,7 +2,7 @@
 Add entitlements to robot
 
 Revision ID: 26e037f4b54f
-Revises: 5bdf392a9e6a
+Revises: 88264d67fc82
 Create Date: 2026-05-14 01:05:08.034601+00:00
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '26e037f4b54f'
-down_revision: Union[str, None] = '5bdf392a9e6a'
+down_revision: Union[str, None] = '88264d67fc82'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
