@@ -105,7 +105,7 @@ class GenericBlobStorageClient(ABC):
         :param content_disposition: Override for the Content-Disposition response
             header served when the signed URL is fetched. Set to ``"attachment"``
             for untrusted content (e.g. full-text blobs) to neutralize inline
-            browser rendering. Ignored for ``UPLOAD``.
+            browser rendering. Included only for ``DOWNLOAD`` interactions.
         :type content_disposition: str | None
         :return: The signed URL for the file.
         :rtype: str
