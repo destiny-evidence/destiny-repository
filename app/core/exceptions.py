@@ -471,6 +471,36 @@ class MinioBlobStorageError(BlobStorageError):
         super().__init__(detail, *args)
 
 
+class RemoteBlobStorageError(BlobStorageError):
+    """Exception for remote blob storage errors."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the RemoteBlobStorageError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class BlobSizeExceededError(BlobStorageError):
+    """A blob operation exceeded the caller-supplied maximum byte size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the BlobSizeExceededError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class AuthError(destiny_sdk.auth.AuthException):
     """An exception thrown by the authentication system."""
 
