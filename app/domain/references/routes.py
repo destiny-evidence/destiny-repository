@@ -48,7 +48,7 @@ from app.core.exceptions import (
 )
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
     PendingEnhancementStatus,
@@ -475,6 +475,7 @@ async def request_search_export(
         await queue_task_with_trace(
             run_search_export_task,
             long_running=True,
+            priority=TaskPriority.HIGH,
             search_export_id=search_export.id,
             entitlements=entitlements,
             otel_enabled=settings.otel_enabled,
