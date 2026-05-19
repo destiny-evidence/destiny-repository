@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextvars
 import importlib
+from enum import IntEnum
 from typing import Any
 
 from opentelemetry import context, trace
@@ -23,10 +24,23 @@ tracer = trace.get_tracer(__name__)
 logger = get_logger(__name__)
 
 
+class TaskPriority(IntEnum):
+    """
+    Priority levels for queued tasks.
+
+    May be used to set on-wire priority header, or to route to different
+    queues depending on broker implementation.
+    """
+
+    NORMAL = 0
+    HIGH = 5
+
+
 async def queue_task_with_trace(
     task: AsyncTaskiqDecoratedTask | tuple[str, str],
     *args: object,
     long_running: bool = False,
+    priority: TaskPriority = TaskPriority.NORMAL,
     otel_enabled: bool,
     **kwargs: object,
 ) -> None:
@@ -39,6 +53,8 @@ async def queue_task_with_trace(
     :type args: object
     :param long_running: Whether the task is long-running and needs lock renewal.
     :type long_running: bool
+    :param priority: Priority of the task.
+    :type priority: TaskPriority
     :param kwargs: Keyword arguments for the task.
     :type kwargs: object
 
@@ -55,10 +71,12 @@ async def queue_task_with_trace(
         task = imported_task
 
     task.labels["renew_lock"] = long_running
+    task.labels["priority"] = priority.value
 
     logger.info(
         "Queueing task",
         task_name=task.task_name,
+        priority=priority.name,
         **{k: str(v) for k, v in kwargs.items()},
     )
     if not otel_enabled:
