@@ -26,6 +26,7 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.export_service import SearchExportService
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -171,6 +172,34 @@ async def validate_and_import_robot_enhancement_batch_result(
             source_str=f"RobotEnhancementBatch:{robot_enhancement_batch.id}",
             skip_robot_id=robot_enhancement_batch.robot_id,
         )
+
+
+@broker.task
+async def run_search_export_task(search_export_id: UUID) -> None:
+    """Run a search export job and write its result to blob storage."""
+    name_span("Run search export")
+    trace_attribute(Attributes.SEARCH_EXPORT_ID, str(search_export_id))
+    logger.info(
+        "Running search export",
+        search_export_id=str(search_export_id),
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        search_export_service = SearchExportService(
+            anti_corruption_service=reference_anti_corruption_service,
+            sql_uow=sql_uow,
+            es_uow=es_uow,
+            get_jsonl_deduplicated_references=(
+                reference_service.get_jsonl_deduplicated_references
+            ),
+        )
+        await search_export_service.run_search_export(search_export_id, blob_repository)
 
 
 @broker.task

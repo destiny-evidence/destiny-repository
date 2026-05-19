@@ -66,6 +66,19 @@ class EnhancementRequestStatus(StrEnum):
     """All enhancements have been created."""
 
 
+class SearchExportStatus(StrEnum):
+    """The status of a search export job."""
+
+    PENDING = auto()
+    """Export job has been queued."""
+    RUNNING = auto()
+    """Export job is being processed."""
+    COMPLETED = auto()
+    """Export job has completed and the file is available."""
+    FAILED = auto()
+    """Export job failed before producing a file."""
+
+
 class Visibility(StrEnum):
     """
     The visibility of a data element in the repository.
@@ -507,6 +520,54 @@ Errors for individual references are provided <TBC>.
     def n_references(self) -> int:
         """The number of references in the request."""
         return len(self.reference_ids)
+
+
+class SearchExport(DomainBaseModel, SQLAttributeMixin):
+    """A queued job that produces a JSONL file of references matching a search."""
+
+    query: str = Field(
+        description="The Lucene query string the export is filtering on.",
+    )
+    annotation_filters: list["AnnotationFilter"] | None = Field(
+        default=None,
+        description="Parsed annotation filters to apply to the search, if any.",
+    )
+    start_year: int | None = Field(
+        default=None,
+        description="Inclusive lower bound on publication year, if any.",
+    )
+    end_year: int | None = Field(
+        default=None,
+        description="Inclusive upper bound on publication year, if any.",
+    )
+    sort: list[str] | None = Field(
+        default=None,
+        description="Sort fields, in the same form `/references/search/` accepts.",
+    )
+    status: SearchExportStatus = Field(
+        default=SearchExportStatus.PENDING,
+        description="The current status of the export job.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The JSONL file produced by the job, once completed.",
+    )
+    n_references: int | None = Field(
+        default=None,
+        description="The number of references in the produced file.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the matching result set was larger than the server's "
+            "result-window cap. When true, the JSONL contains only the first "
+            "window's worth of matches."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message, if the job failed.",
+    )
 
 
 class RobotResultValidationEntry(DomainBaseModel):

@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -62,8 +62,10 @@ from app.domain.references.services.access_control_service import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.export_service import SearchExportService
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
+    run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.service import RobotService
@@ -124,6 +126,25 @@ def reference_service(
         sql_uow=sql_uow,
         es_uow=es_uow,
         anti_corruption_service=reference_anti_corruption_service,
+    )
+
+
+def search_export_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+) -> SearchExportService:
+    """Return the search export service."""
+    return SearchExportService(
+        anti_corruption_service=reference_anti_corruption_service,
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        get_jsonl_deduplicated_references=(
+            reference_service.get_jsonl_deduplicated_references
+        ),
     )
 
 
@@ -214,6 +235,11 @@ search_router = APIRouter(
     tags=["search"],
     dependencies=[Depends(reference_reader_auth)],
 )
+exports_router = APIRouter(
+    prefix="/exports",
+    tags=["exports"],
+    dependencies=[Depends(reference_reader_auth)],
+)
 enhancement_request_router = APIRouter(
     prefix="/enhancement-requests",
     tags=["enhancement-requests"],
@@ -260,9 +286,12 @@ def parse_publication_year_range(
 ) -> PublicationYearRange | None:
     """Parse a publication year range from a query parameter."""
     if start_year or end_year:
-        return anti_corruption_service.publication_year_range_from_query_parameter(
-            start_year, end_year
-        )
+        try:
+            return anti_corruption_service.publication_year_range_from_query_parameter(
+                start_year, end_year
+            )
+        except (ValueError, ValidationError) as exc:
+            raise ParseError(detail=str(exc)) from exc
     return None
 
 
@@ -295,12 +324,15 @@ def parse_annotation_filters(
     """Parse annotation filters from query parameters."""
     if not annotation:
         return []
-    return [
-        anti_corruption_service.annotation_filter_from_query_parameter(
-            annotation_filter_string
-        )
-        for annotation_filter_string in annotation
-    ]
+    try:
+        return [
+            anti_corruption_service.annotation_filter_from_query_parameter(
+                annotation_filter_string
+            )
+            for annotation_filter_string in annotation
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
 
 
 @search_router.get(
@@ -347,13 +379,13 @@ async def search_references(
         int,
         Query(
             ge=1,
-            le=10_000 / 20,  # Elasticsearch max result window divided by page size
+            le=SearchService.MAX_RESULT_WINDOW / 20,
             description="The page number to retrieve, indexed from 1. "
             "Each page contains 20 results.",
         ),
     ] = 1,
     sort: Annotated[
-        list[str],
+        list[str] | None,
         Query(
             description="A list of fields to sort the results by. "
             "Prefix a field with `-` to sort in descending order. "
@@ -387,8 +419,110 @@ async def search_references(
     )
 
 
-# NB it's important this occurs before defining `/references/{reference_id}/` route
+@exports_router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+    description=(
+        "Queue an export job that produces a JSONL file of references matching the "
+        "given search. Accepts the same filter parameters as `/references/search/` "
+        "without pagination. Returns the job id with `status: pending`; poll "
+        "`GET /references/search/exports/{id}/` until the job completes."
+    ),
+)
+async def request_search_export(
+    search_export_service: Annotated[
+        SearchExportService, Depends(search_export_service)
+    ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    q: Annotated[
+        str,
+        Query(min_length=1, description="The query string."),
+    ],
+    annotation_filters: Annotated[
+        list[AnnotationFilter],
+        Depends(parse_annotation_filters),
+    ],
+    publication_year_range: Annotated[
+        PublicationYearRange | None,
+        Depends(parse_publication_year_range),
+    ],
+    sort: Annotated[
+        list[str] | None,
+        Query(
+            description="A list of fields to sort the results by. "
+            "Prefix a field with `-` to sort in descending order. "
+            "If omitted, will sort by relevance score descending. "
+            "Multiple sort fields can be provided and will be applied "
+            "in the order given. Sort fields cannot be `text` fields.",
+        ),
+    ] = None,
+) -> destiny_sdk.references.SearchExportRead:
+    """Queue a search export job and return its id and pending status."""
+    search_export = await search_export_service.request_search_export(
+        query=q,
+        annotation_filters=annotation_filters or None,
+        publication_year_range=publication_year_range,
+        sort=sort,
+    )
+    try:
+        await queue_task_with_trace(
+            run_search_export_task,
+            long_running=True,
+            search_export_id=search_export.id,
+            otel_enabled=settings.otel_enabled,
+        )
+    except Exception as exc:
+        # If the broker is unreachable the row would otherwise be stuck in
+        # `pending` forever, so flip it to `failed` and surface a retryable
+        # error to the caller.
+        logger.exception(
+            "Failed to enqueue search export task",
+            search_export_id=str(search_export.id),
+        )
+        search_export = await search_export_service.fail_search_export(
+            search_export.id,
+            f"Failed to enqueue export task: {exc}",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not enqueue search export job; please retry.",
+        ) from exc
+    return await anti_corruption_service.search_export_to_sdk(search_export)
+
+
+@exports_router.get(
+    "/{search_export_id}/",
+    description=(
+        "Get the status of a search export job. Once `status` is "
+        "`completed`, the response includes a signed `result_url` for the "
+        "produced JSONL file, and `truncated: true` if the matching set "
+        f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
+        f"file contains only the first {SearchService.MAX_RESULT_WINDOW:,} "
+        "matches). The URL is re-signed on each call, so an expired URL can "
+        "be refreshed by polling again."
+    ),
+)
+async def get_search_export(
+    search_export_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the search export job.")
+    ],
+    search_export_service: Annotated[
+        SearchExportService, Depends(search_export_service)
+    ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> destiny_sdk.references.SearchExportRead:
+    """Get the status of a search export job, including its signed URL."""
+    search_export = await search_export_service.get_search_export(search_export_id)
+    return await anti_corruption_service.search_export_to_sdk(search_export)
+
+
+# NB it's important these occur before defining `/references/{reference_id}/` route
 # to avoid route conflicts. Order matters for FastAPI route matching.
+search_router.include_router(exports_router)
 reference_router.include_router(search_router)
 
 

@@ -83,18 +83,11 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             content_type=content_type or infer_content_type(file.filename)
         )
         try:
-            if isinstance(content, FileStream):
-                await blob_client.upload_blob(
-                    content.stream(),
-                    overwrite=True,
-                    content_settings=content_settings,
-                )
-            else:
-                await blob_client.upload_blob(
-                    content,
-                    overwrite=True,
-                    content_settings=content_settings,
-                )
+            await blob_client.upload_blob(
+                content.stream() if isinstance(content, FileStream) else content,
+                overwrite=True,
+                content_settings=content_settings,
+            )
         except Exception as e:
             msg = f"Failed to upload file to Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
