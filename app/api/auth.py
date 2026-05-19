@@ -15,7 +15,7 @@ import hmac
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from enum import StrEnum, auto
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, NamedTuple, Protocol
 from uuid import UUID
 
 import destiny_sdk
@@ -55,6 +55,7 @@ class AuthRole(StrEnum):
     REFERENCE_DEDUPLICATOR = "reference.deduplicator"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
     ROBOT_WRITER = "robot.writer"
+    ROBOT_ENTITLEMENT_WRITER = "robot.entitlement.writer"
 
 
 class AuthScope(StrEnum):
@@ -67,6 +68,7 @@ class AuthScope(StrEnum):
     REFERENCE_DEDUPLICATOR = "reference.deduplicator.all"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer.all"
     ROBOT_WRITER = "robot.writer.all"
+    ROBOT_ENTITLEMENT_WRITER = "robot.entitlement.writer.all"
 
 
 class HMACClientType(StrEnum):
@@ -89,18 +91,23 @@ class SubjectType(StrEnum):
 
 
 class Entitlement(StrEnum):
-    """Enum describing the entitlements that can be granted to users or clients."""
+    """Capabilities that can be granted to an authenticated principal."""
 
     FULL_TEXT = auto()
+    ROBOT_ENTITLEMENT_WRITER = auto()
 
-
-_ROBOT_ENTITLEMENTS: frozenset[Entitlement] = frozenset()
 
 _ENTITLEMENT_TO_GRANTS: dict[Entitlement, frozenset[str]] = {
     Entitlement.FULL_TEXT: frozenset(
         {
             AuthScope.REFERENCE_FULL_TEXT_READER.value,
             AuthRole.REFERENCE_FULL_TEXT_READER.value,
+        }
+    ),
+    Entitlement.ROBOT_ENTITLEMENT_WRITER: frozenset(
+        {
+            AuthScope.ROBOT_ENTITLEMENT_WRITER.value,
+            AuthRole.ROBOT_ENTITLEMENT_WRITER.value,
         }
     ),
 }
@@ -111,14 +118,14 @@ def derive_entitlements(
     granted: frozenset[str] = frozenset(),
 ) -> frozenset[Entitlement]:
     """
-    Compute the entitlements granted to a principal.
+    Compute the entitlements granted to a JWT principal.
 
     ``granted`` is the union of scope and role strings carried in the token.
+    Robots authenticate via HMAC and source their entitlements from the
+    ``Robot`` record directly, bypassing this function.
     """
     if subject_type is SubjectType.BYPASS:
         return frozenset(Entitlement)
-    if subject_type is SubjectType.ROBOT:
-        return _ROBOT_ENTITLEMENTS
     return frozenset(
         entitlement
         for entitlement, grants in _ENTITLEMENT_TO_GRANTS.items()
@@ -830,29 +837,36 @@ def choose_auth_strategy(
     return _build_jwt_auth(application_id, auth_scope, auth_role)
 
 
+class ClientAuthInfo(NamedTuple):
+    """HMAC client credentials and entitlements as returned by the lookup callable."""
+
+    secret: str
+    entitlements: frozenset[Entitlement]
+
+
 class HMACMultiClientAuth(AuthMethod):
     """
     Adds HMAC auth that supports authenticating with multiple clients.
 
-    Uses a client secret lookup function provided at initialisation,
-    which is then called with the client_id provided in the request header.
+    Uses a client auth info lookup function provided at initialisation,
+    which is then called with the client_id provided in the request header
+    and returns the client's secret and entitlements.
     """
 
     def __init__(
         self,
-        get_client_secret: Callable[[UUID], Awaitable[str]],
+        get_client_auth_info: Callable[[UUID], Awaitable[ClientAuthInfo]],
         client_type: HMACClientType,
     ) -> None:
         """
-        Initialize with a client secret lookup callable.
+        Initialize with a client auth info lookup callable.
 
-        :param get_client_secret: Callable that will return the client secret an id.
-        :type get_client_secret: Callable[[UUID], Awaitable[str]]
+        :param get_client_auth_info: Callable returning ``(secret, entitlements)``
+            for a client id.
         :param client_type: The type of client this auth method is for.
             Only used for telemetry.
-        :type client_type: HMACClientType
         """
-        self.get_secret = get_client_secret
+        self.get_auth_info = get_client_auth_info
         self._type = client_type
 
     async def __call__(
@@ -873,7 +887,7 @@ class HMACMultiClientAuth(AuthMethod):
         request_body = await request.body()
 
         try:
-            secret_key = await self.get_secret(auth_headers.client_id)
+            auth_info = await self.get_auth_info(auth_headers.client_id)
         except NotFoundError as exc:
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -883,7 +897,7 @@ class HMACMultiClientAuth(AuthMethod):
             ) from exc
 
         expected_signature = destiny_sdk.client.create_signature(
-            secret_key=secret_key,
+            secret_key=auth_info.secret,
             request_body=request_body,
             client_id=auth_headers.client_id,
             timestamp=auth_headers.timestamp,
@@ -894,11 +908,11 @@ class HMACMultiClientAuth(AuthMethod):
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature is invalid."
             )
 
-        return derive_entitlements(SubjectType.ROBOT)
+        return auth_info.entitlements
 
 
 def choose_hmac_auth_strategy(
-    get_client_secret: Callable[[UUID], Awaitable[str]],
+    get_client_auth_info: Callable[[UUID], Awaitable[ClientAuthInfo]],
     client_type: HMACClientType,
 ) -> AuthMethod:
     """Choose an HMAC auth method."""
@@ -906,7 +920,7 @@ def choose_hmac_auth_strategy(
         return SuccessAuth()
 
     return HMACMultiClientAuth(
-        get_client_secret=get_client_secret, client_type=client_type
+        get_client_auth_info=get_client_auth_info, client_type=client_type
     )
 
 
@@ -934,7 +948,7 @@ class HybridAuth(AuthMethod):
                         scope=AuthScopes.READ,
                     ),
                     hmac_auth=HMACMultiClientAuth(
-                        get_client_secret=robot_service.get_robot_secret_standalone
+                        get_client_auth_info=robot_service.get_robot_auth_info
                     ),
                 )
                 return await hybrid_auth.authenticate(request, credentials)
@@ -978,7 +992,7 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
     application_id: str,
     jwt_scope: AuthScope | None,
     jwt_role: AuthRole | None,
-    get_client_secret: Callable[[UUID], Awaitable[str]],
+    get_client_auth_info: Callable[[UUID], Awaitable[ClientAuthInfo]],
     hmac_client_type: HMACClientType,
     *,
     bypass_auth: bool,
@@ -988,7 +1002,7 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
 
     :param application_id: Azure application ID for JWT validation
     :param jwt_scope: The required JWT scope/role
-    :param get_client_secret: Function to get HMAC client secrets
+    :param get_client_auth_info: Function to get HMAC client secret + entitlements
     :param bypass_auth: Whether to bypass auth (for local development)
     :return: FastAPI dependency function
     """
@@ -998,7 +1012,7 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
     return HybridAuth(
         jwt_auth=_build_jwt_auth(application_id, jwt_scope, jwt_role),
         hmac_auth=HMACMultiClientAuth(
-            get_client_secret=get_client_secret,
+            get_client_auth_info=get_client_auth_info,
             client_type=hmac_client_type,
         ),
     )

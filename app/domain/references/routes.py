@@ -175,7 +175,7 @@ async def enhancement_request_hybrid_auth(
         application_id=settings.azure_application_id,
         jwt_scope=AuthScope.ENHANCEMENT_REQUEST_WRITER,
         jwt_role=AuthRole.ENHANCEMENT_REQUEST_WRITER,
-        get_client_secret=robot_service.get_robot_secret_standalone,
+        get_client_auth_info=robot_service.get_robot_auth_info,
         hmac_client_type=HMACClientType.ROBOT,
         bypass_auth=settings.should_bypass_auth,
     )(request=request, credentials=credentials)

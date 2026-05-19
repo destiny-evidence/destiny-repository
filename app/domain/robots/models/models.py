@@ -2,6 +2,7 @@
 
 from pydantic import ConfigDict, Field, SecretStr
 
+from app.api.auth import Entitlement
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 
@@ -15,6 +16,11 @@ class Robot(DomainBaseModel, SQLAttributeMixin):
     name: str = Field(description="The name of the robot.")
 
     owner: str = Field(description="Owner of the robot.")
+
+    entitlements: frozenset[Entitlement] = Field(
+        default_factory=frozenset,
+        description="Entitlements granted to this robot.",
+    )
 
     client_secret: SecretStr | None = Field(
         default=None,
