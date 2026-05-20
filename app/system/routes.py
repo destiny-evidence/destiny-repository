@@ -146,8 +146,8 @@ async def repair_elasticsearch_index(
         Query(
             description="If true, every document in the index will be re-indexed in "
             "place from its SQL counterpart, with no downtime. Removed SQL documents "
-            "will NOT be removed from the index (use rebuild for that). Cannot be "
-            "combined with rebuild or document_ids.",
+            "will not be removed from the index. Cannot be combined with rebuild or "
+            "document_ids.",
         ),
     ] = False,
     document_ids: Annotated[
@@ -172,7 +172,35 @@ async def repair_elasticsearch_index(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     index_manager: Annotated[IndexManager, Depends(get_index_manager)],
 ) -> JSONResponse:
-    """Repair an index (update all documents per their SQL counterparts)."""
+    """
+    Repair an index (update all documents per their SQL counterparts).
+
+    Exactly one of `rebuild`, `repair_all`, or `document_ids` must be supplied.
+
+    **Rebuild (destructive, with downtime):**
+    ```
+    POST /system/indices/reference/repair/?rebuild=true
+    ```
+
+    **Repair every document in-place (no downtime, but does not remove docs
+    deleted from SQL):**
+    ```
+    POST /system/indices/reference/repair/?repair_all=true
+    ```
+
+    **Repair only a specific subset of documents (reference index only):**
+    ```
+    POST /system/indices/reference/repair/
+    Content-Type: application/json
+
+    {
+      "document_ids": [
+        "01935f56-2c8e-7000-8000-000000000001",
+        "01935f56-2c8e-7000-8000-000000000002"
+      ]
+    }
+    ```
+    """
     actions_selected = sum((rebuild, repair_all, document_ids is not None))
     if actions_selected != 1:
         raise InvalidPayloadError(
