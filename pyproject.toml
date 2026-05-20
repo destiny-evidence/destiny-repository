@@ -104,7 +104,7 @@ filterwarnings = [
 ]
 norecursedirs = ["tests/e2e"]
 pythonpath = "."
-testpaths = ["libs/ad_hoc/tests", "libs/sdk/tests", "tests"]
+testpaths = ["libs/ad_hoc/tests", "libs/eppi_importer/tests", "libs/sdk/tests", "tests"]
 
 [tool.ruff]
 extend-exclude = ["app/migrations/versions/*.py", "docs/*.py"]

@@ -38,8 +38,8 @@ def main() -> None:
         "--input-codec",
         "-ic",
         type=str,
-        default="latin-1",
-        help="The codec to decode the input file with, defaults to 'latin-1'",
+        default="utf-8",
+        help="The codec to decode the input file with, defaults to 'utf-8'",
     )
 
     arg_parser.add_argument(
@@ -97,7 +97,11 @@ def main() -> None:
         file_bytes = f.read()
         checksum = base64.b64encode(hashlib.md5(file_bytes).digest()).decode("ascii")  # noqa: S324
 
-    data = json.loads(file_bytes.decode(args.input_codec))
+    # errors='replace' is deliberate: EPPI exports occasionally contain CESU-8
+    # surrogate pairs for non-BMP chars (e.g. mathematical italics) that strict
+    # UTF-8 rejects. We'd rather degrade those rare chars to U+FFFD than fail
+    # the whole import.
+    data = json.loads(file_bytes.decode(args.input_codec, errors="replace"))
 
     eppi_parser = EPPIParser(
         tags=args.tags,
