@@ -2,7 +2,7 @@
 
 import pytest
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.core.exceptions import AuthError
 from app.domain.robots.services.access_control_service import (
     RobotAccessControlService,

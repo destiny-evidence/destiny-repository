@@ -2,7 +2,7 @@
 
 from typing import Generic, TypeVar
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.domain.base import GenericDomainBaseModelType
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork

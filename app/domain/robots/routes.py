@@ -10,10 +10,10 @@ from app.api.auth import (
     AuthMethod,
     AuthScope,
     CachingStrategyAuth,
-    Entitlement,
     choose_auth_strategy,
 )
 from app.core.config import get_settings
+from app.core.entitlements import Entitlement
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.domain.robots.service import RobotService
