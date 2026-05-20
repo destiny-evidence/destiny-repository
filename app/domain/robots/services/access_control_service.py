@@ -2,7 +2,7 @@
 
 from fastapi import status
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.core.exceptions import AuthError
 from app.domain.service import GenericAccessControlService
 

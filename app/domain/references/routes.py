@@ -32,7 +32,6 @@ from app.api.auth import (
     AuthRole,
     AuthScope,
     CachingStrategyAuth,
-    Entitlement,
     HMACClientType,
     choose_auth_strategy,
     choose_hybrid_auth_strategy,
@@ -41,6 +40,7 @@ from app.api.auth import (
 from app.api.decorators import experimental
 from app.api.exception_handlers import APIExceptionContent, APIExceptionResponse
 from app.core.config import get_settings
+from app.core.entitlements import Entitlement
 from app.core.exceptions import (
     DeduplicationValueError,
     ParseError,

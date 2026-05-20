@@ -6,7 +6,7 @@ from sqlalchemy import String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.domain.robots.models.models import (
     Robot as DomainRobot,
 )

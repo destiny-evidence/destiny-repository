@@ -4,7 +4,7 @@ from typing import NewType
 
 from destiny_sdk.enhancements import EnhancementType
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.domain.references.models.models import Enhancement, Reference
 from app.domain.service import GenericAccessControlService
 

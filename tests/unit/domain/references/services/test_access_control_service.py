@@ -2,7 +2,7 @@
 
 from destiny_sdk.enhancements import EnhancementType
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.domain.references.services.access_control_service import (
     ReferenceAccessControlService,
 )

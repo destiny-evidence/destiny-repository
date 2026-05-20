@@ -4,7 +4,7 @@ from uuid import uuid7
 import pytest
 from pydantic import SecretStr
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.domain.robots.models.sql import Robot
 
 
