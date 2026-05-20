@@ -27,6 +27,7 @@ from app.domain.imports.services.anti_corruption_service import (
 )
 from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
+from app.persistence.blob.repository import BlobRepository
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
@@ -150,6 +151,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     async def import_reference(
         self,
         reference_service: ReferenceService,
+        blob_repository: BlobRepository,
         import_result: ImportResult,
         content: str,
         line_number: int,
@@ -159,6 +161,9 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
         :param reference_service: The reference service to use for ingestion.
         :type reference_service: ReferenceService
+        :param blob_repository: Used to store full-text enhancements during
+            ingestion.
+        :type blob_repository: BlobRepository
         :param import_result: The import result to update.
         :type import_result: app.domain.imports.models.models.ImportResult
         :param content: The content of the reference to import.
@@ -176,7 +181,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
         try:
             reference_result = await reference_service.ingest_reference(
-                content, line_number
+                content, line_number, blob_repository
             )
         except SQLIntegrityError as exc:
             # This handles the case where files loaded in parallel cause a conflict at

@@ -530,17 +530,8 @@ class FullTextEnhancement(BaseModel):
 
     enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
     file_url: HttpUrl = Field(
-        description="Signed https URL to the full text file",
+        description="URL to the full text file",
     )
-
-    @field_validator("file_url", mode="after")
-    @classmethod
-    def _file_url_must_be_https(cls, value: HttpUrl) -> HttpUrl:
-        if value.scheme != "https":
-            msg = f"file_url must use https, got {value.scheme!r}"
-            raise ValueError(msg)
-        return value
-
     byte_size: int | None = Field(
         default=None,
         description=(

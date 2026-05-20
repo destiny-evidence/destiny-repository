@@ -14,6 +14,7 @@ from app.core.config import (
 )
 from app.core.exceptions import (
     DuplicateEnhancementError,
+    FullTextIngestionError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
     VocabularyFetchError,
@@ -47,6 +48,9 @@ from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.repository import (
     EnhancementRequestSQLPreloadable,
     RobotEnhancementBatchSQLPreloadable,
+)
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -382,6 +386,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def get_jsonl_deduplicated_references(
         self,
+        access_control_service: ReferenceAccessControlService,
         reference_ids: list[UUID],
     ) -> list[str]:
         """Get JSONL strings for deduplicated (flattened) references by id."""
@@ -389,7 +394,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_ids=reference_ids
         )
         return [
-            (await self._anti_corruption_service.reference_to_sdk(ref)).to_jsonl()
+            (
+                await self._anti_corruption_service.reference_to_sdk(
+                    access_control_service.redact_reference(ref)
+                )
+            ).to_jsonl()
             for ref in deduplicated
         ]
 
@@ -472,10 +481,52 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
+    async def _store_full_texts(
+        self,
+        reference: Reference,
+        blob_repository: BlobRepository,
+    ) -> list[str]:
+        """
+        Copy every remote full-text enhancement into our blob storage.
+
+        FT enhancements that fail to store (fetch error, declared
+        sha256/byte_size mismatch) are dropped from ``reference.enhancements``
+        and a description of the failure is returned. The reference itself is
+        not failed.
+        """
+        if not reference.enhancements:
+            return []
+
+        errors: list[str] = []
+        kept: list[Enhancement] = []
+        for enhancement in reference.enhancements:
+            if enhancement.content.enhancement_type != EnhancementType.FULL_TEXT:
+                kept.append(enhancement)
+                continue
+            try:
+                await self._enhancement_service.store_full_text(
+                    enhancement, blob_repository
+                )
+            except FullTextIngestionError as exc:
+                logger.warning(
+                    "Failed to store full text enhancement.",
+                    reference_id=str(reference.id),
+                    enhancement_id=str(enhancement.id),
+                    exc=repr(exc),
+                )
+                errors.append(str(exc))
+                continue
+            kept.append(enhancement)
+        reference.enhancements = kept
+        return errors
+
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int
+        self,
+        record_str: str,
+        entry_ref: int,
+        blob_repository: BlobRepository,
     ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
         # Full deduplication flow
@@ -514,6 +565,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         reference_create_result.reference_id = reference.id
         trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
+
+        reference_create_result.errors.extend(
+            await self._store_full_texts(reference, blob_repository)
+        )
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference
@@ -1088,6 +1143,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         limit: int,
         lease_duration: datetime.timedelta,
         blob_repository: BlobRepository,
+        access_control_service: ReferenceAccessControlService,
     ) -> RobotEnhancementBatch | None:
         """
         Atomically claim pending enhancements and create a robot enhancement batch.
@@ -1131,6 +1187,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             self.get_jsonl_deduplicated_references,
             [
                 {
+                    "access_control_service": access_control_service,
                     "reference_ids": reference_id_chunk,
                 }
                 for reference_id_chunk in list_chunker(

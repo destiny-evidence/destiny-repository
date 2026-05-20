@@ -85,6 +85,10 @@ locals {
       value = local.active_servicebus_queue.name
     },
     {
+      name  = "MESSAGE_BROKER_PRIORITY_QUEUE_NAME"
+      value = local.active_servicebus_priority_queue.name
+    },
+    {
       name = "AZURE_BLOB_CONFIG"
       value = jsonencode({
         storage_account_name = azurerm_storage_account.this.name
@@ -143,11 +147,8 @@ locals {
       value = var.auth_provider != "azure" ? "destiny-repository-client-${var.environment}" : ""
     },
     {
-      name = "CORS_ALLOW_ORIGINS",
-      value = jsonencode(concat(var.cors_allow_origins, [
-        "https://${local.ui_hostname}",
-        "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
-      ]))
+      name  = "CORS_ALLOW_ORIGINS",
+      value = jsonencode(local.cors_allow_origins)
     },
   ]
 
@@ -301,6 +302,19 @@ module "container_app_tasks" {
         trigger_parameter = "connection"
       }
     },
+    {
+      name             = "priority-queue-length-scale-rule"
+      custom_rule_type = "azure-servicebus"
+      metadata = {
+        namespace    = local.active_servicebus_ns.name
+        queueName    = local.active_servicebus_priority_queue.name
+        messageCount = var.priority_queue_active_jobs_scaling_threshold
+      }
+      authentication = {
+        secret_name       = "servicebus-connection-string"
+        trigger_parameter = "connection"
+      }
+    },
   ]
 }
 
@@ -368,9 +382,10 @@ module "container_app_ui" {
 }
 
 locals {
-  servicebus_is_premium   = var.prod_servicebus_is_premium && var.environment == "production"
-  active_servicebus_ns    = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
-  active_servicebus_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
+  servicebus_is_premium            = var.prod_servicebus_is_premium && var.environment == "production"
+  active_servicebus_ns             = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
+  active_servicebus_queue          = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
+  active_servicebus_priority_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_priority_premium[0] : azurerm_servicebus_queue.taskiq_priority
 }
 
 resource "azurerm_servicebus_namespace" "this" {
@@ -384,6 +399,14 @@ resource "azurerm_servicebus_namespace" "this" {
 
 resource "azurerm_servicebus_queue" "taskiq" {
   name         = "taskiq"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  partitioning_enabled = true
+  lock_duration        = "PT5M"
+}
+
+resource "azurerm_servicebus_queue" "taskiq_priority" {
+  name         = "taskiq-priority"
   namespace_id = azurerm_servicebus_namespace.this.id
 
   partitioning_enabled = true
@@ -409,6 +432,16 @@ resource "azurerm_servicebus_queue" "taskiq_premium" {
   namespace_id = azurerm_servicebus_namespace.premium[0].id
 
   partitioning_enabled = true
+  lock_duration        = "PT5M"
+}
+
+resource "azurerm_servicebus_queue" "taskiq_priority_premium" {
+  count = local.servicebus_is_premium ? 1 : 0
+
+  name         = "taskiq-priority"
+  namespace_id = azurerm_servicebus_namespace.premium[0].id
+
+  partitioning_enabled = true
 }
 
 resource "azurerm_storage_account" "this" {
@@ -427,6 +460,15 @@ resource "azurerm_storage_account" "this" {
     }
     container_delete_retention_policy {
       days = 30
+    }
+
+    cors_rule {
+      allowed_origins = local.cors_allow_origins
+      allowed_methods = ["GET", "HEAD"]
+      allowed_headers = ["*"]
+      exposed_headers = ["*"]
+      # Match chrome maximum of two hours
+      max_age_in_seconds = 7200
     }
   }
 

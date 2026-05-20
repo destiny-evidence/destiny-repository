@@ -419,12 +419,12 @@ def test_full_text_enhancement_invalid_file_url():
         destiny_sdk.enhancements.FullTextEnhancement(file_url="not-a-url")
 
 
-def test_full_text_enhancement_rejects_http_file_url():
-    """file_url must be https, not http."""
-    with pytest.raises(ValidationError):
-        destiny_sdk.enhancements.FullTextEnhancement(
-            file_url="http://example.com/full.pdf",
-        )
+def test_full_text_enhancement_accepts_http_file_url():
+    """file_url accepts http or https; restriction (if any) lives on the app side."""
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="http://example.com/full.pdf",
+    )
+    assert str(full_text.file_url) == "http://example.com/full.pdf"
 
 
 def test_full_text_enhancement_discriminator_resolution():

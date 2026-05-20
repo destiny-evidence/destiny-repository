@@ -443,6 +443,22 @@ class Settings(BaseSettings):
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
+    message_broker_priority_queue_name: str = "taskiq-priority"
+    message_broker_queue_max_wait: int = Field(
+        default=2,
+        description=(
+            "Max time to wait to receive messages on the normal priority task queue "
+            "(in seconds)."
+        ),
+    )
+    message_broker_priority_queue_max_wait: int = Field(
+        default=1,
+        description=(
+            "Max time to wait to receive messages on the high priority task queue "
+            "(in seconds)."
+        ),
+    )
+
     cli_client_id: str | None = None
     app_name: str
 
@@ -536,6 +552,14 @@ class Settings(BaseSettings):
     presigned_url_expiry_seconds: int = Field(
         default=3600,
         description="The number of seconds a signed URL is valid for.",
+    )
+
+    full_text_max_byte_size: int = Field(
+        default=1024**3,
+        description=(
+            "Maximum size in bytes accepted when fetching a remote full-text "
+            "source. Aborts the stream and rejects the enhancement if exceeded."
+        ),
     )
 
     default_pending_enhancement_lease_duration: datetime.timedelta = Field(

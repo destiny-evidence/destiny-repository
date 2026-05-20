@@ -31,13 +31,20 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.robots.models.models import Robot
-from app.persistence.blob.models import BlobStorageFile
+from app.persistence.blob.models import (
+    BlobStorageFile,
+)
 from app.utils.time_and_date import utc_now
-from tests.factories import ReferenceFactory
+from tests.factories import (
+    ReferenceFactory,
+)
 from tests.unit.domain.conftest import FakeRepository
 
 
@@ -374,7 +381,7 @@ async def test_ingest_reference(
     )
     dummy_parsed = ReferenceCreateResult(reference=dummy_reference_input)
 
-    mock_reference = Mock(id="reference-id")
+    mock_reference = Mock(id="reference-id", enhancements=[])
 
     # Patch deduplication service methods
     with (
@@ -398,7 +405,7 @@ async def test_ingest_reference(
             AsyncMock(return_value=find_exact_duplicate_return),
         ) as mock_find,
     ):
-        result = await service.ingest_reference("{}", 1)
+        result = await service.ingest_reference("{}", 1, AsyncMock())
         mock_find.assert_awaited_once()
         mock_register.assert_awaited_once()
         if should_merge:
@@ -809,6 +816,7 @@ async def test_claim_and_create_robot_enhancement_batch(
         limit=10,
         lease_duration=lease,
         blob_repository=mock_blob_repository,
+        access_control_service=ReferenceAccessControlService(),
     )
 
     assert isinstance(created_batch, RobotEnhancementBatch)
@@ -857,7 +865,9 @@ async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    result = await service.get_jsonl_deduplicated_references([canonical_ref.id])
+    result = await service.get_jsonl_deduplicated_references(
+        ReferenceAccessControlService(), [canonical_ref.id]
+    )
 
     assert len(result) == 1
 
@@ -905,6 +915,7 @@ async def test_claim_and_create_robot_enhancement_batch_returns_none_when_empty(
         limit=10,
         lease_duration=datetime.timedelta(minutes=5),
         blob_repository=mock_blob_repository,
+        access_control_service=ReferenceAccessControlService(),
     )
 
     assert result is None

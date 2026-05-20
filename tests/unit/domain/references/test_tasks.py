@@ -590,7 +590,7 @@ async def test_run_search_export_task_skips_non_pending_row(
     monkeypatch.setattr(SearchExportService, "_stream_search_export_jsonl", stream_mock)
 
     assert isinstance(broker, InMemoryBroker)
-    await run_search_export_task.kiq(search_export_id=export_id)
+    await run_search_export_task.kiq(search_export_id=export_id, entitlements=[])
     await broker.wait_all()
 
     collect_mock.assert_not_awaited()

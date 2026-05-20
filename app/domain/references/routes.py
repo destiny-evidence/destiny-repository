@@ -32,6 +32,7 @@ from app.api.auth import (
     AuthRole,
     AuthScope,
     CachingStrategyAuth,
+    Entitlement,
     HMACClientType,
     choose_auth_strategy,
     choose_hybrid_auth_strategy,
@@ -47,7 +48,7 @@ from app.core.exceptions import (
 )
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
     PendingEnhancementStatus,
@@ -55,6 +56,9 @@ from app.domain.references.models.models import (
     ReferenceIds,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -125,25 +129,6 @@ def reference_service(
     )
 
 
-def search_export_service(
-    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
-    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
-    reference_anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    reference_service: Annotated[ReferenceService, Depends(reference_service)],
-) -> SearchExportService:
-    """Return the search export service."""
-    return SearchExportService(
-        anti_corruption_service=reference_anti_corruption_service,
-        sql_uow=sql_uow,
-        es_uow=es_uow,
-        get_jsonl_deduplicated_references=(
-            reference_service.get_jsonl_deduplicated_references
-        ),
-    )
-
-
 def robot_service(
     sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     robot_anti_corruption_service: Annotated[
@@ -184,13 +169,13 @@ async def enhancement_request_hybrid_auth(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
-) -> bool:
+) -> frozenset[Entitlement]:
     """Choose enhancement request writer scope auth strategy for our authorization."""
     return await choose_hybrid_auth_strategy(
         application_id=settings.azure_application_id,
         jwt_scope=AuthScope.ENHANCEMENT_REQUEST_WRITER,
         jwt_role=AuthRole.ENHANCEMENT_REQUEST_WRITER,
-        get_client_secret=robot_service.get_robot_secret_standalone,
+        get_client_auth_info=robot_service.get_robot_auth_info,
         hmac_client_type=HMACClientType.ROBOT,
         bypass_auth=settings.should_bypass_auth,
     )(request=request, credentials=credentials)
@@ -199,9 +184,49 @@ async def enhancement_request_hybrid_auth(
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_reader,
 )
+
 reference_deduplication_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_deduplicator,
 )
+
+
+def reference_reader_access_control_service(
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
+) -> ReferenceAccessControlService:
+    """Build the reference ACL for routes guarded by the reference-reader auth."""
+    return ReferenceAccessControlService(entitlements=entitlements)
+
+
+def search_export_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
+) -> SearchExportService:
+    """Return the search export service."""
+    return SearchExportService(
+        anti_corruption_service=reference_anti_corruption_service,
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        access_control_service=access_control_service,
+        get_jsonl_deduplicated_references=(
+            reference_service.get_jsonl_deduplicated_references
+        ),
+    )
+
+
+def reference_hybrid_access_control_service(
+    entitlements: Annotated[
+        frozenset[Entitlement], Depends(enhancement_request_hybrid_auth)
+    ],
+) -> ReferenceAccessControlService:
+    """Build the reference ACL for routes guarded by the hybrid (JWT/HMAC) auth."""
+    return ReferenceAccessControlService(entitlements=entitlements)
 
 
 reference_router = APIRouter(
@@ -337,6 +362,9 @@ async def search_references(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
     q: Annotated[
         str,
         Query(
@@ -387,7 +415,11 @@ async def search_references(
         else []
     )
     return await anti_corruption_service.two_stage_reference_search_result_to_sdk(
-        search_result, references
+        search_result,
+        [
+            access_control_service.redact_reference(reference)
+            for reference in references
+        ],
     )
 
 
@@ -408,6 +440,7 @@ async def request_search_export(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
     q: Annotated[
         str,
         Query(min_length=1, description="The query string."),
@@ -442,7 +475,9 @@ async def request_search_export(
         await queue_task_with_trace(
             run_search_export_task,
             long_running=True,
+            priority=TaskPriority.HIGH,
             search_export_id=search_export.id,
+            entitlements=entitlements,
             otel_enabled=settings.otel_enabled,
         )
     except Exception as exc:
@@ -507,10 +542,15 @@ async def get_reference(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    return await anti_corruption_service.reference_to_sdk(reference)
+    return await anti_corruption_service.reference_to_sdk(
+        access_control_service.redact_reference(reference)
+    )
 
 
 class IdentifierLookupQueryParams(BaseModel):
@@ -561,6 +601,9 @@ async def lookup_references(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
     identifiers: Annotated[
         list[destiny_sdk.identifiers.IdentifierLookup], Depends(parse_identifiers)
     ],
@@ -570,7 +613,9 @@ async def lookup_references(
         identifiers
     )
     return [
-        await anti_corruption_service.reference_to_sdk(reference)
+        await anti_corruption_service.reference_to_sdk(
+            access_control_service.redact_reference(reference)
+        )
         for reference in await reference_service.get_references_from_identifiers(
             identifier_lookups
         )
@@ -653,6 +698,10 @@ async def request_robot_enhancement_batch(
         ReferenceAntiCorruptionService,
         Depends(reference_anti_corruption_service),
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService,
+        Depends(reference_hybrid_access_control_service),
+    ],
     limit: Annotated[
         int,
         Query(
@@ -685,6 +734,7 @@ async def request_robot_enhancement_batch(
             limit=limit,
             lease_duration=lease,
             blob_repository=blob_repository,
+            access_control_service=access_control_service,
         )
     )
 

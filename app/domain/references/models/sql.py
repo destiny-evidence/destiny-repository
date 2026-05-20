@@ -20,7 +20,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.exceptions import SQLPreloadError
+from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
 from app.domain.references.models.models import (
     AnnotationFilter,
     DuplicateDetermination,
@@ -315,6 +315,15 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         timestamps when converting from the domain. They're purely managed
         by the persistence model.
         """
+        if (
+            domain_obj.content.enhancement_type == EnhancementType.FULL_TEXT
+            and domain_obj.content.blob.is_remote
+        ):
+            msg = (
+                "Attempted to persist a full text enhancement that has not been "
+                "copied to repository storage, which is not allowed."
+            )
+            raise UnstoredFullTextError(msg)
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,

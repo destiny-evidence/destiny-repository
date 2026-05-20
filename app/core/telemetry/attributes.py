@@ -74,6 +74,7 @@ class Attributes(StrEnum):
     USER_ID = _user_attributes.USER_ID
     USER_ROLES = _user_attributes.USER_ROLES
     USER_AUTH_METHOD = "user.auth.method"
+    USER_SUBJECT_TYPE = "user.subject.type"
 
     USER_AGENT_ORIGINAL = user_agent_attributes.USER_AGENT_ORIGINAL
 
