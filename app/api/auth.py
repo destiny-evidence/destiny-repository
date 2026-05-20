@@ -30,6 +30,7 @@ from joserfc.jwk import KeySet
 from opentelemetry import trace
 
 from app.core.config import get_settings
+from app.core.entitlements import Entitlement
 from app.core.exceptions import AuthError, NotFoundError
 from app.core.telemetry.attributes import Attributes
 
@@ -88,13 +89,6 @@ class SubjectType(StrEnum):
     SERVICE = auto()
     ROBOT = auto()
     BYPASS = auto()
-
-
-class Entitlement(StrEnum):
-    """Capabilities that can be granted to an authenticated principal."""
-
-    FULL_TEXT = auto()
-    ROBOT_ENTITLEMENT_WRITER = auto()
 
 
 _ENTITLEMENT_TO_GRANTS: dict[Entitlement, frozenset[str]] = {

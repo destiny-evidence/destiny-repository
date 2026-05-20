@@ -2,7 +2,7 @@
 
 from pydantic import ConfigDict, Field, SecretStr
 
-from app.api.auth import Entitlement
+from app.core.entitlements import Entitlement
 from app.domain.base import DomainBaseModel, SQLAttributeMixin
 
 

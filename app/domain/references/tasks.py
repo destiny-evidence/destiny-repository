@@ -7,8 +7,8 @@ from uuid import UUID
 from opentelemetry import trace
 from structlog.contextvars import bound_contextvars
 
-from app.api.auth import Entitlement
 from app.core.config import Environment, get_settings
+from app.core.entitlements import Entitlement
 from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import (
     Attributes,
