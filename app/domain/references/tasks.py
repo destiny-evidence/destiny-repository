@@ -232,7 +232,7 @@ async def repair_reference_index() -> None:
             reference_anti_corruption_service, sql_uow, es_uow
         )
         partitions = await reference_service.get_reference_id_partition_boundaries(
-            partition_size=settings.es_reference_repair_chunk_size
+            partition_size=settings.es_reference_repair_max_batch_size
         )
         for index, (min_id, max_id) in enumerate(partitions, start=1):
             with new_linked_trace(

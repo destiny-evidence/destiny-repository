@@ -15,6 +15,7 @@ from app.api.exception_handlers import (
     invalid_payload_exception_handler,
     not_found_exception_handler,
 )
+from app.core.config import Environment
 from app.core.exceptions import InvalidPayloadError, NotFoundError
 from app.domain.references import tasks as reference_tasks
 from app.domain.references.models.models import Visibility
@@ -98,7 +99,7 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     reference_id: UUID,
     reference: SQLReference,
 ) -> None:
-    """Sub-test: Test reference index repair with rebuild=False after SQL update."""
+    """Sub-test: Test reference index repair with repair_all after SQL update."""
     # Update SQL data - change visibility and add another identifier
     index_name = index_manager.alias_name
     reference.visibility = Visibility.RESTRICTED
@@ -111,10 +112,10 @@ async def sub_test_reference_index_update_without_rebuild(  # noqa: PLR0913
     session.add(new_identifier)
     await session.commit()
 
-    # Test repair without rebuild to update existing data
+    # Test in-place repair_all to update existing data
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": False},
+        params={"repair_all": True},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -190,7 +191,7 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     robot_id: UUID,
     automation: SQLRobotAutomation,
 ) -> None:
-    """Sub-test: Test robot automation repair with rebuild=False after SQL update."""
+    """Sub-test: Test robot automation repair with repair_all after SQL update."""
     # Update SQL data - modify the robot automation query
     index_name = index_manager.alias_name
 
@@ -209,10 +210,10 @@ async def sub_test_robot_automation_update_without_rebuild(  # noqa: PLR0913
     }
     await session.commit()
 
-    # Test repair without rebuild to update existing data
+    # Test in-place repair_all to update existing data
     response = await client.post(
         f"/system/indices/{index_name}/repair/",
-        params={"rebuild": False},
+        params={"repair_all": True},
     )
 
     assert response.status_code == status.HTTP_202_ACCEPTED
@@ -313,9 +314,9 @@ async def test_repair_reference_index_with_rebuild(
 
     await session.commit()
 
-    # Use small chunk_size to force multiple distributed tasks
-    original_chunk_size = reference_tasks.settings.es_reference_repair_chunk_size
-    reference_tasks.settings.es_reference_repair_chunk_size = 2
+    # Use small batch size to force multiple distributed tasks
+    original_batch_size = reference_tasks.settings.es_reference_repair_max_batch_size
+    reference_tasks.settings.es_reference_repair_max_batch_size = 2
 
     try:
         # Test repair with rebuild - should create 3 chunks for 5 records
@@ -339,7 +340,9 @@ async def test_repair_reference_index_with_rebuild(
         expected_ids = {str(ref.id) for ref in references}
         assert indexed_ids == expected_ids
     finally:
-        reference_tasks.settings.es_reference_repair_chunk_size = original_chunk_size
+        reference_tasks.settings.es_reference_repair_max_batch_size = (
+            original_batch_size
+        )
 
     # Run sub-test for update without rebuild using first reference
     await sub_test_reference_index_update_without_rebuild(
@@ -439,7 +442,7 @@ async def test_repair_nonexistent_index(
 
     response = await client.post(
         f"/system/indices/{nonexistent_index_name}/repair/",
-        params={"rebuild": False},
+        params={"repair_all": True},
     )
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
@@ -456,8 +459,6 @@ async def test_repair_auth_failure(
     fake_application_id: str,
 ) -> None:
     """Test attempting to repair an index with missing and incorrect auth fails."""
-    from app.core.config import Environment
-
     # Set up production environment and auth settings
     system_routes.settings.env = Environment.PRODUCTION
     system_routes.settings.azure_application_id = fake_application_id
@@ -468,7 +469,7 @@ async def test_repair_auth_failure(
     # Test with invalid token
     response = await client.post(
         f"/system/indices/{test_index_name}/repair/",
-        params={"rebuild": False},
+        params={"repair_all": True},
         headers={"Authorization": "Bearer invalid-token"},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
@@ -476,7 +477,7 @@ async def test_repair_auth_failure(
     # Test with missing auth header
     response = await client.post(
         f"/system/indices/{test_index_name}/repair/",
-        params={"rebuild": False},
+        params={"repair_all": True},
     )
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
     assert response.text == '{"detail":"Authorization HTTPBearer header missing."}'
@@ -579,3 +580,41 @@ async def test_repair_subset_rejects_rebuild_combo(
 
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "rebuild=true" in response.json()["detail"]
+
+
+async def test_repair_rejects_no_action(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+) -> None:
+    """A request with no rebuild, repair_all, or document_ids returns 422."""
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.initialize_index()
+
+    response = await client.post(f"/system/indices/{index_manager.alias_name}/repair/")
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "Exactly one" in response.json()["detail"]
+
+
+async def test_repair_subset_with_missing_id_is_rejected(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+    session: AsyncSession,
+) -> None:
+    """A subset that includes any ID not present in SQL fails before queueing."""
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.initialize_index()
+
+    real_id = uuid7()
+    session.add(SQLReference(id=real_id, visibility=Visibility.PUBLIC))
+    await session.commit()
+
+    missing_id = uuid7()
+    response = await client.post(
+        f"/system/indices/{index_manager.alias_name}/repair/",
+        json={"document_ids": [str(real_id), str(missing_id)]},
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert str(missing_id) in response.json()["detail"]
+    assert str(real_id) not in response.json()["detail"]

@@ -1,7 +1,7 @@
 """Router for system utility endpoints."""
 
 from typing import Annotated
-from uuid import UUID, uuid7
+from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
@@ -30,6 +30,7 @@ from app.domain.references.tasks import (
 from app.persistence.es.client import get_client
 from app.persistence.es.index_manager import IndexManager
 from app.persistence.sql.session import get_session
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.system.healthcheck import HealthCheckOptions, healthcheck
 
 logger = get_logger(__name__)
@@ -83,6 +84,13 @@ def get_index_manager(
         ) from exc
 
 
+def sql_unit_of_work(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AsyncSqlUnitOfWork:
+    """Return a SQL unit of work for system operations."""
+    return AsyncSqlUnitOfWork(session=session)
+
+
 def choose_auth_strategy_administrator() -> AuthMethod:
     """Choose administrator for our authorization strategy."""
     return choose_auth_strategy(
@@ -129,35 +137,49 @@ async def repair_elasticsearch_index(
         Query(
             description="If true, the index will be destroyed and rebuilt before being "
             "repaired. This involves downtime but is generally useful for updating "
-            "index mappings or persisting a bulk delete at the SQL level. If false, "
-            "the existing index will be updated in place without downtime, but removed"
-            " documents in SQL will not be removed from the index. Cannot be combined "
-            "with document_ids.",
+            "index mappings or persisting a bulk delete at the SQL level. Cannot be "
+            "combined with repair_all or document_ids.",
+        ),
+    ] = False,
+    repair_all: Annotated[
+        bool,
+        Query(
+            description="If true, every document in the index will be re-indexed in "
+            "place from its SQL counterpart, with no downtime. Removed SQL documents "
+            "will NOT be removed from the index (use rebuild for that). Cannot be "
+            "combined with rebuild or document_ids.",
         ),
     ] = False,
     document_ids: Annotated[
-        list[UUID],  # noqa: RUF013: docs are more accurately generated with this transgression
+        list[UUID] | None,
         Body(
             embed=True,
             min_length=1,
-            max_length=settings.es_reference_repair_chunk_size,
+            max_length=settings.es_reference_repair_max_batch_size,
             title="Document IDs to repair",
             description=(
                 "If provided, only the documents with these IDs will be repaired. "
-                "Cannot be combined with rebuild=true."
+                "Cannot be combined with rebuild or repair_all."
             ),
             examples=[
-                [uuid7(), uuid7()],
-                None,
+                [
+                    UUID("01935f56-2c8e-7000-8000-000000000001"),
+                    UUID("01935f56-2c8e-7000-8000-000000000002"),
+                ],
             ],
         ),
-    ] = None,  # type: ignore[assignment]
+    ] = None,
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     index_manager: Annotated[IndexManager, Depends(get_index_manager)],
 ) -> JSONResponse:
     """Repair an index (update all documents per their SQL counterparts)."""
-    if rebuild and document_ids is not None:
+    actions_selected = sum((rebuild, repair_all, document_ids is not None))
+    if actions_selected != 1:
         raise InvalidPayloadError(
-            detail="rebuild=true cannot be combined with document_ids.",
+            detail=(
+                "Exactly one of rebuild=true, repair_all=true, or document_ids "
+                "must be provided."
+            ),
         )
 
     if document_ids is not None and index_manager.repair_subset_task is None:
@@ -169,16 +191,23 @@ async def repair_elasticsearch_index(
         )
 
     if document_ids is not None:
+        if index_manager.alias_name == ReferenceDocument.Index.name:
+            # Reach directly into the SQL repo to fail fast on missing IDs; the
+            # full ReferenceService is heavy to construct for a one-line check.
+            async with sql_uow:
+                await sql_uow.references.verify_pk_existence(document_ids)
         await index_manager.repair_index(document_ids=document_ids)
         message = (
             f"Subset repair task for {len(document_ids)} document(s) in index "
             f"{index_manager.alias_name} has been initiated."
         )
+    elif rebuild:
+        await index_manager.rebuild_index()
+        message = (
+            f"Repair task for index {index_manager.alias_name} has been initiated."
+        )
     else:
-        if rebuild:
-            await index_manager.rebuild_index()
-        else:
-            await index_manager.repair_index()
+        await index_manager.repair_index()
         message = (
             f"Repair task for index {index_manager.alias_name} has been initiated."
         )
