@@ -7,6 +7,7 @@ from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     AnnotationFilter,
     PublicationYearRange,
+    SearchQuery,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -82,27 +83,26 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         label = escape_lucene_quoted_term(annotation.label)
         return f'annotations:"{scheme}/{label}"'
 
-    async def search_with_query_string(  # noqa: PLR0913
+    async def search_with_query(
         self,
-        query_string: str,
+        query: SearchQuery,
         page: int = 1,
         page_size: int = 20,
-        annotations: list[AnnotationFilter] | None = None,
-        publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
     ) -> ESSearchResult:
-        """Search for references matching the query string."""
+        """Search for references matching the given query specification."""
+        query_string = query.query_string
         global_filters: list[str] = []
-        if publication_year_range:
+        if query.publication_year_range:
             global_filters.append(
                 self._build_publication_year_query_string_filter(
-                    publication_year_range,
+                    query.publication_year_range,
                 )
             )
-        if annotations:
+        if query.annotation_filters:
             global_filters.extend(
                 self._build_annotation_query_string_filter(annotation)
-                for annotation in annotations
+                for annotation in query.annotation_filters
             )
         if global_filters:
             query_string = f"({query_string}) AND {' AND '.join(global_filters)}"

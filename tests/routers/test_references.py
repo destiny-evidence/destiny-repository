@@ -911,29 +911,28 @@ async def test_search_references_with_annotation_filters(
 
     # Verify the service was called with the correct annotation filters
     mock_search.assert_awaited_once()
-    call_kwargs = mock_search.call_args.kwargs
-    assert call_kwargs["annotations"] is not None
-    assert len(call_kwargs["annotations"]) == 4
+    search_query = mock_search.call_args.args[0]
+    assert len(search_query.annotation_filters) == 4
 
     # Check first annotation filter
-    assert call_kwargs["annotations"][0].scheme == "test:scheme"
-    assert call_kwargs["annotations"][0].label == "test_label"
-    assert call_kwargs["annotations"][0].score is None
+    assert search_query.annotation_filters[0].scheme == "test:scheme"
+    assert search_query.annotation_filters[0].label == "test_label"
+    assert search_query.annotation_filters[0].score is None
 
     # Check second annotation filter with score
-    assert call_kwargs["annotations"][1].scheme == "another:scheme"
-    assert call_kwargs["annotations"][1].label == "another_label"
-    assert call_kwargs["annotations"][1].score == 0.8
+    assert search_query.annotation_filters[1].scheme == "another:scheme"
+    assert search_query.annotation_filters[1].label == "another_label"
+    assert search_query.annotation_filters[1].score == 0.8
 
     # Check third annotation filter without label is ignored
-    assert call_kwargs["annotations"][2].scheme == "just_a_scheme"
-    assert not call_kwargs["annotations"][2].label
-    assert call_kwargs["annotations"][2].score == 0.8
+    assert search_query.annotation_filters[2].scheme == "just_a_scheme"
+    assert not search_query.annotation_filters[2].label
+    assert search_query.annotation_filters[2].score == 0.8
 
     # Check fourth annotation filter with slashes in label
-    assert call_kwargs["annotations"][3].scheme == "test:scheme"
-    assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
-    assert call_kwargs["annotations"][3].score is None
+    assert search_query.annotation_filters[3].scheme == "test:scheme"
+    assert search_query.annotation_filters[3].label == "label/with/lots/of/slashes"
+    assert search_query.annotation_filters[3].score is None
 
 
 async def test_request_search_export_happy_path(

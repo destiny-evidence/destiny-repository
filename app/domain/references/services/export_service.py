@@ -8,10 +8,10 @@ from opentelemetry import trace
 from app.core.config import UploadFile, get_settings
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    AnnotationFilter,
     PublicationYearRange,
     SearchExport,
     SearchExportStatus,
+    SearchQuery,
 )
 from app.domain.references.services.access_control_service import (
     ReferenceAccessControlService,
@@ -57,17 +57,16 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def request_search_export(
         self,
-        query: str,
-        annotation_filters: list[AnnotationFilter] | None,
-        publication_year_range: PublicationYearRange | None,
+        query: SearchQuery,
         sort: list[str] | None,
     ) -> SearchExport:
         """Create a pending search export job."""
+        year_range = query.publication_year_range
         search_export = SearchExport(
-            query=query,
-            annotation_filters=annotation_filters,
-            start_year=publication_year_range.start if publication_year_range else None,
-            end_year=publication_year_range.end if publication_year_range else None,
+            query=query.query_string,
+            annotation_filters=query.annotation_filters or None,
+            start_year=year_range.start if year_range else None,
+            end_year=year_range.end if year_range else None,
             sort=sort,
         )
         await self.sql_uow.search_exports.add(search_export)
@@ -147,13 +146,16 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             if search_export.start_year or search_export.end_year
             else None
         )
+        query = SearchQuery(
+            query_string=search_export.query,
+            annotation_filters=search_export.annotation_filters or [],
+            publication_year_range=publication_year_range,
+        )
 
-        search_result = await self._search_service.search_with_query_string(
-            search_export.query,
+        search_result = await self._search_service.search_with_query(
+            query,
             page=1,
             page_size=SearchService.MAX_RESULT_WINDOW,
-            annotations=search_export.annotation_filters,
-            publication_year_range=publication_year_range,
             sort=search_export.sort,
         )
         # `relation == "gte"` is the common case (ES stopped counting at the
