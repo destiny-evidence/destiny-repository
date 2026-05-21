@@ -537,7 +537,7 @@ class Settings(BaseSettings):
         ),
     )
     upload_file_chunk_size_override: dict[UploadFile, int] = Field(
-        default_factory=dict,
+        default_factory=lambda: {UploadFile.SEARCH_EXPORT: 1000},
         description=("Override the default upload file chunk size."),
     )
 

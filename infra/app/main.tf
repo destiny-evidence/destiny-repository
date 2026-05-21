@@ -119,6 +119,10 @@ locals {
       value = tostring(var.default_upload_file_chunk_size)
     },
     {
+      name  = "UPLOAD_FILE_CHUNK_SIZE_OVERRIDE",
+      value = jsonencode(var.upload_file_chunk_size_override)
+    },
+    {
       name  = "MAX_REFERENCE_LOOKUP_QUERY_LENGTH",
       value = var.max_reference_lookup_query_length
     },
