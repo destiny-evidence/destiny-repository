@@ -365,6 +365,14 @@ variable "default_upload_file_chunk_size" {
   default     = 1
 }
 
+variable "upload_file_chunk_size_override" {
+  description = "Per-UploadFile override of the upload file chunk size. Keys must match the UploadFile StrEnum values (e.g. search_export)."
+  type        = map(number)
+  default = {
+    search_export = 1000
+  }
+}
+
 variable "max_reference_lookup_query_length" {
   description = "Maximum number of identifiers to allow in a single reference lookup query"
   type        = number
