@@ -438,6 +438,52 @@ async def search_references(
     )
 
 
+@search_router.get(
+    "/facets/",
+    status_code=status.HTTP_200_OK,
+    response_model_exclude_none=True,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description=(
+        "Return per-facet counts across the references matching the given search.\n\n"
+        "Accepts the same filter parameters as `/references/search/` plus one or more "
+        "`?facet=` values (currently only `concepts` is implemented; future types "
+        "will be added without breaking the response shape). The response includes "
+        "only the keys for facets the caller requested.\n\n"
+        "⚠️ **Naive implementation.** Each facet's counts reflect the *full* filter "
+        "set, including any selections within that same facet. Unselected siblings "
+        "of selected facets will therefore return co-occurrence counts (typically "
+        "near zero) rather than alternative counts. Correct OR-sibling semantics "
+        "are tracked in destiny-repository#703.\n\n"
+        "Bucket counts per facet are capped server-side (see `FACET_MAX_BUCKETS`)."
+    ),
+)
+async def aggregate_search_facets(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    facet: Annotated[
+        list[destiny_sdk.references.FacetType],
+        Query(
+            min_length=1,
+            description=(
+                "Facet type(s) to count. Repeat the parameter to request multiple "
+                "facets, e.g. `?facet=concepts`."
+            ),
+        ),
+    ],
+) -> destiny_sdk.references.ReferenceFacetResult:
+    """Return per-facet term counts for references matching the query."""
+    buckets_by_facet = await reference_service.aggregate_facets(query, facet)
+    return anti_corruption_service.facet_aggregation_to_sdk(buckets_by_facet)
+
+
 @exports_router.post(
     "/",
     status_code=status.HTTP_202_ACCEPTED,

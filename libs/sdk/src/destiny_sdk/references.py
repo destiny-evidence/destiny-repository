@@ -78,6 +78,48 @@ class ReferenceSearchResult(SearchResultMixIn, BaseModel):
     )
 
 
+class FacetType(StrEnum):
+    """Per-facet aggregation supported by the `/references/search/facets/` endpoint."""
+
+    CONCEPTS = "concepts"
+    """Counts of LinkedData concept URIs (mapped from `linked_data_concepts`)."""
+
+
+class ConceptFacetCount(BaseModel):
+    """A single concept bucket in a facet aggregation."""
+
+    uri: str = Field(description="The full concept URI.")
+    count: int = Field(
+        description=(
+            "Number of references matching the search that are tagged with "
+            "this concept."
+        ),
+    )
+
+
+class Facets(BaseModel):
+    """
+    Per-facet count buckets.
+
+    Each field is populated only when the corresponding facet type was requested
+    via `?facet=`; unrequested facets are omitted from the response entirely.
+    """
+
+    concepts: list[ConceptFacetCount] | None = Field(
+        default=None,
+        description=(
+            "Concept URI counts. Populated when the request includes "
+            "`?facet=concepts`."
+        ),
+    )
+
+
+class ReferenceFacetResult(BaseModel):
+    """A facet-count response for a reference search."""
+
+    facets: Facets = Field(description="Per-facet count buckets.")
+
+
 class SearchExportStatus(StrEnum):
     """The status of a search export job."""
 

@@ -61,7 +61,12 @@ from app.domain.references.services.export_service import SearchExportService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESHit,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
@@ -1400,3 +1405,84 @@ async def test_make_duplicate_decisions_resolve_duplicate_to_different_canonical
     assert results[0]["outcome"] == "duplicate"
     assert results[0]["active_decision"] is True
     assert results[0]["canonical_reference_id"] == str(canonical_b.id)
+
+
+async def test_search_facets_concepts_happy_path(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concept facet counts are surfaced under `facets.concepts`."""
+    from destiny_sdk.references import FacetType
+
+    buckets = [
+        ESFacetBucket(key="http://example.org/concept/a", count=5),
+        ESFacetBucket(key="http://example.org/concept/b", count=2),
+    ]
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: buckets})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body == {
+        "facets": {
+            "concepts": [
+                {"uri": "http://example.org/concept/a", "count": 5},
+                {"uri": "http://example.org/concept/b", "count": 2},
+            ],
+        }
+    }
+
+    # Service was called with the parsed SearchQuery and the requested facets.
+    mock_aggregate.assert_awaited_once()
+    search_query, facets = mock_aggregate.call_args.args
+    assert search_query.query_string == "climate"
+    assert list(facets) == [FacetType.CONCEPTS]
+
+
+async def test_search_facets_unrequested_keys_omitted(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Facet keys not asked for are stripped from the response (not set to null)."""
+    from destiny_sdk.references import FacetType
+
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: []})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"facets": {"concepts": []}}
+
+
+async def test_search_facets_requires_facet_param(client: AsyncClient) -> None:
+    """Missing `facet=` is rejected by FastAPI validation."""
+    response = await client.get(
+        "/v1/references/search/facets/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_unknown_facet(client: AsyncClient) -> None:
+    """An unsupported `facet=` value is rejected at the enum boundary."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "bogus"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_empty_query(client: AsyncClient) -> None:
+    """The shared `q` validation (min_length=1) applies to the facets endpoint too."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

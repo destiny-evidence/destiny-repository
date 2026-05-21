@@ -27,7 +27,7 @@ from app.domain.references.services.access_control_service import RedactedRefere
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
@@ -393,6 +393,28 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             ]
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+
+    def facet_aggregation_to_sdk(
+        self,
+        buckets_by_facet: dict[destiny_sdk.references.FacetType, list[ESFacetBucket]],
+    ) -> destiny_sdk.references.ReferenceFacetResult:
+        """Convert facet bucket counts to the SDK facet response model."""
+        facets_kwargs: dict[str, list[destiny_sdk.references.ConceptFacetCount]] = {}
+        for facet, buckets in buckets_by_facet.items():
+            if facet is destiny_sdk.references.FacetType.CONCEPTS:
+                facets_kwargs["concepts"] = [
+                    destiny_sdk.references.ConceptFacetCount(
+                        uri=bucket.key,
+                        count=bucket.count,
+                    )
+                    for bucket in buckets
+                ]
+        try:
+            return destiny_sdk.references.ReferenceFacetResult(
+                facets=destiny_sdk.references.Facets(**facets_kwargs),
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
 
     async def two_stage_reference_search_result_to_sdk(
         self,

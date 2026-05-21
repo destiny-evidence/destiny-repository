@@ -2,9 +2,10 @@
 
 import datetime
 from collections import defaultdict
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from uuid import UUID
 
+from destiny_sdk.references import FacetType
 from opentelemetry.trace import get_tracer
 
 from app.core.config import (
@@ -71,7 +72,7 @@ from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -1279,6 +1280,15 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             page=page,
             sort=sort,
         )
+
+    @es_unit_of_work
+    async def aggregate_facets(
+        self,
+        query: SearchQuery,
+        facets: Sequence[FacetType],
+    ) -> dict[FacetType, list[ESFacetBucket]]:
+        """Count facet bucket occurrences across references matching the query."""
+        return await self._search_service.aggregate_facets(query, facets)
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
     async def _detect_and_dispatch_robot_automations(

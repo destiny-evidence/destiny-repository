@@ -22,7 +22,12 @@ from app.core.exceptions import (
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
-from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESHit,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 
@@ -256,3 +261,57 @@ class GenericAsyncESRepository(
             msg = f"Elasticsearch query string search failed: {exc}."
             raise ESQueryError(msg) from exc
         return self._parse_search_result(response, page, parse_document=parse_document)
+
+    @trace_repository_method(tracer)
+    async def aggregate_terms(
+        self,
+        query: str,
+        aggregate_on: Sequence[str],
+        *,
+        query_fields: Sequence[str] | None = None,
+        max_buckets: int,
+    ) -> dict[str, list[ESFacetBucket]]:
+        """
+        Run a terms aggregation on the given fields restricted to a query string.
+
+        Executes a single ``size=0`` search that scopes the aggregations to
+        documents matching the query string, returning one terms bucket list
+        per requested field. Buckets are ordered by document count descending.
+
+        :param query: The query string filtering which documents are counted.
+        :type query: str
+        :param aggregate_on: ES field names to run a terms aggregation on.
+        :type aggregate_on: Sequence[str]
+        :param query_fields: Fields the query string should match against.
+            ``None`` defers to the query string's own ``default_field``.
+        :type query_fields: Sequence[str] | None
+        :param max_buckets: Maximum buckets to return per aggregation.
+        :type max_buckets: int
+        :return: A mapping from each requested field name to its term buckets.
+        :rtype: dict[str, list[ESFacetBucket]]
+        """
+        trace_attribute(Attributes.DB_QUERY, query)
+        search = (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .extra(size=0)
+            .query(
+                QueryString(query=query, fields=query_fields)
+                if query_fields
+                else QueryString(query=query)
+            )
+            .source(includes=[])
+        )
+        for field in aggregate_on:
+            search.aggs.bucket(field, "terms", field=field, size=max_buckets)
+        try:
+            response = await search.execute()
+        except BadRequestError as exc:
+            msg = f"Elasticsearch terms aggregation failed: {exc}."
+            raise ESQueryError(msg) from exc
+        return {
+            field: [
+                ESFacetBucket(key=str(bucket.key), count=bucket.doc_count)
+                for bucket in response.aggregations[field].buckets
+            ]
+            for field in aggregate_on
+        }
