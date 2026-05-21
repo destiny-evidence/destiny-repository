@@ -488,12 +488,13 @@ class Settings(BaseSettings):
         description=("Override the default Elasticsearch indexing chunk size."),
     )
 
-    es_reference_repair_chunk_size: int = Field(
+    es_reference_repair_max_batch_size: int = Field(
         default=1000,
         description=(
-            "Number of reference records to process in a single distributed task "
-            "when repairing or rebuilding the reference index in Elasticsearch. "
-            "Be wary that if increased too far, then the "
+            "Maximum number of reference records that may be repaired in a single "
+            "task. Caps both the partition size used when distributing a full "
+            "reference index repair and the size of a caller-supplied subset accepted "
+            "by the repair endpoint. Be wary that if increased too far, then the "
             "`repair_reference_index_for_chunk` task will require `long_running=True` "
             "and subsequent lock management."
         ),

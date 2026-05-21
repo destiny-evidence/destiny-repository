@@ -232,7 +232,7 @@ async def repair_reference_index() -> None:
             reference_anti_corruption_service, sql_uow, es_uow
         )
         partitions = await reference_service.get_reference_id_partition_boundaries(
-            partition_size=settings.es_reference_repair_chunk_size
+            partition_size=settings.es_reference_repair_max_batch_size
         )
         for index, (min_id, max_id) in enumerate(partitions, start=1):
             with new_linked_trace(
@@ -280,6 +280,27 @@ async def repair_reference_index_for_chunk(
             min_id=min_id, max_id=max_id
         )
         trace_attribute(Attributes.DB_RECORD_COUNT, len(reference_ids))
+        await reference_service.index_references(reference_ids)
+
+
+@broker.task
+async def repair_reference_index_subset(reference_ids: list[UUID]) -> None:
+    """Re-index a caller-supplied subset of references."""
+    name_span("Repair index subset")
+    trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
+    trace_attribute(Attributes.DB_RECORD_COUNT, len(reference_ids))
+    logger.info(
+        "Repairing reference index subset",
+        n_references=len(reference_ids),
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
         await reference_service.index_references(reference_ids)
 
 

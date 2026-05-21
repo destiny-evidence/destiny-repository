@@ -1,9 +1,10 @@
 """Router for system utility endpoints."""
 
 from typing import Annotated
+from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Path, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,7 @@ from app.api.auth import (
     choose_auth_strategy,
 )
 from app.core.config import get_settings
-from app.core.exceptions import ESNotFoundError
+from app.core.exceptions import ESNotFoundError, InvalidPayloadError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -23,11 +24,13 @@ from app.domain.references.models.es import (
 )
 from app.domain.references.tasks import (
     repair_reference_index,
+    repair_reference_index_subset,
     repair_robot_automation_percolation_index,
 )
 from app.persistence.es.client import get_client
 from app.persistence.es.index_manager import IndexManager
 from app.persistence.sql.session import get_session
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.system.healthcheck import HealthCheckOptions, healthcheck
 
 logger = get_logger(__name__)
@@ -41,6 +44,7 @@ def reference_index_manager(es_client: AsyncElasticsearch) -> IndexManager:
     return IndexManager(
         document_class=ReferenceDocument,
         repair_task=repair_reference_index,
+        repair_subset_task=repair_reference_index_subset,
         client=es_client,
         otel_enabled=settings.otel_enabled,
     )
@@ -78,6 +82,13 @@ def get_index_manager(
             lookup_value=alias,
             lookup_type="alias",
         ) from exc
+
+
+def sql_unit_of_work(
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> AsyncSqlUnitOfWork:
+    """Return a SQL unit of work for system operations."""
+    return AsyncSqlUnitOfWork(session=session)
 
 
 def choose_auth_strategy_administrator() -> AuthMethod:
@@ -126,26 +137,113 @@ async def repair_elasticsearch_index(
         Query(
             description="If true, the index will be destroyed and rebuilt before being "
             "repaired. This involves downtime but is generally useful for updating "
-            "index mappings or persisting a bulk delete at the SQL level. If false, "
-            "the existing index will be updated in place without downtime, but removed"
-            " documents in SQL will not be removed from the index.",
+            "index mappings or persisting a bulk delete at the SQL level. Cannot be "
+            "combined with repair_all or document_ids.",
         ),
     ] = False,
+    repair_all: Annotated[
+        bool,
+        Query(
+            description="If true, every document in the index will be re-indexed in "
+            "place from its SQL counterpart, with no downtime. Removed SQL documents "
+            "will not be removed from the index. Cannot be combined with rebuild or "
+            "document_ids.",
+        ),
+    ] = False,
+    document_ids: Annotated[
+        list[UUID] | None,
+        Body(
+            embed=True,
+            min_length=1,
+            max_length=settings.es_reference_repair_max_batch_size,
+            title="Document IDs to repair",
+            description=(
+                "If provided, only the documents with these IDs will be repaired. "
+                "Cannot be combined with rebuild or repair_all."
+            ),
+            examples=[
+                [
+                    UUID("01935f56-2c8e-7000-8000-000000000001"),
+                    UUID("01935f56-2c8e-7000-8000-000000000002"),
+                ],
+            ],
+        ),
+    ] = None,
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
     index_manager: Annotated[IndexManager, Depends(get_index_manager)],
 ) -> JSONResponse:
-    """Repair an index (update all documents per their SQL counterparts)."""
-    if rebuild:
+    """
+    Repair an index (update all documents per their SQL counterparts).
+
+    Exactly one of `rebuild`, `repair_all`, or `document_ids` must be supplied.
+
+    **Rebuild (destructive, with downtime):**
+    ```
+    POST /system/indices/reference/repair/?rebuild=true
+    ```
+
+    **Repair every document in-place (no downtime, but does not remove docs
+    deleted from SQL):**
+    ```
+    POST /system/indices/reference/repair/?repair_all=true
+    ```
+
+    **Repair only a specific subset of documents (reference index only):**
+    ```
+    POST /system/indices/reference/repair/
+    Content-Type: application/json
+
+    {
+      "document_ids": [
+        "01935f56-2c8e-7000-8000-000000000001",
+        "01935f56-2c8e-7000-8000-000000000002"
+      ]
+    }
+    ```
+    """
+    actions_selected = sum((rebuild, repair_all, document_ids is not None))
+    if actions_selected != 1:
+        raise InvalidPayloadError(
+            detail=(
+                "Exactly one of rebuild=true, repair_all=true, or document_ids "
+                "must be provided."
+            ),
+        )
+
+    if document_ids is not None and index_manager.repair_subset_task is None:
+        raise InvalidPayloadError(
+            detail=(
+                f"Subset repair is not supported for index "
+                f"{index_manager.alias_name}."
+            ),
+        )
+
+    if document_ids is not None:
+        if index_manager.alias_name == ReferenceDocument.Index.name:
+            # Reach directly into the SQL repo to fail fast on missing IDs; the
+            # full ReferenceService is heavy to construct for a one-line check.
+            async with sql_uow:
+                await sql_uow.references.verify_pk_existence(document_ids)
+        await index_manager.repair_index(document_ids=document_ids)
+        message = (
+            f"Subset repair task for {len(document_ids)} document(s) in index "
+            f"{index_manager.alias_name} has been initiated."
+        )
+    elif rebuild:
         await index_manager.rebuild_index()
+        message = (
+            f"Repair task for index {index_manager.alias_name} has been initiated."
+        )
     else:
         await index_manager.repair_index()
+        message = (
+            f"Repair task for index {index_manager.alias_name} has been initiated."
+        )
 
     return JSONResponse(
         content={
             "status": "ok",
-            "message": (
-                f"Repair task for index {index_manager.alias_name} "
-                "has been initiated."
-            ),
+            "message": message,
         },
         status_code=status.HTTP_202_ACCEPTED,
     )
