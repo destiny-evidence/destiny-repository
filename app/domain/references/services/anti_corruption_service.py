@@ -401,8 +401,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         facets: Sequence[destiny_sdk.references.FacetType],
     ) -> list[FacetType]:
         """Map SDK facet types to their domain equivalents."""
-        # StrEnum values are identical between the two, so direct construction
-        # is safe and the typo guard sits in the value list of each enum.
         return [FacetType(facet.value) for facet in facets]
 
     def facets_to_sdk(
@@ -418,21 +416,15 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             if facet is FacetType.CONCEPTS:
                 facets[destiny_sdk.references.FacetType.CONCEPTS] = [
                     destiny_sdk.references.ConceptFacetCount(
-                        concept=bucket.key,
-                        count=bucket.count,
+                        concept=bucket.key, count=bucket.count
                     )
                     for bucket in buckets
                 ]
             else:
-                # A new FacetType must add a branch here. Failing loudly is
-                # better than silently dropping the buckets into an empty
-                # response.
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
         try:
-            return destiny_sdk.references.ReferenceFacetResult(
-                facets=facets,
-            )
+            return destiny_sdk.references.ReferenceFacetResult(facets=facets)
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 

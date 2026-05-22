@@ -380,7 +380,7 @@ variable "max_reference_lookup_query_length" {
 }
 
 variable "es_aggregation_max_buckets" {
-  description = "Maximum buckets returned per Elasticsearch terms aggregation (e.g. for `/references/search/facets/`). Must stay under the cluster-wide `search.max_buckets` setting."
+  description = "Maximum buckets returned per Elasticsearch terms aggregation."
   type        = number
   default     = 1000
 }

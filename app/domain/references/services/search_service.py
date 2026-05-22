@@ -27,17 +27,6 @@ settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
 
-def _check_facet_fields_exhaustive(mapping: dict[FacetType, str]) -> None:
-    """Fail at import time if a FacetType is missing an ES field mapping."""
-    missing = set(FacetType) - set(mapping)
-    if missing:
-        msg = (
-            f"SearchService._FACET_FIELDS is missing entries for FacetType "
-            f"members: {sorted(m.name for m in missing)}"
-        )
-        raise RuntimeError(msg)
-
-
 class SearchService(GenericService[ReferenceAntiCorruptionService]):
     """Service for searching references."""
 
@@ -98,15 +87,17 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         label = escape_lucene_quoted_term(annotation.label)
         return f'annotations:"{scheme}/{label}"'
 
-    # FacetType -> Elasticsearch field name. Kept here so the repository
-    # layer stays generic in which fields it aggregates. The check below
-    # fails at import time if a new FacetType is added without a mapping.
     _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
         FacetType.CONCEPTS: "linked_data_concepts",
     }
 
     def _compose_query_string(self, query: SearchQuery) -> str:
-        """Fold structured filters into a single Lucene query string."""
+        """
+        Fold structured filters into a single Lucene query string.
+
+        TODO (#695): we actually don't need to do this - we can pass structured filters
+        to Elasticsearch separately from the query string.
+        """
         global_filters: list[str] = []
         if query.publication_year_range:
             global_filters.append(
@@ -160,6 +151,3 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         return {
             facet: buckets_by_field[field] for facet, field in facet_to_field.items()
         }
-
-
-_check_facet_fields_exhaustive(SearchService._FACET_FIELDS)  # noqa: SLF001
