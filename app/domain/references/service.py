@@ -5,7 +5,6 @@ from collections import defaultdict
 from collections.abc import Collection, Iterable, Sequence
 from uuid import UUID
 
-from destiny_sdk.references import FacetType
 from opentelemetry.trace import get_tracer
 
 from app.core.config import (
@@ -30,6 +29,7 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
+    FacetType,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,

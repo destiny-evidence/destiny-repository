@@ -557,11 +557,11 @@ class Settings(BaseSettings):
 
     es_aggregation_max_buckets: int = Field(
         default=1000,
+        ge=1,
+        le=65_536,
         description=(
-            "Maximum number of buckets returned per Elasticsearch terms "
-            "aggregation. Bounded above by ES's `search.max_buckets` cluster "
-            "setting (default 65,536); very high values also degrade terms "
-            "aggregation accuracy."
+            "Maximum buckets returned per Elasticsearch terms aggregation. "
+            "Capped at the Elasticsearch cluster default for `search.max_buckets`."
         ),
     )
 

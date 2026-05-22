@@ -379,6 +379,12 @@ variable "max_reference_lookup_query_length" {
   default     = 100
 }
 
+variable "es_aggregation_max_buckets" {
+  description = "Maximum buckets returned per Elasticsearch terms aggregation (e.g. for `/references/search/facets/`). Must stay under the cluster-wide `search.max_buckets` setting."
+  type        = number
+  default     = 1000
+}
+
 variable "es_migrator_reindex_polling_interval" {
   description = "How frequently to poll the reindexing task when migrating indices"
   type        = number

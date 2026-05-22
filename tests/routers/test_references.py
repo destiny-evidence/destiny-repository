@@ -1412,7 +1412,7 @@ async def test_search_facets_concepts_happy_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Concept facet counts are surfaced under `facets.concepts`."""
-    from destiny_sdk.references import FacetType
+    from app.domain.references.models.models import FacetType
 
     buckets = [
         ESFacetBucket(key="http://example.org/concept/a", count=5),
@@ -1449,7 +1449,7 @@ async def test_search_facets_unrequested_keys_omitted(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Facet keys not asked for are stripped from the response (not set to null)."""
-    from destiny_sdk.references import FacetType
+    from app.domain.references.models.models import FacetType
 
     mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: []})
     monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)

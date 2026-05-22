@@ -1095,6 +1095,13 @@ class AnnotationFilter(BaseModel):
     )
 
 
+class FacetType(StrEnum):
+    """A facet supported by the reference search facets endpoint."""
+
+    CONCEPTS = auto()
+    """Counts of references per linked-data concept URI."""
+
+
 class SearchQuery(BaseModel):
     """A specification for searching references."""
 

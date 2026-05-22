@@ -1,5 +1,6 @@
 """Anti-corruption service for references domain."""
 
+from collections.abc import Sequence
 from uuid import UUID
 
 import destiny_sdk
@@ -12,6 +13,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementType,
     ExternalIdentifierAdapter,
+    FacetType,
     FullTextEnhancement,
     IdentifierLookup,
     LinkedExternalIdentifier,
@@ -394,18 +396,27 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
+    def facet_types_from_sdk(
+        self,
+        facets: Sequence[destiny_sdk.references.FacetType],
+    ) -> list[FacetType]:
+        """Map SDK facet types to their domain equivalents."""
+        # StrEnum values are identical between the two, so direct construction
+        # is safe and the typo guard sits in the value list of each enum.
+        return [FacetType(facet.value) for facet in facets]
+
     def facets_to_sdk(
         self,
-        buckets_by_facet: dict[destiny_sdk.references.FacetType, list[ESFacetBucket]],
+        buckets_by_facet: dict[FacetType, list[ESFacetBucket]],
     ) -> destiny_sdk.references.ReferenceFacetResult:
-        """Convert facet counts into the SDK response model."""
+        """Convert domain facet counts into the SDK response model."""
         facets: dict[
             destiny_sdk.references.FacetType,
             list[destiny_sdk.references.ConceptFacetCount],
         ] = {}
         for facet, buckets in buckets_by_facet.items():
-            if facet is destiny_sdk.references.FacetType.CONCEPTS:
-                facets[facet] = [
+            if facet is FacetType.CONCEPTS:
+                facets[destiny_sdk.references.FacetType.CONCEPTS] = [
                     destiny_sdk.references.ConceptFacetCount(
                         concept=bucket.key,
                         count=bucket.count,
@@ -416,7 +427,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 # A new FacetType must add a branch here. Failing loudly is
                 # better than silently dropping the buckets into an empty
                 # response.
-                msg = f"facets_to_sdk has no SDK mapping for " f"FacetType.{facet.name}"
+                msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
         try:
             return destiny_sdk.references.ReferenceFacetResult(

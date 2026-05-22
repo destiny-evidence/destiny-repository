@@ -3,13 +3,13 @@
 from collections.abc import Sequence
 from typing import ClassVar
 
-from destiny_sdk.references import FacetType
 from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     AnnotationFilter,
+    FacetType,
     PublicationYearRange,
     SearchQuery,
 )

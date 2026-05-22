@@ -127,6 +127,10 @@ locals {
       value = var.max_reference_lookup_query_length
     },
     {
+      name  = "ES_AGGREGATION_MAX_BUCKETS",
+      value = tostring(var.es_aggregation_max_buckets)
+    },
+    {
       name  = "MESSAGE_LOCK_RENEWAL_DURATION",
       value = var.message_lock_renewal_duration
     },
