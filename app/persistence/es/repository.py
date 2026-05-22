@@ -272,15 +272,14 @@ class GenericAsyncESRepository(
         max_buckets: int,
     ) -> dict[str, list[ESFacetBucket]]:
         """
-        Run a terms aggregation on the given fields restricted to a query string.
+        Run terms aggregations over documents matching a query string.
 
-        Executes a single ``size=0`` search that scopes the aggregations to
-        documents matching the query string, returning one terms bucket list
-        per requested field. Buckets are ordered by document count descending.
+        Executes a single ``size=0`` search and returns one terms bucket list
+        per requested field, ordered by document count descending.
 
         :param query: The query string filtering which documents are counted.
         :type query: str
-        :param aggregate_on: ES field names to run a terms aggregation on.
+        :param aggregate_on: ES field names to aggregate on.
         :type aggregate_on: Sequence[str]
         :param query_fields: Fields the query string should match against.
             ``None`` defers to the query string's own ``default_field``.

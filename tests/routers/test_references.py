@@ -1431,8 +1431,8 @@ async def test_search_facets_concepts_happy_path(
     assert body == {
         "facets": {
             "concepts": [
-                {"uri": "http://example.org/concept/a", "count": 5},
-                {"uri": "http://example.org/concept/b", "count": 2},
+                {"concept": "http://example.org/concept/a", "count": 5},
+                {"concept": "http://example.org/concept/b", "count": 2},
             ],
         }
     }

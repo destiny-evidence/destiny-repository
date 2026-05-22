@@ -555,13 +555,13 @@ class Settings(BaseSettings):
         description="The number of seconds a signed URL is valid for.",
     )
 
-    facet_max_buckets: int = Field(
+    es_aggregation_max_buckets: int = Field(
         default=1000,
         description=(
-            "Maximum number of buckets returned per facet in the `/search/facets/` "
-            "endpoint. Bounded above by Elasticsearch's `search.max_buckets` "
-            "cluster setting (default 65,536); very high values also degrade "
-            "terms aggregation accuracy."
+            "Maximum number of buckets returned per Elasticsearch terms "
+            "aggregation. Bounded above by ES's `search.max_buckets` cluster "
+            "setting (default 65,536); very high values also degrade terms "
+            "aggregation accuracy."
         ),
     )
 

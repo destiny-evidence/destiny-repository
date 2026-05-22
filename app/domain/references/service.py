@@ -1287,7 +1287,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         facets: Sequence[FacetType],
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Count facet bucket occurrences across references matching the query."""
+        """Count occurrences per facet across references matching the query."""
         return await self._search_service.aggregate_facets(query, facets)
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")

@@ -394,24 +394,33 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def facet_aggregation_to_sdk(
+    def facets_to_sdk(
         self,
         buckets_by_facet: dict[destiny_sdk.references.FacetType, list[ESFacetBucket]],
     ) -> destiny_sdk.references.ReferenceFacetResult:
-        """Convert facet bucket counts to the SDK facet response model."""
-        facets_kwargs: dict[str, list[destiny_sdk.references.ConceptFacetCount]] = {}
+        """Convert facet counts into the SDK response model."""
+        facets: dict[
+            destiny_sdk.references.FacetType,
+            list[destiny_sdk.references.ConceptFacetCount],
+        ] = {}
         for facet, buckets in buckets_by_facet.items():
             if facet is destiny_sdk.references.FacetType.CONCEPTS:
-                facets_kwargs["concepts"] = [
+                facets[facet] = [
                     destiny_sdk.references.ConceptFacetCount(
-                        uri=bucket.key,
+                        concept=bucket.key,
                         count=bucket.count,
                     )
                     for bucket in buckets
                 ]
+            else:
+                # A new FacetType must add a branch here. Failing loudly is
+                # better than silently dropping the buckets into an empty
+                # response.
+                msg = f"facets_to_sdk has no SDK mapping for " f"FacetType.{facet.name}"
+                raise NotImplementedError(msg)
         try:
             return destiny_sdk.references.ReferenceFacetResult(
-                facets=destiny_sdk.references.Facets(**facets_kwargs),
+                facets=facets,
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception

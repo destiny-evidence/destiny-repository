@@ -441,7 +441,6 @@ async def search_references(
 @search_router.get(
     "/facets/",
     status_code=status.HTTP_200_OK,
-    response_model_exclude_none=True,
     responses={
         status.HTTP_400_BAD_REQUEST: {
             "description": "Bad Query String",
@@ -449,20 +448,19 @@ async def search_references(
         }
     },
     description=(
-        "Return per-facet counts across the references matching the given search.\n\n"
-        "Accepts the same filter parameters as `/references/search/` plus one or more "
-        "`?facet=` values (currently only `concepts` is implemented; future types "
-        "will be added without breaking the response shape). The response includes "
-        "only the keys for facets the caller requested.\n\n"
-        "⚠️ **Naive implementation.** Each facet's counts reflect the *full* filter "
-        "set, including any selections within that same facet. Unselected siblings "
-        "of selected facets will therefore return co-occurrence counts (typically "
-        "near zero) rather than alternative counts. Correct OR-sibling semantics "
-        "are tracked in destiny-repository#703.\n\n"
-        "Bucket counts per facet are capped server-side (see `FACET_MAX_BUCKETS`)."
+        "Return per-facet counts across the references matching the search.\n\n"
+        "Accepts the same filter parameters as `/references/search/`, plus one or "
+        "more `?facet=` values. Only the requested facet types appear in the response."
+        "\n\n"
+        "⚠️ **Filters apply to facet counts of the same type.** If you filter on "
+        "a concept and request concept counts, the response shows co-occurrence "
+        "with your selection - siblings of selected concepts will typically appear "
+        "with very low counts, not their unfiltered counts.\n\n"
+        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets; "
+        "very large vocabularies are truncated."
     ),
 )
-async def aggregate_search_facets(
+async def count_facets_for_search(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
@@ -472,16 +470,13 @@ async def aggregate_search_facets(
         list[destiny_sdk.references.FacetType],
         Query(
             min_length=1,
-            description=(
-                "Facet type(s) to count. Repeat the parameter to request multiple "
-                "facets, e.g. `?facet=concepts`."
-            ),
+            description="One or more facet types to count.",
         ),
     ],
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
     buckets_by_facet = await reference_service.aggregate_facets(query, facet)
-    return anti_corruption_service.facet_aggregation_to_sdk(buckets_by_facet)
+    return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 
 
 @exports_router.post(

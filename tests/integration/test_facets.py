@@ -120,9 +120,9 @@ async def test_concept_facet_counts_unrestricted(
     assert body == {
         "facets": {
             "concepts": [
-                {"uri": CONCEPT_A, "count": 3},
-                {"uri": CONCEPT_B, "count": 2},
-                {"uri": CONCEPT_C, "count": 1},
+                {"concept": CONCEPT_A, "count": 3},
+                {"concept": CONCEPT_B, "count": 2},
+                {"concept": CONCEPT_C, "count": 1},
             ],
         }
     }
@@ -140,8 +140,8 @@ async def test_concept_facet_counts_respect_query_filter(
     assert response.status_code == status.HTTP_200_OK
     buckets = response.json()["facets"]["concepts"]
     assert buckets == [
-        {"uri": CONCEPT_A, "count": 2},
-        {"uri": CONCEPT_B, "count": 1},
+        {"concept": CONCEPT_A, "count": 2},
+        {"concept": CONCEPT_B, "count": 1},
     ]
 
 
