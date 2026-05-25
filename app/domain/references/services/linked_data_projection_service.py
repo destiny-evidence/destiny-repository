@@ -8,6 +8,7 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, SKOS
 
 from app.domain.references.models.models import LinkedDataProjection
+from app.domain.references.services.world_bank_regions import regions_for
 from app.external.vocabulary.client import VocabularyArtifactClient
 
 EVREPO = Namespace("https://vocab.evidence-repository.org/")
@@ -88,11 +89,13 @@ class LinkedDataProjectionService:
                 if prop_uri is not None:
                     evaluated_properties.add(prop_uri)
 
+        countries = self._extract_countries(data_graph)
         return LinkedDataProjection(
             concepts=concepts,
             labels=labels,
             evaluated_properties=evaluated_properties,
-            countries=self._extract_countries(data_graph),
+            countries=countries,
+            country_wb_regions=regions_for(countries),
         )
 
     def _extract_countries(self, data_graph: Graph) -> set[str]:
