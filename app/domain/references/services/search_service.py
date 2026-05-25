@@ -40,6 +40,10 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     # the cap is tracked in destiny-repository#661.
     MAX_RESULT_WINDOW = 10_000
 
+    _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
+        FacetType.CONCEPTS: "linked_data_concepts",
+    }
+
     def __init__(
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
@@ -86,10 +90,6 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         scheme = escape_lucene_quoted_term(annotation.scheme)
         label = escape_lucene_quoted_term(annotation.label)
         return f'annotations:"{scheme}/{label}"'
-
-    _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
-        FacetType.CONCEPTS: "linked_data_concepts",
-    }
 
     def _compose_query_string(self, query: SearchQuery) -> str:
         """
