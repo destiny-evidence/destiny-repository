@@ -362,20 +362,16 @@ def parse_search_query(
     )
 
 
-def parse_sort(
-    sort: Annotated[
-        list[str] | None,
-        Query(
-            description="A list of fields to sort the results by. "
-            "Prefix a field with `-` to sort in descending order. "
-            "If omitted, will sort by relevance score descending. "
-            "Multiple sort fields can be provided and will be applied "
-            "in the order given. Sort fields cannot be `text` fields.",
-        ),
-    ] = None,
-) -> list[str] | None:
-    """Parse the sort query parameter."""
-    return sort
+SortParam = Annotated[
+    list[str] | None,
+    Query(
+        description="A list of fields to sort the results by. "
+        "Prefix a field with `-` to sort in descending order. "
+        "If omitted, will sort by relevance score descending. "
+        "Multiple sort fields can be provided and will be applied "
+        "in the order given. Sort fields cannot be `text` fields.",
+    ),
+]
 
 
 @search_router.get(
@@ -405,7 +401,7 @@ async def search_references(
         ReferenceAccessControlService, Depends(reference_reader_access_control_service)
     ],
     query: Annotated[SearchQuery, Depends(parse_search_query)],
-    sort: Annotated[list[str] | None, Depends(parse_sort)],
+    sort: SortParam = None,
     page: Annotated[
         int,
         Query(
@@ -501,7 +497,7 @@ async def request_search_export(
     ],
     entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
     query: Annotated[SearchQuery, Depends(parse_search_query)],
-    sort: Annotated[list[str] | None, Depends(parse_sort)],
+    sort: SortParam = None,
 ) -> destiny_sdk.references.SearchExportRead:
     """Queue a search export job and return its id and pending status."""
     search_export = await search_export_service.request_search_export(
