@@ -374,6 +374,7 @@ async def linked_data_ref(
             "https://vocab.esea.education/documentType",
             "https://vocab.esea.education/educationLevel",
         ],
+        linked_data_countries=["KE", "GH"],
     )
     await doc.save(using=es_client)
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
@@ -403,6 +404,10 @@ ESEA_PROP = "https://vocab.esea.education/documentType"
         ),
         # Field existence
         ("_exists_:linked_data_concepts", True),
+        # Country code match (Keyword field)
+        ("linked_data_countries:KE", True),
+        ("linked_data_countries:GH", True),
+        ("linked_data_countries:ZZ", False),
     ],
 )
 async def test_linked_data_field_search(

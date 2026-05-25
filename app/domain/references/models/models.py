@@ -745,6 +745,7 @@ class LinkedDataProjection(ProjectedBaseModel):
     concepts: set[str] = Field(default_factory=set)
     labels: set[str] = Field(default_factory=set)
     evaluated_properties: set[str] = Field(default_factory=set)
+    countries: set[str] = Field(default_factory=set)
 
 
 class ReferenceSearchProjection(SQLAttributeMixin):

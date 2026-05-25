@@ -334,6 +334,12 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     )
     """Property URIs for all evaluated linked data dimensions."""
 
+    linked_data_countries: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """ISO country codes from LinkedDataEnhancements, for exact-match filtering."""
+
     @classmethod
     def from_projections(
         cls,
@@ -359,6 +365,9 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             linked_data_evaluated_properties=sorted(
                 linked_data_projection.evaluated_properties
             )
+            if linked_data_projection
+            else None,
+            linked_data_countries=sorted(linked_data_projection.countries)
             if linked_data_projection
             else None,
         )
