@@ -16,6 +16,7 @@ from app.domain.references.models.models import (
     FacetType,
     FullTextEnhancement,
     IdentifierLookup,
+    LinkedDataConceptFilter,
     LinkedExternalIdentifier,
     PublicationYearRange,
     Reference,
@@ -481,6 +482,25 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             label=label,
             score=score,
         )
+
+    def linked_data_concept_filter_from_query_parameter(
+        self,
+        concept_filter_string: str,
+    ) -> LinkedDataConceptFilter:
+        """
+        Parse a concept filter from a query parameter.
+
+        Values are comma-separated; each piece is stripped of surrounding
+        whitespace. Empty pieces raise ``ValueError``.
+        """
+        concept_uris = [uri.strip() for uri in concept_filter_string.split(",")]
+        if any(not uri for uri in concept_uris):
+            msg = (
+                "Empty concept URI in concept filter. "
+                f"Got: {concept_filter_string!r}."
+            )
+            raise ValueError(msg)
+        return LinkedDataConceptFilter(concept_uris=concept_uris)
 
     def duplicate_decision_from_sdk_make(
         self,

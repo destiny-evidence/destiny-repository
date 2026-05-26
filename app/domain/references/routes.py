@@ -51,11 +51,13 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
+    LinkedDataConceptFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceIds,
     SearchQuery,
 )
+from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.access_control_service import (
     ReferenceAccessControlService,
@@ -340,6 +342,46 @@ def parse_annotation_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def parse_linked_data_concept_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    concept: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of linked-data concept filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_concepts` "
+                "contain at least one of the listed URIs.\n"
+                "- Within a single value, separate multiple URIs with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `concept` parameters are combined with AND logic.\n\n"
+                "These must be fully-qualified URIs."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/scheme/C00001",
+                (
+                    "https://vocab.evidence-repository.org/scheme/C00001,"
+                    "https://vocab.evidence-repository.org/scheme/C00002"
+                ),
+            ],
+        ),
+    ] = None,
+) -> list[LinkedDataConceptFilter]:
+    """Parse linked-data concept filters from query parameters."""
+    if not concept:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_concept_filter_from_query_parameter(
+                concept_filter_string
+            )
+            for concept_filter_string in concept
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
 def parse_search_query(
     q: Annotated[
         str,
@@ -353,12 +395,17 @@ def parse_search_query(
         PublicationYearRange | None,
         Depends(parse_publication_year_range),
     ],
+    linked_data_concept_filters: Annotated[
+        list[LinkedDataConceptFilter],
+        Depends(parse_linked_data_concept_filters),
+    ],
 ) -> SearchQuery:
     """Bundle the shared search parameters into a domain SearchQuery."""
     return SearchQuery(
         query_string=q,
         annotation_filters=annotation_filters,
         publication_year_range=publication_year_range,
+        linked_data_concept_filters=linked_data_concept_filters,
     )
 
 
@@ -386,7 +433,8 @@ SortParam = Annotated[
     description="Search for references using a query string in "
     "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
     ". If the query string does not specify search fields, the search will query over "
-    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    f"[{', '.join(ReferenceESRepository.default_search_fields)}]. The query string "
+    "can only "
     "search over fields on the root level of the Reference document.\n\n"
     "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
     "and if a query would return more than 10,000 results the total count is listed as "

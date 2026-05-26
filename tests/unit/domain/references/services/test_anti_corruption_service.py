@@ -151,3 +151,52 @@ class TestFullTextEnhancementFromSdk:
         assert domain_ft.enhancement_type == EnhancementType.FULL_TEXT
         assert domain_ft.blob.is_remote
         assert domain_ft.blob.to_uri() == str(sdk_full_text.file_url)
+
+
+class TestLinkedDataConceptFilterFromQueryParameter:
+    """Tests for parsing concept filters from query parameter values."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_single_uri(self, service: ReferenceAntiCorruptionService) -> None:
+        result = service.linked_data_concept_filter_from_query_parameter(
+            "https://vocab.example.org/A",
+        )
+        assert result.concept_uris == ["https://vocab.example.org/A"]
+
+    def test_comma_separated_uris(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        result = service.linked_data_concept_filter_from_query_parameter(
+            "https://vocab.example.org/A,https://vocab.example.org/B",
+        )
+        assert result.concept_uris == [
+            "https://vocab.example.org/A",
+            "https://vocab.example.org/B",
+        ]
+
+    def test_trims_whitespace_around_each_uri(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        # URIs themselves never contain spaces; tolerate stray ones from clients.
+        result = service.linked_data_concept_filter_from_query_parameter(
+            "  https://vocab.example.org/A , https://vocab.example.org/B  ",
+        )
+        assert result.concept_uris == [
+            "https://vocab.example.org/A",
+            "https://vocab.example.org/B",
+        ]
+
+    def test_trailing_comma_raises(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        with pytest.raises(ValueError, match="Empty concept URI"):
+            service.linked_data_concept_filter_from_query_parameter(
+                "https://vocab.example.org/A,",
+            )
+
+    def test_empty_string_raises(self, service: ReferenceAntiCorruptionService) -> None:
+        with pytest.raises(ValueError, match="Empty concept URI"):
+            service.linked_data_concept_filter_from_query_parameter("")

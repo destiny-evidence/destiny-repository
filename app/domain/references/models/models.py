@@ -525,20 +525,8 @@ Errors for individual references are provided <TBC>.
 class SearchExport(DomainBaseModel, SQLAttributeMixin):
     """A queued job that produces a JSONL file of references matching a search."""
 
-    query: str = Field(
-        description="The Lucene query string the export is filtering on.",
-    )
-    annotation_filters: list["AnnotationFilter"] | None = Field(
-        default=None,
-        description="Parsed annotation filters to apply to the search, if any.",
-    )
-    start_year: int | None = Field(
-        default=None,
-        description="Inclusive lower bound on publication year, if any.",
-    )
-    end_year: int | None = Field(
-        default=None,
-        description="Inclusive upper bound on publication year, if any.",
+    query: "SearchQuery" = Field(
+        description="The search specification this export resolves.",
     )
     sort: list[str] | None = Field(
         default=None,
@@ -1097,6 +1085,20 @@ class AnnotationFilter(BaseModel):
     )
 
 
+class LinkedDataConceptFilter(BaseModel):
+    """
+    A set of fully-qualified concept URIs to match on ``linked_data_concepts``.
+
+    Within a single filter, references must carry at least one of the listed URIs
+    (logical OR). Multiple filters on a query are ANDed together.
+    """
+
+    concept_uris: list[str] = Field(
+        min_length=1,
+        description="Concept URIs to match. At least one must appear on the reference.",
+    )
+
+
 class FacetType(StrEnum):
     """A facet supported by the reference search facets endpoint."""
 
@@ -1115,6 +1117,13 @@ class SearchQuery(BaseModel):
     publication_year_range: PublicationYearRange | None = Field(
         default=None,
         description="Publication year range to AND with the query string.",
+    )
+    linked_data_concept_filters: list[LinkedDataConceptFilter] = Field(
+        default_factory=list,
+        description=(
+            "Concept URI filters to AND with the query string. Each filter is an "
+            "OR-set of URIs."
+        ),
     )
 
 
