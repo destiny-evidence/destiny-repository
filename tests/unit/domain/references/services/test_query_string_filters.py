@@ -1,9 +1,10 @@
 """Unit tests for structured filter clause building in SearchService."""
 
-from elasticsearch.dsl.query import Prefix, Range, Term
+from elasticsearch.dsl.query import Prefix, Range, Term, Terms
 
 from app.domain.references.models.models import (
     AnnotationFilter,
+    LinkedDataConceptFilter,
     PublicationYearRange,
     SearchQuery,
 )
@@ -66,6 +67,60 @@ def test_annotation_filter_scheme_only_uses_prefix_query():
         ),
     )
     assert clauses == [Prefix(annotations="inclusion:destiny/")]
+
+
+def test_linked_data_concept_filter_uses_terms_query():
+    """Concept filters resolve to a single ``terms`` clause (OR-of-URIs)."""
+    service = _StubSearchService()
+    clauses = service._build_filter_clauses(  # noqa: SLF001
+        SearchQuery(
+            query_string="*",
+            linked_data_concept_filters=[
+                LinkedDataConceptFilter(
+                    concept_uris=[
+                        "https://vocab.example.org/A",
+                        "https://vocab.example.org/B",
+                    ],
+                ),
+            ],
+        ),
+    )
+    assert clauses == [
+        Terms(
+            linked_data_concepts=[
+                "https://vocab.example.org/A",
+                "https://vocab.example.org/B",
+            ],
+        )
+    ]
+
+
+def test_multiple_concept_filters_produce_multiple_clauses():
+    """Each repeated concept= maps to its own ``Terms`` clause (ANDed at the bool)."""
+    service = _StubSearchService()
+    clauses = service._build_filter_clauses(  # noqa: SLF001
+        SearchQuery(
+            query_string="*",
+            linked_data_concept_filters=[
+                LinkedDataConceptFilter(concept_uris=["https://vocab.example.org/A"]),
+                LinkedDataConceptFilter(
+                    concept_uris=[
+                        "https://vocab.example.org/B",
+                        "https://vocab.example.org/C",
+                    ],
+                ),
+            ],
+        ),
+    )
+    assert clauses == [
+        Terms(linked_data_concepts=["https://vocab.example.org/A"]),
+        Terms(
+            linked_data_concepts=[
+                "https://vocab.example.org/B",
+                "https://vocab.example.org/C",
+            ],
+        ),
+    ]
 
 
 def test_annotation_filter_score_uses_range_query_on_dynamic_field():

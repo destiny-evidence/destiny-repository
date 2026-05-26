@@ -1,5 +1,6 @@
 """Generic repositories define expected functionality."""
 
+import json
 from abc import ABC
 from collections.abc import AsyncGenerator, Sequence
 from typing import Generic, Never
@@ -244,12 +245,13 @@ class GenericAsyncESRepository(
         :return: A list of matching records.
         :rtype: ESSearchResult
         """
-        trace_attribute(Attributes.DB_QUERY, query)
+        composed = _compose_query(query, fields, filter_clauses)
+        trace_attribute(Attributes.DB_QUERY, json.dumps(composed.to_dict()))
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=page_size)
             .extra(from_=(page - 1) * page_size)
-            .query(_compose_query(query, fields, filter_clauses))
+            .query(composed)
         )
         if sort:
             search = search.sort(*sort)
@@ -293,11 +295,12 @@ class GenericAsyncESRepository(
         :return: A mapping from each requested field name to its term buckets.
         :rtype: dict[str, list[ESFacetBucket]]
         """
-        trace_attribute(Attributes.DB_QUERY, query)
+        composed = _compose_query(query, query_fields, filter_clauses)
+        trace_attribute(Attributes.DB_QUERY, json.dumps(composed.to_dict()))
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=0)
-            .query(_compose_query(query, query_fields, filter_clauses))
+            .query(composed)
             .source(includes=[])
         )
         for field in aggregate_on:

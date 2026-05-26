@@ -103,14 +103,14 @@ The ``concept`` parameter filters results by their linked-data concept URIs (mat
 
 .. code-block::
 
-    # Get references annotated with the C00003 education level:
-    ?q=...&concept=https://vocab.esea.education/EducationLevelScheme/C00003
+    # Get references annotated with the C00001 concept:
+    ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001
 
-    # Get references annotated with either the C00003 or C00004 education level:
-    ?q=...&concept=https://vocab.esea.education/EducationLevelScheme/C00003,https://vocab.esea.education/EducationLevelScheme/C00004
+    # Get references annotated with either the C00001 or C00002 concept:
+    ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001,https://vocab.evidence-repository.org/scheme/C00002
 
-    # Get references annotated with (C00003 OR C00004) AND a specific outcome:
-    ?q=...&concept=https://vocab.esea.education/EducationLevelScheme/C00003,https://vocab.esea.education/EducationLevelScheme/C00004&concept=https://vocab.example.org/Outcomes/Learning
+    # Get references annotated with (C00001 OR C00002) AND a third concept:
+    ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001,https://vocab.evidence-repository.org/scheme/C00002&concept=https://vocab.evidence-repository.org/scheme/C00003
 
 Page
 _____________

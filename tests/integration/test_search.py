@@ -1,6 +1,7 @@
 """Integration tests for search API with complex query string scenarios."""
 
 from collections.abc import AsyncGenerator, Callable
+from typing import TYPE_CHECKING
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -27,6 +28,9 @@ from tests.factories import (
     ReferenceFactory,
     to_indexable,
 )
+
+if TYPE_CHECKING:
+    from app.domain.references.models.models import Reference
 
 pytestmark = pytest.mark.usefixtures("session")
 
@@ -487,7 +491,7 @@ async def concept_references(
         "ref_C": [CONCEPT_C],
         "ref_none": [],
     }
-    refs: dict[str, ReferenceFactory] = {
+    refs: dict[str, Reference] = {
         handle: ReferenceFactory.build(
             enhancements=[
                 EnhancementFactory.build(
