@@ -115,3 +115,10 @@ class ESSearchResult(BaseModel):
     page: int = Field(
         description="The page number of the results.",
     )
+
+
+class ESFacetBucket(BaseModel):
+    """A single bucket from a terms aggregation."""
+
+    key: str = Field(description="The bucket key (the field value being counted).")
+    count: int = Field(description="The number of documents in the bucket.")

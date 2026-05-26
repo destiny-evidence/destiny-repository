@@ -555,6 +555,16 @@ class Settings(BaseSettings):
         description="The number of seconds a signed URL is valid for.",
     )
 
+    es_aggregation_max_buckets: int = Field(
+        default=1000,
+        ge=1,
+        le=65_536,
+        description=(
+            "Maximum buckets returned per Elasticsearch terms aggregation. "
+            "Capped at the Elasticsearch cluster default for `search.max_buckets`."
+        ),
+    )
+
     full_text_max_byte_size: int = Field(
         default=1024**3,
         description=(

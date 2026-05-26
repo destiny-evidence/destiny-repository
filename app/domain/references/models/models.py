@@ -1095,6 +1095,27 @@ class AnnotationFilter(BaseModel):
     )
 
 
+class FacetType(StrEnum):
+    """A facet supported by the reference search facets endpoint."""
+
+    CONCEPTS = auto()
+    """Counts of references per linked-data concept URI."""
+
+
+class SearchQuery(BaseModel):
+    """A specification for searching references."""
+
+    query_string: str = Field(description="The Lucene query string to search with.")
+    annotation_filters: list[AnnotationFilter] = Field(
+        default_factory=list,
+        description="Annotation filters to AND with the query string.",
+    )
+    publication_year_range: PublicationYearRange | None = Field(
+        default=None,
+        description="Publication year range to AND with the query string.",
+    )
+
+
 class ReferenceSearchResult(BaseModel):
     """Wrapping class for Elasticsearch search results."""
 

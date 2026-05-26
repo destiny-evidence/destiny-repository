@@ -1,5 +1,6 @@
 """Anti-corruption service for references domain."""
 
+from collections.abc import Sequence
 from uuid import UUID
 
 import destiny_sdk
@@ -12,6 +13,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementType,
     ExternalIdentifierAdapter,
+    FacetType,
     FullTextEnhancement,
     IdentifierLookup,
     LinkedExternalIdentifier,
@@ -27,7 +29,7 @@ from app.domain.references.services.access_control_service import RedactedRefere
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
@@ -393,6 +395,35 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             ]
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
+
+    def facet_types_from_sdk(
+        self,
+        facets: Sequence[destiny_sdk.references.FacetType],
+    ) -> list[FacetType]:
+        """Map SDK facet types to their domain equivalents."""
+        return [FacetType(facet.value) for facet in facets]
+
+    def facets_to_sdk(
+        self,
+        buckets_by_facet: dict[FacetType, list[ESFacetBucket]],
+    ) -> destiny_sdk.references.ReferenceFacetResult:
+        """Convert domain facet counts into the SDK response model."""
+        fields: dict[str, object] = {}
+        for facet, buckets in buckets_by_facet.items():
+            if facet is FacetType.CONCEPTS:
+                fields["concepts"] = [
+                    destiny_sdk.references.ConceptFacetCount(
+                        concept=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
+            else:
+                msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
+                raise NotImplementedError(msg)
+        try:
+            return destiny_sdk.references.ReferenceFacetResult(**fields)
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
 
     async def two_stage_reference_search_result_to_sdk(
         self,

@@ -61,7 +61,12 @@ from app.domain.references.services.export_service import SearchExportService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESHit,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
@@ -911,29 +916,28 @@ async def test_search_references_with_annotation_filters(
 
     # Verify the service was called with the correct annotation filters
     mock_search.assert_awaited_once()
-    call_kwargs = mock_search.call_args.kwargs
-    assert call_kwargs["annotations"] is not None
-    assert len(call_kwargs["annotations"]) == 4
+    search_query = mock_search.call_args.args[0]
+    assert len(search_query.annotation_filters) == 4
 
     # Check first annotation filter
-    assert call_kwargs["annotations"][0].scheme == "test:scheme"
-    assert call_kwargs["annotations"][0].label == "test_label"
-    assert call_kwargs["annotations"][0].score is None
+    assert search_query.annotation_filters[0].scheme == "test:scheme"
+    assert search_query.annotation_filters[0].label == "test_label"
+    assert search_query.annotation_filters[0].score is None
 
     # Check second annotation filter with score
-    assert call_kwargs["annotations"][1].scheme == "another:scheme"
-    assert call_kwargs["annotations"][1].label == "another_label"
-    assert call_kwargs["annotations"][1].score == 0.8
+    assert search_query.annotation_filters[1].scheme == "another:scheme"
+    assert search_query.annotation_filters[1].label == "another_label"
+    assert search_query.annotation_filters[1].score == 0.8
 
     # Check third annotation filter without label is ignored
-    assert call_kwargs["annotations"][2].scheme == "just_a_scheme"
-    assert not call_kwargs["annotations"][2].label
-    assert call_kwargs["annotations"][2].score == 0.8
+    assert search_query.annotation_filters[2].scheme == "just_a_scheme"
+    assert not search_query.annotation_filters[2].label
+    assert search_query.annotation_filters[2].score == 0.8
 
     # Check fourth annotation filter with slashes in label
-    assert call_kwargs["annotations"][3].scheme == "test:scheme"
-    assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
-    assert call_kwargs["annotations"][3].score is None
+    assert search_query.annotation_filters[3].scheme == "test:scheme"
+    assert search_query.annotation_filters[3].label == "label/with/lots/of/slashes"
+    assert search_query.annotation_filters[3].score is None
 
 
 async def test_request_search_export_happy_path(
@@ -1401,3 +1405,82 @@ async def test_make_duplicate_decisions_resolve_duplicate_to_different_canonical
     assert results[0]["outcome"] == "duplicate"
     assert results[0]["active_decision"] is True
     assert results[0]["canonical_reference_id"] == str(canonical_b.id)
+
+
+async def test_search_facets_concepts_happy_path(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concept facet counts are surfaced under `facets.concepts`."""
+    from app.domain.references.models.models import FacetType
+
+    buckets = [
+        ESFacetBucket(key="http://example.org/concept/a", count=5),
+        ESFacetBucket(key="http://example.org/concept/b", count=2),
+    ]
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: buckets})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body == {
+        "concepts": [
+            {"concept": "http://example.org/concept/a", "count": 5},
+            {"concept": "http://example.org/concept/b", "count": 2},
+        ],
+    }
+
+    # Service was called with the parsed SearchQuery and the requested facets.
+    mock_aggregate.assert_awaited_once()
+    search_query, facets = mock_aggregate.call_args.args
+    assert search_query.query_string == "climate"
+    assert list(facets) == [FacetType.CONCEPTS]
+
+
+async def test_search_facets_unrequested_keys_omitted(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Facet keys not asked for are stripped from the response (not set to null)."""
+    from app.domain.references.models.models import FacetType
+
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: []})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"concepts": []}
+
+
+async def test_search_facets_requires_facet_param(client: AsyncClient) -> None:
+    """Missing `facet=` is rejected by FastAPI validation."""
+    response = await client.get(
+        "/v1/references/search/facets/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_unknown_facet(client: AsyncClient) -> None:
+    """An unsupported `facet=` value is rejected at the enum boundary."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "bogus"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_empty_query(client: AsyncClient) -> None:
+    """The shared `q` validation (min_length=1) applies to the facets endpoint too."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

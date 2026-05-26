@@ -2,7 +2,7 @@
 
 import datetime
 from collections import defaultdict
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from uuid import UUID
 
 from opentelemetry.trace import get_tracer
@@ -23,18 +23,17 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    AnnotationFilter,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
+    FacetType,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
-    PublicationYearRange,
     Reference,
     ReferenceDuplicateDecision,
     ReferenceIds,
@@ -42,6 +41,7 @@ from app.domain.references.models.models import (
     RobotAutomation,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
+    SearchQuery,
 )
 from app.domain.references.models.projections import DeduplicatedReferenceProjection
 from app.domain.references.models.validators import ReferenceCreateResult
@@ -72,7 +72,7 @@ from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -1270,20 +1270,25 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @es_unit_of_work
     async def search_references(
         self,
-        query: str,
+        query: SearchQuery,
         page: int = 1,
-        annotations: list[AnnotationFilter] | None = None,
-        publication_year_range: PublicationYearRange | None = None,
         sort: list[str] | None = None,
     ) -> ESSearchResult:
-        """Search for references given a query string."""
-        return await self._search_service.search_with_query_string(
+        """Search for references matching the given query specification."""
+        return await self._search_service.search_with_query(
             query,
             page=page,
-            annotations=annotations,
-            publication_year_range=publication_year_range,
             sort=sort,
         )
+
+    @es_unit_of_work
+    async def aggregate_facets(
+        self,
+        query: SearchQuery,
+        facets: Sequence[FacetType],
+    ) -> dict[FacetType, list[ESFacetBucket]]:
+        """Count occurrences per facet across references matching the query."""
+        return await self._search_service.aggregate_facets(query, facets)
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
     async def _detect_and_dispatch_robot_automations(

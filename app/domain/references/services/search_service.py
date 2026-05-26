@@ -1,18 +1,23 @@
 """Service for searching references."""
 
+from collections.abc import Sequence
+from typing import ClassVar
+
 from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     AnnotationFilter,
+    FacetType,
     PublicationYearRange,
+    SearchQuery,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.service import GenericService
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.utils.regex import escape_lucene_quoted_term
@@ -34,6 +39,10 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     # produces `relation == "gte"` totals rather than exact counts. Lifting
     # the cap is tracked in destiny-repository#661.
     MAX_RESULT_WINDOW = 10_000
+
+    _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
+        FacetType.CONCEPTS: "linked_data_concepts",
+    }
 
     def __init__(
         self,
@@ -82,35 +91,63 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         label = escape_lucene_quoted_term(annotation.label)
         return f'annotations:"{scheme}/{label}"'
 
-    async def search_with_query_string(  # noqa: PLR0913
-        self,
-        query_string: str,
-        page: int = 1,
-        page_size: int = 20,
-        annotations: list[AnnotationFilter] | None = None,
-        publication_year_range: PublicationYearRange | None = None,
-        sort: list[str] | None = None,
-    ) -> ESSearchResult:
-        """Search for references matching the query string."""
+    def _compose_query_string(self, query: SearchQuery) -> str:
+        """
+        Fold structured filters into a single Lucene query string.
+
+        TODO (#695): we actually don't need to do this - we can pass structured filters
+        to Elasticsearch separately from the query string.
+        """
         global_filters: list[str] = []
-        if publication_year_range:
+        if query.publication_year_range:
             global_filters.append(
                 self._build_publication_year_query_string_filter(
-                    publication_year_range,
+                    query.publication_year_range,
                 )
             )
-        if annotations:
-            global_filters.extend(
-                self._build_annotation_query_string_filter(annotation)
-                for annotation in annotations
-            )
-        if global_filters:
-            query_string = f"({query_string}) AND {' AND '.join(global_filters)}"
+        global_filters.extend(
+            self._build_annotation_query_string_filter(annotation)
+            for annotation in query.annotation_filters
+        )
+        if not global_filters:
+            return query.query_string
+        return f"({query.query_string}) AND {' AND '.join(global_filters)}"
+
+    async def search_with_query(
+        self,
+        query: SearchQuery,
+        page: int = 1,
+        page_size: int = 20,
+        sort: list[str] | None = None,
+    ) -> ESSearchResult:
+        """Search for references matching the given query specification."""
         return await self.es_uow.references.search_with_query_string(
-            query_string,
+            self._compose_query_string(query),
             fields=self.default_search_fields,
             page=page,
             page_size=page_size,
             sort=sort,
             parse_document=False,
         )
+
+    async def aggregate_facets(
+        self,
+        query: SearchQuery,
+        facets: Sequence[FacetType],
+    ) -> dict[FacetType, list[ESFacetBucket]]:
+        """
+        Count occurrences per facet over references matching ``query``.
+
+        Naive: counts are scoped by the full query, so filters within a facet
+        contribute to that facet's own counts. See destiny-repository#703.
+        """
+        facet_to_field = {facet: self._FACET_FIELDS[facet] for facet in facets}
+        buckets_by_field = await self.es_uow.references.aggregate_terms(
+            self._compose_query_string(query),
+            aggregate_on=list(facet_to_field.values()),
+            query_fields=self.default_search_fields,
+            max_buckets=settings.es_aggregation_max_buckets,
+        )
+        return {
+            facet: buckets_by_field[field] for facet, field in facet_to_field.items()
+        }

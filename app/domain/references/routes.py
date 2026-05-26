@@ -54,6 +54,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceIds,
+    SearchQuery,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.access_control_service import (
@@ -339,6 +340,40 @@ def parse_annotation_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def parse_search_query(
+    q: Annotated[
+        str,
+        Query(min_length=1, description="The query string."),
+    ],
+    annotation_filters: Annotated[
+        list[AnnotationFilter],
+        Depends(parse_annotation_filters),
+    ],
+    publication_year_range: Annotated[
+        PublicationYearRange | None,
+        Depends(parse_publication_year_range),
+    ],
+) -> SearchQuery:
+    """Bundle the shared search parameters into a domain SearchQuery."""
+    return SearchQuery(
+        query_string=q,
+        annotation_filters=annotation_filters,
+        publication_year_range=publication_year_range,
+    )
+
+
+SortParam = Annotated[
+    list[str] | None,
+    Query(
+        description="A list of fields to sort the results by. "
+        "Prefix a field with `-` to sort in descending order. "
+        "If omitted, will sort by relevance score descending. "
+        "Multiple sort fields can be provided and will be applied "
+        "in the order given. Sort fields cannot be `text` fields.",
+    ),
+]
+
+
 @search_router.get(
     "/",
     status_code=status.HTTP_200_OK,
@@ -365,20 +400,8 @@ async def search_references(
     access_control_service: Annotated[
         ReferenceAccessControlService, Depends(reference_reader_access_control_service)
     ],
-    q: Annotated[
-        str,
-        Query(
-            description="The query string.",
-        ),
-    ],
-    annotations: Annotated[
-        list[AnnotationFilter] | None,
-        Depends(parse_annotation_filters),
-    ],
-    publication_year_range: Annotated[
-        PublicationYearRange | None,
-        Depends(parse_publication_year_range),
-    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    sort: SortParam = None,
     page: Annotated[
         int,
         Query(
@@ -388,23 +411,11 @@ async def search_references(
             "Each page contains 20 results.",
         ),
     ] = 1,
-    sort: Annotated[
-        list[str] | None,
-        Query(
-            description="A list of fields to sort the results by. "
-            "Prefix a field with `-` to sort in descending order. "
-            "If omitted, will sort by relevance score descending. "
-            "Multiple sort fields can be provided and will be applied "
-            "in the order given. Sort fields cannot be `text` fields.",
-        ),
-    ] = None,
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
     search_result = await reference_service.search_references(
-        q,
+        query,
         page=page,
-        annotations=annotations,
-        publication_year_range=publication_year_range,
         sort=sort,
     )
     references = (
@@ -421,6 +432,51 @@ async def search_references(
             for reference in references
         ],
     )
+
+
+@search_router.get(
+    "/facets/",
+    status_code=status.HTTP_200_OK,
+    response_model_exclude_none=True,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description=(
+        "Return per-facet counts across the references matching the search.\n\n"
+        "Accepts the same filter parameters as `/references/search/`, plus one or "
+        "more `?facet=` values. Only the requested facet types appear in the response."
+        "\n\n"
+        "⚠️ **Filters apply to facet counts of the same type.** If you filter on "
+        "a concept and request concept counts, the response shows co-occurrence "
+        "with your selection - siblings of selected concepts will typically appear "
+        "with very low counts, not their unfiltered counts.\n\n"
+        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets; "
+        "very large vocabularies are truncated."
+    ),
+)
+async def count_facets_for_search(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    facet: Annotated[
+        list[destiny_sdk.references.FacetType],
+        Query(
+            min_length=1,
+            description="One or more facet types to count.",
+        ),
+    ],
+) -> destiny_sdk.references.ReferenceFacetResult:
+    """Return per-facet term counts for references matching the query."""
+    buckets_by_facet = await reference_service.aggregate_facets(
+        query,
+        anti_corruption_service.facet_types_from_sdk(facet),
+    )
+    return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 
 
 @exports_router.post(
@@ -441,34 +497,12 @@ async def request_search_export(
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
-    q: Annotated[
-        str,
-        Query(min_length=1, description="The query string."),
-    ],
-    annotation_filters: Annotated[
-        list[AnnotationFilter],
-        Depends(parse_annotation_filters),
-    ],
-    publication_year_range: Annotated[
-        PublicationYearRange | None,
-        Depends(parse_publication_year_range),
-    ],
-    sort: Annotated[
-        list[str] | None,
-        Query(
-            description="A list of fields to sort the results by. "
-            "Prefix a field with `-` to sort in descending order. "
-            "If omitted, will sort by relevance score descending. "
-            "Multiple sort fields can be provided and will be applied "
-            "in the order given. Sort fields cannot be `text` fields.",
-        ),
-    ] = None,
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    sort: SortParam = None,
 ) -> destiny_sdk.references.SearchExportRead:
     """Queue a search export job and return its id and pending status."""
     search_export = await search_export_service.request_search_export(
-        query=q,
-        annotation_filters=annotation_filters or None,
-        publication_year_range=publication_year_range,
+        query,
         sort=sort,
     )
     try:

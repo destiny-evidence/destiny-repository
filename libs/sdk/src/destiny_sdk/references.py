@@ -78,6 +78,31 @@ class ReferenceSearchResult(SearchResultMixIn, BaseModel):
     )
 
 
+class FacetType(StrEnum):
+    """Search facets of references."""
+
+    CONCEPTS = auto()
+    """Counts of references per linked-data concept URI."""
+
+
+class ConceptFacetCount(BaseModel):
+    """The count of matching references for a single concept."""
+
+    concept: str = Field(description="The concept URI.")
+    count: int = Field(
+        description="Number of matching references tagged with this concept.",
+    )
+
+
+class ReferenceFacetResult(BaseModel):
+    """Facet counts for a reference search."""
+
+    concepts: list[ConceptFacetCount] | None = Field(
+        default=None,
+        description="Counts of matching references per linked-data concept URI.",
+    )
+
+
 class SearchExportStatus(StrEnum):
     """The status of a search export job."""
 
