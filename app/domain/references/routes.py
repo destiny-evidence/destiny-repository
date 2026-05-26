@@ -437,6 +437,7 @@ async def search_references(
 @search_router.get(
     "/facets/",
     status_code=status.HTTP_200_OK,
+    response_model_exclude_none=True,
     responses={
         status.HTTP_400_BAD_REQUEST: {
             "description": "Bad Query String",

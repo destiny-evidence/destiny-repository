@@ -97,8 +97,9 @@ class ConceptFacetCount(BaseModel):
 class ReferenceFacetResult(BaseModel):
     """Facet counts for a reference search."""
 
-    facets: dict[FacetType, list[ConceptFacetCount]] = Field(
-        description="Counts per requested facet type."
+    concepts: list[ConceptFacetCount] | None = Field(
+        default=None,
+        description="Counts of matching references per linked-data concept URI.",
     )
 
 

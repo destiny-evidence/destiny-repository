@@ -1429,12 +1429,10 @@ async def test_search_facets_concepts_happy_path(
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body == {
-        "facets": {
-            "concepts": [
-                {"concept": "http://example.org/concept/a", "count": 5},
-                {"concept": "http://example.org/concept/b", "count": 2},
-            ],
-        }
+        "concepts": [
+            {"concept": "http://example.org/concept/a", "count": 5},
+            {"concept": "http://example.org/concept/b", "count": 2},
+        ],
     }
 
     # Service was called with the parsed SearchQuery and the requested facets.
@@ -1459,7 +1457,7 @@ async def test_search_facets_unrequested_keys_omitted(
         params={"q": "climate", "facet": "concepts"},
     )
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"facets": {"concepts": []}}
+    assert response.json() == {"concepts": []}
 
 
 async def test_search_facets_requires_facet_param(client: AsyncClient) -> None:

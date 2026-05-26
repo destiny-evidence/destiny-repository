@@ -118,13 +118,11 @@ async def test_concept_facet_counts_unrestricted(
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body == {
-        "facets": {
-            "concepts": [
-                {"concept": CONCEPT_A, "count": 3},
-                {"concept": CONCEPT_B, "count": 2},
-                {"concept": CONCEPT_C, "count": 1},
-            ],
-        }
+        "concepts": [
+            {"concept": CONCEPT_A, "count": 3},
+            {"concept": CONCEPT_B, "count": 2},
+            {"concept": CONCEPT_C, "count": 1},
+        ],
     }
 
 
@@ -138,7 +136,7 @@ async def test_concept_facet_counts_respect_query_filter(
         params={"q": "climate", "facet": "concepts"},
     )
     assert response.status_code == status.HTTP_200_OK
-    buckets = response.json()["facets"]["concepts"]
+    buckets = response.json()["concepts"]
     assert buckets == [
         {"concept": CONCEPT_A, "count": 2},
         {"concept": CONCEPT_B, "count": 1},
@@ -155,4 +153,4 @@ async def test_concept_facet_no_matches(
         params={"q": "title:nonexistent_term_xyz", "facet": "concepts"},
     )
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"facets": {"concepts": []}}
+    assert response.json() == {"concepts": []}

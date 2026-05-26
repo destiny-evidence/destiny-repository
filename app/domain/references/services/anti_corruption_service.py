@@ -408,13 +408,10 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         buckets_by_facet: dict[FacetType, list[ESFacetBucket]],
     ) -> destiny_sdk.references.ReferenceFacetResult:
         """Convert domain facet counts into the SDK response model."""
-        facets: dict[
-            destiny_sdk.references.FacetType,
-            list[destiny_sdk.references.ConceptFacetCount],
-        ] = {}
+        fields: dict[str, object] = {}
         for facet, buckets in buckets_by_facet.items():
             if facet is FacetType.CONCEPTS:
-                facets[destiny_sdk.references.FacetType.CONCEPTS] = [
+                fields["concepts"] = [
                     destiny_sdk.references.ConceptFacetCount(
                         concept=bucket.key, count=bucket.count
                     )
@@ -424,7 +421,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
         try:
-            return destiny_sdk.references.ReferenceFacetResult(facets=facets)
+            return destiny_sdk.references.ReferenceFacetResult(**fields)
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
