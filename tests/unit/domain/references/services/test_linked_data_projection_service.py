@@ -250,7 +250,11 @@ class TestLinkedDataProjectionService:
         assert result.countries == {"KE"}
 
     @pytest.mark.asyncio
-    async def test_excludes_not_reported_country(self, projector):
+    @pytest.mark.parametrize(
+        "status",
+        ["evrepo:notReported", "evrepo:notApplicable"],
+    )
+    async def test_excludes_uncoded_country(self, projector, status):
         data = {
             "@context": "https://vocab.esea.education/context/v1.jsonld",
             "@type": "Investigation",
@@ -266,7 +270,7 @@ class TestLinkedDataProjectionService:
                                     "@type": "xsd:string",
                                     "@value": "KE",
                                 },
-                                "status": "evrepo:notReported",
+                                "status": status,
                             },
                         ],
                     },

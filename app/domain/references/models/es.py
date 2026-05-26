@@ -356,18 +356,18 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             annotations=search_fields.annotations,
             evaluated_schemes=search_fields.evaluated_schemes,
             inclusion_destiny=search_fields.destiny_inclusion_score,
-            linked_data_concepts=sorted(linked_data_projection.concepts)
+            linked_data_concepts=list(linked_data_projection.concepts)
             if linked_data_projection
             else None,
-            linked_data_labels=sorted(linked_data_projection.labels)
+            linked_data_labels=list(linked_data_projection.labels)
             if linked_data_projection
             else None,
-            linked_data_evaluated_properties=sorted(
+            linked_data_evaluated_properties=list(
                 linked_data_projection.evaluated_properties
             )
             if linked_data_projection
             else None,
-            linked_data_countries=sorted(linked_data_projection.countries)
+            linked_data_countries=list(linked_data_projection.countries)
             if linked_data_projection
             else None,
         )

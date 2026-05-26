@@ -43,7 +43,7 @@ class LinkedDataProjectionService:
         self._vocabularies: dict[str, _LoadedVocabulary] = {}
 
     async def project(self, enhancement: LinkedDataEnhancement) -> LinkedDataProjection:
-        """Extract concepts, labels, and evaluated properties."""
+        """Extract concepts, labels, evaluated properties, and countries."""
         vocab = await self._get_vocabulary(str(enhancement.vocabulary_uri))
         context_uri = enhancement.data.get("@context")
         if context_uri is None:
