@@ -376,7 +376,7 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             linked_data_countries=list(linked_data_projection.countries)
             if linked_data_projection
             else None,
-            linked_data_country_wb_regions=sorted(
+            linked_data_country_wb_regions=list(
                 linked_data_projection.country_wb_regions
             )
             if linked_data_projection
