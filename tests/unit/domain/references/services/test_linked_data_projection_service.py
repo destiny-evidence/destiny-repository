@@ -12,6 +12,11 @@ from app.core.config import get_settings
 from app.domain.references.services.linked_data_projection_service import (
     LinkedDataProjectionService,
 )
+from app.domain.references.services.world_bank_regions import (
+    LATIN_AMERICA_CARIBBEAN,
+    SOUTH_ASIA,
+    SUB_SAHARAN_AFRICA,
+)
 from app.external.vocabulary.client import VocabularyArtifactClient
 
 ESEA_NS = "https://vocab.esea.education/"
@@ -172,6 +177,252 @@ class TestLinkedDataProjectionService:
         assert result.concepts == set()
         assert result.labels == set()
         assert result.evaluated_properties == set()
+        assert result.countries == set()
+        assert result.country_wb_regions == set()
+
+    @pytest.mark.asyncio
+    async def test_extracts_country_codes(self, projector):
+        data = {
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
+            "@type": "Investigation",
+            "hasFinding": [
+                {
+                    "@type": "Finding",
+                    "hasContext": {
+                        "@type": "Context",
+                        "country": [
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "KE",
+                                },
+                                "status": "evrepo:coded",
+                                "supportingText": "Kenya",
+                            },
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "GH",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+        enhancement = LinkedDataEnhancement(
+            context_uri="https://vocab.esea.education/context/v1.jsonld",
+            vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
+            data=data,
+        )
+        result = await projector.project(enhancement)
+
+        assert result.countries == {"KE", "GH"}
+        # Both KE and GH are Sub-Saharan Africa — regions deduplicate.
+        assert result.country_wb_regions == {SUB_SAHARAN_AFRICA}
+
+    @pytest.mark.asyncio
+    async def test_projects_distinct_regions_for_distinct_countries(self, projector):
+        data = {
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
+            "@type": "Investigation",
+            "hasFinding": [
+                {
+                    "@type": "Finding",
+                    "hasContext": {
+                        "@type": "Context",
+                        "country": [
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "KE",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "IN",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "BR",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+        enhancement = LinkedDataEnhancement(
+            context_uri="https://vocab.esea.education/context/v1.jsonld",
+            vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
+            data=data,
+        )
+        result = await projector.project(enhancement)
+
+        assert result.country_wb_regions == {
+            SUB_SAHARAN_AFRICA,
+            SOUTH_ASIA,
+            LATIN_AMERICA_CARIBBEAN,
+        }
+
+    @pytest.mark.asyncio
+    async def test_unknown_country_code_omitted_from_regions(self, projector):
+        data = {
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
+            "@type": "Investigation",
+            "hasFinding": [
+                {
+                    "@type": "Finding",
+                    "hasContext": {
+                        "@type": "Context",
+                        "country": [
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "ZZ",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "KE",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+        enhancement = LinkedDataEnhancement(
+            context_uri="https://vocab.esea.education/context/v1.jsonld",
+            vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
+            data=data,
+        )
+        result = await projector.project(enhancement)
+
+        # ZZ has no WB region; KE still resolves.
+        assert result.countries == {"ZZ", "KE"}
+        assert result.country_wb_regions == {SUB_SAHARAN_AFRICA}
+
+    @pytest.mark.asyncio
+    async def test_normalises_country_codes_to_uppercase(self, projector):
+        data = {
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
+            "@type": "Investigation",
+            "hasFinding": [
+                {
+                    "@type": "Finding",
+                    "hasContext": {
+                        "@type": "Context",
+                        "country": [
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "ke",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+        enhancement = LinkedDataEnhancement(
+            context_uri="https://vocab.esea.education/context/v1.jsonld",
+            vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
+            data=data,
+        )
+        result = await projector.project(enhancement)
+
+        assert result.countries == {"KE"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status",
+        ["evrepo:notReported", "evrepo:notApplicable"],
+    )
+    async def test_excludes_uncoded_country(self, projector, status):
+        data = {
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
+            "@type": "Investigation",
+            "hasFinding": [
+                {
+                    "@type": "Finding",
+                    "hasContext": {
+                        "@type": "Context",
+                        "country": [
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "KE",
+                                },
+                                "status": status,
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+        enhancement = LinkedDataEnhancement(
+            context_uri="https://vocab.esea.education/context/v1.jsonld",
+            vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
+            data=data,
+        )
+        result = await projector.project(enhancement)
+
+        assert result.countries == set()
+
+    @pytest.mark.asyncio
+    async def test_ignores_other_string_coding_annotations(self, projector):
+        """Only `country` properties are projected, not every StringCodingAnnotation."""
+        data = {
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
+            "@type": "Investigation",
+            "hasFinding": [
+                {
+                    "@type": "Finding",
+                    "hasContext": {
+                        "@type": "Context",
+                        "participants": [
+                            {
+                                "@type": "StringCodingAnnotation",
+                                "codedValue": {
+                                    "@type": "xsd:string",
+                                    "@value": "Students",
+                                },
+                                "status": "evrepo:coded",
+                            },
+                        ],
+                    },
+                }
+            ],
+        }
+        enhancement = LinkedDataEnhancement(
+            context_uri="https://vocab.esea.education/context/v1.jsonld",
+            vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
+            data=data,
+        )
+        result = await projector.project(enhancement)
+
+        assert result.countries == set()
 
     @pytest.mark.asyncio
     async def test_scheme_to_property_mapping(self, projector):

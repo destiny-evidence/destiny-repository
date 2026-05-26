@@ -334,6 +334,18 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     )
     """Property URIs for all evaluated linked data dimensions."""
 
+    linked_data_countries: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """ISO country codes from LinkedDataEnhancements, for exact-match filtering."""
+
+    linked_data_country_wb_regions: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """World Bank regions derived from ``linked_data_countries``."""
+
     @classmethod
     def from_projections(
         cls,
@@ -350,14 +362,22 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             annotations=search_fields.annotations,
             evaluated_schemes=search_fields.evaluated_schemes,
             inclusion_destiny=search_fields.destiny_inclusion_score,
-            linked_data_concepts=sorted(linked_data_projection.concepts)
+            linked_data_concepts=list(linked_data_projection.concepts)
             if linked_data_projection
             else None,
-            linked_data_labels=sorted(linked_data_projection.labels)
+            linked_data_labels=list(linked_data_projection.labels)
             if linked_data_projection
             else None,
-            linked_data_evaluated_properties=sorted(
+            linked_data_evaluated_properties=list(
                 linked_data_projection.evaluated_properties
+            )
+            if linked_data_projection
+            else None,
+            linked_data_countries=list(linked_data_projection.countries)
+            if linked_data_projection
+            else None,
+            linked_data_country_wb_regions=list(
+                linked_data_projection.country_wb_regions
             )
             if linked_data_projection
             else None,

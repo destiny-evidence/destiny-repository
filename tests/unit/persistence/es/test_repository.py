@@ -10,6 +10,10 @@ from app.core.exceptions import ESQueryError
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import Visibility
 from app.domain.references.repository import ReferenceESRepository
+from app.domain.references.services.world_bank_regions import (
+    SOUTH_ASIA,
+    SUB_SAHARAN_AFRICA,
+)
 from app.persistence.es.repository import GenericAsyncESRepository
 from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
@@ -374,6 +378,8 @@ async def linked_data_ref(
             "https://vocab.esea.education/documentType",
             "https://vocab.esea.education/educationLevel",
         ],
+        linked_data_countries=["KE", "GH"],
+        linked_data_country_wb_regions=[SUB_SAHARAN_AFRICA],
     )
     await doc.save(using=es_client)
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
@@ -403,6 +409,13 @@ ESEA_PROP = "https://vocab.esea.education/documentType"
         ),
         # Field existence
         ("_exists_:linked_data_concepts", True),
+        # Country code match (Keyword field)
+        ("linked_data_countries:KE", True),
+        ("linked_data_countries:GH", True),
+        ("linked_data_countries:ZZ", False),
+        # World Bank region ID match (Keyword field)
+        (f"linked_data_country_wb_regions:{SUB_SAHARAN_AFRICA}", True),
+        (f"linked_data_country_wb_regions:{SOUTH_ASIA}", False),
     ],
 )
 async def test_linked_data_field_search(

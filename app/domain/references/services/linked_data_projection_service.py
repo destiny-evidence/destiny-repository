@@ -4,13 +4,20 @@ import json
 from dataclasses import dataclass
 
 from destiny_sdk.enhancements import LinkedDataEnhancement
-from rdflib import Graph, Namespace, URIRef
+from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, SKOS
 
 from app.domain.references.models.models import LinkedDataProjection
+from app.domain.references.services.world_bank_regions import regions_for
 from app.external.vocabulary.client import VocabularyArtifactClient
 
 EVREPO = Namespace("https://vocab.evidence-repository.org/")
+ESEA = Namespace("https://vocab.esea.education/")
+
+# Vocabulary properties whose StringCodingAnnotation values are ISO 3166-1
+# alpha-2 country codes. New vocabularies that introduce a country property
+# must register it here for the values to become searchable.
+_COUNTRY_PROPERTIES: frozenset[URIRef] = frozenset({ESEA.country})
 
 
 @dataclass(frozen=True)
@@ -37,7 +44,7 @@ class LinkedDataProjectionService:
         self._vocabularies: dict[str, _LoadedVocabulary] = {}
 
     async def project(self, enhancement: LinkedDataEnhancement) -> LinkedDataProjection:
-        """Extract concepts, labels, and evaluated properties."""
+        """Extract concepts, labels, evaluated properties, and countries."""
         vocab = await self._get_vocabulary(str(enhancement.vocabulary_uri))
         context_uri = enhancement.data.get("@context")
         if context_uri is None:
@@ -82,11 +89,31 @@ class LinkedDataProjectionService:
                 if prop_uri is not None:
                     evaluated_properties.add(prop_uri)
 
+        countries = self._extract_countries(data_graph)
         return LinkedDataProjection(
             concepts=concepts,
             labels=labels,
             evaluated_properties=evaluated_properties,
+            countries=countries,
+            country_wb_regions=regions_for(countries),
         )
+
+    def _extract_countries(self, data_graph: Graph) -> set[str]:
+        """Extract ISO country codes from registered country-typed properties."""
+        countries: set[str] = set()
+        for country_property in _COUNTRY_PROPERTIES:
+            for _, _, annotation in data_graph.triples((None, country_property, None)):
+                status = self._get_status(data_graph, annotation)
+                if status not in (EVREPO.coded, None):
+                    continue
+                for _, _, value in data_graph.triples(
+                    (annotation, EVREPO.codedValue, None)
+                ):
+                    if isinstance(value, Literal):
+                        code = str(value).strip().upper()
+                        if code:
+                            countries.add(code)
+        return countries
 
     # -- vocabulary resolution with derived-lookup caching ---------------------
 
