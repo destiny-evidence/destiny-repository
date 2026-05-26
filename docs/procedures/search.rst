@@ -232,3 +232,7 @@ Linked Data
 .. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.linked_data_evaluated_properties
     :no-index:
     :annotation: list[str]
+
+.. autoattribute:: app.domain.references.models.es.ReferenceSearchFieldsMixin.linked_data_countries
+    :no-index:
+    :annotation: list[str]
