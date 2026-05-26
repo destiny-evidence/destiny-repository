@@ -1147,59 +1147,38 @@ class SearchQuery(BaseModel):
 
 
 class ConceptSiblingGroup(BaseModel):
-    """
-    A LinkedDataConceptFilter enriched with sibling-aware counting context.
-
-    Produced by sibling resolution at search time; consumed by the ES repository
-    to drive per-group facet aggregations. The selection within the group is
-    always reachable as ``source_filter.concept_uris``.
-    """
+    """A LinkedDataConceptFilter paired with its sibling expansion from a vocab."""
 
     model_config = ConfigDict(frozen=True)
 
     source_filter: LinkedDataConceptFilter = Field(
-        description=(
-            "The filter this group was resolved from; its ``concept_uris`` are "
-            "the user's selection within the group."
-        ),
+        description="The filter this group was resolved from.",
     )
     siblings_including_selected: frozenset[str] = Field(
         description=(
-            "Union of the filter's URIs and their siblings from the vocabulary. "
-            "Used as the ``include`` set for the group's facet aggregation."
+            "Union of the filter's URIs and their siblings. Used as the "
+            "``include`` set for the group's facet aggregation."
         ),
     )
 
 
 class SiblingGrouping(BaseModel):
-    """
-    Resolved sibling-aware grouping for one search request.
-
-    Empty when the request has no concept filters (or when the caller didn't
-    take the sibling-aware path); the ES repository's facet method treats an
-    empty grouping as the naive single-aggregation case.
-    """
+    """Sibling-aware grouping for a search request; empty = naive path."""
 
     model_config = ConfigDict(frozen=True)
 
     groups: tuple[ConceptSiblingGroup, ...] = Field(
         default=(),
-        description=(
-            "One group per ``LinkedDataConceptFilter``, in input order. Empty "
-            "when no concept filter was supplied."
-        ),
+        description="One group per LinkedDataConceptFilter, in input order.",
     )
     all_grouped_uris: frozenset[str] = Field(
         default_factory=frozenset,
-        description=(
-            "Union of every group's ``siblings_including_selected`` — used as "
-            "the ``exclude`` set for the ``unselected`` aggregation."
-        ),
+        description="Union of every group's siblings, for the unselected agg.",
     )
 
     @property
     def is_empty(self) -> bool:
-        """True when no groups have been resolved (no concept filters present)."""
+        """True when no groups have been resolved."""
         return not self.groups
 
 

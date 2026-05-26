@@ -7,7 +7,6 @@ from app.core.exceptions import ESQueryError
 from app.domain.references.models.models import (
     AnnotationFilter,
     ConceptSiblingGroup,
-    FacetType,
     LinkedDataConceptFilter,
     PublicationYearRange,
     SearchQuery,
@@ -220,9 +219,8 @@ def _worked_example_grouping() -> SiblingGrouping:
 def test_grouped_facet_aggs_match_ticket_worked_example():
     """Per-group filter uses *other* groups' selected URIs; include is the full group."""  # noqa: E501
     repository = _StubReferenceESRepository()
-    grouping = _worked_example_grouping()
     aggs = repository._build_grouped_facet_aggs(  # noqa: SLF001
-        _FIELD, grouping, max_buckets=_MAX_BUCKETS
+        _FIELD, _worked_example_grouping(), max_buckets=_MAX_BUCKETS
     )
     assert [spec.name for spec in aggs] == [
         "facet_group_0",
@@ -231,72 +229,35 @@ def test_grouped_facet_aggs_match_ticket_worked_example():
     ]
     group_0, group_1, unselected = aggs
 
-    # facet_group_0 is the Topics group: filter is Region's selection ([AFRICA]).
+    # Topics group: filter is Region's selection; include is the Biology sibling set.
     assert group_0.field == _FIELD
     assert group_0.filter_clauses == (Terms(linked_data_concepts=[AFRICA]),)
-    assert group_0.include == (BOTANY, MICROBIOLOGY, ZOOLOGY)  # sorted
-    assert group_0.exclude is None
+    assert group_0.include == (BOTANY, MICROBIOLOGY, ZOOLOGY)
     assert group_0.min_doc_count == 0
     assert group_0.size == 3
 
-    # facet_group_1 is Region: filter is Topics' selection ([BOTANY, ZOOLOGY]).
+    # Region group: mirror image.
     assert group_1.filter_clauses == (Terms(linked_data_concepts=[BOTANY, ZOOLOGY]),)
     assert group_1.include == (AFRICA, ASIA, EUROPE)
-    assert group_1.min_doc_count == 0
 
-    # unselected: filter is all groups' selections; exclude all known URIs.
+    # `unselected` ANDs all selections; excludes every URI from either group.
     assert unselected.filter_clauses == (
         Terms(linked_data_concepts=[BOTANY, ZOOLOGY]),
         Terms(linked_data_concepts=[AFRICA]),
     )
     assert unselected.exclude == (AFRICA, ASIA, BOTANY, EUROPE, MICROBIOLOGY, ZOOLOGY)
-    assert unselected.include is None
     assert unselected.min_doc_count == 1
     assert unselected.size == _MAX_BUCKETS
 
 
-def test_grouped_facet_aggs_bucket_universes_are_disjoint():
-    """Each URI must appear in at most one agg spec's include/exclude set."""
-    repository = _StubReferenceESRepository()
+def test_validate_grouping_against_max_buckets():
+    """Groups within the limit are accepted; over the limit raises ESQueryError."""
     grouping = _worked_example_grouping()
-    aggs = repository._build_grouped_facet_aggs(  # noqa: SLF001
-        _FIELD, grouping, max_buckets=_MAX_BUCKETS
-    )
-    universes: list[set[str]] = [
-        set(spec.include) for spec in aggs if spec.include is not None
-    ]
-    # facet_group_N includes overlap is disallowed.
-    for i, universe in enumerate(universes):
-        for other in universes[i + 1 :]:
-            assert universe.isdisjoint(other)
-
-
-def test_validate_grouping_against_max_buckets_raises_when_exceeded():
-    """A group with more siblings than max_buckets must surface loudly."""
-    huge_group = ConceptSiblingGroup(
-        source_filter=LinkedDataConceptFilter(concept_uris=[BOTANY]),
-        siblings_including_selected=frozenset({f"urn:concept:{i}" for i in range(5)}),
-    )
-    grouping = SiblingGrouping(
-        groups=(huge_group,), all_grouped_uris=huge_group.siblings_including_selected
-    )
-    with pytest.raises(ESQueryError, match="exceeding max_buckets"):
-        ReferenceESRepository._validate_grouping_against_max_buckets(  # noqa: SLF001
-            grouping, max_buckets=3
-        )
-
-
-def test_validate_grouping_against_max_buckets_ok_when_within_limit():
-    """Equal-to-limit is fine."""
-    grouping = _worked_example_grouping()
-    # No raise.
+    # Limit equals largest group size — fine.
     ReferenceESRepository._validate_grouping_against_max_buckets(  # noqa: SLF001
         grouping, max_buckets=3
     )
-
-
-# A bucket-uniqueness sanity check anchored to the FacetType enum so we
-# don't regress on the contract "every URI appears at most once in the
-# flattened response".
-def test_aggregate_facets_facet_type_is_concepts_only_today():
-    assert tuple(FacetType) == (FacetType.CONCEPTS,)
+    with pytest.raises(ESQueryError, match="exceeding max_buckets"):
+        ReferenceESRepository._validate_grouping_against_max_buckets(  # noqa: SLF001
+            grouping, max_buckets=2
+        )

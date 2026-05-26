@@ -161,7 +161,7 @@ API Facet Counts
 
 The `facets endpoint <https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc#tag/search/operation/count_facets_for_search_v1_references_search_facets__get>`_ at `/v1/references/search/facets/` returns per-facet term counts across the references matching the search.
 
-The endpoint accepts the same filter parameters as `/v1/references/search/` (``q``, ``start_year``, ``end_year``, ``annotation``, ``concept``), plus one or more ``facet`` parameters. Only the requested facet types appear in the response.
+Accepts the same filter parameters as `/v1/references/search/` plus one or more ``facet`` values. Only the requested facet types appear in the response.
 
 .. code-block::
 
@@ -171,36 +171,31 @@ The endpoint accepts the same filter parameters as `/v1/references/search/` (``q
 Sibling-aware concept counts
 ______________________________
 
-When you combine ``concept=`` filters with ``facet=concepts``, the response includes the would-be count for every selected concept's siblings (concepts at the same level in the vocabulary). This is the right number to display next to each filter chip in a UI: "if I toggled exactly this concept and left everything else alone, how many results would I get?".
-
-This requires supplying a ``vocabulary=`` parameter with the URI of the vocabulary the server should consult for sibling lookups.
+When ``concept=`` is supplied alongside ``facet=concepts``, also pass ``vocabulary=`` to get the count each selected concept's siblings would have if toggled alone. Each ``concept=`` parameter is treated as one sibling group; across parameters they AND.
 
 .. code-block::
 
-    # The ticket's worked example: count concepts across all references matching a
-    # search filtered to (Botany OR Zoology) AND Africa, with sibling-aware counts.
+    # (Botany OR Zoology) AND Africa, with sibling-aware concept counts.
     ?q=*&concept=https://vocab.evidence-repository.org/Botany,https://vocab.evidence-repository.org/Zoology
         &concept=https://vocab.evidence-repository.org/Africa
         &facet=concepts
         &vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
 
-Each ``concept=`` parameter is treated as a sibling group; across parameters the filters AND together. The server enforces three rules — any violation returns a 400:
+The server enforces (400 on any violation):
 
-1. URIs inside a single ``concept=`` parameter must share a sibling set (i.e., be siblings of each other) in the supplied vocabulary.
-2. Different ``concept=`` filters must have disjoint sibling sets (siblings should be combined into one ``concept=``, not split).
+1. URIs inside one ``concept=`` must share a sibling set in the vocabulary.
+2. Different ``concept=`` filters must have disjoint sibling sets.
 3. Every URI must resolve in the supplied vocabulary.
-
-``vocabulary=`` is required only when ``concept=`` is supplied alongside ``facet=concepts``; the naive aggregation (with all filters applied) is used otherwise.
 
 Returns
 """"""""""
 
-Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceFacetResult>` object. Concept buckets in the response are flat — each concept URI appears at most once, and the count for a URI answers "if you toggled this single concept on/off while leaving everything else as-is, how many results would you get?". The UI looks up counts by URI.
+Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceFacetResult>` object. Concept buckets are flat — each URI appears at most once. The count for a URI is "docs matching if you toggled this concept's selection state and left everything else alone."
 
 Limitations
 """"""""""""
 
-Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000); very large vocabularies are truncated. If a sibling group exceeds this limit, the request is refused with a 5xx rather than silently returning a partial bucket list.
+Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). If a sibling group exceeds this, the request is refused rather than silently truncated.
 
 .. _lookup-procedure:
 

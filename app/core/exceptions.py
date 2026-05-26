@@ -677,15 +677,7 @@ class ParseError(DestinyRepositoryError):
 
 
 class SiblingGroupingError(ParseError):
-    """
-    The user's concept filters can't be resolved into sibling groups.
-
-    Surfaces as a 400 via
-    :func:`app.api.exception_handlers.parse_error_exception_handler`. Raised when:
-      - a concept URI doesn't appear in the supplied vocabulary;
-      - a single ``concept=`` filter mixes URIs from different sibling sets; or
-      - two ``concept=`` filters' sibling sets overlap (siblings split across filters).
-    """
+    """Concept filters can't be resolved into sibling groups against the vocab."""
 
 
 class DuplicateEnhancementError(DestinyRepositoryError):

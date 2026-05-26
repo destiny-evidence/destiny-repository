@@ -391,9 +391,8 @@ def parse_vocabulary_uri(
         str,
         Query(
             description=(
-                "Fully-qualified URI of the vocabulary to consult for sibling-"
-                "aware facet counting. Required when filtering on concepts "
-                "and requesting the `concepts` facet; ignored otherwise."
+                "Vocabulary URI for sibling-aware facet counting. Required when "
+                "filtering on concepts and requesting the `concepts` facet."
             ),
             examples=["https://vocab.esea.education/vocabulary/v1"],
         ),
@@ -522,11 +521,8 @@ async def search_references(
         "more `?facet=` values. Only the requested facet types appear in the "
         "response.\n\n"
         "When filtering on concepts and requesting the `concepts` facet, supply "
-        "`?vocabulary=` so the server can compute sibling-aware counts. Each "
-        "`?concept=` parameter is treated as one OR-set of siblings; across "
-        "parameters they AND. The vocabulary is consulted to find each "
-        "filter's sibling set, and three rules are enforced (400 on any "
-        "violation):\n\n"
+        "`?vocabulary=` for sibling-aware counts. Each `?concept=` parameter is "
+        "treated as one sibling group; the server enforces (400 on violation):\n\n"
         "1. URIs inside one `?concept=` must share a sibling set in the vocab.\n"
         "2. Different `?concept=` filters must have disjoint sibling sets.\n"
         "3. Every URI must resolve in the supplied vocabulary.\n\n"

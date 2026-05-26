@@ -330,12 +330,7 @@ class ReferenceESRepository(
     def _build_filter_clauses_excluding_concepts(
         self, query: SearchQuery
     ) -> list[Query]:
-        """
-        Build the year + annotation clauses, omitting concept filters.
-
-        The sibling-aware facet path applies concept filters via ``post_filter``
-        rather than ``bool.filter`` so that aggregations can ignore them.
-        """
+        """Year + annotation clauses only; the sibling-aware path AND-s concepts."""
         clauses: list[Query] = []
         if query.publication_year_range and (
             clause := self._build_publication_year_clause(query.publication_year_range)
@@ -376,28 +371,15 @@ class ReferenceESRepository(
         max_buckets: int,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """
-        Count occurrences per facet over references matching ``query``.
+        Count occurrences per facet; empty ``grouping`` is the naive path.
 
-        Two paths, unified:
+        Non-empty ``grouping`` builds per-group filtered terms aggs plus an
+        ``unselected`` agg, with concept filters applied via ``post_filter``
+        so they don't constrain the aggregations.
 
-        - **Empty grouping** (naive): build one terms agg per facet with the full
-          set of filters in ``bool.filter`` — equivalent to plain aggregation
-          behaviour. Used when no concept filter is present.
-        - **Non-empty grouping** (sibling-aware): build per-group filtered terms
-          aggs plus an ``unselected`` agg, and apply concept filters via
-          ``post_filter`` so they don't constrain the aggregations. The user's
-          partition of ``concept=`` parameters is preserved verbatim.
-
-        :raises ESQueryError: If any sibling group's ``include`` set exceeds
-            ``max_buckets`` — that would silently truncate the response.
+        :raises ESQueryError: If a group's sibling set exceeds ``max_buckets``.
         """
-        if grouping.is_empty:
-            return await self._aggregate_facets_naive(
-                query, facets, max_buckets=max_buckets
-            )
-        if facets != (FacetType.CONCEPTS,) and FacetType.CONCEPTS not in facets:
-            # If the only facets requested don't include CONCEPTS, grouping
-            # is irrelevant — fall back to the naive path.
+        if grouping.is_empty or FacetType.CONCEPTS not in facets:
             return await self._aggregate_facets_naive(
                 query, facets, max_buckets=max_buckets
             )
@@ -424,14 +406,13 @@ class ReferenceESRepository(
         out: dict[FacetType, list[ESFacetBucket]] = {
             FacetType.CONCEPTS: concepts_buckets,
         }
-        # CONCEPTS is currently the only FacetType — but cover the contract
-        # for other future facets by computing them naively in parallel.
         other_facets = tuple(f for f in facets if f is not FacetType.CONCEPTS)
         if other_facets:
-            naive = await self._aggregate_facets_naive(
-                query, other_facets, max_buckets=max_buckets
+            out.update(
+                await self._aggregate_facets_naive(
+                    query, other_facets, max_buckets=max_buckets
+                )
             )
-            out.update(naive)
         return out
 
     async def _aggregate_facets_naive(
@@ -441,7 +422,7 @@ class ReferenceESRepository(
         *,
         max_buckets: int,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Plain bool.filter + one terms agg per facet (today's behaviour)."""
+        """One terms agg per facet, with the full filter set in bool.filter."""
         facet_to_field = {facet: self._FACET_FIELDS[facet] for facet in facets}
         buckets_by_field = await self.aggregate_terms(
             query.query_string,
@@ -461,18 +442,7 @@ class ReferenceESRepository(
         *,
         max_buckets: int,
     ) -> list[FilteredTermsAggSpec]:
-        """
-        Construct ``facet_group_N`` aggs + a final ``unselected`` agg.
-
-        Each group's agg has ``include`` = its sibling set (so unselected
-        siblings come back, including zero counts for indexed ones), its
-        ``filter`` = the AND of every *other* group's user selections (so the
-        count is independent of the user's pick within this group), and
-        ``min_doc_count=0``. The ``unselected`` agg's ``filter`` is the AND of
-        *every* group's selections — equivalent to the request's ``post_filter``
-        — and its ``exclude`` set is the union of every group's include set, so
-        unique concept URIs only.
-        """
+        """Per-group facet aggs (filtered by *other* groups) + ``unselected``."""
         aggs: list[FilteredTermsAggSpec] = []
         for i, group in enumerate(grouping.groups):
             other_clauses = tuple(
@@ -511,12 +481,7 @@ class ReferenceESRepository(
     def _validate_grouping_against_max_buckets(
         grouping: SiblingGrouping, max_buckets: int
     ) -> None:
-        """
-        Refuse if any group's ``include`` set would exceed ``max_buckets``.
-
-        ES would silently truncate; we'd rather surface a 5xx than serve a
-        misleading partial count list.
-        """
+        """Refuse if any group's sibling set would exceed ``max_buckets``."""
         for i, group in enumerate(grouping.groups):
             include_size = len(group.siblings_including_selected)
             if include_size > max_buckets:

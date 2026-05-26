@@ -126,41 +126,26 @@ class ESFacetBucket(BaseModel):
 
 
 class FilteredTermsAggSpec(BaseModel):
-    """
-    Structured spec for a (optionally filter-wrapped) terms aggregation.
-
-    Used by :meth:`GenericAsyncESRepository.execute_filtered_terms_aggregations`
-    to drive multi-aggregation searches where each aggregation can scope its
-    document set independently of the main query.
-    """
+    """A terms aggregation, optionally wrapped in a per-agg filter."""
 
     model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
 
-    name: str = Field(
-        description="The aggregation name used as the bucket key in the response.",
-    )
-    field: str = Field(description="The ES field to aggregate on.")
+    name: str = Field(description="Aggregation name; used as the response key.")
+    field: str
     filter_clauses: tuple[Query, ...] = Field(
         default=(),
         description=(
-            "If non-empty, the terms agg is wrapped in a ``filter`` agg with these "
-            "clauses ANDed. Empty wraps in ``MatchAll`` so the response shape is "
-            "uniform regardless of whether a per-agg filter is applied."
+            "Pre-filter clauses, ANDed. Empty wraps in ``MatchAll`` so the "
+            "response peel is uniform across specs."
         ),
     )
-    include: tuple[str, ...] | None = Field(
-        default=None,
-        description="Optional terms-agg ``include`` list.",
-    )
-    exclude: tuple[str, ...] | None = Field(
-        default=None,
-        description="Optional terms-agg ``exclude`` list.",
-    )
+    include: tuple[str, ...] | None = None
+    exclude: tuple[str, ...] | None = None
     min_doc_count: int = Field(
         default=1,
         description=(
-            "ES terms-agg ``min_doc_count``; set to 0 to surface zero-count buckets "
-            "for values listed in ``include``."
+            "Set to 0 to surface zero-count buckets for values listed in "
+            "``include``."
         ),
     )
-    size: int = Field(description="The maximum number of buckets to return.")
+    size: int

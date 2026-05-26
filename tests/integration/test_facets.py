@@ -221,62 +221,27 @@ async def test_concept_facet_no_matches(
 # ---- Sibling-aware facets (#703) -------------------------------------------------
 
 
+CHEMISTRY = "https://vocab.example.org/test/Chemistry"
+_SIBLING_DOC_CONCEPTS = [
+    [BOTANY, AFRICA],
+    [BOTANY, AFRICA],
+    [ZOOLOGY, AFRICA],
+    [ZOOLOGY, ASIA],
+    [MICROBIOLOGY, EUROPE],
+    [CHEMISTRY, AFRICA],
+]
+
+
 @pytest.fixture
 async def sibling_references(es_client: AsyncElasticsearch) -> None:
-    """
-    Index references covering the ticket's worked example.
-
-    Layout (every doc has at least one Topics concept and one Region concept,
-    so concept-filter intersections are well-defined):
-
-    - doc 1: [Botany, Africa]
-    - doc 2: [Botany, Africa]
-    - doc 3: [Zoology, Africa]
-    - doc 4: [Zoology, Asia]
-    - doc 5: [Microbiology, Europe]
-    - doc 6: [Chemistry, Africa]  (an "unselected" concept outside the Biology
-                                   sibling set)
-    """
-    docs = [
-        ReferenceDocument(
+    """Six docs spanning the Biology + Region sibling groups + one Chemistry."""
+    for i, concepts in enumerate(_SIBLING_DOC_CONCEPTS, start=1):
+        await ReferenceDocument(
             meta={"id": uuid7()},
             visibility=Visibility.PUBLIC,
-            title="doc 1",
-            linked_data_concepts=[BOTANY, AFRICA],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="doc 2",
-            linked_data_concepts=[BOTANY, AFRICA],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="doc 3",
-            linked_data_concepts=[ZOOLOGY, AFRICA],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="doc 4",
-            linked_data_concepts=[ZOOLOGY, ASIA],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="doc 5",
-            linked_data_concepts=[MICROBIOLOGY, EUROPE],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="doc 6",
-            linked_data_concepts=["https://vocab.example.org/test/Chemistry", AFRICA],
-        ),
-    ]
-    for doc in docs:
-        await doc.save(using=es_client)
+            title=f"doc {i}",
+            linked_data_concepts=concepts,
+        ).save(using=es_client)
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
 
 
@@ -312,7 +277,7 @@ async def test_sibling_facets_worked_example(
     sibling_references: None,  # noqa: ARG001
     primed_vocab: str,
 ) -> None:
-    """Per the ticket: each bucket is "count if this concept were toggled alone"."""
+    """Two-group worked example: each bucket = count if toggled alone."""
     response = await client.get(
         "/v1/references/search/facets/",
         params=[
@@ -324,21 +289,12 @@ async def test_sibling_facets_worked_example(
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
+    # Topics counts are filtered to docs with Africa; Region counts to docs with
+    # (Botany OR Zoology). Microbiology=0 (its only doc is Europe-not-Africa);
+    # Europe=0 (its only doc has Microbiology, not Botany/Zoology). Unselected
+    # bucket is empty: every concept seen in the post-filtered hits is in a
+    # known group.
     counts = _counts_by_concept(response.json())
-    # Topics group: filter applies AFRICA. Documents with Africa AND each
-    # topic concept:
-    #   Botany       -> docs 1, 2  -> 2
-    #   Zoology      -> doc 3       -> 1
-    #   Microbiology -> doc 5 has Microbiology AND Europe (not Africa) -> 0
-    # Region group: filter applies (Botany OR Zoology). Documents matching
-    # (Botany OR Zoology) AND each region:
-    #   Africa -> docs 1, 2, 3 -> 3
-    #   Asia   -> doc 4         -> 1
-    #   Europe -> 0 (doc 5 has Microbiology not Botany/Zoology)
-    # unselected: filter applies (Botany OR Zoology) AND Africa.
-    #   That's docs 1, 2, 3. linked_data_concepts in those docs are
-    #   {Botany, Zoology, Africa} — all already covered, so the unselected
-    #   bucket is empty.
     assert counts == {
         BOTANY: 2,
         ZOOLOGY: 1,
@@ -347,17 +303,15 @@ async def test_sibling_facets_worked_example(
         ASIA: 1,
         EUROPE: 0,
     }
-    # Bucket uniqueness: no URI appears twice.
-    concept_uris = [bucket["concept"] for bucket in response.json()["concepts"]]
-    assert len(concept_uris) == len(set(concept_uris))
+    assert len(counts) == len(response.json()["concepts"])  # no duplicates
 
 
-async def test_sibling_facets_unselected_bucket_surfaces_unknown_concepts(
+async def test_sibling_facets_unselected_bucket_surfaces_other_concepts(
     client: AsyncClient,
     sibling_references: None,  # noqa: ARG001
     primed_vocab: str,
 ) -> None:
-    """A concept outside the filters' sibling sets appears in the unselected agg."""
+    """Concepts outside the filter's sibling sets appear in the unselected agg."""
     response = await client.get(
         "/v1/references/search/facets/",
         params=[
@@ -368,14 +322,11 @@ async def test_sibling_facets_unselected_bucket_surfaces_unknown_concepts(
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
-    counts = _counts_by_concept(response.json())
-    # Topics group: include = {Botany, Zoology, Microbiology}; filter is empty
-    # (no other groups). Counts across the whole index:
-    #   Botany=2, Zoology=2, Microbiology=1.
-    # Unselected: filter is "must contain Botany" -> docs 1, 2. Their
-    # non-group concepts are {Africa} -> Africa=2. (Chemistry would be in
-    # docs without Botany, so it's filtered out.)
-    assert counts == {
+    # Topics group (filter empty) counts {Botany:2, Zoology:2, Microbiology:1}.
+    # Unselected agg restricts to docs with Botany (docs 1, 2), so only Africa
+    # (their other concept) surfaces — Chemistry is excluded because its doc
+    # has no Botany.
+    assert _counts_by_concept(response.json()) == {
         BOTANY: 2,
         ZOOLOGY: 2,
         MICROBIOLOGY: 1,
@@ -383,93 +334,34 @@ async def test_sibling_facets_unselected_bucket_surfaces_unknown_concepts(
     }
 
 
-async def test_sibling_facets_unknown_concept_returns_400(
+@pytest.mark.parametrize(
+    ("concept_params", "vocab", "detail_substring"),
+    [
+        # Rule (c): URI not in vocabulary.
+        ([UNKNOWN_URI], "primed", UNKNOWN_URI),
+        # Rule (a): one filter spans sibling sets.
+        ([f"{BOTANY},{AFRICA}"], "primed", "different sibling sets"),
+        # Rule (b): siblings split across filters.
+        ([BOTANY, ZOOLOGY], "primed", "share a sibling set"),
+        # vocabulary= missing.
+        ([BOTANY], None, "`vocabulary=` is required"),
+        # vocabulary= not a URI.
+        ([BOTANY], "not a uri", "fully-qualified URI"),
+    ],
+)
+async def test_sibling_facets_rule_violations_return_400(  # noqa: PLR0913
     client: AsyncClient,
     sibling_references: None,  # noqa: ARG001
     primed_vocab: str,
+    concept_params: list[str],
+    vocab: str | None,
+    detail_substring: str,
 ) -> None:
-    """Rule (c): a concept URI not in the supplied vocab is rejected."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("concept", UNKNOWN_URI),
-            ("facet", "concepts"),
-            ("vocabulary", primed_vocab),
-        ],
-    )
+    """Each parametrised case maps to one rule violation -> 400 with detail."""
+    params: list[tuple[str, str]] = [("q", "*"), ("facet", "concepts")]
+    params.extend(("concept", v) for v in concept_params)
+    if vocab is not None:
+        params.append(("vocabulary", primed_vocab if vocab == "primed" else vocab))
+    response = await client.get("/v1/references/search/facets/", params=params)
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert UNKNOWN_URI in response.json()["detail"]
-
-
-async def test_sibling_facets_cross_sibling_set_in_one_filter_returns_400(
-    client: AsyncClient,
-    sibling_references: None,  # noqa: ARG001
-    primed_vocab: str,
-) -> None:
-    """Rule (a): a single `?concept=` must not span sibling sets."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("concept", f"{BOTANY},{AFRICA}"),
-            ("facet", "concepts"),
-            ("vocabulary", primed_vocab),
-        ],
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "different sibling sets" in response.json()["detail"]
-
-
-async def test_sibling_facets_siblings_split_across_filters_returns_400(
-    client: AsyncClient,
-    sibling_references: None,  # noqa: ARG001
-    primed_vocab: str,
-) -> None:
-    """Rule (b): two filters' sibling sets must be disjoint."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("concept", BOTANY),
-            ("concept", ZOOLOGY),
-            ("facet", "concepts"),
-            ("vocabulary", primed_vocab),
-        ],
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "share a sibling set" in response.json()["detail"]
-
-
-async def test_sibling_facets_missing_vocab_with_concept_filter_returns_400(
-    client: AsyncClient,
-    sibling_references: None,  # noqa: ARG001
-) -> None:
-    """`vocabulary=` is required when filtering on concepts + requesting concepts."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("concept", BOTANY),
-            ("facet", "concepts"),
-        ],
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "`vocabulary=` is required" in response.json()["detail"]
-
-
-async def test_sibling_facets_invalid_vocab_uri_returns_400(
-    client: AsyncClient,
-) -> None:
-    """The vocab parser rejects non-URI strings."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("concept", BOTANY),
-            ("facet", "concepts"),
-            ("vocabulary", "not a uri"),
-        ],
-    )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "fully-qualified URI" in response.json()["detail"]
+    assert detail_substring in response.json()["detail"]

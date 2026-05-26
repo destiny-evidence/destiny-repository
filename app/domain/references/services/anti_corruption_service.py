@@ -503,16 +503,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         return LinkedDataConceptFilter(concept_uris=concept_uris)
 
     def vocabulary_uri_from_query_parameter(self, value: str | None) -> str | None:
-        """
-        Validate the ``?vocabulary=`` value as a fully-qualified URI.
-
-        ``None`` and empty strings pass through unchanged; non-empty values
-        must parse as an ``HttpUrl``.
-        """
-        if not value:
-            return None
-        stripped = value.strip()
-        if not stripped:
+        """Validate ``?vocabulary=`` as an HttpUrl; pass through None / blank."""
+        if not value or not (stripped := value.strip()):
             return None
         try:
             HttpUrl(stripped)

@@ -481,35 +481,14 @@ def _counts(buckets: list) -> dict[str, int]:
     return {bucket.key: bucket.count for bucket in buckets}
 
 
-async def test_filtered_terms_aggregation_no_filter_clauses_counts_all_matches(
+UNFILTERED_COUNTS = {CONCEPT_A: 2, CONCEPT_B: 2, CONCEPT_C: 1, CONCEPT_D: 1}
+
+
+async def test_filtered_terms_aggregation_per_agg_filter_and_unfiltered(
     reference_repository: ReferenceESRepository,
     filtered_agg_refs: None,  # noqa: ARG001
 ) -> None:
-    """A spec without filter_clauses counts every matching doc, like a plain terms agg."""  # noqa: E501
-    result = await reference_repository.execute_filtered_terms_aggregations(
-        "*",
-        aggs=[
-            FilteredTermsAggSpec(
-                name="concepts",
-                field="linked_data_concepts",
-                size=10,
-            ),
-        ],
-    )
-
-    assert _counts(result["concepts"]) == {
-        CONCEPT_A: 2,
-        CONCEPT_B: 2,
-        CONCEPT_C: 1,
-        CONCEPT_D: 1,
-    }
-
-
-async def test_filtered_terms_aggregation_per_agg_filter_scopes_its_own_count(
-    reference_repository: ReferenceESRepository,
-    filtered_agg_refs: None,  # noqa: ARG001
-) -> None:
-    """A spec's filter_clauses scope only that agg's documents."""
+    """Per-spec filter_clauses scope that agg only; empty filter counts all matches."""
     result = await reference_repository.execute_filtered_terms_aggregations(
         "*",
         aggs=[
@@ -519,111 +498,59 @@ async def test_filtered_terms_aggregation_per_agg_filter_scopes_its_own_count(
                 filter_clauses=(Terms(linked_data_concepts=[CONCEPT_A]),),
                 size=10,
             ),
-            FilteredTermsAggSpec(
-                name="all",
-                field="linked_data_concepts",
-                size=10,
-            ),
+            FilteredTermsAggSpec(name="all", field="linked_data_concepts", size=10),
         ],
     )
 
-    # Only the two docs tagged A contribute to `with_a`.
     assert _counts(result["with_a"]) == {CONCEPT_A: 2, CONCEPT_B: 1, CONCEPT_C: 1}
-    # The unfiltered agg sees all docs.
-    assert _counts(result["all"]) == {
-        CONCEPT_A: 2,
-        CONCEPT_B: 2,
-        CONCEPT_C: 1,
-        CONCEPT_D: 1,
-    }
+    assert _counts(result["all"]) == UNFILTERED_COUNTS
 
 
-async def test_filtered_terms_aggregation_include_with_min_doc_count_zero(
+async def test_filtered_terms_aggregation_include_exclude_and_min_doc_count(
     reference_repository: ReferenceESRepository,
     filtered_agg_refs: None,  # noqa: ARG001
 ) -> None:
-    """``min_doc_count=0`` + ``include`` surfaces zero-count buckets for indexed terms."""  # noqa: E501
-    # Filter to "beta" docs (B and D); A and C are indexed elsewhere but absent here.
-    # With min_doc_count=0 and include listing A/B/C, ES should still emit A=0 and C=0.
+    """``include`` with ``min_doc_count=0`` surfaces zero buckets; ``exclude`` drops."""
+    # `title:beta` matches only docs tagged B and D. A and C are indexed in the
+    # other (`alpha`) docs but absent here — `min_doc_count=0` + `include` should
+    # still emit A=0 and C=0. `exclude` over the same docs drops B.
     result = await reference_repository.execute_filtered_terms_aggregations(
         "title:beta",
         aggs=[
             FilteredTermsAggSpec(
-                name="cs",
+                name="included",
                 field="linked_data_concepts",
                 include=(CONCEPT_A, CONCEPT_B, CONCEPT_C),
                 min_doc_count=0,
                 size=10,
             ),
-        ],
-    )
-
-    assert _counts(result["cs"]) == {CONCEPT_A: 0, CONCEPT_B: 1, CONCEPT_C: 0}
-
-
-async def test_filtered_terms_aggregation_exclude_omits_listed_values(
-    reference_repository: ReferenceESRepository,
-    filtered_agg_refs: None,  # noqa: ARG001
-) -> None:
-    """``exclude`` drops the named keys from the response."""
-    result = await reference_repository.execute_filtered_terms_aggregations(
-        "*",
-        aggs=[
             FilteredTermsAggSpec(
-                name="cs",
+                name="excluded",
                 field="linked_data_concepts",
-                exclude=(CONCEPT_A, CONCEPT_B),
+                exclude=(CONCEPT_B,),
                 size=10,
             ),
         ],
     )
 
-    assert _counts(result["cs"]) == {CONCEPT_C: 1, CONCEPT_D: 1}
+    assert _counts(result["included"]) == {CONCEPT_A: 0, CONCEPT_B: 1, CONCEPT_C: 0}
+    assert _counts(result["excluded"]) == {CONCEPT_D: 1}
 
 
-async def test_filtered_terms_aggregation_post_filter_restricts_hits_not_aggs(
+async def test_filtered_terms_aggregation_base_and_post_filter(
     reference_repository: ReferenceESRepository,
     filtered_agg_refs: None,  # noqa: ARG001
 ) -> None:
-    """``post_filter`` doesn't affect agg counts — that's the whole point."""
-    result = await reference_repository.execute_filtered_terms_aggregations(
-        "*",
-        post_filter_clauses=(Terms(linked_data_concepts=[CONCEPT_D]),),
-        aggs=[
-            FilteredTermsAggSpec(
-                name="cs",
-                field="linked_data_concepts",
-                size=10,
-            ),
-        ],
-    )
-
-    # The post_filter would narrow hits to just the CONCEPT_D doc, but the agg
-    # operates on the wider query scope.
-    assert _counts(result["cs"]) == {
-        CONCEPT_A: 2,
-        CONCEPT_B: 2,
-        CONCEPT_C: 1,
-        CONCEPT_D: 1,
-    }
-
-
-async def test_filtered_terms_aggregation_base_filter_clauses_restrict_both(
-    reference_repository: ReferenceESRepository,
-    filtered_agg_refs: None,  # noqa: ARG001
-) -> None:
-    """``base_filter_clauses`` apply to the whole search (hits and aggs)."""
+    """``base_filter_clauses`` apply to aggs; ``post_filter_clauses`` don't."""
+    # base_filter narrows the agg to "alpha" docs only ({A,B} and {A,C}).
+    # post_filter would narrow hits to docs tagged D, but the agg should ignore it.
     result = await reference_repository.execute_filtered_terms_aggregations(
         "*",
         base_filter_clauses=(Term(title="alpha"),),
+        post_filter_clauses=(Terms(linked_data_concepts=[CONCEPT_D]),),
         aggs=[
-            FilteredTermsAggSpec(
-                name="cs",
-                field="linked_data_concepts",
-                size=10,
-            ),
+            FilteredTermsAggSpec(name="cs", field="linked_data_concepts", size=10),
         ],
     )
 
-    # Only the two "alpha" docs are in scope: {A, B} and {A, C}.
     assert _counts(result["cs"]) == {CONCEPT_A: 2, CONCEPT_B: 1, CONCEPT_C: 1}

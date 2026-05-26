@@ -30,9 +30,6 @@ class VocabularyArtifactClient:
         """Initialise the client with empty LRU caches."""
         self._vocabulary_cache: LRUCache[str, Graph] = LRUCache(maxsize=cache_maxsize)
         self._context_cache: LRUCache[str, dict] = LRUCache(maxsize=cache_maxsize)
-        # Per-attribute derived-lookup caches, keyed by vocabulary URI. Populated
-        # lazily on first access; eviction matches `_vocabulary_cache`'s LRU policy
-        # via :meth:`_evict_derived_lookups`.
         self._concept_labels_cache: LRUCache[str, dict[str, str]] = LRUCache(
             maxsize=cache_maxsize
         )
@@ -137,18 +134,7 @@ class VocabularyArtifactClient:
         }
 
     async def get_concept_labels(self, uri: str) -> dict[str, str]:
-        """
-        Return ``concept URI -> skos:prefLabel`` for the named vocabulary.
-
-        Built lazily on first access and cached per vocabulary URI. The vocabulary
-        graph itself is fetched (and cached) via :meth:`get_vocabulary`.
-
-        :param uri: Full URI of the vocabulary document.
-        :return: A mapping from concept URI to its preferred label string. If a
-            concept has multiple ``skos:prefLabel`` triples (e.g. multi-language),
-            the last-encountered value wins.
-        :raises VocabularyFetchError: If fetching the underlying vocabulary fails.
-        """
+        """Concept URI -> skos:prefLabel for the vocabulary."""
         if uri in self._concept_labels_cache:
             return self._concept_labels_cache[uri]
         graph = await self.get_vocabulary(uri)
@@ -157,16 +143,7 @@ class VocabularyArtifactClient:
         return labels
 
     async def get_concept_schemes(self, uri: str) -> dict[str, str]:
-        """
-        Return ``concept URI -> scheme URI`` for the named vocabulary.
-
-        Built lazily on first access and cached per vocabulary URI.
-
-        :param uri: Full URI of the vocabulary document.
-        :return: A mapping from concept URI to the URI of the ``skos:ConceptScheme``
-            it belongs to (via ``skos:inScheme``).
-        :raises VocabularyFetchError: If fetching the underlying vocabulary fails.
-        """
+        """Concept URI -> skos:inScheme target for the vocabulary."""
         if uri in self._concept_schemes_cache:
             return self._concept_schemes_cache[uri]
         graph = await self.get_vocabulary(uri)
@@ -176,23 +153,11 @@ class VocabularyArtifactClient:
 
     async def get_concept_siblings(self, uri: str) -> dict[str, frozenset[str]]:
         """
-        Return ``concept URI -> frozenset[sibling URIs]`` for the named vocabulary.
+        Return concept URI -> set of sibling URIs (self-inclusive).
 
-        Siblings are concepts that share a ``skos:broader`` parent (within a
-        hierarchical scheme) or share a ``skos:ConceptScheme`` as top concepts
-        (via ``skos:topConceptOf`` — ``skos:hasTopConcept`` is normalised at load
-        time, see :func:`_normalise_top_concept_triples`).
-
-        Each concept's sibling set **includes itself** so callers don't need to
-        special-case the selection. Concepts with multiple ``skos:broader``
-        parents have a sibling set equal to the union across all parents.
-
-        Built lazily on first access and cached per vocabulary URI.
-
-        :param uri: Full URI of the vocabulary document.
-        :return: A mapping from each concept URI to the frozenset of its
-            (self-inclusive) sibling URIs.
-        :raises VocabularyFetchError: If fetching the underlying vocabulary fails.
+        Siblings share a ``skos:broader`` parent or share a scheme via
+        ``skos:topConceptOf`` (``skos:hasTopConcept`` is normalised in
+        :meth:`get_vocabulary`). Multi-parented concepts get the union.
         """
         if uri in self._concept_siblings_cache:
             return self._concept_siblings_cache[uri]
@@ -241,19 +206,16 @@ def get_vocabulary_artifact_client() -> VocabularyArtifactClient:
 
 def _normalise_top_concept_triples(graph: Graph) -> None:
     """
-    Add inverse ``skos:topConceptOf`` triples for every ``skos:hasTopConcept``.
+    Add inverse ``skos:topConceptOf`` for every ``skos:hasTopConcept``.
 
-    rdflib doesn't auto-derive SKOS inverse properties, and vocabularies in
-    the wild (ESEA included) use both directions. Normalising at load time
-    keeps the downstream lookups terse — they can pattern-match on
-    ``skos:topConceptOf`` alone.
+    rdflib doesn't derive SKOS inverses; vocabularies in the wild use both
+    directions, so downstream lookups can match on ``skos:topConceptOf`` alone.
     """
     for scheme, _, concept in list(graph.triples((None, SKOS.hasTopConcept, None))):
         graph.add((concept, SKOS.topConceptOf, scheme))
 
 
 def _build_concept_labels(graph: Graph) -> dict[str, str]:
-    """Build ``concept URI -> skos:prefLabel`` from a SKOS graph."""
     labels: dict[str, str] = {}
     for concept, _, label in graph.triples((None, SKOS.prefLabel, None)):
         if (concept, RDF.type, SKOS.Concept) in graph:
@@ -262,23 +224,13 @@ def _build_concept_labels(graph: Graph) -> dict[str, str]:
 
 
 def _build_concept_schemes(graph: Graph) -> dict[str, str]:
-    """Build ``concept URI -> skos:inScheme target`` from a SKOS graph."""
-    schemes: dict[str, str] = {}
-    for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
-        schemes[str(concept)] = str(scheme)
-    return schemes
+    return {
+        str(concept): str(scheme)
+        for concept, _, scheme in graph.triples((None, SKOS.inScheme, None))
+    }
 
 
 def _build_concept_siblings(graph: Graph) -> dict[str, frozenset[str]]:
-    """
-    Build ``concept URI -> frozenset[sibling URIs]`` from a SKOS graph.
-
-    Linear in the graph size: we sweep ``skos:broader`` and ``skos:topConceptOf``
-    once each to build parent-to-children and scheme-to-top-concepts indices,
-    then for each concept the sibling set is the union of its co-children under
-    every parent and its co-top-concepts under every scheme. Each concept's set
-    includes the concept itself.
-    """
     children_by_parent: dict[URIRef, set[URIRef]] = {}
     parents_by_concept: dict[URIRef, set[URIRef]] = {}
     for concept, _, parent in graph.triples((None, SKOS.broader, None)):

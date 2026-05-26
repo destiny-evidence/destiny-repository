@@ -251,73 +251,32 @@ async def test_search_with_query_string_taxonomy_annotation_filter(
 
 VOCAB_URI = "https://vocab.example.org/vocabulary/v1"
 
-# Biology siblings (hierarchical); Africa/Asia/Europe siblings (flat scheme);
-# Loose has no sibling map entry, simulating an unknown URI.
-SIBLINGS_FIXTURE: dict[str, frozenset[str]] = {
-    "https://vocab.example.org/Botany": frozenset(
-        {
-            "https://vocab.example.org/Botany",
-            "https://vocab.example.org/Zoology",
-            "https://vocab.example.org/Microbiology",
-        }
-    ),
-    "https://vocab.example.org/Zoology": frozenset(
-        {
-            "https://vocab.example.org/Botany",
-            "https://vocab.example.org/Zoology",
-            "https://vocab.example.org/Microbiology",
-        }
-    ),
-    "https://vocab.example.org/Microbiology": frozenset(
-        {
-            "https://vocab.example.org/Botany",
-            "https://vocab.example.org/Zoology",
-            "https://vocab.example.org/Microbiology",
-        }
-    ),
-    "https://vocab.example.org/Africa": frozenset(
-        {
-            "https://vocab.example.org/Africa",
-            "https://vocab.example.org/Asia",
-            "https://vocab.example.org/Europe",
-        }
-    ),
-    "https://vocab.example.org/Asia": frozenset(
-        {
-            "https://vocab.example.org/Africa",
-            "https://vocab.example.org/Asia",
-            "https://vocab.example.org/Europe",
-        }
-    ),
-    "https://vocab.example.org/Europe": frozenset(
-        {
-            "https://vocab.example.org/Africa",
-            "https://vocab.example.org/Asia",
-            "https://vocab.example.org/Europe",
-        }
-    ),
-}
-
 BOTANY = "https://vocab.example.org/Botany"
 ZOOLOGY = "https://vocab.example.org/Zoology"
 MICROBIOLOGY = "https://vocab.example.org/Microbiology"
 AFRICA = "https://vocab.example.org/Africa"
+ASIA = "https://vocab.example.org/Asia"
+EUROPE = "https://vocab.example.org/Europe"
 UNKNOWN = "https://vocab.example.org/Unknown"
+
+_TOPICS = frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY})
+_REGIONS = frozenset({AFRICA, ASIA, EUROPE})
+SIBLINGS_FIXTURE: dict[str, frozenset[str]] = {
+    **{uri: _TOPICS for uri in _TOPICS},
+    **{uri: _REGIONS for uri in _REGIONS},
+}
 
 
 @pytest.fixture
 def vocab_client_with_siblings() -> MagicMock:
-    """Mock vocab client returning the SIBLINGS_FIXTURE map."""
     client = MagicMock(spec=VocabularyArtifactClient)
     client.get_concept_siblings = AsyncMock(return_value=SIBLINGS_FIXTURE)
     return client
 
 
 def _service(vocab_client: MagicMock) -> SearchService:
-    """Build a SearchService without UoW dependencies for pure-resolver tests."""
-    anti_corruption_service = MagicMock(spec=ReferenceAntiCorruptionService)
     return SearchService(
-        anti_corruption_service=anti_corruption_service,
+        anti_corruption_service=MagicMock(spec=ReferenceAntiCorruptionService),
         sql_uow=MagicMock(spec=AsyncSqlUnitOfWork),
         es_uow=MagicMock(spec=AsyncESUnitOfWork),
         vocab_client=vocab_client,
@@ -327,7 +286,7 @@ def _service(vocab_client: MagicMock) -> SearchService:
 async def test_resolve_sibling_grouping_happy_path(
     vocab_client_with_siblings: MagicMock,
 ):
-    """Two well-formed filters produce two groups with their sibling sets."""
+    """Each filter becomes a group with its sibling set; URIs unioned in all_grouped."""
     service = _service(vocab_client_with_siblings)
     grouping = await service._resolve_sibling_grouping(  # noqa: SLF001
         VOCAB_URI,
@@ -336,54 +295,43 @@ async def test_resolve_sibling_grouping_happy_path(
             LinkedDataConceptFilter(concept_uris=[AFRICA]),
         ],
     )
-    assert len(grouping.groups) == 2
-    assert grouping.groups[0].source_filter.concept_uris == [BOTANY, ZOOLOGY]
-    assert grouping.groups[0].siblings_including_selected == frozenset(
-        {BOTANY, ZOOLOGY, MICROBIOLOGY}
-    )
-    assert grouping.groups[1].source_filter.concept_uris == [AFRICA]
-    assert grouping.groups[1].siblings_including_selected == SIBLINGS_FIXTURE[AFRICA]
-    assert grouping.all_grouped_uris == frozenset(
-        {BOTANY, ZOOLOGY, MICROBIOLOGY, AFRICA, *SIBLINGS_FIXTURE[AFRICA]}
-    )
+    assert [g.source_filter.concept_uris for g in grouping.groups] == [
+        [BOTANY, ZOOLOGY],
+        [AFRICA],
+    ]
+    assert grouping.groups[0].siblings_including_selected == _TOPICS
+    assert grouping.groups[1].siblings_including_selected == _REGIONS
+    assert grouping.all_grouped_uris == _TOPICS | _REGIONS
 
 
-async def test_resolve_sibling_grouping_unknown_uri_raises(
-    vocab_client_with_siblings: MagicMock,
-):
-    """Rule (c): every URI must resolve in the supplied vocabulary."""
-    service = _service(vocab_client_with_siblings)
-    with pytest.raises(SiblingGroupingError, match=UNKNOWN):
-        await service._resolve_sibling_grouping(  # noqa: SLF001
-            VOCAB_URI,
-            [LinkedDataConceptFilter(concept_uris=[BOTANY, UNKNOWN])],
-        )
-
-
-async def test_resolve_sibling_grouping_mixed_sibling_sets_in_one_filter_raises(
-    vocab_client_with_siblings: MagicMock,
-):
-    """Rule (a): URIs in one filter must share a sibling set."""
-    service = _service(vocab_client_with_siblings)
-    with pytest.raises(SiblingGroupingError, match="different sibling sets"):
-        await service._resolve_sibling_grouping(  # noqa: SLF001
-            VOCAB_URI,
+@pytest.mark.parametrize(
+    ("filters", "match"),
+    [
+        # Rule (c): URI not in vocabulary.
+        ([LinkedDataConceptFilter(concept_uris=[BOTANY, UNKNOWN])], UNKNOWN),
+        # Rule (a): URIs inside one filter must share a sibling set.
+        (
             [LinkedDataConceptFilter(concept_uris=[BOTANY, AFRICA])],
-        )
-
-
-async def test_resolve_sibling_grouping_siblings_split_across_filters_raises(
-    vocab_client_with_siblings: MagicMock,
-):
-    """Rule (b): siblings can't be split across separate filters."""
-    service = _service(vocab_client_with_siblings)
-    with pytest.raises(SiblingGroupingError, match="share a sibling set"):
-        await service._resolve_sibling_grouping(  # noqa: SLF001
-            VOCAB_URI,
+            "different sibling sets",
+        ),
+        # Rule (b): two filters must not share a sibling set.
+        (
             [
                 LinkedDataConceptFilter(concept_uris=[BOTANY]),
                 LinkedDataConceptFilter(concept_uris=[ZOOLOGY]),
             ],
+            "share a sibling set",
+        ),
+    ],
+)
+async def test_resolve_sibling_grouping_rule_violations(
+    vocab_client_with_siblings: MagicMock,
+    filters: list[LinkedDataConceptFilter],
+    match: str,
+):
+    with pytest.raises(SiblingGroupingError, match=match):
+        await _service(vocab_client_with_siblings)._resolve_sibling_grouping(  # noqa: SLF001
+            VOCAB_URI, filters
         )
 
 

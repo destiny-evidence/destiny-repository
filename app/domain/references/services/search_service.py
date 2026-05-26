@@ -68,32 +68,19 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         facets: Sequence[FacetType],
         vocabulary_uri: str | None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """
-        Count occurrences per facet over references matching ``query``.
-
-        When ``vocabulary_uri`` is supplied and the request asks for the
-        ``CONCEPTS`` facet with concept filters present, sibling-aware
-        counting kicks in: each ``concept=`` filter is treated as its own
-        sibling group whose siblings come from the vocabulary, and the
-        aggregation isolates each group's count from the others. Otherwise,
-        an empty grouping triggers the naive (today's) aggregation path.
-
-        :raises SiblingGroupingError: If the user's concept filters can't be
-            cleanly grouped against the vocabulary — see the rule constraints
-            in :func:`_resolve_sibling_grouping`.
-        """
-        grouping: SiblingGrouping
-        if (
-            vocabulary_uri
-            and FacetType.CONCEPTS in facets
-            and query.linked_data_concept_filters
-        ):
-            grouping = await self._resolve_sibling_grouping(
+        """Count occurrences per facet; sibling-aware when a vocab is supplied."""
+        grouping = (
+            await self._resolve_sibling_grouping(
                 vocabulary_uri,
                 query.linked_data_concept_filters,
             )
-        else:
-            grouping = SiblingGrouping()
+            if (
+                vocabulary_uri
+                and FacetType.CONCEPTS in facets
+                and query.linked_data_concept_filters
+            )
+            else SiblingGrouping()
+        )
         return await self.es_uow.references.aggregate_facets(
             query,
             facets,
@@ -107,38 +94,28 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         concept_filters: Sequence[LinkedDataConceptFilter],
     ) -> SiblingGrouping:
         """
-        Group concept filters by their sibling sets in ``vocabulary_uri``.
+        Group concept filters by sibling sets; raises on rule violations.
 
-        Enforces three rules; any violation surfaces as a 400 via
-        :class:`SiblingGroupingError`:
-
-        - **(a)** Every URI inside a single filter must share a sibling set.
-        - **(b)** Across filters, the per-filter sibling sets must be disjoint.
-        - **(c)** Every URI must resolve in the supplied vocabulary.
-
-        The user's ``concept=`` partition is preserved verbatim — one
-        :class:`ConceptSiblingGroup` per :class:`LinkedDataConceptFilter`.
+        Rules: every URI must be in the vocab; URIs within a filter must share
+        a sibling set; sibling sets across filters must be disjoint.
         """
         siblings_map = await self._vocab_client.get_concept_siblings(vocabulary_uri)
         groups: list[ConceptSiblingGroup] = []
         for concept_filter in concept_filters:
-            # Rule (c): every URI must be in the vocabulary.
             unresolved = [
                 uri for uri in concept_filter.concept_uris if uri not in siblings_map
             ]
             if unresolved:
                 msg = (
-                    "Concept URI(s) not found in supplied vocabulary "
-                    f"{vocabulary_uri!r}: {', '.join(unresolved)}"
+                    f"Concept URI(s) not found in vocabulary {vocabulary_uri!r}: "
+                    f"{', '.join(unresolved)}"
                 )
                 raise SiblingGroupingError(msg)
-            # Rule (a): URIs inside one filter must share a sibling set.
             sibling_sets = {siblings_map[uri] for uri in concept_filter.concept_uris}
             if len(sibling_sets) != 1:
                 msg = (
-                    "Concept filter mixes URIs from different sibling sets; siblings "
-                    "should be grouped in one filter and unrelated concepts split "
-                    f"across separate filters. URIs: {concept_filter.concept_uris}"
+                    "Concept filter mixes URIs from different sibling sets: "
+                    f"{concept_filter.concept_uris}"
                 )
                 raise SiblingGroupingError(msg)
             (sibling_set,) = sibling_sets
@@ -148,7 +125,6 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                     siblings_including_selected=sibling_set,
                 )
             )
-        # Rule (b): per-filter sibling sets must be disjoint.
         for i, group in enumerate(groups):
             for other in groups[i + 1 :]:
                 overlap = (
@@ -157,8 +133,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                 )
                 if overlap:
                     msg = (
-                        "Two concept filters share a sibling set; siblings should "
-                        "be grouped in a single ``concept=`` parameter. Overlap: "
+                        "Two concept filters share a sibling set. Overlap: "
                         f"{sorted(overlap)}"
                     )
                     raise SiblingGroupingError(msg)

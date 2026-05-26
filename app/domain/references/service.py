@@ -1293,14 +1293,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         facets: Sequence[FacetType],
         vocabulary_uri: str | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """
-        Count occurrences per facet across references matching the query.
-
-        When ``vocabulary_uri`` is supplied alongside a concept filter and the
-        ``CONCEPTS`` facet, counts are computed with sibling awareness so
-        unselected siblings of selected concepts show their would-be counts.
-        See :meth:`SearchService.aggregate_facets`.
-        """
+        """Count per facet; sibling-aware when ``vocabulary_uri`` is supplied."""
         return await self._search_service.aggregate_facets(
             query, facets, vocabulary_uri
         )

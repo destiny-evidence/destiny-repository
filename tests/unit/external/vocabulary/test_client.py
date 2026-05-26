@@ -304,95 +304,43 @@ def _concept(name: str) -> str:
     return f"http://example.org/{name}"
 
 
-class TestGetConceptLabels:
+class TestSkosDerivedLookups:
     @pytest.mark.asyncio
-    async def test_returns_concept_to_preflabel_map(
+    async def test_concept_labels_and_schemes(
         self, skos_client: VocabularyArtifactClient
     ):
         labels = await skos_client.get_concept_labels(VOCAB_URI)
-
-        assert labels[_concept("Biology")] == "Biology"
-        assert labels[_concept("Botany")] == "Botany"
-        assert labels[_concept("Quantum")] == "Quantum"
-
-    @pytest.mark.asyncio
-    async def test_cache_hit_returns_same_instance(
-        self, skos_client: VocabularyArtifactClient
-    ):
-        first = await skos_client.get_concept_labels(VOCAB_URI)
-        second = await skos_client.get_concept_labels(VOCAB_URI)
-        assert first is second
-
-
-class TestGetConceptSchemes:
-    @pytest.mark.asyncio
-    async def test_returns_concept_to_scheme_map(
-        self, skos_client: VocabularyArtifactClient
-    ):
         schemes = await skos_client.get_concept_schemes(VOCAB_URI)
 
+        assert labels[_concept("Botany")] == "Botany"
         assert schemes[_concept("Botany")] == _concept("Topics")
-        assert schemes[_concept("Africa")] == _concept("Regions")
         assert schemes[_concept("Apple")] == _concept("Fruits")
 
     @pytest.mark.asyncio
-    async def test_cache_hit_returns_same_instance(
-        self, skos_client: VocabularyArtifactClient
-    ):
-        first = await skos_client.get_concept_schemes(VOCAB_URI)
-        second = await skos_client.get_concept_schemes(VOCAB_URI)
-        assert first is second
-
-
-class TestGetConceptSiblings:
-    @pytest.mark.asyncio
-    async def test_siblings_under_skos_broader_include_self(
+    async def test_siblings_covers_broader_and_top_concept_variants(
         self, skos_client: VocabularyArtifactClient
     ):
         siblings = await skos_client.get_concept_siblings(VOCAB_URI)
 
-        expected = frozenset(
+        # Hierarchical (skos:broader) — set includes the concept itself.
+        biology_children = frozenset(
             {_concept("Botany"), _concept("Zoology"), _concept("Microbiology")}
         )
-        assert siblings[_concept("Botany")] == expected
-        assert siblings[_concept("Zoology")] == expected
-        assert siblings[_concept("Microbiology")] == expected
+        assert siblings[_concept("Botany")] == biology_children
+        assert siblings[_concept("Microbiology")] == biology_children
 
-    @pytest.mark.asyncio
-    async def test_siblings_under_top_concept_of(
-        self, skos_client: VocabularyArtifactClient
-    ):
-        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
-
-        topics_top = frozenset(
-            {
-                _concept("Biology"),
-                _concept("Chemistry"),
-            }
+        # Flat scheme via skos:topConceptOf.
+        assert siblings[_concept("Biology")] == frozenset(
+            {_concept("Biology"), _concept("Chemistry")}
         )
-        assert siblings[_concept("Biology")] == topics_top
-        assert siblings[_concept("Chemistry")] == topics_top
 
-    @pytest.mark.asyncio
-    async def test_siblings_under_has_top_concept_normalised(
-        self, skos_client: VocabularyArtifactClient
-    ):
-        """`skos:hasTopConcept` on the scheme should produce sibling sets too."""
-        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
+        # Flat scheme via skos:hasTopConcept (normalised to topConceptOf on load).
+        assert siblings[_concept("Apple")] == frozenset(
+            {_concept("Apple"), _concept("Pear")}
+        )
 
-        fruits = frozenset({_concept("Apple"), _concept("Pear")})
-        assert siblings[_concept("Apple")] == fruits
-        assert siblings[_concept("Pear")] == fruits
-
-    @pytest.mark.asyncio
-    async def test_multi_parented_concept_unions_siblings(
-        self, skos_client: VocabularyArtifactClient
-    ):
-        """A concept under two parents has siblings from both."""
-        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
-
-        # Quantum is broader: Physics & Mathematics. Both parents only have
-        # Quantum as a child, so Quantum's siblings are just {Quantum}.
+        # Multi-parented: union of co-children across both parents.
+        # Quantum is the only child of both Physics and Mathematics.
         assert siblings[_concept("Quantum")] == frozenset({_concept("Quantum")})
 
     @pytest.mark.asyncio

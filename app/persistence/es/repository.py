@@ -330,28 +330,12 @@ class GenericAsyncESRepository(
         aggs: Sequence[FilteredTermsAggSpec],
     ) -> dict[str, list[ESFacetBucket]]:
         """
-        Run multiple (optionally filter-wrapped) terms aggregations + ``post_filter``.
+        Run multiple (optionally filter-wrapped) terms aggregations + post_filter.
 
-        Executes a single ``size=0`` search and returns one bucket list per
-        :class:`FilteredTermsAggSpec`. Each spec produces a ``filter``-wrapped
-        terms aggregation: when ``filter_clauses`` is empty, the wrapper uses
-        ``MatchAll`` so the response shape is uniform.
-
-        ``post_filter_clauses`` restrict the search hits without affecting
-        aggregations — used to apply user-facing filters that the aggregations
-        deliberately ignore.
-
-        :param query: The query string filtering which documents are searched.
-        :param query_fields: Fields the query string should match against. ``None``
-            defers to the query string's own ``default_field``.
-        :param base_filter_clauses: Clauses ANDed with the query under
-            ``bool.filter`` (apply to both hits and aggregations).
-        :param post_filter_clauses: Clauses ANDed under ``post_filter`` (apply
-            to hits only, not aggregations).
-        :param aggs: One spec per aggregation to compute. Each spec's ``name``
-            becomes a key in the returned mapping.
-        :return: A mapping from each spec's ``name`` to its term buckets,
-            ordered by document count descending.
+        ``base_filter_clauses`` apply to both hits and aggregations under
+        ``bool.filter``. ``post_filter_clauses`` restrict hits only, so
+        aggregations can deliberately ignore a user-facing filter. Each spec
+        returns its own bucket list keyed by ``name``.
         """
         composed = self._compose_query(query, query_fields, base_filter_clauses)
         search = (
