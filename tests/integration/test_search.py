@@ -468,9 +468,9 @@ async def test_same_field_and_query(
     assert "George Harrison" in title
 
 
-CONCEPT_A = "https://vocab.esea.education/EducationLevelScheme/C00003"
-CONCEPT_B = "https://vocab.esea.education/EducationLevelScheme/C00004"
-CONCEPT_C = "https://vocab.esea.education/EducationLevelScheme/C00005"
+CONCEPT_A = "https://vocab.evidence-repository.org/scheme/C00001"
+CONCEPT_B = "https://vocab.evidence-repository.org/scheme/C00002"
+CONCEPT_C = "https://vocab.evidence-repository.org/scheme/C00003"
 
 
 @pytest.fixture

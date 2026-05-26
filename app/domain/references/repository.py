@@ -295,8 +295,7 @@ class ReferenceESRepository(
         """
         Build a structured DSL clause for an annotation filter.
 
-        Three cases mirror the original Lucene builder:
-
+        Three cases are handled:
         - ``score`` set: range on the dynamic ``<scheme>[_<label>]`` numeric field,
           with ``:`` in the scheme replaced by ``_`` (e.g. ``inclusion_destiny``).
         - scheme only, no score: prefix match on the ``annotations`` keyword field,

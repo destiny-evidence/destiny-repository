@@ -41,11 +41,7 @@ def test_publication_year_range_start_only():
 
 
 def test_annotation_filter_scheme_and_label_uses_term_query():
-    """Scheme/label combos resolve to an exact ``Term`` on the keyword field.
-
-    No Lucene escaping involved: special characters in the label go through the
-    DSL serializer untouched.
-    """
+    """Scheme/label combos resolve to an exact ``Term`` on the keyword field."""
     repository = _StubReferenceESRepository()
     clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
