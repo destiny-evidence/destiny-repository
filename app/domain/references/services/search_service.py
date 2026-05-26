@@ -3,6 +3,7 @@
 from collections.abc import Sequence
 from typing import ClassVar
 
+from elasticsearch.dsl.query import Prefix, Query, Range, Term
 from opentelemetry import trace
 
 from app.core.config import get_settings
@@ -20,7 +21,6 @@ from app.domain.service import GenericService
 from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
-from app.utils.regex import escape_lucene_quoted_term
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -53,65 +53,53 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
-    def _build_publication_year_query_string_filter(
+    def _build_publication_year_clause(
         self,
         publication_year_range: PublicationYearRange,
-    ) -> str:
-        """Build a publication year filter for Elasticsearch query string."""
-        return (
-            f"publication_year:[{publication_year_range.start or '*'} "
-            f"TO {publication_year_range.end or '*'}]"
-        )
+    ) -> Query | None:
+        """Range clause on ``publication_year``; ``None`` if both bounds are unset."""
+        bounds: dict[str, int] = {}
+        if publication_year_range.start is not None:
+            bounds["gte"] = publication_year_range.start
+        if publication_year_range.end is not None:
+            bounds["lte"] = publication_year_range.end
+        if not bounds:
+            return None
+        return Range(publication_year=bounds)
 
-    def _build_annotation_query_string_filter(
-        self,
-        annotation: AnnotationFilter,
-    ) -> str:
+    def _build_annotation_clause(self, annotation: AnnotationFilter) -> Query:
         """
-        Build an annotation filter for Elasticsearch query string.
+        Build a structured DSL clause for an annotation filter.
 
-        All user-supplied values are escaped to prevent query injection.
+        Three cases mirror the original Lucene builder:
 
-        Examples:
-        - For score filter: `scheme:>=0.8` (minimum bound on score)
-        - For scheme and label: `annotations:"scheme/label"`
-          - Quotes are used to handle any special characters.
-        - For scheme only: `annotations:scheme*` (wildcard any label with the scheme)
-          - Escaping is used on colons here as we can't wildcard in a quoted string.
-
+        - ``score`` set: range on the dynamic ``<scheme>[_<label>]`` numeric field,
+          with ``:`` in the scheme replaced by ``_`` (e.g. ``inclusion_destiny``).
+        - scheme only, no score: prefix match on the ``annotations`` keyword field,
+          matching any ``<scheme>/...`` annotation.
+        - scheme + label: exact term match on ``annotations``.
         """
         if annotation.score is not None:
             field = annotation.scheme.replace(":", "_")
             if annotation.label:
                 field += f"_{annotation.label}"
-            return f"{field}:>={annotation.score}"
+            return Range(**{field: {"gte": annotation.score}})
         if not annotation.label:
-            return f"annotations:{annotation.scheme.replace(':', r'\:')}*"
-        scheme = escape_lucene_quoted_term(annotation.scheme)
-        label = escape_lucene_quoted_term(annotation.label)
-        return f'annotations:"{scheme}/{label}"'
+            return Prefix(annotations=f"{annotation.scheme}/")
+        return Term(annotations=f"{annotation.scheme}/{annotation.label}")
 
-    def _compose_query_string(self, query: SearchQuery) -> str:
-        """
-        Fold structured filters into a single Lucene query string.
-
-        TODO (#695): we actually don't need to do this - we can pass structured filters
-        to Elasticsearch separately from the query string.
-        """
-        global_filters: list[str] = []
-        if query.publication_year_range:
-            global_filters.append(
-                self._build_publication_year_query_string_filter(
-                    query.publication_year_range,
-                )
-            )
-        global_filters.extend(
-            self._build_annotation_query_string_filter(annotation)
+    def _build_filter_clauses(self, query: SearchQuery) -> list[Query]:
+        """Translate a SearchQuery's structured filters into bool.filter clauses."""
+        clauses: list[Query] = []
+        if query.publication_year_range and (
+            clause := self._build_publication_year_clause(query.publication_year_range)
+        ):
+            clauses.append(clause)
+        clauses.extend(
+            self._build_annotation_clause(annotation)
             for annotation in query.annotation_filters
         )
-        if not global_filters:
-            return query.query_string
-        return f"({query.query_string}) AND {' AND '.join(global_filters)}"
+        return clauses
 
     async def search_with_query(
         self,
@@ -122,11 +110,12 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     ) -> ESSearchResult:
         """Search for references matching the given query specification."""
         return await self.es_uow.references.search_with_query_string(
-            self._compose_query_string(query),
+            query.query_string,
             fields=self.default_search_fields,
             page=page,
             page_size=page_size,
             sort=sort,
+            filter_clauses=self._build_filter_clauses(query),
             parse_document=False,
         )
 
@@ -143,9 +132,10 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """
         facet_to_field = {facet: self._FACET_FIELDS[facet] for facet in facets}
         buckets_by_field = await self.es_uow.references.aggregate_terms(
-            self._compose_query_string(query),
+            query.query_string,
             aggregate_on=list(facet_to_field.values()),
             query_fields=self.default_search_fields,
+            filter_clauses=self._build_filter_clauses(query),
             max_buckets=settings.es_aggregation_max_buckets,
         )
         return {

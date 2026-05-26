@@ -8,7 +8,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl import AsyncSearch
 from elasticsearch.dsl.exceptions import UnknownDslObject
-from elasticsearch.dsl.query import QueryString
+from elasticsearch.dsl.query import Bool, Query, QueryString
 from elasticsearch.dsl.response import Hit, Response
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
@@ -217,11 +217,12 @@ class GenericAsyncESRepository(
         page_size: int = 20,
         fields: Sequence[str] | None = None,
         sort: list[str] | None = None,
+        filter_clauses: Sequence[Query] | None = None,
         *,
         parse_document: bool = False,
     ) -> ESSearchResult:
         """
-        Search for records using a query string.
+        Search for records using a query string with optional structured filters.
 
         :param query: The query string to search with.
         :type query: str
@@ -234,6 +235,9 @@ class GenericAsyncESRepository(
         :type fields: Sequence[str] | None
         :param sort: The sorting criteria for the search results.
         :type sort: list[str] | None
+        :param filter_clauses: Structured DSL clauses ANDed with the query string under
+            ``bool.filter`` (non-scoring). ``None`` or empty issues the bare query.
+        :type filter_clauses: Sequence[Query] | None
         :param parse_document: Whether to retrieve the documents and include them in the
             hits as domain models.
         :type parse_document: bool
@@ -245,11 +249,7 @@ class GenericAsyncESRepository(
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=page_size)
             .extra(from_=(page - 1) * page_size)
-            .query(
-                QueryString(query=query, fields=fields)
-                if fields
-                else QueryString(query=query)
-            )
+            .query(_compose_query(query, fields, filter_clauses))
         )
         if sort:
             search = search.sort(*sort)
@@ -269,6 +269,7 @@ class GenericAsyncESRepository(
         aggregate_on: Sequence[str],
         *,
         query_fields: Sequence[str] | None = None,
+        filter_clauses: Sequence[Query] | None = None,
         max_buckets: int,
     ) -> dict[str, list[ESFacetBucket]]:
         """
@@ -284,6 +285,9 @@ class GenericAsyncESRepository(
         :param query_fields: Fields the query string should match against.
             ``None`` defers to the query string's own ``default_field``.
         :type query_fields: Sequence[str] | None
+        :param filter_clauses: Structured DSL clauses ANDed with the query string under
+            ``bool.filter``. ``None`` or empty issues the bare query.
+        :type filter_clauses: Sequence[Query] | None
         :param max_buckets: Maximum buckets to return per aggregation.
         :type max_buckets: int
         :return: A mapping from each requested field name to its term buckets.
@@ -293,11 +297,7 @@ class GenericAsyncESRepository(
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=0)
-            .query(
-                QueryString(query=query, fields=query_fields)
-                if query_fields
-                else QueryString(query=query)
-            )
+            .query(_compose_query(query, query_fields, filter_clauses))
             .source(includes=[])
         )
         for field in aggregate_on:
@@ -314,3 +314,19 @@ class GenericAsyncESRepository(
             ]
             for field in aggregate_on
         }
+
+
+def _compose_query(
+    query_string: str,
+    fields: Sequence[str] | None,
+    filter_clauses: Sequence[Query] | None,
+) -> Query:
+    """Build the top-level query: a bare QueryString, or one wrapped in bool.filter."""
+    main = (
+        QueryString(query=query_string, fields=fields)
+        if fields
+        else QueryString(query=query_string)
+    )
+    if not filter_clauses:
+        return main
+    return Bool(must=[main], filter=list(filter_clauses))
