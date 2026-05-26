@@ -5,8 +5,9 @@ from typing import Generic, Literal, Self
 from uuid import UUID
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
+from elasticsearch.dsl.query import Query
 from elasticsearch.dsl.response import Hit
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.base import SQLAttributeMixin
 from app.persistence.generics import GenericDomainModelType
@@ -122,3 +123,44 @@ class ESFacetBucket(BaseModel):
 
     key: str = Field(description="The bucket key (the field value being counted).")
     count: int = Field(description="The number of documents in the bucket.")
+
+
+class FilteredTermsAggSpec(BaseModel):
+    """
+    Structured spec for a (optionally filter-wrapped) terms aggregation.
+
+    Used by :meth:`GenericAsyncESRepository.execute_filtered_terms_aggregations`
+    to drive multi-aggregation searches where each aggregation can scope its
+    document set independently of the main query.
+    """
+
+    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
+
+    name: str = Field(
+        description="The aggregation name used as the bucket key in the response.",
+    )
+    field: str = Field(description="The ES field to aggregate on.")
+    filter_clauses: tuple[Query, ...] = Field(
+        default=(),
+        description=(
+            "If non-empty, the terms agg is wrapped in a ``filter`` agg with these "
+            "clauses ANDed. Empty wraps in ``MatchAll`` so the response shape is "
+            "uniform regardless of whether a per-agg filter is applied."
+        ),
+    )
+    include: tuple[str, ...] | None = Field(
+        default=None,
+        description="Optional terms-agg ``include`` list.",
+    )
+    exclude: tuple[str, ...] | None = Field(
+        default=None,
+        description="Optional terms-agg ``exclude`` list.",
+    )
+    min_doc_count: int = Field(
+        default=1,
+        description=(
+            "ES terms-agg ``min_doc_count``; set to 0 to surface zero-count buckets "
+            "for values listed in ``include``."
+        ),
+    )
+    size: int = Field(description="The maximum number of buckets to return.")
