@@ -30,7 +30,9 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     LinkedDataConceptFilter,
     PendingEnhancementStatus,
+    PublicationYearRange,
     SearchExportStatus,
+    SearchQuery,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -471,19 +473,19 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
     @classmethod
     def from_domain(cls, domain_obj: DomainSearchExport) -> Self:
         """Create a persistence model from a domain SearchExport object."""
+        query = domain_obj.query
+        year_range = query.publication_year_range
         return cls(
             id=domain_obj.id,
-            query=domain_obj.query,
-            annotation_filters=[f.model_dump() for f in domain_obj.annotation_filters]
-            if domain_obj.annotation_filters
-            else None,
+            query=query.query_string,
+            annotation_filters=[f.model_dump() for f in query.annotation_filters]
+            or None,
             linked_data_concept_filters=[
-                f.model_dump() for f in domain_obj.linked_data_concept_filters
+                f.model_dump() for f in query.linked_data_concept_filters
             ]
-            if domain_obj.linked_data_concept_filters
-            else None,
-            start_year=domain_obj.start_year,
-            end_year=domain_obj.end_year,
+            or None,
+            start_year=year_range.start if year_range else None,
+            end_year=year_range.end if year_range else None,
             sort=domain_obj.sort,
             status=domain_obj.status,
             result_file=domain_obj.result_file.to_uri()
@@ -499,22 +501,25 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
         preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
     ) -> DomainSearchExport:
         """Convert the persistence model into a Domain SearchExport object."""
+        publication_year_range = (
+            PublicationYearRange(start=self.start_year, end=self.end_year)
+            if self.start_year is not None or self.end_year is not None
+            else None
+        )
         return DomainSearchExport(
             id=self.id,
-            query=self.query,
-            annotation_filters=[
-                AnnotationFilter.model_validate(f) for f in self.annotation_filters
-            ]
-            if self.annotation_filters
-            else None,
-            linked_data_concept_filters=[
-                LinkedDataConceptFilter.model_validate(f)
-                for f in self.linked_data_concept_filters
-            ]
-            if self.linked_data_concept_filters
-            else None,
-            start_year=self.start_year,
-            end_year=self.end_year,
+            query=SearchQuery(
+                query_string=self.query,
+                annotation_filters=[
+                    AnnotationFilter.model_validate(f)
+                    for f in (self.annotation_filters or [])
+                ],
+                publication_year_range=publication_year_range,
+                linked_data_concept_filters=[
+                    LinkedDataConceptFilter.model_validate(f)
+                    for f in (self.linked_data_concept_filters or [])
+                ],
+            ),
             sort=self.sort,
             status=self.status,
             result_file=BlobStorageFile.from_uri(self.result_file)
