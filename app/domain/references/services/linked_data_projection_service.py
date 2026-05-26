@@ -1,7 +1,6 @@
 """Projection of LinkedDataEnhancement data into flat searchable fields."""
 
 import json
-from dataclasses import dataclass
 
 from destiny_sdk.enhancements import LinkedDataEnhancement
 from rdflib import Graph, Literal, Namespace, URIRef
@@ -20,32 +19,28 @@ ESEA = Namespace("https://vocab.esea.education/")
 _COUNTRY_PROPERTIES: frozenset[URIRef] = frozenset({ESEA.country})
 
 
-@dataclass(frozen=True)
-class _LoadedVocabulary:
-    """A parsed vocabulary with pre-built lookups."""
-
-    graph: Graph
-    concept_labels: dict[str, str]
-    concept_schemes: dict[str, str]
-    scheme_to_property: dict[str, str]
-
-
 class LinkedDataProjectionService:
     """
     Projects LinkedDataEnhancement data into flat searchable fields.
 
-    Vocabularies and contexts are resolved through a :class:`VocabularyClient`.
-    Derived lookups (concept labels, scheme mappings) are cached per vocabulary URI.
+    SKOS-generic lookups (concept labels, concept schemes, siblings) live on
+    :class:`VocabularyArtifactClient`. The only vocabulary-derived lookup kept
+    here is ``scheme_to_property``, which joins through the evrepo OWL
+    ontology and isn't generic SKOS.
     """
 
     def __init__(self, vocabulary_client: VocabularyArtifactClient) -> None:
-        """Initialise with a vocabulary client and empty lookup caches."""
+        """Initialise with a vocabulary client and an empty per-vocab cache."""
         self._vocabulary_client = vocabulary_client
-        self._vocabularies: dict[str, _LoadedVocabulary] = {}
+        self._scheme_to_property_cache: dict[str, dict[str, str]] = {}
 
     async def project(self, enhancement: LinkedDataEnhancement) -> LinkedDataProjection:
         """Extract concepts, labels, evaluated properties, and countries."""
-        vocab = await self._get_vocabulary(str(enhancement.vocabulary_uri))
+        vocab_uri = str(enhancement.vocabulary_uri)
+        vocab_graph = await self._vocabulary_client.get_vocabulary(vocab_uri)
+        concept_labels = await self._vocabulary_client.get_concept_labels(vocab_uri)
+        concept_schemes = await self._vocabulary_client.get_concept_schemes(vocab_uri)
+        scheme_to_property = await self._get_scheme_to_property(vocab_uri)
         context_uri = enhancement.data.get("@context")
         if context_uri is None:
             msg = "Enhancement data is missing @context"
@@ -72,20 +67,20 @@ class LinkedDataProjectionService:
 
             concept_uri = str(value)
 
-            if (value, RDF.type, SKOS.Concept) not in vocab.graph:
+            if (value, RDF.type, SKOS.Concept) not in vocab_graph:
                 continue
 
             status = self._get_status(data_graph, node)
 
             if status == EVREPO.coded or status is None:
                 concepts.add(concept_uri)
-                label = vocab.concept_labels.get(concept_uri)
+                label = concept_labels.get(concept_uri)
                 if label is not None:
                     labels.add(label)
 
-            scheme_uri = vocab.concept_schemes.get(concept_uri)
+            scheme_uri = concept_schemes.get(concept_uri)
             if scheme_uri is not None:
-                prop_uri = vocab.scheme_to_property.get(scheme_uri)
+                prop_uri = scheme_to_property.get(scheme_uri)
                 if prop_uri is not None:
                     evaluated_properties.add(prop_uri)
 
@@ -115,19 +110,15 @@ class LinkedDataProjectionService:
                             countries.add(code)
         return countries
 
-    # -- vocabulary resolution with derived-lookup caching ---------------------
-
-    async def _get_vocabulary(self, uri: str) -> _LoadedVocabulary:
-        """Return cached derived lookups for *uri*, building on first access."""
-        if uri not in self._vocabularies:
-            graph = await self._vocabulary_client.get_vocabulary(uri)
-            self._vocabularies[uri] = _LoadedVocabulary(
-                graph=graph,
-                concept_labels=self._build_concept_labels(graph),
-                concept_schemes=self._build_concept_schemes(graph),
-                scheme_to_property=self._build_scheme_to_property(graph),
-            )
-        return self._vocabularies[uri]
+    async def _get_scheme_to_property(self, vocab_uri: str) -> dict[str, str]:
+        """Return scheme→property for *vocab_uri*, building on first access."""
+        cached = self._scheme_to_property_cache.get(vocab_uri)
+        if cached is not None:
+            return cached
+        graph = await self._vocabulary_client.get_vocabulary(vocab_uri)
+        mapping = self._build_scheme_to_property(graph)
+        self._scheme_to_property_cache[vocab_uri] = mapping
+        return mapping
 
     @staticmethod
     def _get_status(data_graph: Graph, node: URIRef) -> URIRef | None:
@@ -136,25 +127,6 @@ class LinkedDataProjectionService:
             if isinstance(status, URIRef):
                 return status
         return None
-
-    # -- vocabulary lookup builders --------------------------------------------
-
-    @staticmethod
-    def _build_concept_labels(graph: Graph) -> dict[str, str]:
-        """Build concept URI -> prefLabel lookup from the vocabulary."""
-        labels: dict[str, str] = {}
-        for concept, _, label in graph.triples((None, SKOS.prefLabel, None)):
-            if (concept, RDF.type, SKOS.Concept) in graph:
-                labels[str(concept)] = str(label)
-        return labels
-
-    @staticmethod
-    def _build_concept_schemes(graph: Graph) -> dict[str, str]:
-        """Build concept URI -> scheme URI lookup from the vocabulary."""
-        schemes: dict[str, str] = {}
-        for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
-            schemes[str(concept)] = str(scheme)
-        return schemes
 
     @staticmethod
     def _build_scheme_to_property(graph: Graph) -> dict[str, str]:

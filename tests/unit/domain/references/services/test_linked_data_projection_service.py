@@ -17,7 +17,12 @@ from app.domain.references.services.world_bank_regions import (
     SOUTH_ASIA,
     SUB_SAHARAN_AFRICA,
 )
-from app.external.vocabulary.client import VocabularyArtifactClient
+from app.external.vocabulary.client import (
+    VocabularyArtifactClient,
+    _build_concept_labels,
+    _build_concept_schemes,
+    _normalise_top_concept_triples,
+)
 
 ESEA_NS = "https://vocab.esea.education/"
 
@@ -28,12 +33,19 @@ _STATIC_VOCAB_DIR = get_settings().project_root / "app" / "static" / "vocab" / "
 def projector() -> LinkedDataProjectionService:
     vocab_graph = Graph()
     vocab_graph.parse(_STATIC_VOCAB_DIR / "esea-vocab.ttl", format="turtle")
+    _normalise_top_concept_triples(vocab_graph)
     with (_STATIC_VOCAB_DIR / "esea-context.jsonld").open() as f:
         context = json.load(f)
 
     client = MagicMock(spec=VocabularyArtifactClient)
     client.get_vocabulary = AsyncMock(return_value=vocab_graph)
     client.get_context = AsyncMock(return_value=context)
+    client.get_concept_labels = AsyncMock(
+        return_value=_build_concept_labels(vocab_graph)
+    )
+    client.get_concept_schemes = AsyncMock(
+        return_value=_build_concept_schemes(vocab_graph)
+    )
     return LinkedDataProjectionService(client)
 
 
@@ -427,8 +439,7 @@ class TestLinkedDataProjectionService:
     @pytest.mark.asyncio
     async def test_scheme_to_property_mapping(self, projector):
         vocab_uri = "https://vocab.esea.education/vocabulary/v1"
-        vocab = await projector._get_vocabulary(vocab_uri)  # noqa: SLF001
-        mapping = vocab.scheme_to_property
+        mapping = await projector._get_scheme_to_property(vocab_uri)  # noqa: SLF001
         assert mapping[f"{ESEA_NS}DocumentTypeScheme"] == (f"{ESEA_NS}documentType")
         assert mapping[f"{ESEA_NS}EducationLevelScheme"] == (f"{ESEA_NS}educationLevel")
         assert mapping[f"{ESEA_NS}EducationThemeScheme"] == (f"{ESEA_NS}educationTheme")

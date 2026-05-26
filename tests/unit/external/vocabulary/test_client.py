@@ -2,6 +2,7 @@
 
 import httpx
 import pytest
+import pytest_asyncio
 from pytest_httpx import HTTPXMock
 
 from app.core.exceptions import VocabularyFetchError
@@ -20,10 +21,68 @@ SAMPLE_CONTEXT = {"@context": {"ex": "http://example.org/"}}
 VOCAB_URI = "https://vocab.example.org/vocabulary/v1"
 CONTEXT_URI = "https://vocab.example.org/context/v1.jsonld"
 
+# SKOS vocab covering the four shapes the lookups have to handle:
+#   - hierarchical scheme: Biology -> Botany, Zoology, Microbiology
+#   - flat scheme using skos:topConceptOf:        Africa, Asia
+#   - flat scheme using skos:hasTopConcept:       Apple, Pear
+#   - multi-parented concept under two parents:   Quantum (under both Physics & Math)
+SKOS_TURTLE = """\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:Topics a skos:ConceptScheme .
+
+ex:Biology  a skos:Concept ; skos:inScheme ex:Topics ; skos:prefLabel "Biology" ;
+            skos:topConceptOf ex:Topics .
+ex:Chemistry a skos:Concept ; skos:inScheme ex:Topics ; skos:prefLabel "Chemistry" ;
+             skos:topConceptOf ex:Topics .
+
+ex:Botany       a skos:Concept ; skos:inScheme ex:Topics ;
+                skos:prefLabel "Botany" ; skos:broader ex:Biology .
+ex:Zoology      a skos:Concept ; skos:inScheme ex:Topics ;
+                skos:prefLabel "Zoology" ; skos:broader ex:Biology .
+ex:Microbiology a skos:Concept ; skos:inScheme ex:Topics ;
+                skos:prefLabel "Microbiology" ; skos:broader ex:Biology .
+
+ex:Regions a skos:ConceptScheme .
+ex:Africa a skos:Concept ; skos:inScheme ex:Regions ; skos:prefLabel "Africa" ;
+          skos:topConceptOf ex:Regions .
+ex:Asia   a skos:Concept ; skos:inScheme ex:Regions ; skos:prefLabel "Asia" ;
+          skos:topConceptOf ex:Regions .
+
+ex:Fruits a skos:ConceptScheme ;
+          skos:hasTopConcept ex:Apple , ex:Pear .
+ex:Apple a skos:Concept ; skos:inScheme ex:Fruits ; skos:prefLabel "Apple" .
+ex:Pear  a skos:Concept ; skos:inScheme ex:Fruits ; skos:prefLabel "Pear" .
+
+ex:Sciences a skos:ConceptScheme .
+ex:Physics a skos:Concept ; skos:inScheme ex:Sciences ; skos:prefLabel "Physics" ;
+           skos:topConceptOf ex:Sciences .
+ex:Mathematics a skos:Concept ; skos:inScheme ex:Sciences ;
+               skos:prefLabel "Mathematics" ;
+               skos:topConceptOf ex:Sciences .
+ex:Quantum a skos:Concept ; skos:inScheme ex:Sciences ; skos:prefLabel "Quantum" ;
+           skos:broader ex:Physics , ex:Mathematics .
+"""
+
 
 @pytest.fixture
 def client() -> VocabularyArtifactClient:
     return VocabularyArtifactClient()
+
+
+@pytest_asyncio.fixture
+async def skos_client(
+    client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+) -> VocabularyArtifactClient:
+    """Client primed to serve the SKOS sample vocabulary at VOCAB_URI."""
+    httpx_mock.add_response(
+        url=VOCAB_URI,
+        text=SKOS_TURTLE,
+        headers={"content-type": "text/turtle"},
+    )
+    return client
 
 
 class TestGetVocabulary:
@@ -239,3 +298,119 @@ class TestDocumentLoader:
             client.document_loader("https://not-fetched.example.org/ctx.jsonld")
 
         assert exc_info.value.uri == "https://not-fetched.example.org/ctx.jsonld"
+
+
+def _concept(name: str) -> str:
+    return f"http://example.org/{name}"
+
+
+class TestGetConceptLabels:
+    @pytest.mark.asyncio
+    async def test_returns_concept_to_preflabel_map(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        labels = await skos_client.get_concept_labels(VOCAB_URI)
+
+        assert labels[_concept("Biology")] == "Biology"
+        assert labels[_concept("Botany")] == "Botany"
+        assert labels[_concept("Quantum")] == "Quantum"
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_returns_same_instance(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        first = await skos_client.get_concept_labels(VOCAB_URI)
+        second = await skos_client.get_concept_labels(VOCAB_URI)
+        assert first is second
+
+
+class TestGetConceptSchemes:
+    @pytest.mark.asyncio
+    async def test_returns_concept_to_scheme_map(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        schemes = await skos_client.get_concept_schemes(VOCAB_URI)
+
+        assert schemes[_concept("Botany")] == _concept("Topics")
+        assert schemes[_concept("Africa")] == _concept("Regions")
+        assert schemes[_concept("Apple")] == _concept("Fruits")
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_returns_same_instance(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        first = await skos_client.get_concept_schemes(VOCAB_URI)
+        second = await skos_client.get_concept_schemes(VOCAB_URI)
+        assert first is second
+
+
+class TestGetConceptSiblings:
+    @pytest.mark.asyncio
+    async def test_siblings_under_skos_broader_include_self(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
+
+        expected = frozenset(
+            {_concept("Botany"), _concept("Zoology"), _concept("Microbiology")}
+        )
+        assert siblings[_concept("Botany")] == expected
+        assert siblings[_concept("Zoology")] == expected
+        assert siblings[_concept("Microbiology")] == expected
+
+    @pytest.mark.asyncio
+    async def test_siblings_under_top_concept_of(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
+
+        topics_top = frozenset(
+            {
+                _concept("Biology"),
+                _concept("Chemistry"),
+            }
+        )
+        assert siblings[_concept("Biology")] == topics_top
+        assert siblings[_concept("Chemistry")] == topics_top
+
+    @pytest.mark.asyncio
+    async def test_siblings_under_has_top_concept_normalised(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        """`skos:hasTopConcept` on the scheme should produce sibling sets too."""
+        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
+
+        fruits = frozenset({_concept("Apple"), _concept("Pear")})
+        assert siblings[_concept("Apple")] == fruits
+        assert siblings[_concept("Pear")] == fruits
+
+    @pytest.mark.asyncio
+    async def test_multi_parented_concept_unions_siblings(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        """A concept under two parents has siblings from both."""
+        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
+
+        # Quantum is broader: Physics & Mathematics. Both parents only have
+        # Quantum as a child, so Quantum's siblings are just {Quantum}.
+        assert siblings[_concept("Quantum")] == frozenset({_concept("Quantum")})
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_skips_recomputation(
+        self,
+        skos_client: VocabularyArtifactClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        first = await skos_client.get_concept_siblings(VOCAB_URI)
+
+        # If the second call recomputed, this would blow up.
+        from app.external.vocabulary import client as client_module
+
+        def _explode(_graph: object) -> dict[str, frozenset[str]]:
+            msg = "should not be called on cache hit"
+            raise AssertionError(msg)
+
+        monkeypatch.setattr(client_module, "_build_concept_siblings", _explode)
+
+        second = await skos_client.get_concept_siblings(VOCAB_URI)
+        assert first is second
