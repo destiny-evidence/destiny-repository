@@ -57,6 +57,7 @@ from app.domain.references.models.models import (
     ReferenceIds,
     SearchQuery,
 )
+from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.access_control_service import (
     ReferenceAccessControlService,
@@ -432,7 +433,8 @@ SortParam = Annotated[
     description="Search for references using a query string in "
     "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
     ". If the query string does not specify search fields, the search will query over "
-    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    f"[{', '.join(ReferenceESRepository.default_search_fields)}]. The query string "
+    "can only "
     "search over fields on the root level of the Reference document.\n\n"
     "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
     "and if a query would return more than 10,000 results the total count is listed as "

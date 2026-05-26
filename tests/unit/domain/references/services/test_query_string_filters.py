@@ -1,4 +1,4 @@
-"""Unit tests for structured filter clause building in SearchService."""
+"""Unit tests for structured filter clause building in ReferenceESRepository."""
 
 from elasticsearch.dsl.query import Prefix, Range, Term, Terms
 
@@ -8,19 +8,19 @@ from app.domain.references.models.models import (
     PublicationYearRange,
     SearchQuery,
 )
-from app.domain.references.services.search_service import SearchService
+from app.domain.references.repository import ReferenceESRepository
 
 
-class _StubSearchService(SearchService):
-    """SearchService without dependencies, for testing filter builders."""
+class _StubReferenceESRepository(ReferenceESRepository):
+    """ReferenceESRepository without an ES client, for testing pure clause builders."""
 
     def __init__(self) -> None:
         pass
 
 
 def test_publication_year_range_both_bounds():
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             publication_year_range=PublicationYearRange(start=2020, end=2022),
@@ -30,8 +30,8 @@ def test_publication_year_range_both_bounds():
 
 
 def test_publication_year_range_start_only():
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             publication_year_range=PublicationYearRange(start=2020),
@@ -46,8 +46,8 @@ def test_annotation_filter_scheme_and_label_uses_term_query():
     No Lucene escaping involved: special characters in the label go through the
     DSL serializer untouched.
     """
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             annotation_filters=[
@@ -59,8 +59,8 @@ def test_annotation_filter_scheme_and_label_uses_term_query():
 
 
 def test_annotation_filter_scheme_only_uses_prefix_query():
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             annotation_filters=[AnnotationFilter(scheme="inclusion:destiny")],
@@ -71,8 +71,8 @@ def test_annotation_filter_scheme_only_uses_prefix_query():
 
 def test_linked_data_concept_filter_uses_terms_query():
     """Concept filters resolve to a single ``terms`` clause (OR-of-URIs)."""
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             linked_data_concept_filters=[
@@ -97,8 +97,8 @@ def test_linked_data_concept_filter_uses_terms_query():
 
 def test_multiple_concept_filters_produce_multiple_clauses():
     """Each repeated concept= maps to its own ``Terms`` clause (ANDed at the bool)."""
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             linked_data_concept_filters=[
@@ -124,8 +124,8 @@ def test_multiple_concept_filters_produce_multiple_clauses():
 
 
 def test_annotation_filter_score_uses_range_query_on_dynamic_field():
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             annotation_filters=[
@@ -137,13 +137,13 @@ def test_annotation_filter_score_uses_range_query_on_dynamic_field():
 
 
 def test_no_filters_yields_empty_list():
-    service = _StubSearchService()
-    assert service._build_filter_clauses(SearchQuery(query_string="*")) == []  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    assert repository._build_filter_clauses(SearchQuery(query_string="*")) == []  # noqa: SLF001
 
 
 def test_filters_combined_in_declaration_order():
-    service = _StubSearchService()
-    clauses = service._build_filter_clauses(  # noqa: SLF001
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             publication_year_range=PublicationYearRange(start=2020),

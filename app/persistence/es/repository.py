@@ -245,7 +245,7 @@ class GenericAsyncESRepository(
         :return: A list of matching records.
         :rtype: ESSearchResult
         """
-        composed = _compose_query(query, fields, filter_clauses)
+        composed = self._compose_query(query, fields, filter_clauses)
         trace_attribute(Attributes.DB_QUERY, json.dumps(composed.to_dict()))
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
@@ -295,7 +295,7 @@ class GenericAsyncESRepository(
         :return: A mapping from each requested field name to its term buckets.
         :rtype: dict[str, list[ESFacetBucket]]
         """
-        composed = _compose_query(query, query_fields, filter_clauses)
+        composed = self._compose_query(query, query_fields, filter_clauses)
         trace_attribute(Attributes.DB_QUERY, json.dumps(composed.to_dict()))
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
@@ -318,18 +318,18 @@ class GenericAsyncESRepository(
             for field in aggregate_on
         }
 
-
-def _compose_query(
-    query_string: str,
-    fields: Sequence[str] | None,
-    filter_clauses: Sequence[Query] | None,
-) -> Query:
-    """Build the top-level query: a bare QueryString, or one wrapped in bool.filter."""
-    main = (
-        QueryString(query=query_string, fields=fields)
-        if fields
-        else QueryString(query=query_string)
-    )
-    if not filter_clauses:
-        return main
-    return Bool(must=[main], filter=list(filter_clauses))
+    def _compose_query(
+        self,
+        query_string: str,
+        fields: Sequence[str] | None,
+        filter_clauses: Sequence[Query] | None,
+    ) -> Query:
+        """Build the top-level query: a bare QueryString, or wrapped in bool.filter."""
+        main = (
+            QueryString(query=query_string, fields=fields)
+            if fields
+            else QueryString(query=query_string)
+        )
+        if not filter_clauses:
+            return main
+        return Bool(must=[main], filter=list(filter_clauses))
