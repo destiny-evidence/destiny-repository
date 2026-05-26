@@ -51,6 +51,7 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
+    FacetType,
     LinkedDataConceptFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
@@ -382,6 +383,29 @@ def parse_linked_data_concept_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def parse_vocabulary_uri(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    vocabulary: Annotated[
+        str,
+        Query(
+            description=(
+                "Fully-qualified URI of the vocabulary to consult for sibling-"
+                "aware facet counting. Required when filtering on concepts "
+                "and requesting the `concepts` facet; ignored otherwise."
+            ),
+            examples=["https://vocab.esea.education/vocabulary/v1"],
+        ),
+    ] = None,
+) -> str | None:
+    """Parse the optional ``?vocabulary=`` query parameter."""
+    try:
+        return anti_corruption_service.vocabulary_uri_from_query_parameter(vocabulary)
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
 def parse_search_query(
     q: Annotated[
         str,
@@ -495,14 +519,19 @@ async def search_references(
     description=(
         "Return per-facet counts across the references matching the search.\n\n"
         "Accepts the same filter parameters as `/references/search/`, plus one or "
-        "more `?facet=` values. Only the requested facet types appear in the response."
-        "\n\n"
-        "⚠️ **Filters apply to facet counts of the same type.** If you filter on "
-        "a concept and request concept counts, the response shows co-occurrence "
-        "with your selection - siblings of selected concepts will typically appear "
-        "with very low counts, not their unfiltered counts.\n\n"
-        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets; "
-        "very large vocabularies are truncated."
+        "more `?facet=` values. Only the requested facet types appear in the "
+        "response.\n\n"
+        "When filtering on concepts and requesting the `concepts` facet, supply "
+        "`?vocabulary=` so the server can compute sibling-aware counts. Each "
+        "`?concept=` parameter is treated as one OR-set of siblings; across "
+        "parameters they AND. The vocabulary is consulted to find each "
+        "filter's sibling set, and three rules are enforced (400 on any "
+        "violation):\n\n"
+        "1. URIs inside one `?concept=` must share a sibling set in the vocab.\n"
+        "2. Different `?concept=` filters must have disjoint sibling sets.\n"
+        "3. Every URI must resolve in the supplied vocabulary.\n\n"
+        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} "
+        "buckets; very large vocabularies are truncated."
     ),
 )
 async def count_facets_for_search(
@@ -511,6 +540,7 @@ async def count_facets_for_search(
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     query: Annotated[SearchQuery, Depends(parse_search_query)],
+    vocabulary_uri: Annotated[str | None, Depends(parse_vocabulary_uri)],
     facet: Annotated[
         list[destiny_sdk.references.FacetType],
         Query(
@@ -520,9 +550,22 @@ async def count_facets_for_search(
     ],
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
+    facets = anti_corruption_service.facet_types_from_sdk(facet)
+    if (
+        query.linked_data_concept_filters
+        and FacetType.CONCEPTS in facets
+        and not vocabulary_uri
+    ):
+        raise ParseError(
+            detail=(
+                "`vocabulary=` is required when filtering on concepts and "
+                "requesting the `concepts` facet."
+            ),
+        )
     buckets_by_facet = await reference_service.aggregate_facets(
         query,
-        anti_corruption_service.facet_types_from_sdk(facet),
+        facets,
+        vocabulary_uri=vocabulary_uri,
     )
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 
