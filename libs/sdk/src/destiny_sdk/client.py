@@ -2,7 +2,7 @@
 
 import sys
 import time
-from collections.abc import Generator
+from collections.abc import Collection, Generator
 
 import httpx
 from msal import (
@@ -700,6 +700,7 @@ class OAuthClient:
         start_year: int | None = None,
         end_year: int | None = None,
         annotations: list[str | AnnotationFilter] | None = None,
+        concepts: list[str | Collection[str]] | None = None,
         sort: str | None = None,
         page: int = 1,
         timeout: int | None = None,
@@ -717,6 +718,11 @@ class OAuthClient:
         :type end_year: int | None
         :param annotations: A list of annotation filters to apply.
         :type annotations: list[str | libs.sdk.src.destiny_sdk.search.AnnotationFilter] | None
+        :param concepts: A list of linked-data concept filters. Each entry ANDs
+            with the others. Pass a single URI string for a single match, or a
+            collection of URIs (list, tuple, set) to OR them within a single
+            filter.
+        :type concepts: list[str | collections.abc.Collection[str]] | None
         :param sort: The sort order for the results.
         :type sort: str | None
         :param page: The page number of results to retrieve.
@@ -734,6 +740,11 @@ class OAuthClient:
             params["end_year"] = end_year
         if annotations:
             params["annotation"] = [str(annotation) for annotation in annotations]
+        if concepts:
+            params["concept"] = [
+                concept if isinstance(concept, str) else ",".join(concept)
+                for concept in concepts
+            ]
         if sort:
             params["sort"] = sort
         response = self._client.get(

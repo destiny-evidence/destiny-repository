@@ -51,6 +51,7 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
+    LinkedDataConceptFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceIds,
@@ -340,6 +341,46 @@ def parse_annotation_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def parse_linked_data_concept_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    concept: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of linked-data concept filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_concepts` "
+                "contain at least one of the listed URIs.\n"
+                "- Within a single value, separate multiple URIs with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `concept` parameters are combined with AND logic.\n\n"
+                "Only fully-qualified URIs are accepted."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/scheme/C00001",
+                (
+                    "https://vocab.evidence-repository.org/scheme/C00001,"
+                    "https://vocab.evidence-repository.org/scheme/C00002"
+                ),
+            ],
+        ),
+    ] = None,
+) -> list[LinkedDataConceptFilter]:
+    """Parse linked-data concept filters from query parameters."""
+    if not concept:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_concept_filter_from_query_parameter(
+                concept_filter_string
+            )
+            for concept_filter_string in concept
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
 def parse_search_query(
     q: Annotated[
         str,
@@ -353,12 +394,17 @@ def parse_search_query(
         PublicationYearRange | None,
         Depends(parse_publication_year_range),
     ],
+    linked_data_concept_filters: Annotated[
+        list[LinkedDataConceptFilter],
+        Depends(parse_linked_data_concept_filters),
+    ],
 ) -> SearchQuery:
     """Bundle the shared search parameters into a domain SearchQuery."""
     return SearchQuery(
         query_string=q,
         annotation_filters=annotation_filters,
         publication_year_range=publication_year_range,
+        linked_data_concept_filters=linked_data_concept_filters,
     )
 
 

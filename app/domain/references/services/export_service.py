@@ -65,6 +65,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         search_export = SearchExport(
             query=query.query_string,
             annotation_filters=query.annotation_filters or None,
+            linked_data_concept_filters=query.linked_data_concept_filters or None,
             start_year=year_range.start if year_range else None,
             end_year=year_range.end if year_range else None,
             sort=sort,
@@ -150,6 +151,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             query_string=search_export.query,
             annotation_filters=search_export.annotation_filters or [],
             publication_year_range=publication_year_range,
+            linked_data_concept_filters=search_export.linked_data_concept_filters or [],
         )
 
         search_result = await self._search_service.search_with_query(

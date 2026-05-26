@@ -28,6 +28,7 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    LinkedDataConceptFilter,
     PendingEnhancementStatus,
     SearchExportStatus,
     Visibility,
@@ -451,6 +452,9 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
     annotation_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONB, nullable=True
     )
+    linked_data_concept_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
@@ -472,6 +476,11 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
             query=domain_obj.query,
             annotation_filters=[f.model_dump() for f in domain_obj.annotation_filters]
             if domain_obj.annotation_filters
+            else None,
+            linked_data_concept_filters=[
+                f.model_dump() for f in domain_obj.linked_data_concept_filters
+            ]
+            if domain_obj.linked_data_concept_filters
             else None,
             start_year=domain_obj.start_year,
             end_year=domain_obj.end_year,
@@ -497,6 +506,12 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
                 AnnotationFilter.model_validate(f) for f in self.annotation_filters
             ]
             if self.annotation_filters
+            else None,
+            linked_data_concept_filters=[
+                LinkedDataConceptFilter.model_validate(f)
+                for f in self.linked_data_concept_filters
+            ]
+            if self.linked_data_concept_filters
             else None,
             start_year=self.start_year,
             end_year=self.end_year,

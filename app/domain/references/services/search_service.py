@@ -3,7 +3,7 @@
 from collections.abc import Sequence
 from typing import ClassVar
 
-from elasticsearch.dsl.query import Prefix, Query, Range, Term
+from elasticsearch.dsl.query import Prefix, Query, Range, Term, Terms
 from opentelemetry import trace
 
 from app.core.config import get_settings
@@ -11,6 +11,7 @@ from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     AnnotationFilter,
     FacetType,
+    LinkedDataConceptFilter,
     PublicationYearRange,
     SearchQuery,
 )
@@ -67,6 +68,13 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             return None
         return Range(publication_year=bounds)
 
+    def _build_linked_data_concept_clause(
+        self,
+        concept_filter: LinkedDataConceptFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed concept URIs (OR semantics)."""
+        return Terms(linked_data_concepts=concept_filter.concept_uris)
+
     def _build_annotation_clause(self, annotation: AnnotationFilter) -> Query:
         """
         Build a structured DSL clause for an annotation filter.
@@ -98,6 +106,10 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         clauses.extend(
             self._build_annotation_clause(annotation)
             for annotation in query.annotation_filters
+        )
+        clauses.extend(
+            self._build_linked_data_concept_clause(concept_filter)
+            for concept_filter in query.linked_data_concept_filters
         )
         return clauses
 

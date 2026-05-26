@@ -92,6 +92,26 @@ Multiple annotations can be provided; they will be combined using a logical ``AN
     # Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true and inclusion:destiny as true:
     ?q=...&annotation=classification:taxonomy:Outcomes/Stroke&annotation=inclusion:destiny
 
+Concepts
+__________________________
+
+The ``concept`` parameter filters results by their linked-data concept URIs (matched against the ``linked_data_concepts`` field).
+
+- Each ``concept`` value is a fully-qualified concept URI, or a comma-separated list of URIs.
+- Within a single ``concept`` value, URIs are combined using a logical ``OR`` — a reference matches if it carries any one of them.
+- Multiple ``concept`` parameters are combined using a logical ``AND`` — a reference must match each one.
+
+.. code-block::
+
+    # Get references annotated with the C00003 education level:
+    ?q=...&concept=https://vocab.esea.education/EducationLevelScheme/C00003
+
+    # Get references annotated with either the C00003 or C00004 education level:
+    ?q=...&concept=https://vocab.esea.education/EducationLevelScheme/C00003,https://vocab.esea.education/EducationLevelScheme/C00004
+
+    # Get references annotated with (C00003 OR C00004) AND a specific outcome:
+    ?q=...&concept=https://vocab.esea.education/EducationLevelScheme/C00003,https://vocab.esea.education/EducationLevelScheme/C00004&concept=https://vocab.example.org/Outcomes/Learning
+
 Page
 _____________
 
