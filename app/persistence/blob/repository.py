@@ -1,5 +1,6 @@
 """Service for managing files in blob storage."""
 
+import asyncio
 import hashlib
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
@@ -7,7 +8,6 @@ from functools import cached_property
 from io import BytesIO
 from typing import Protocol
 
-from cachetools import LRUCache
 from pydantic import HttpUrl
 
 from app.core.config import (
@@ -53,15 +53,70 @@ class URLSigner(Protocol):
         ...
 
 
-class BlobRepository:
-    """Repository for managing files in blob storage."""
+class _BlobClientRegistry:
+    """
+    Process-wide owner of concrete blob backend clients.
+
+    This defers instantiation and teardown of backend clients to the application
+    lifecycle, rather than per-repository or per-request.
+    """
 
     def __init__(self) -> None:
-        """Initialize the BlobRepository."""
-        self._config_cache: LRUCache[BlobStorageFile, GenericBlobStorageClient] = (
-            LRUCache(maxsize=1000)
+        self._clients: dict[BlobStorageLocation, GenericBlobStorageClient] = {}
+        self._lock = asyncio.Lock()
+
+    async def get(self, file: BlobStorageFile) -> GenericBlobStorageClient:
+        if client := self._clients.get(file.location):
+            return client
+        async with self._lock:
+            if client := self._clients.get(file.location):
+                return client
+            client = self._instantiate(file)
+            self._clients[file.location] = client
+            return client
+
+    @staticmethod
+    def _instantiate(file: BlobStorageFile) -> GenericBlobStorageClient:
+        if file.location == BlobStorageLocation.AZURE:
+            if not settings.azure_blob_config:
+                msg = "Azure Blob Storage configuration is not given."
+                raise AzureBlobStorageError(msg)
+            return AzureBlobStorageClient(
+                settings.azure_blob_config, settings.presigned_url_expiry_seconds
+            )
+        if file.location == BlobStorageLocation.MINIO:
+            if not settings.minio_config:
+                msg = "MinIO configuration is not given."
+                raise MinioBlobStorageError(msg)
+            return MinioBlobStorageClient(
+                settings.minio_config, settings.presigned_url_expiry_seconds
+            )
+        if file.is_remote:
+            return RemoteBlobStorageClient()
+        msg = "Unsupported blob storage location."
+        raise BlobStorageError(msg)
+
+    async def aclose(self) -> None:
+        clients = list(self._clients.values())
+        self._clients.clear()
+        results = await asyncio.gather(
+            *(c.aclose() for c in clients), return_exceptions=True
         )
-        self._remote_client: RemoteBlobStorageClient | None = None
+        for result in results:
+            if isinstance(result, BaseException):
+                logger.warning("Error closing blob client", exc_info=result)
+
+
+_registry = _BlobClientRegistry()
+
+
+async def close_blob_clients() -> None:
+    """Release every backend client held by the process-wide registry."""
+    await _registry.aclose()
+
+
+class BlobRepository:
+    """Repository for managing files in blob storage."""
 
     @cached_property
     def _write_backend(self) -> AzureBlobConfig | MinioConfig:
@@ -88,47 +143,8 @@ class BlobRepository:
         self,
         file: BlobStorageFile,
     ) -> GenericBlobStorageClient:
-        """
-        Pre-check configuration for blob storage clients.
-
-        :param file: The file to check configuration for.
-        :type file: BlobStorageFile
-        :raises AzureBlobStorageError: Raised if file location is Azure and
-            configuration is missing.
-        :raises MinioBlobStorageError: Raised if file location is MinIO and
-            configuration is missing.
-        :raises BlobStorageError: Raised if file location is unsupported.
-        :return: _description_
-        :rtype: GenericBlobStorageClient
-        """
-        # This feels best for now as it avoids unnecessary instantiation, but we
-        # can consider just creating the clients if their config is provided in
-        # __init__().
-        if config := self._config_cache.get(file):
-            return config
-        if file.location == BlobStorageLocation.AZURE:
-            if not settings.azure_blob_config:
-                msg = "Azure Blob Storage configuration is not given."
-                raise AzureBlobStorageError(msg)
-            config = AzureBlobStorageClient(
-                settings.azure_blob_config, settings.presigned_url_expiry_seconds
-            )
-        elif file.location == BlobStorageLocation.MINIO:
-            if not settings.minio_config:
-                msg = "MinIO configuration is not given."
-                raise MinioBlobStorageError(msg)
-            config = MinioBlobStorageClient(
-                settings.minio_config, settings.presigned_url_expiry_seconds
-            )
-        elif file.is_remote:
-            if self._remote_client is None:
-                self._remote_client = RemoteBlobStorageClient()
-            config = self._remote_client
-        else:
-            msg = "Unsupported blob storage location."
-            raise BlobStorageError(msg)
-        self._config_cache[file] = config
-        return config
+        """Return the shared backend client for ``file``'s location."""
+        return await _registry.get(file)
 
     def destination(
         self,

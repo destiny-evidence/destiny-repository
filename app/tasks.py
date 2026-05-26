@@ -9,6 +9,7 @@ from app.core.config import Environment, get_settings
 from app.core.telemetry.logger import logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.core.telemetry.taskiq import TaskiqTracingMiddleware
+from app.persistence.blob.repository import close_blob_clients
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 
@@ -61,6 +62,7 @@ async def shutdown(_state: TaskiqState) -> None:
     """Close DB connections when the worker is shutting down."""
     await db_manager.close()
     await es_manager.close()
+    await close_blob_clients()
 
 
 # Scheduler for development - only active in local environment

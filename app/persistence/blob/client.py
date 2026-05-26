@@ -110,3 +110,13 @@ class GenericBlobStorageClient(ABC):
         :return: The signed URL for the file.
         :rtype: str
         """
+
+    async def aclose(self) -> None:
+        """
+        Release any async network resources held by this client.
+
+        Default is a no-op for backends that hold no async state (e.g.
+        synchronous SDKs). Subclasses with aiohttp/httpx clients or
+        async credentials override this to close them.
+        """
+        return
