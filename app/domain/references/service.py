@@ -105,7 +105,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )
-        self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
+        self._search_service = SearchService(
+            anti_corruption_service,
+            sql_uow,
+            es_uow,
+            vocab_client=get_vocabulary_artifact_client(),
+        )
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
     @sql_unit_of_work
@@ -1286,9 +1291,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query: SearchQuery,
         facets: Sequence[FacetType],
+        vocabulary_uri: str | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Count occurrences per facet across references matching the query."""
-        return await self._search_service.aggregate_facets(query, facets)
+        """
+        Count occurrences per facet across references matching the query.
+
+        When ``vocabulary_uri`` is supplied alongside a concept filter and the
+        ``CONCEPTS`` facet, counts are computed with sibling awareness so
+        unselected siblings of selected concepts show their would-be counts.
+        See :meth:`SearchService.aggregate_facets`.
+        """
+        return await self._search_service.aggregate_facets(
+            query, facets, vocabulary_uri
+        )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")
     async def _detect_and_dispatch_robot_automations(
