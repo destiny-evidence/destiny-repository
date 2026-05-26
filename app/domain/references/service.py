@@ -1275,7 +1275,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         sort: list[str] | None = None,
     ) -> ESSearchResult:
         """Search for references matching the given query specification."""
-        return await self._search_service.search_with_query(
+        return await self._search_service.search(
             query,
             page=page,
             sort=sort,

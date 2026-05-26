@@ -47,7 +47,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
-    async def search_with_query(
+    async def search(
         self,
         query: SearchQuery,
         page: int = 1,

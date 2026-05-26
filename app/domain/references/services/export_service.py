@@ -154,7 +154,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             linked_data_concept_filters=search_export.linked_data_concept_filters or [],
         )
 
-        search_result = await self._search_service.search_with_query(
+        search_result = await self._search_service.search(
             query,
             page=1,
             page_size=SearchService.MAX_RESULT_WINDOW,

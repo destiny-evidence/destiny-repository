@@ -119,7 +119,7 @@ async def test_search_with_query_string_publication_year_filter(
     )
 
     # Test various scenarios
-    results = await search_service.search_with_query(
+    results = await search_service.search(
         SearchQuery(
             query_string="Test Paper",
             publication_year_range=PublicationYearRange(start=2022, end=2022),
@@ -128,7 +128,7 @@ async def test_search_with_query_string_publication_year_filter(
     assert len(results.hits) == 1
     assert results.hits[0].id == ref_2022.id
 
-    results = await search_service.search_with_query(
+    results = await search_service.search(
         SearchQuery(
             query_string="Test Paper",
             publication_year_range=PublicationYearRange(start=2020, end=2023),
@@ -137,7 +137,7 @@ async def test_search_with_query_string_publication_year_filter(
     assert len(results.hits) == 2
     assert {hit.id for hit in results.hits} == {ref_2020.id, ref_2022.id}
 
-    results = await search_service.search_with_query(
+    results = await search_service.search(
         SearchQuery(
             query_string="Dugong",
             publication_year_range=PublicationYearRange(start=2020, end=2023),
@@ -146,7 +146,7 @@ async def test_search_with_query_string_publication_year_filter(
     assert len(results.hits) == 1
     assert {hit.id for hit in results.hits} == {ref_2022.id}
 
-    results = await search_service.search_with_query(
+    results = await search_service.search(
         SearchQuery(
             query_string="Test Paper",
             publication_year_range=PublicationYearRange(start=2021),
@@ -155,7 +155,7 @@ async def test_search_with_query_string_publication_year_filter(
     assert len(results.hits) == 2
     assert {hit.id for hit in results.hits} == {ref_2022.id, ref_2024.id}
 
-    results = await search_service.search_with_query(
+    results = await search_service.search(
         SearchQuery(
             query_string="Test Paper",
             publication_year_range=PublicationYearRange(end=2021),
@@ -230,7 +230,7 @@ async def test_search_with_query_string_taxonomy_annotation_filter(
         index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
     )
 
-    results = await search_service.search_with_query(
+    results = await search_service.search(
         SearchQuery(
             query_string="Test",
             annotation_filters=[annotation_filter],

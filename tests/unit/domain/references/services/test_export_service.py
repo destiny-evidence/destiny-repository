@@ -27,7 +27,7 @@ async def test_collect_search_export_ids_flags_truncated_on_gte_total(
     """When ES reports `gte` at the cap, the result is flagged as truncated."""
     monkeypatch.setattr(
         SearchService,
-        "search_with_query",
+        "search",
         AsyncMock(
             return_value=ESSearchResult(
                 hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
@@ -51,7 +51,7 @@ async def test_collect_search_export_ids_flags_truncated_on_eq_above_cap(
     """If ES tracks the exact count past the cap, `eq` total > cap is truncated."""
     monkeypatch.setattr(
         SearchService,
-        "search_with_query",
+        "search",
         AsyncMock(
             return_value=ESSearchResult(
                 hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
@@ -75,7 +75,7 @@ async def test_collect_search_export_ids_handles_empty_result_set(
     """Zero hits returns ([], False) without crashing."""
     monkeypatch.setattr(
         SearchService,
-        "search_with_query",
+        "search",
         AsyncMock(
             return_value=ESSearchResult(
                 hits=[],
@@ -99,7 +99,7 @@ async def test_collect_search_export_ids_exactly_at_cap_not_truncated(
     """A result set of exactly 10,000 with `eq` total must not be flagged truncated."""
     monkeypatch.setattr(
         SearchService,
-        "search_with_query",
+        "search",
         AsyncMock(
             return_value=ESSearchResult(
                 hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
