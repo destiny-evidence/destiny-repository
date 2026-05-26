@@ -375,7 +375,10 @@ class ReferenceESRepository(
 
         Non-empty ``grouping`` builds per-group filtered terms aggs plus an
         ``unselected`` agg, with concept filters applied via ``post_filter``
-        so they don't constrain the aggregations.
+        so they don't constrain the aggregations. Currently
+        :class:`FacetType.CONCEPTS` is the only facet, so this path only
+        returns concept buckets — extending to other facets is left to the
+        next implementer.
 
         :raises ESQueryError: If a group's sibling set exceeds ``max_buckets``.
         """
@@ -403,17 +406,7 @@ class ReferenceESRepository(
         concepts_buckets: list[ESFacetBucket] = []
         for spec in aggs:
             concepts_buckets.extend(results[spec.name])
-        out: dict[FacetType, list[ESFacetBucket]] = {
-            FacetType.CONCEPTS: concepts_buckets,
-        }
-        other_facets = tuple(f for f in facets if f is not FacetType.CONCEPTS)
-        if other_facets:
-            out.update(
-                await self._aggregate_facets_naive(
-                    query, other_facets, max_buckets=max_buckets
-                )
-            )
-        return out
+        return {FacetType.CONCEPTS: concepts_buckets}
 
     async def _aggregate_facets_naive(
         self,
@@ -447,8 +440,8 @@ class ReferenceESRepository(
         for i, group in enumerate(grouping.groups):
             other_clauses = tuple(
                 self._build_linked_data_concept_clause(other.source_filter)
-                for other in grouping.groups
-                if other is not group
+                for j, other in enumerate(grouping.groups)
+                if j != i
             )
             include = tuple(sorted(group.siblings_including_selected))
             aggs.append(

@@ -247,6 +247,17 @@ def _build_concept_siblings(graph: Graph) -> dict[str, frozenset[str]]:
         top_concepts_by_scheme.setdefault(scheme, set()).add(concept)
         schemes_by_concept.setdefault(concept, set()).add(scheme)
 
+    # Concepts declared only via skos:inScheme (no broader, no topConceptOf)
+    # are treated as implicit top concepts of their scheme — otherwise they'd
+    # be invisible to sibling lookups despite being valid SKOS.
+    for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
+        if not isinstance(concept, URIRef) or not isinstance(scheme, URIRef):
+            continue
+        if concept in parents_by_concept or concept in schemes_by_concept:
+            continue
+        top_concepts_by_scheme.setdefault(scheme, set()).add(concept)
+        schemes_by_concept.setdefault(concept, set()).add(scheme)
+
     all_concepts: set[URIRef] = set(parents_by_concept) | set(schemes_by_concept)
     siblings: dict[str, frozenset[str]] = {}
     for concept in all_concepts:

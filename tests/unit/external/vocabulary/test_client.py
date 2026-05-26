@@ -25,6 +25,7 @@ CONTEXT_URI = "https://vocab.example.org/context/v1.jsonld"
 #   - hierarchical scheme: Biology -> Botany, Zoology, Microbiology
 #   - flat scheme using skos:topConceptOf:        Africa, Asia
 #   - flat scheme using skos:hasTopConcept:       Apple, Pear
+#   - flat scheme using only skos:inScheme:       English, Spanish
 #   - multi-parented concept under two parents:   Quantum (under both Physics & Math)
 SKOS_TURTLE = """\
 @prefix ex:   <http://example.org/> .
@@ -55,6 +56,10 @@ ex:Fruits a skos:ConceptScheme ;
           skos:hasTopConcept ex:Apple , ex:Pear .
 ex:Apple a skos:Concept ; skos:inScheme ex:Fruits ; skos:prefLabel "Apple" .
 ex:Pear  a skos:Concept ; skos:inScheme ex:Fruits ; skos:prefLabel "Pear" .
+
+ex:Languages a skos:ConceptScheme .
+ex:English a skos:Concept ; skos:inScheme ex:Languages ; skos:prefLabel "English" .
+ex:Spanish a skos:Concept ; skos:inScheme ex:Languages ; skos:prefLabel "Spanish" .
 
 ex:Sciences a skos:ConceptScheme .
 ex:Physics a skos:Concept ; skos:inScheme ex:Sciences ; skos:prefLabel "Physics" ;
@@ -337,6 +342,11 @@ class TestSkosDerivedLookups:
         # Flat scheme via skos:hasTopConcept (normalised to topConceptOf on load).
         assert siblings[_concept("Apple")] == frozenset(
             {_concept("Apple"), _concept("Pear")}
+        )
+
+        # Flat scheme with only skos:inScheme — treated as implicit top concepts.
+        assert siblings[_concept("English")] == frozenset(
+            {_concept("English"), _concept("Spanish")}
         )
 
         # Multi-parented: union of co-children across both parents.
