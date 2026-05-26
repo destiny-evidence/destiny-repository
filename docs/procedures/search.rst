@@ -98,8 +98,8 @@ __________________________
 The ``concept`` parameter filters results by their linked-data concept URIs (matched against the ``linked_data_concepts`` field).
 
 - Each ``concept`` value is a fully-qualified concept URI, or a comma-separated list of URIs.
-- Within a single ``concept`` value, URIs are combined using a logical ``OR`` — a reference matches if it carries any one of them.
-- Multiple ``concept`` parameters are combined using a logical ``AND`` — a reference must match each one.
+- Within a single ``concept`` value, URIs are combined using a logical ``OR`` - a reference matches if it carries any one of them.
+- Multiple ``concept`` parameters are combined using a logical ``AND`` - a reference must match each one.
 
 .. code-block::
 

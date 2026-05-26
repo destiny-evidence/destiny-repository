@@ -251,16 +251,16 @@ class ReferenceESRepository(
 ):
     """Concrete implementation of a repository for references using Elasticsearch."""
 
-    #: Fields the user-supplied query string searches against by default.
     default_search_fields: ClassVar[tuple[str, ...]] = (
         "title",
         "abstract",
     )
+    """Fields the user-supplied query string searches against by default."""
 
-    #: Mapping from a facet type to the ES field its counts are aggregated on.
     _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
         FacetType.CONCEPTS: "linked_data_concepts",
     }
+    """Mapping from a facet type to the ES field its counts are aggregated on."""
 
     def __init__(self, client: AsyncElasticsearch) -> None:
         """Initialize the repository with the Elasticsearch client."""

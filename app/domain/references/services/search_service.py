@@ -24,14 +24,7 @@ tracer = trace.get_tracer(__name__)
 
 
 class SearchService(GenericService[ReferenceAntiCorruptionService]):
-    """
-    Service for searching references.
-
-    Thin orchestration over ``ReferenceESRepository``. The repository owns ES DSL
-    construction; the service is where future query-shaping (vocabulary URI
-    expansion, sibling-aware faceting setup for #703) will live, transforming
-    domain ``SearchQuery`` objects before handing them to the repository.
-    """
+    """Service for searching references."""
 
     # ES's default `track_total_hits` threshold. Pagination beyond this
     # produces `relation == "gte"` totals rather than exact counts. Lifting

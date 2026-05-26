@@ -356,7 +356,7 @@ def parse_linked_data_concept_filters(
                 "- Within a single value, separate multiple URIs with commas "
                 "(`,`). These are combined with OR logic.\n"
                 "- Multiple `concept` parameters are combined with AND logic.\n\n"
-                "Only fully-qualified URIs are accepted."
+                "These must be fully-qualified URIs."
             ),
             examples=[
                 "https://vocab.evidence-repository.org/scheme/C00001",

@@ -720,8 +720,7 @@ class OAuthClient:
         :type annotations: list[str | libs.sdk.src.destiny_sdk.search.AnnotationFilter] | None
         :param concepts: A list of linked-data concept filters. Each entry ANDs
             with the others. Pass a single URI string for a single match, or a
-            collection of URIs (list, tuple, set) to OR them within a single
-            filter.
+            collection of URIs to OR them within a single filter.
         :type concepts: list[str | collections.abc.Collection[str]] | None
         :param sort: The sort order for the results.
         :type sort: str | None
