@@ -83,6 +83,10 @@ class FacetType(StrEnum):
 
     CONCEPTS = auto()
     """Counts of references per linked-data concept URI."""
+    COUNTRIES = auto()
+    """Counts of references per ISO 3166-1 alpha-2 country code."""
+    COUNTRY_WB_REGIONS = auto()
+    """Counts of references per World Bank region ID."""
 
 
 class ConceptFacetCount(BaseModel):
@@ -94,12 +98,40 @@ class ConceptFacetCount(BaseModel):
     )
 
 
+class CountryFacetCount(BaseModel):
+    """The count of matching references for a single country."""
+
+    country: str = Field(description="The ISO 3166-1 alpha-2 country code.")
+    count: int = Field(
+        description="Number of matching references tagged with this country.",
+    )
+
+
+class CountryWBRegionFacetCount(BaseModel):
+    """The count of matching references for a single World Bank region."""
+
+    country_wb_region: str = Field(description="The World Bank region ID.")
+    count: int = Field(
+        description="Number of matching references tagged with this region.",
+    )
+
+
 class ReferenceFacetResult(BaseModel):
     """Facet counts for a reference search."""
 
     concepts: list[ConceptFacetCount] | None = Field(
         default=None,
         description="Counts of matching references per linked-data concept URI.",
+    )
+    countries: list[CountryFacetCount] | None = Field(
+        default=None,
+        description=(
+            "Counts of matching references per ISO 3166-1 alpha-2 country code."
+        ),
+    )
+    country_wb_regions: list[CountryWBRegionFacetCount] | None = Field(
+        default=None,
+        description="Counts of matching references per World Bank region ID.",
     )
 
 
