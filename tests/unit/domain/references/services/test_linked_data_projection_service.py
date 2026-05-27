@@ -21,7 +21,6 @@ from app.external.vocabulary.client import (
     VocabularyArtifactClient,
     _build_concept_labels,
     _build_concept_schemes,
-    _normalise_top_concept_triples,
 )
 
 ESEA_NS = "https://vocab.esea.education/"
@@ -33,7 +32,6 @@ _STATIC_VOCAB_DIR = get_settings().project_root / "app" / "static" / "vocab" / "
 def projector() -> LinkedDataProjectionService:
     vocab_graph = Graph()
     vocab_graph.parse(_STATIC_VOCAB_DIR / "esea-vocab.ttl", format="turtle")
-    _normalise_top_concept_triples(vocab_graph)
     with (_STATIC_VOCAB_DIR / "esea-context.jsonld").open() as f:
         context = json.load(f)
 

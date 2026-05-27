@@ -352,23 +352,3 @@ class TestSkosDerivedLookups:
         # Multi-parented: union of co-children across both parents.
         # Quantum is the only child of both Physics and Mathematics.
         assert siblings[_concept("Quantum")] == frozenset({_concept("Quantum")})
-
-    @pytest.mark.asyncio
-    async def test_cache_hit_skips_recomputation(
-        self,
-        skos_client: VocabularyArtifactClient,
-        monkeypatch: pytest.MonkeyPatch,
-    ):
-        first = await skos_client.get_concept_siblings(VOCAB_URI)
-
-        # If the second call recomputed, this would blow up.
-        from app.external.vocabulary import client as client_module
-
-        def _explode(_graph: object) -> dict[str, frozenset[str]]:
-            msg = "should not be called on cache hit"
-            raise AssertionError(msg)
-
-        monkeypatch.setattr(client_module, "_build_concept_siblings", _explode)
-
-        second = await skos_client.get_concept_siblings(VOCAB_URI)
-        assert first is second

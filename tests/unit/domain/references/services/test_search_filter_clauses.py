@@ -1,16 +1,12 @@
 """Unit tests for structured filter clause building in ReferenceESRepository."""
 
-import pytest
 from elasticsearch.dsl.query import Prefix, Range, Term, Terms
 
-from app.core.exceptions import ESQueryError
 from app.domain.references.models.models import (
     AnnotationFilter,
-    ConceptSiblingGroup,
     LinkedDataConceptFilter,
     PublicationYearRange,
     SearchQuery,
-    SiblingGrouping,
 )
 from app.domain.references.repository import ReferenceESRepository
 
@@ -160,10 +156,10 @@ def test_filters_combined_in_declaration_order():
     ]
 
 
-def test_filter_clauses_excluding_concepts_omits_concept_filters_only():
+def test_build_non_concept_filter_clauses_omits_concept_filters_only():
     """Sibling-aware path uses this to leave concept filters for post_filter only."""
     repository = _StubReferenceESRepository()
-    clauses = repository._build_filter_clauses_excluding_concepts(  # noqa: SLF001
+    clauses = repository._build_non_concept_filter_clauses(  # noqa: SLF001
         SearchQuery(
             query_string="*",
             publication_year_range=PublicationYearRange(start=2020),
@@ -177,87 +173,3 @@ def test_filter_clauses_excluding_concepts_omits_concept_filters_only():
         Range(publication_year={"gte": 2020}),
         Term(annotations="taxonomy:x/y"),
     ]
-
-
-# ---- _build_grouped_facet_aggs ---------------------------------------------------
-
-
-_FIELD = "linked_data_concepts"
-_MAX_BUCKETS = 1000
-
-BOTANY = "urn:Botany"
-ZOOLOGY = "urn:Zoology"
-MICROBIOLOGY = "urn:Microbiology"
-AFRICA = "urn:Africa"
-ASIA = "urn:Asia"
-EUROPE = "urn:Europe"
-
-
-def _topics_group() -> ConceptSiblingGroup:
-    return ConceptSiblingGroup(
-        source_filter=LinkedDataConceptFilter(concept_uris=[BOTANY, ZOOLOGY]),
-        siblings_including_selected=frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY}),
-    )
-
-
-def _region_group() -> ConceptSiblingGroup:
-    return ConceptSiblingGroup(
-        source_filter=LinkedDataConceptFilter(concept_uris=[AFRICA]),
-        siblings_including_selected=frozenset({AFRICA, ASIA, EUROPE}),
-    )
-
-
-def _worked_example_grouping() -> SiblingGrouping:
-    topics, region = _topics_group(), _region_group()
-    return SiblingGrouping(
-        groups=(topics, region),
-        all_grouped_uris=topics.siblings_including_selected
-        | region.siblings_including_selected,
-    )
-
-
-def test_grouped_facet_aggs_match_ticket_worked_example():
-    """Per-group filter uses *other* groups' selected URIs; include is the full group."""  # noqa: E501
-    repository = _StubReferenceESRepository()
-    aggs = repository._build_grouped_facet_aggs(  # noqa: SLF001
-        _FIELD, _worked_example_grouping(), max_buckets=_MAX_BUCKETS
-    )
-    assert [spec.name for spec in aggs] == [
-        "facet_group_0",
-        "facet_group_1",
-        "unselected",
-    ]
-    group_0, group_1, unselected = aggs
-
-    # Topics group: filter is Region's selection; include is the Biology sibling set.
-    assert group_0.field == _FIELD
-    assert group_0.filter_clauses == (Terms(linked_data_concepts=[AFRICA]),)
-    assert group_0.include == (BOTANY, MICROBIOLOGY, ZOOLOGY)
-    assert group_0.min_doc_count == 0
-    assert group_0.size == 3
-
-    # Region group: mirror image.
-    assert group_1.filter_clauses == (Terms(linked_data_concepts=[BOTANY, ZOOLOGY]),)
-    assert group_1.include == (AFRICA, ASIA, EUROPE)
-
-    # `unselected` ANDs all selections; excludes every URI from either group.
-    assert unselected.filter_clauses == (
-        Terms(linked_data_concepts=[BOTANY, ZOOLOGY]),
-        Terms(linked_data_concepts=[AFRICA]),
-    )
-    assert unselected.exclude == (AFRICA, ASIA, BOTANY, EUROPE, MICROBIOLOGY, ZOOLOGY)
-    assert unselected.min_doc_count == 1
-    assert unselected.size == _MAX_BUCKETS
-
-
-def test_validate_grouping_against_max_buckets():
-    """Groups within the limit are accepted; over the limit raises ESQueryError."""
-    grouping = _worked_example_grouping()
-    # Limit equals largest group size — fine.
-    ReferenceESRepository._validate_grouping_against_max_buckets(  # noqa: SLF001
-        grouping, max_buckets=3
-    )
-    with pytest.raises(ESQueryError, match="exceeding max_buckets"):
-        ReferenceESRepository._validate_grouping_against_max_buckets(  # noqa: SLF001
-            grouping, max_buckets=2
-        )

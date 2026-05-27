@@ -51,7 +51,6 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
-    FacetType,
     LinkedDataConceptFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
@@ -546,21 +545,9 @@ async def count_facets_for_search(
     ],
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
-    facets = anti_corruption_service.facet_types_from_sdk(facet)
-    if (
-        query.linked_data_concept_filters
-        and FacetType.CONCEPTS in facets
-        and not vocabulary_uri
-    ):
-        raise ParseError(
-            detail=(
-                "`vocabulary=` is required when filtering on concepts and "
-                "requesting the `concepts` facet."
-            ),
-        )
     buckets_by_facet = await reference_service.aggregate_facets(
         query,
-        facets,
+        anti_corruption_service.facet_types_from_sdk(facet),
         vocabulary_uri=vocabulary_uri,
     )
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)

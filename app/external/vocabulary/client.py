@@ -65,7 +65,6 @@ class VocabularyArtifactClient:
                 uri, f"Failed to parse response as {rdf_format}: {exc}"
             ) from exc
 
-        _normalise_top_concept_triples(graph)
         self._vocabulary_cache[uri] = graph
         return graph
 
@@ -152,13 +151,7 @@ class VocabularyArtifactClient:
         return schemes
 
     async def get_concept_siblings(self, uri: str) -> dict[str, frozenset[str]]:
-        """
-        Return concept URI -> set of sibling URIs (self-inclusive).
-
-        Siblings share a ``skos:broader`` parent or share a scheme via
-        ``skos:topConceptOf`` (``skos:hasTopConcept`` is normalised in
-        :meth:`get_vocabulary`). Multi-parented concepts get the union.
-        """
+        """Concept URI -> sibling set (self-inclusive) for the vocabulary."""
         if uri in self._concept_siblings_cache:
             return self._concept_siblings_cache[uri]
         graph = await self.get_vocabulary(uri)
@@ -204,17 +197,6 @@ def get_vocabulary_artifact_client() -> VocabularyArtifactClient:
     return VocabularyArtifactClient()
 
 
-def _normalise_top_concept_triples(graph: Graph) -> None:
-    """
-    Add inverse ``skos:topConceptOf`` for every ``skos:hasTopConcept``.
-
-    rdflib doesn't derive SKOS inverses; vocabularies in the wild use both
-    directions, so downstream lookups can match on ``skos:topConceptOf`` alone.
-    """
-    for scheme, _, concept in list(graph.triples((None, SKOS.hasTopConcept, None))):
-        graph.add((concept, SKOS.topConceptOf, scheme))
-
-
 def _build_concept_labels(graph: Graph) -> dict[str, str]:
     labels: dict[str, str] = {}
     for concept, _, label in graph.triples((None, SKOS.prefLabel, None)):
@@ -241,7 +223,13 @@ def _build_concept_siblings(graph: Graph) -> dict[str, frozenset[str]]:
 
     top_concepts_by_scheme: dict[URIRef, set[URIRef]] = {}
     schemes_by_concept: dict[URIRef, set[URIRef]] = {}
-    for concept, _, scheme in graph.triples((None, SKOS.topConceptOf, None)):
+    # Vocabularies in the wild use both directions; rdflib doesn't derive
+    # SKOS inverses, so we read each direction explicitly.
+    top_concept_triples = list(graph.triples((None, SKOS.topConceptOf, None))) + [
+        (concept, None, scheme)
+        for scheme, _, concept in graph.triples((None, SKOS.hasTopConcept, None))
+    ]
+    for concept, _, scheme in top_concept_triples:
         if not isinstance(concept, URIRef) or not isinstance(scheme, URIRef):
             continue
         top_concepts_by_scheme.setdefault(scheme, set()).add(concept)

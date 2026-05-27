@@ -1150,18 +1150,21 @@ class SiblingGrouping(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     groups: tuple[ConceptSiblingGroup, ...] = Field(
-        default=(),
+        default_factory=tuple,
         description="One group per LinkedDataConceptFilter, in input order.",
-    )
-    all_grouped_uris: frozenset[str] = Field(
-        default_factory=frozenset,
-        description="Union of every group's siblings, for the unselected agg.",
     )
 
     @property
     def is_empty(self) -> bool:
         """True when no groups have been resolved."""
         return not self.groups
+
+    @property
+    def all_grouped_uris(self) -> frozenset[str]:
+        """Union of every group's siblings."""
+        return frozenset().union(
+            *(group.siblings_including_selected for group in self.groups)
+        )
 
 
 class ReferenceSearchResult(BaseModel):

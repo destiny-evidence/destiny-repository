@@ -68,37 +68,50 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         facets: Sequence[FacetType],
         vocabulary_uri: str | None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Count occurrences per facet; sibling-aware when a vocab is supplied."""
-        grouping = (
-            await self._resolve_sibling_grouping(
-                vocabulary_uri,
-                query.linked_data_concept_filters,
-            )
-            if (
-                vocabulary_uri
-                and FacetType.CONCEPTS in facets
-                and query.linked_data_concept_filters
-            )
-            else SiblingGrouping()
+        """Count per facet; sibling-aware when concepts filter + facet are both set."""
+        max_buckets = settings.es_aggregation_max_buckets
+        sibling_required = (
+            bool(query.linked_data_concept_filters) and FacetType.CONCEPTS in facets
         )
-        return await self.es_uow.references.aggregate_facets(
-            query,
-            facets,
-            grouping,
-            max_buckets=settings.es_aggregation_max_buckets,
+        if not sibling_required:
+            return await self.es_uow.references.aggregate_facets_naive(
+                query, facets, max_buckets=max_buckets
+            )
+        if not vocabulary_uri:
+            msg = (
+                "`vocabulary=` is required when filtering on concepts and "
+                "requesting the `concepts` facet."
+            )
+            raise SiblingGroupingError(msg)
+        grouping = await self._resolve_sibling_grouping(
+            vocabulary_uri, query.linked_data_concept_filters
         )
+        self._validate_grouping_against_max_buckets(grouping, max_buckets)
+        return await self.es_uow.references.aggregate_facets_sibling_aware(
+            query, grouping, max_buckets=max_buckets
+        )
+
+    @staticmethod
+    def _validate_grouping_against_max_buckets(
+        grouping: SiblingGrouping, max_buckets: int
+    ) -> None:
+        """Refuse if any group's sibling set would exceed ``max_buckets``."""
+        for i, group in enumerate(grouping.groups):
+            include_size = len(group.siblings_including_selected)
+            if include_size > max_buckets:
+                msg = (
+                    f"Sibling group {i} has {include_size} concepts (selected "
+                    f"+ siblings), exceeding max_buckets={max_buckets}. Counts "
+                    "would be silently truncated; refusing."
+                )
+                raise SiblingGroupingError(msg)
 
     async def _resolve_sibling_grouping(
         self,
         vocabulary_uri: str,
         concept_filters: Sequence[LinkedDataConceptFilter],
     ) -> SiblingGrouping:
-        """
-        Group concept filters by sibling sets; raises on rule violations.
-
-        Rules: every URI must be in the vocab; URIs within a filter must share
-        a sibling set; sibling sets across filters must be disjoint.
-        """
+        """Group concept filters by sibling sets; raises on rule violations."""
         siblings_map = await self._vocab_client.get_concept_siblings(vocabulary_uri)
         groups: list[ConceptSiblingGroup] = []
         for concept_filter in concept_filters:
@@ -137,10 +150,4 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                         f"{sorted(overlap)}"
                     )
                     raise SiblingGroupingError(msg)
-        all_grouped_uris = frozenset().union(
-            *(group.siblings_including_selected for group in groups)
-        )
-        return SiblingGrouping(
-            groups=tuple(groups),
-            all_grouped_uris=all_grouped_uris,
-        )
+        return SiblingGrouping(groups=tuple(groups))

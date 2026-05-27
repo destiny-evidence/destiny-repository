@@ -20,14 +20,7 @@ _COUNTRY_PROPERTIES: frozenset[URIRef] = frozenset({ESEA.country})
 
 
 class LinkedDataProjectionService:
-    """
-    Projects LinkedDataEnhancement data into flat searchable fields.
-
-    SKOS-generic lookups (concept labels, concept schemes, siblings) live on
-    :class:`VocabularyArtifactClient`. The only vocabulary-derived lookup kept
-    here is ``scheme_to_property``, which joins through the evrepo OWL
-    ontology and isn't generic SKOS.
-    """
+    """Projects LinkedDataEnhancement data into flat searchable fields."""
 
     def __init__(self, vocabulary_client: VocabularyArtifactClient) -> None:
         """Initialise with a vocabulary client and an empty per-vocab cache."""

@@ -25,7 +25,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.config import DedupCandidateScoringConfig, get_settings
-from app.core.exceptions import ESQueryError
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -320,17 +319,15 @@ class ReferenceESRepository(
 
     def _build_filter_clauses(self, query: SearchQuery) -> list[Query]:
         """Translate a SearchQuery's structured filters into bool.filter clauses."""
-        clauses = self._build_filter_clauses_excluding_concepts(query)
+        clauses = self._build_non_concept_filter_clauses(query)
         clauses.extend(
             self._build_linked_data_concept_clause(concept_filter)
             for concept_filter in query.linked_data_concept_filters
         )
         return clauses
 
-    def _build_filter_clauses_excluding_concepts(
-        self, query: SearchQuery
-    ) -> list[Query]:
-        """Year + annotation clauses only; the sibling-aware path AND-s concepts."""
+    def _build_non_concept_filter_clauses(self, query: SearchQuery) -> list[Query]:
+        """Year + annotation clauses only; concept filters are added separately."""
         clauses: list[Query] = []
         if query.publication_year_range and (
             clause := self._build_publication_year_clause(query.publication_year_range)
@@ -362,53 +359,7 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
-    async def aggregate_facets(
-        self,
-        query: SearchQuery,
-        facets: Sequence[FacetType],
-        grouping: SiblingGrouping,
-        *,
-        max_buckets: int,
-    ) -> dict[FacetType, list[ESFacetBucket]]:
-        """
-        Count occurrences per facet; empty ``grouping`` is the naive path.
-
-        Non-empty ``grouping`` builds per-group filtered terms aggs plus an
-        ``unselected`` agg, with concept filters applied via ``post_filter``
-        so they don't constrain the aggregations. Currently
-        :class:`FacetType.CONCEPTS` is the only facet, so this path only
-        returns concept buckets — extending to other facets is left to the
-        next implementer.
-
-        :raises ESQueryError: If a group's sibling set exceeds ``max_buckets``.
-        """
-        if grouping.is_empty or FacetType.CONCEPTS not in facets:
-            return await self._aggregate_facets_naive(
-                query, facets, max_buckets=max_buckets
-            )
-
-        self._validate_grouping_against_max_buckets(grouping, max_buckets)
-        concepts_field = self._FACET_FIELDS[FacetType.CONCEPTS]
-        aggs = self._build_grouped_facet_aggs(
-            concepts_field, grouping, max_buckets=max_buckets
-        )
-        post_filter_clauses = [
-            self._build_linked_data_concept_clause(group.source_filter)
-            for group in grouping.groups
-        ]
-        results = await self.execute_filtered_terms_aggregations(
-            query.query_string,
-            query_fields=self.default_search_fields,
-            base_filter_clauses=self._build_filter_clauses_excluding_concepts(query),
-            post_filter_clauses=post_filter_clauses,
-            aggs=aggs,
-        )
-        concepts_buckets: list[ESFacetBucket] = []
-        for spec in aggs:
-            concepts_buckets.extend(results[spec.name])
-        return {FacetType.CONCEPTS: concepts_buckets}
-
-    async def _aggregate_facets_naive(
+    async def aggregate_facets_naive(
         self,
         query: SearchQuery,
         facets: Sequence[FacetType],
@@ -427,6 +378,35 @@ class ReferenceESRepository(
         return {
             facet: buckets_by_field[field] for facet, field in facet_to_field.items()
         }
+
+    @trace_repository_method(tracer)
+    async def aggregate_facets_sibling_aware(
+        self,
+        query: SearchQuery,
+        grouping: SiblingGrouping,
+        *,
+        max_buckets: int,
+    ) -> dict[FacetType, list[ESFacetBucket]]:
+        """Sibling-aware concept facet counts; concept filters go to post_filter."""
+        concepts_field = self._FACET_FIELDS[FacetType.CONCEPTS]
+        aggs = self._build_grouped_facet_aggs(
+            concepts_field, grouping, max_buckets=max_buckets
+        )
+        post_filter_clauses = [
+            self._build_linked_data_concept_clause(group.source_filter)
+            for group in grouping.groups
+        ]
+        results = await self.execute_filtered_terms_aggregations(
+            query.query_string,
+            query_fields=self.default_search_fields,
+            base_filter_clauses=self._build_non_concept_filter_clauses(query),
+            post_filter_clauses=post_filter_clauses,
+            aggs=aggs,
+        )
+        concepts_buckets: list[ESFacetBucket] = []
+        for spec in aggs:
+            concepts_buckets.extend(results[spec.name])
+        return {FacetType.CONCEPTS: concepts_buckets}
 
     def _build_grouped_facet_aggs(
         self,
@@ -469,21 +449,6 @@ class ReferenceESRepository(
             )
         )
         return aggs
-
-    @staticmethod
-    def _validate_grouping_against_max_buckets(
-        grouping: SiblingGrouping, max_buckets: int
-    ) -> None:
-        """Refuse if any group's sibling set would exceed ``max_buckets``."""
-        for i, group in enumerate(grouping.groups):
-            include_size = len(group.siblings_including_selected)
-            if include_size > max_buckets:
-                msg = (
-                    f"Sibling group {i} has {include_size} concepts (selected "
-                    f"+ siblings), exceeding max_buckets={max_buckets}. Counts "
-                    "would be silently truncated; refusing."
-                )
-                raise ESQueryError(msg)
 
     @staticmethod
     def _build_author_dis_max_query(

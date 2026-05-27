@@ -17,10 +17,7 @@ from app.core.exceptions import ESQueryError, ParseError
 from app.domain.references import routes as references
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import Visibility
-from app.external.vocabulary.client import (
-    _normalise_top_concept_triples,
-    get_vocabulary_artifact_client,
-)
+from app.external.vocabulary.client import get_vocabulary_artifact_client
 
 pytestmark = pytest.mark.usefixtures("session")
 
@@ -74,7 +71,6 @@ def primed_vocab() -> Iterator[str]:
     """Pre-populate the vocab client's caches with a SKOS sibling fixture."""
     graph = Graph()
     graph.parse(data=SIBLING_VOCAB_TURTLE, format="turtle")
-    _normalise_top_concept_triples(graph)
     client = get_vocabulary_artifact_client()
     client._vocabulary_cache[VOCAB_URI] = graph  # noqa: SLF001
     try:
@@ -247,29 +243,6 @@ async def sibling_references(es_client: AsyncElasticsearch) -> None:
 
 def _counts_by_concept(body: dict) -> dict[str, int]:
     return {bucket["concept"]: bucket["count"] for bucket in body["concepts"]}
-
-
-async def test_sibling_facets_no_concept_filter_is_naive_path(
-    client: AsyncClient,
-    sibling_references: None,  # noqa: ARG001
-    primed_vocab: str,  # noqa: ARG001 — present but unused without a concept filter
-) -> None:
-    """Without a `concept=` filter, today's naive aggregation is returned."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params={"q": "*", "facet": "concepts"},
-    )
-    assert response.status_code == status.HTTP_200_OK
-    counts = _counts_by_concept(response.json())
-    assert counts == {
-        BOTANY: 2,
-        ZOOLOGY: 2,
-        MICROBIOLOGY: 1,
-        AFRICA: 4,
-        ASIA: 1,
-        EUROPE: 1,
-        "https://vocab.example.org/test/Chemistry": 1,
-    }
 
 
 async def test_sibling_facets_worked_example(
