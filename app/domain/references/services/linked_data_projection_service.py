@@ -28,6 +28,7 @@ class _LoadedVocabulary:
     concept_labels: dict[str, str]
     concept_schemes: dict[str, str]
     scheme_to_property: dict[str, str]
+    unwrapped_concept_properties: set[str]
 
 
 class LinkedDataProjectionService:
@@ -89,6 +90,10 @@ class LinkedDataProjectionService:
                 if prop_uri is not None:
                     evaluated_properties.add(prop_uri)
 
+        self._project_unwrapped_concept_properties(
+            data_graph, vocab, concepts, labels, evaluated_properties
+        )
+
         countries = self._extract_countries(data_graph)
         return LinkedDataProjection(
             concepts=concepts,
@@ -115,6 +120,34 @@ class LinkedDataProjectionService:
                             countries.add(code)
         return countries
 
+    @staticmethod
+    def _project_unwrapped_concept_properties(
+        data_graph: Graph,
+        vocab: _LoadedVocabulary,
+        concepts: set[str],
+        labels: set[str],
+        evaluated_properties: set[str],
+    ) -> None:
+        """
+        Project values discovered by ``_build_unwrapped_concept_properties``.
+
+        Without a CodingAnnotation wrapper there is no provenance, so any present
+        value is treated as coded.
+        """
+        for prop_uri_str in vocab.unwrapped_concept_properties:
+            predicate = URIRef(prop_uri_str)
+            for _, _, value in data_graph.triples((None, predicate, None)):
+                if not isinstance(value, URIRef):
+                    continue
+                if (value, RDF.type, SKOS.Concept) not in vocab.graph:
+                    continue
+                concept_uri = str(value)
+                concepts.add(concept_uri)
+                label = vocab.concept_labels.get(concept_uri)
+                if label is not None:
+                    labels.add(label)
+                evaluated_properties.add(prop_uri_str)
+
     # -- vocabulary resolution with derived-lookup caching ---------------------
 
     async def _get_vocabulary(self, uri: str) -> _LoadedVocabulary:
@@ -126,6 +159,9 @@ class LinkedDataProjectionService:
                 concept_labels=self._build_concept_labels(graph),
                 concept_schemes=self._build_concept_schemes(graph),
                 scheme_to_property=self._build_scheme_to_property(graph),
+                unwrapped_concept_properties=self._build_unwrapped_concept_properties(
+                    graph
+                ),
             )
         return self._vocabularies[uri]
 
@@ -184,3 +220,34 @@ class LinkedDataProjectionService:
             """
         )
         return {str(row.scheme): str(row.prop) for row in results}
+
+    @staticmethod
+    def _build_unwrapped_concept_properties(graph: Graph) -> set[str]:
+        """
+        Build a set of property URIs for unwrapped concept references.
+
+        "Unwrapped" describes the data shape: the value is a direct concept
+        reference at the property's slot, with no CodingAnnotation envelope.
+        We discover these properties via their concept-typed range: either
+        ``skos:ConceptScheme`` directly, or a class ``subClassOf skos:Concept``
+        joined to a scheme via concept instances.
+        """
+        results = graph.query(
+            """
+            SELECT DISTINCT ?prop WHERE {
+                ?prop a owl:ObjectProperty ;
+                      rdfs:range ?range .
+                {
+                    ?range a skos:ConceptScheme .
+                }
+                UNION
+                {
+                    ?range rdfs:subClassOf+ skos:Concept .
+                    FILTER(?range != skos:Concept)
+                    ?concept a ?range ;
+                             skos:inScheme [] .
+                }
+            }
+            """
+        )
+        return {str(row.prop) for row in results}
