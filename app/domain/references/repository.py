@@ -10,6 +10,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from elasticsearch.dsl.query import Bool, MatchAll, Prefix, Query, Range, Term, Terms
+from elasticsearch.dsl.response import Response
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
 from sqlalchemy import (
@@ -268,6 +269,8 @@ class ReferenceESRepository(
 
     _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
         FacetType.CONCEPTS: "linked_data_concepts",
+        FacetType.COUNTRIES: "linked_data_countries",
+        FacetType.COUNTRY_WB_REGIONS: "linked_data_country_wb_regions",
     }
     """Mapping from a facet type to the ES field its counts are aggregated on."""
 
@@ -422,25 +425,58 @@ class ReferenceESRepository(
         """
         field = self._FACET_FIELDS[facet]
         group_clauses = [Terms(**{field: list(g.selected)}) for g in groups]
+
+        search = self._build_sibling_aware_base_search(query, facet, group_clauses)
+
+        agg_names = [
+            *self._attach_per_group_aggs(search, field, groups, group_clauses),
+            self._attach_unselected_agg(
+                search, field, groups, group_clauses, max_buckets=max_buckets
+            ),
+        ]
+
+        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
+        try:
+            response = await search.execute()
+        except BadRequestError as exc:
+            msg = f"Elasticsearch sibling-aware facet aggregation failed: {exc}."
+            raise ESQueryError(msg) from exc
+
+        return self._parse_facet_buckets(response, agg_names)
+
+    def _build_sibling_aware_base_search(
+        self,
+        query: SearchQuery,
+        facet: FacetType,
+        group_clauses: Sequence[Query],
+    ) -> AsyncSearch:
+        """Compose the search: non-facet filters on hits+aggs, facet on post_filter."""
         composed = self._compose_query(
             query.query_string,
             self.default_search_fields,
             self._build_filter_clauses(query, exclude_facet=facet),
         )
-        search = (
+        return (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=0)
             .query(composed)
             .source(includes=[])
-            .post_filter(Bool(filter=group_clauses))
+            .post_filter(Bool(filter=list(group_clauses)))
         )
 
-        agg_names: list[str] = []
+    @staticmethod
+    def _attach_per_group_aggs(
+        search: AsyncSearch,
+        field: str,
+        groups: Sequence[SiblingGroup],
+        group_clauses: Sequence[Query],
+    ) -> list[str]:
+        """Attach one filter+terms agg per group to count each group's sibling set."""
+        names: list[str] = []
         for i, group in enumerate(groups):
             other_clauses = [c for j, c in enumerate(group_clauses) if j != i]
             include = sorted(group.siblings_including_selected)
             name = f"facet_group_{i}"
-            agg_names.append(name)
             outer = search.aggs.bucket(
                 name,
                 "filter",
@@ -454,12 +490,24 @@ class ReferenceESRepository(
                 min_doc_count=0,
                 size=len(include),
             )
+            names.append(name)
+        return names
 
+    @staticmethod
+    def _attach_unselected_agg(
+        search: AsyncSearch,
+        field: str,
+        groups: Sequence[SiblingGroup],
+        group_clauses: Sequence[Query],
+        *,
+        max_buckets: int,
+    ) -> str:
+        """Attach the ``unselected`` agg: field values outside any group's siblings."""
         all_grouped_uris = frozenset().union(
             *(g.siblings_including_selected for g in groups)
         )
         outer = search.aggs.bucket(
-            "unselected", "filter", filter=Bool(filter=group_clauses)
+            "unselected", "filter", filter=Bool(filter=list(group_clauses))
         )
         outer.bucket(
             "inner",
@@ -469,15 +517,13 @@ class ReferenceESRepository(
             min_doc_count=1,
             size=max_buckets,
         )
-        agg_names.append("unselected")
+        return "unselected"
 
-        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
-        try:
-            response = await search.execute()
-        except BadRequestError as exc:
-            msg = f"Elasticsearch sibling-aware facet aggregation failed: {exc}."
-            raise ESQueryError(msg) from exc
-
+    @staticmethod
+    def _parse_facet_buckets(
+        response: Response, agg_names: Sequence[str]
+    ) -> list[ESFacetBucket]:
+        """Flatten ``filter > terms`` buckets across ``agg_names`` into one list."""
         return [
             ESFacetBucket(key=str(b.key), count=b.doc_count)
             for name in agg_names

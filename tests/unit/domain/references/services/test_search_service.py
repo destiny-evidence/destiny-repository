@@ -307,11 +307,25 @@ async def test_resolve_concept_sibling_groups_happy_path(
 async def test_resolve_concept_sibling_groups_raises_sibling_grouping_error(
     vocab_client_with_siblings: MagicMock,
 ):
-    """Rule violations bubble up as SiblingGroupingError."""
+    """Rule (a) violation: URIs from different sibling sets in one filter."""
     with pytest.raises(SiblingGroupingError, match="different sibling sets"):
         await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
             VOCAB_URI,
             [LinkedDataConceptFilter(concept_uris=[BOTANY, AFRICA])],
+        )
+
+
+async def test_resolve_concept_sibling_groups_rejects_overlapping_filters(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Rule (b) violation: two filters whose sibling sets overlap."""
+    with pytest.raises(SiblingGroupingError, match="share a sibling set"):
+        await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
+            VOCAB_URI,
+            [
+                LinkedDataConceptFilter(concept_uris=[BOTANY]),
+                LinkedDataConceptFilter(concept_uris=[ZOOLOGY]),
+            ],
         )
 
 

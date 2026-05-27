@@ -495,16 +495,21 @@ async def search_references(
     description=(
         "Return per-facet counts across the references matching the search.\n\n"
         "Accepts the same filter parameters as `/references/search/`, plus one or "
-        "more `?facet=` values. Only the requested facet types appear in the "
-        "response.\n\n"
+        "more `?facet=` values. Counts are available for linked-data concepts "
+        "(`concepts`), ISO 3166-1 alpha-2 country codes (`countries`), and World "
+        "Bank region IDs (`country_wb_regions`). Only the requested facet types "
+        "appear in the response.\n\n"
         "When filtering on concepts and requesting the `concepts` facet, supply "
         "`?vocabulary=` for sibling-aware counts. Each `?concept=` parameter is "
         "treated as one sibling group; the server enforces (400 on violation):\n\n"
         "1. URIs inside one `?concept=` must share a sibling set in the vocab.\n"
         "2. Different `?concept=` filters must have disjoint sibling sets.\n"
         "3. Every URI must resolve in the supplied vocabulary.\n\n"
-        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} "
-        "buckets; very large vocabularies are truncated."
+        "⚠️ **Other facets are not sibling-aware.** If you filter on a country and "
+        "request country counts, the response shows co-occurrence with your "
+        "selection, not the unfiltered counts.\n\n"
+        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets; "
+        "very large vocabularies are truncated."
     ),
 )
 async def count_facets_for_search(

@@ -1105,6 +1105,10 @@ class FacetType(StrEnum):
 
     CONCEPTS = auto()
     """Counts of references per linked-data concept URI."""
+    COUNTRIES = auto()
+    """Counts of references per ISO 3166-1 alpha-2 country code."""
+    COUNTRY_WB_REGIONS = auto()
+    """Counts of references per World Bank region ID."""
 
 
 class SearchQuery(BaseModel):
