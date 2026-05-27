@@ -1442,6 +1442,46 @@ async def test_search_facets_concepts_happy_path(
     assert list(facets) == [FacetType.CONCEPTS]
 
 
+async def test_search_facets_concepts_and_countries(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concept and country facets are surfaced together under their own keys."""
+    from app.domain.references.models.models import FacetType
+
+    mock_aggregate = AsyncMock(
+        return_value={
+            FacetType.CONCEPTS: [ESFacetBucket(key="http://example.org/c/a", count=7)],
+            FacetType.COUNTRIES: [
+                ESFacetBucket(key="KE", count=3),
+                ESFacetBucket(key="UG", count=1),
+            ],
+        }
+    )
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "climate"),
+            ("facet", "concepts"),
+            ("facet", "countries"),
+        ],
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {
+        "concepts": [{"concept": "http://example.org/c/a", "count": 7}],
+        "countries": [
+            {"country": "KE", "count": 3},
+            {"country": "UG", "count": 1},
+        ],
+    }
+
+    _, facets = mock_aggregate.call_args.args
+    assert list(facets) == [FacetType.CONCEPTS, FacetType.COUNTRIES]
+
+
 async def test_search_facets_unrequested_keys_omitted(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,

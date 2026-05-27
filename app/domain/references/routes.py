@@ -495,8 +495,10 @@ async def search_references(
     description=(
         "Return per-facet counts across the references matching the search.\n\n"
         "Accepts the same filter parameters as `/references/search/`, plus one or "
-        "more `?facet=` values. Only the requested facet types appear in the response."
-        "\n\n"
+        "more `?facet=` values. Counts are available for linked-data concepts "
+        "(`concepts`), ISO 3166-1 alpha-2 country codes (`countries`), and World "
+        "Bank region IDs (`country_wb_regions`). Only the requested facet types "
+        "appear in the response.\n\n"
         "⚠️ **Filters apply to facet counts of the same type.** If you filter on "
         "a concept and request concept counts, the response shows co-occurrence "
         "with your selection - siblings of selected concepts will typically appear "

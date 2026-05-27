@@ -418,6 +418,20 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     )
                     for bucket in buckets
                 ]
+            elif facet is FacetType.COUNTRIES:
+                fields["countries"] = [
+                    destiny_sdk.references.CountryFacetCount(
+                        country=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
+            elif facet is FacetType.COUNTRY_WB_REGIONS:
+                fields["country_wb_regions"] = [
+                    destiny_sdk.references.CountryWBRegionFacetCount(
+                        country_wb_region=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
             else:
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)

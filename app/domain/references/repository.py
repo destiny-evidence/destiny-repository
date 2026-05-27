@@ -259,6 +259,8 @@ class ReferenceESRepository(
 
     _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
         FacetType.CONCEPTS: "linked_data_concepts",
+        FacetType.COUNTRIES: "linked_data_countries",
+        FacetType.COUNTRY_WB_REGIONS: "linked_data_country_wb_regions",
     }
     """Mapping from a facet type to the ES field its counts are aggregated on."""
 
