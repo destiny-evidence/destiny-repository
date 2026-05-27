@@ -463,11 +463,10 @@ class TestLinkedDataProjectionService:
         """
         vocab_uri = "https://vocab.esea.education/vocabulary/v1"
         vocab = await projector_with_evrepo._get_vocabulary(vocab_uri)  # noqa: SLF001
-        mapping = vocab.unwrapped_concept_properties
 
-        assert mapping == {
-            f"{EVREPO_NS}effectSizeMetric": f"{EVREPO_NS}EffectSizeMetricScheme",
-            f"{EVREPO_NS}estimateSource": f"{EVREPO_NS}EstimateSourceScheme",
+        assert vocab.unwrapped_concept_properties == {
+            f"{EVREPO_NS}effectSizeMetric",
+            f"{EVREPO_NS}estimateSource",
         }
 
     def test_unwrapped_concept_properties_discovers_direct_scheme_range(self):
@@ -492,13 +491,11 @@ class TestLinkedDataProjectionService:
             format="turtle",
         )
 
-        mapping = LinkedDataProjectionService._build_unwrapped_concept_properties(  # noqa: SLF001
+        properties = LinkedDataProjectionService._build_unwrapped_concept_properties(  # noqa: SLF001
             graph
         )
 
-        assert mapping == {
-            "https://example.org/myConceptProperty": "https://example.org/MyScheme",
-        }
+        assert properties == {"https://example.org/myConceptProperty"}
 
     @pytest.mark.asyncio
     async def test_extracts_effect_size_metric_uri(
