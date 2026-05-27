@@ -105,12 +105,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self._deduplication_service = DeduplicationService(
             anti_corruption_service, sql_uow, es_uow
         )
-        self._search_service = SearchService(
-            anti_corruption_service,
-            sql_uow,
-            es_uow,
-            vocab_client=get_vocabulary_artifact_client(),
-        )
+        self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
         self._synchronizer = Synchronizer(sql_uow, es_uow)
 
     @sql_unit_of_work
@@ -1293,7 +1288,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         facets: Sequence[FacetType],
         vocabulary_uri: str | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Count per facet; sibling-aware when ``vocabulary_uri`` is supplied."""
+        """Count occurrences per facet across references matching the query."""
         return await self._search_service.aggregate_facets(
             query, facets, vocabulary_uri
         )

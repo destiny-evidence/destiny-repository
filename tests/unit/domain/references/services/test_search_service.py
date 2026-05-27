@@ -9,12 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import SiblingGroupingError
 from app.domain.references.models.models import (
     AnnotationFilter,
-    ConceptSiblingGroup,
     FacetType,
     LinkedDataConceptFilter,
     PublicationYearRange,
     SearchQuery,
-    SiblingGrouping,
+    SiblingGroup,
 )
 from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.services.anti_corruption_service import (
@@ -285,33 +284,32 @@ def _service(vocab_client: MagicMock) -> SearchService:
     )
 
 
-async def test_resolve_sibling_grouping_happy_path(
+async def test_resolve_concept_sibling_groups_happy_path(
     vocab_client_with_siblings: MagicMock,
 ):
-    """Each filter becomes a group with its sibling set; URIs unioned in all_grouped."""
+    """Each filter becomes a group carrying its resolved sibling set."""
     service = _service(vocab_client_with_siblings)
-    grouping = await service._resolve_sibling_grouping(  # noqa: SLF001
+    groups = await service._resolve_concept_sibling_groups(  # noqa: SLF001
         VOCAB_URI,
         [
             LinkedDataConceptFilter(concept_uris=[BOTANY, ZOOLOGY]),
             LinkedDataConceptFilter(concept_uris=[AFRICA]),
         ],
     )
-    assert [g.source_filter.concept_uris for g in grouping.groups] == [
+    assert [list(g.selected) for g in groups] == [
         [BOTANY, ZOOLOGY],
         [AFRICA],
     ]
-    assert grouping.groups[0].siblings_including_selected == _TOPICS
-    assert grouping.groups[1].siblings_including_selected == _REGIONS
-    assert grouping.all_grouped_uris == _TOPICS | _REGIONS
+    assert groups[0].siblings_including_selected == _TOPICS
+    assert groups[1].siblings_including_selected == _REGIONS
 
 
-async def test_resolve_sibling_grouping_raises_sibling_grouping_error(
+async def test_resolve_concept_sibling_groups_raises_sibling_grouping_error(
     vocab_client_with_siblings: MagicMock,
 ):
     """Rule violations bubble up as SiblingGroupingError."""
     with pytest.raises(SiblingGroupingError, match="different sibling sets"):
-        await _service(vocab_client_with_siblings)._resolve_sibling_grouping(  # noqa: SLF001
+        await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
             VOCAB_URI,
             [LinkedDataConceptFilter(concept_uris=[BOTANY, AFRICA])],
         )
@@ -320,12 +318,10 @@ async def test_resolve_sibling_grouping_raises_sibling_grouping_error(
 async def test_aggregate_facets_naive_when_concepts_not_requested(
     vocab_client_with_siblings: MagicMock,
 ):
-    """No concepts facet → naive path; vocab client untouched."""
+    """No concepts facet → repo called with empty mapping; vocab untouched."""
     service = _service(vocab_client_with_siblings)
     service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_facets_naive = AsyncMock(  # type: ignore[union-attr]
-        return_value={},
-    )
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
     await service.aggregate_facets(
         SearchQuery(
             query_string="*",
@@ -337,7 +333,8 @@ async def test_aggregate_facets_naive_when_concepts_not_requested(
         vocabulary_uri=None,
     )
     vocab_client_with_siblings.get_concept_siblings.assert_not_called()
-    service.es_uow.references.aggregate_facets_naive.assert_called_once()  # type: ignore[union-attr]
+    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert kwargs["sibling_groups_by_facet"] == {}
 
 
 async def test_aggregate_facets_raises_when_vocab_missing_but_required(
@@ -358,17 +355,14 @@ async def test_aggregate_facets_raises_when_vocab_missing_but_required(
         )
 
 
-def test_validate_grouping_against_max_buckets():
+def test_validate_groups_against_max_buckets():
     """Groups within the limit pass; over the limit raises SiblingGroupingError."""
-    topics = ConceptSiblingGroup(
-        source_filter=LinkedDataConceptFilter(concept_uris=[BOTANY, ZOOLOGY]),
-        siblings_including_selected=frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY}),
+    groups = (
+        SiblingGroup(
+            selected=(BOTANY, ZOOLOGY),
+            siblings_including_selected=frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY}),
+        ),
     )
-    grouping = SiblingGrouping(groups=(topics,))
-    SearchService._validate_grouping_against_max_buckets(  # noqa: SLF001
-        grouping, max_buckets=3
-    )
+    SearchService._validate_groups_against_max_buckets(groups, max_buckets=3)  # noqa: SLF001
     with pytest.raises(SiblingGroupingError, match="exceeding max_buckets"):
-        SearchService._validate_grouping_against_max_buckets(  # noqa: SLF001
-            grouping, max_buckets=2
-        )
+        SearchService._validate_groups_against_max_buckets(groups, max_buckets=2)  # noqa: SLF001

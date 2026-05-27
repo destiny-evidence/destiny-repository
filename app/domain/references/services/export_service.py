@@ -20,7 +20,6 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.references.services.search_service import SearchService
 from app.domain.service import GenericService
-from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
@@ -50,12 +49,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service with a unit of work and a JSONL fetch helper."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
-        self._search_service = SearchService(
-            anti_corruption_service,
-            sql_uow,
-            es_uow,
-            vocab_client=get_vocabulary_artifact_client(),
-        )
+        self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
         self._access_control_service = access_control_service
         self._get_jsonl_deduplicated_references = get_jsonl_deduplicated_references
 

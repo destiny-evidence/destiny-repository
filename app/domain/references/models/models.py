@@ -1128,43 +1128,20 @@ class SearchQuery(BaseModel):
     )
 
 
-class ConceptSiblingGroup(BaseModel):
-    """A LinkedDataConceptFilter paired with its sibling expansion from a vocab."""
+class SiblingGroup(BaseModel):
+    """A user-selected subset of a sibling set, for sibling-aware facet aggregation."""
 
     model_config = ConfigDict(frozen=True)
 
-    source_filter: LinkedDataConceptFilter = Field(
-        description="The filter this group was resolved from.",
+    selected: tuple[str, ...] = Field(
+        description="URIs the user selected from this sibling set.",
     )
     siblings_including_selected: frozenset[str] = Field(
         description=(
-            "Union of the filter's URIs and their siblings. Used as the "
+            "Union of the user's selection and their siblings. Used as the "
             "``include`` set for the group's facet aggregation."
         ),
     )
-
-
-class SiblingGrouping(BaseModel):
-    """Sibling-aware grouping for a search request; empty = naive path."""
-
-    model_config = ConfigDict(frozen=True)
-
-    groups: tuple[ConceptSiblingGroup, ...] = Field(
-        default_factory=tuple,
-        description="One group per LinkedDataConceptFilter, in input order.",
-    )
-
-    @property
-    def is_empty(self) -> bool:
-        """True when no groups have been resolved."""
-        return not self.groups
-
-    @property
-    def all_grouped_uris(self) -> frozenset[str]:
-        """Union of every group's siblings."""
-        return frozenset().union(
-            *(group.siblings_including_selected for group in self.groups)
-        )
 
 
 class ReferenceSearchResult(BaseModel):

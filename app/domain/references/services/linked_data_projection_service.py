@@ -104,7 +104,7 @@ class LinkedDataProjectionService:
         return countries
 
     async def _get_scheme_to_property(self, vocab_uri: str) -> dict[str, str]:
-        """Return scheme→property for *vocab_uri*, building on first access."""
+        """Return scheme to property map for *vocab_uri*, building on first access."""
         cached = self._scheme_to_property_cache.get(vocab_uri)
         if cached is not None:
             return cached

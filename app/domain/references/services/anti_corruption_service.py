@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 import destiny_sdk
-from pydantic import HttpUrl, ValidationError
+from pydantic import ValidationError
 
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
@@ -501,17 +501,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             )
             raise ValueError(msg)
         return LinkedDataConceptFilter(concept_uris=concept_uris)
-
-    def vocabulary_uri_from_query_parameter(self, value: str | None) -> str | None:
-        """Validate ``?vocabulary=`` as an HttpUrl; pass through None / blank."""
-        if not value or not (stripped := value.strip()):
-            return None
-        try:
-            HttpUrl(stripped)
-        except ValidationError as exc:
-            msg = f"vocabulary= must be a fully-qualified URI. Got: {value!r}."
-            raise ValueError(msg) from exc
-        return stripped
 
     def duplicate_decision_from_sdk_make(
         self,

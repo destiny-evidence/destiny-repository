@@ -63,12 +63,11 @@ MICROBIOLOGY = "https://vocab.example.org/test/Microbiology"
 AFRICA = "https://vocab.example.org/test/Africa"
 ASIA = "https://vocab.example.org/test/Asia"
 EUROPE = "https://vocab.example.org/test/Europe"
-UNKNOWN_URI = "https://vocab.example.org/test/Unknown"
 
 
 @pytest.fixture
 def primed_vocab() -> Iterator[str]:
-    """Pre-populate the vocab client's caches with a SKOS sibling fixture."""
+    """Pre-populate the vocab client's graph cache with a SKOS sibling fixture."""
     graph = Graph()
     graph.parse(data=SIBLING_VOCAB_TURTLE, format="turtle")
     client = get_vocabulary_artifact_client()
@@ -76,11 +75,10 @@ def primed_vocab() -> Iterator[str]:
     try:
         yield VOCAB_URI
     finally:
-        # Each test fixture clears its slot so derived caches re-build.
         client._vocabulary_cache.pop(VOCAB_URI, None)  # noqa: SLF001
-        client._concept_labels_cache.pop(VOCAB_URI, None)  # noqa: SLF001
-        client._concept_schemes_cache.pop(VOCAB_URI, None)  # noqa: SLF001
-        client._concept_siblings_cache.pop(VOCAB_URI, None)  # noqa: SLF001
+        client.get_concept_labels.cache_clear()
+        client.get_concept_schemes.cache_clear()
+        client.get_concept_siblings.cache_clear()
 
 
 @pytest.fixture
@@ -305,36 +303,3 @@ async def test_sibling_facets_unselected_bucket_surfaces_other_concepts(
         MICROBIOLOGY: 1,
         AFRICA: 2,
     }
-
-
-@pytest.mark.parametrize(
-    ("concept_params", "vocab", "detail_substring"),
-    [
-        # Rule (c): URI not in vocabulary.
-        ([UNKNOWN_URI], "primed", UNKNOWN_URI),
-        # Rule (a): one filter spans sibling sets.
-        ([f"{BOTANY},{AFRICA}"], "primed", "different sibling sets"),
-        # Rule (b): siblings split across filters.
-        ([BOTANY, ZOOLOGY], "primed", "share a sibling set"),
-        # vocabulary= missing.
-        ([BOTANY], None, "`vocabulary=` is required"),
-        # vocabulary= not a URI.
-        ([BOTANY], "not a uri", "fully-qualified URI"),
-    ],
-)
-async def test_sibling_facets_rule_violations_return_400(  # noqa: PLR0913
-    client: AsyncClient,
-    sibling_references: None,  # noqa: ARG001
-    primed_vocab: str,
-    concept_params: list[str],
-    vocab: str | None,
-    detail_substring: str,
-) -> None:
-    """Each parametrised case maps to one rule violation -> 400 with detail."""
-    params: list[tuple[str, str]] = [("q", "*"), ("facet", "concepts")]
-    params.extend(("concept", v) for v in concept_params)
-    if vocab is not None:
-        params.append(("vocabulary", primed_vocab if vocab == "primed" else vocab))
-    response = await client.get("/v1/references/search/facets/", params=params)
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert detail_substring in response.json()["detail"]

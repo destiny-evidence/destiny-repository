@@ -1,14 +1,16 @@
 """Repositories for references and associated models."""
 
 import datetime
+import json
 from abc import ABC
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import ClassVar, Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
-from elasticsearch.dsl.query import Prefix, Query, Range, Term, Terms
+from elasticsearch.dsl.query import Bool, MatchAll, Prefix, Query, Range, Term, Terms
+from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
 from sqlalchemy import (
     CompoundSelect,
@@ -25,6 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.config import DedupCandidateScoringConfig, get_settings
+from app.core.exceptions import ESQueryError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -43,7 +47,7 @@ from app.domain.references.models.models import (
     ReferenceWithChangeset,
     RobotAutomationPercolationResult,
     SearchQuery,
-    SiblingGrouping,
+    SiblingGroup,
 )
 from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
@@ -99,7 +103,6 @@ from app.persistence.es.persistence import (
     ESFacetBucket,
     ESScoreResult,
     ESSearchResult,
-    FilteredTermsAggSpec,
 )
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
@@ -317,17 +320,10 @@ class ReferenceESRepository(
             return Prefix(annotations=f"{annotation.scheme}/")
         return Term(annotations=f"{annotation.scheme}/{annotation.label}")
 
-    def _build_filter_clauses(self, query: SearchQuery) -> list[Query]:
+    def _build_filter_clauses(
+        self, query: SearchQuery, *, exclude_facet: FacetType | None = None
+    ) -> list[Query]:
         """Translate a SearchQuery's structured filters into bool.filter clauses."""
-        clauses = self._build_non_concept_filter_clauses(query)
-        clauses.extend(
-            self._build_linked_data_concept_clause(concept_filter)
-            for concept_filter in query.linked_data_concept_filters
-        )
-        return clauses
-
-    def _build_non_concept_filter_clauses(self, query: SearchQuery) -> list[Query]:
-        """Year + annotation clauses only; concept filters are added separately."""
         clauses: list[Query] = []
         if query.publication_year_range and (
             clause := self._build_publication_year_clause(query.publication_year_range)
@@ -337,6 +333,11 @@ class ReferenceESRepository(
             self._build_annotation_clause(annotation)
             for annotation in query.annotation_filters
         )
+        if exclude_facet is not FacetType.CONCEPTS:
+            clauses.extend(
+                self._build_linked_data_concept_clause(concept_filter)
+                for concept_filter in query.linked_data_concept_filters
+            )
         return clauses
 
     @trace_repository_method(tracer)
@@ -359,96 +360,129 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
-    async def aggregate_facets_naive(
+    async def aggregate_facets(
         self,
         query: SearchQuery,
         facets: Sequence[FacetType],
         *,
+        sibling_groups_by_facet: Mapping[FacetType, Sequence[SiblingGroup]]
+        | None = None,
         max_buckets: int,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """One terms agg per facet, with the full filter set in bool.filter."""
-        facet_to_field = {facet: self._FACET_FIELDS[facet] for facet in facets}
-        buckets_by_field = await self.aggregate_terms(
-            query.query_string,
-            aggregate_on=list(facet_to_field.values()),
-            query_fields=self.default_search_fields,
-            filter_clauses=self._build_filter_clauses(query),
-            max_buckets=max_buckets,
-        )
-        return {
-            facet: buckets_by_field[field] for facet, field in facet_to_field.items()
-        }
+        """
+        Count occurrences per facet over references matching ``query``.
 
-    @trace_repository_method(tracer)
-    async def aggregate_facets_sibling_aware(
+        For simplicity, constructs and executes different queries per facet type. If
+        we're hunting down performance gains later, consider constructing a single
+        query - it won't be easy though.
+        """
+        sibling_groups_by_facet = sibling_groups_by_facet or {}
+        results: dict[FacetType, list[ESFacetBucket]] = {}
+
+        ungrouped_facets = [f for f in facets if not sibling_groups_by_facet.get(f)]
+        if ungrouped_facets:
+            # Simple aggregation for facets without sibling groups
+            facet_to_field = {f: self._FACET_FIELDS[f] for f in ungrouped_facets}
+            buckets_by_field = await self.aggregate_terms(
+                query.query_string,
+                aggregate_on=list(facet_to_field.values()),
+                query_fields=self.default_search_fields,
+                filter_clauses=self._build_filter_clauses(query),
+                max_buckets=max_buckets,
+            )
+            results.update(
+                {f: buckets_by_field[field] for f, field in facet_to_field.items()}
+            )
+
+        for facet in facets:
+            groups = sibling_groups_by_facet.get(facet)
+            if not groups:
+                continue
+            results[facet] = await self._aggregate_facet_sibling_aware(
+                query, facet, groups, max_buckets=max_buckets
+            )
+
+        return results
+
+    async def _aggregate_facet_sibling_aware(
         self,
         query: SearchQuery,
-        grouping: SiblingGrouping,
+        facet: FacetType,
+        groups: Sequence[SiblingGroup],
         *,
         max_buckets: int,
-    ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Sibling-aware concept facet counts; concept filters go to post_filter."""
-        concepts_field = self._FACET_FIELDS[FacetType.CONCEPTS]
-        aggs = self._build_grouped_facet_aggs(
-            concepts_field, grouping, max_buckets=max_buckets
-        )
-        post_filter_clauses = [
-            self._build_linked_data_concept_clause(group.source_filter)
-            for group in grouping.groups
-        ]
-        results = await self.execute_filtered_terms_aggregations(
-            query.query_string,
-            query_fields=self.default_search_fields,
-            base_filter_clauses=self._build_non_concept_filter_clauses(query),
-            post_filter_clauses=post_filter_clauses,
-            aggs=aggs,
-        )
-        concepts_buckets: list[ESFacetBucket] = []
-        for spec in aggs:
-            concepts_buckets.extend(results[spec.name])
-        return {FacetType.CONCEPTS: concepts_buckets}
+    ) -> list[ESFacetBucket]:
+        """
+        Run sibling-aware aggregation for one facet.
 
-    def _build_grouped_facet_aggs(
-        self,
-        concepts_field: str,
-        grouping: SiblingGrouping,
-        *,
-        max_buckets: int,
-    ) -> list[FilteredTermsAggSpec]:
-        """Per-group facet aggs (filtered by *other* groups) + ``unselected``."""
-        aggs: list[FilteredTermsAggSpec] = []
-        for i, group in enumerate(grouping.groups):
-            other_clauses = tuple(
-                self._build_linked_data_concept_clause(other.source_filter)
-                for j, other in enumerate(grouping.groups)
-                if j != i
-            )
-            include = tuple(sorted(group.siblings_including_selected))
-            aggs.append(
-                FilteredTermsAggSpec(
-                    name=f"facet_group_{i}",
-                    field=concepts_field,
-                    filter_clauses=other_clauses,
-                    include=include,
-                    min_doc_count=0,
-                    size=len(include),
-                )
-            )
-        all_clauses = tuple(
-            self._build_linked_data_concept_clause(group.source_filter)
-            for group in grouping.groups
+        Each group's selection becomes a Terms clause. Selections go on
+        ``post_filter`` so per-group aggs aren't constrained by other groups.
+        OR within a group (multi-URI Terms); AND between groups (per-group
+        agg filters by the *other* groups' selections).
+        """
+        field = self._FACET_FIELDS[facet]
+        group_clauses = [Terms(**{field: list(g.selected)}) for g in groups]
+        composed = self._compose_query(
+            query.query_string,
+            self.default_search_fields,
+            self._build_filter_clauses(query, exclude_facet=facet),
         )
-        aggs.append(
-            FilteredTermsAggSpec(
-                name="unselected",
-                field=concepts_field,
-                filter_clauses=all_clauses,
-                exclude=tuple(sorted(grouping.all_grouped_uris)),
-                min_doc_count=1,
-                size=max_buckets,
-            )
+        search = (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .extra(size=0)
+            .query(composed)
+            .source(includes=[])
+            .post_filter(Bool(filter=group_clauses))
         )
-        return aggs
+
+        agg_names: list[str] = []
+        for i, group in enumerate(groups):
+            other_clauses = [c for j, c in enumerate(group_clauses) if j != i]
+            include = sorted(group.siblings_including_selected)
+            name = f"facet_group_{i}"
+            agg_names.append(name)
+            outer = search.aggs.bucket(
+                name,
+                "filter",
+                filter=Bool(filter=other_clauses) if other_clauses else MatchAll(),
+            )
+            outer.bucket(
+                "inner",
+                "terms",
+                field=field,
+                include=include,
+                min_doc_count=0,
+                size=len(include),
+            )
+
+        all_grouped_uris = frozenset().union(
+            *(g.siblings_including_selected for g in groups)
+        )
+        outer = search.aggs.bucket(
+            "unselected", "filter", filter=Bool(filter=group_clauses)
+        )
+        outer.bucket(
+            "inner",
+            "terms",
+            field=field,
+            exclude=sorted(all_grouped_uris),
+            min_doc_count=1,
+            size=max_buckets,
+        )
+        agg_names.append("unselected")
+
+        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
+        try:
+            response = await search.execute()
+        except BadRequestError as exc:
+            msg = f"Elasticsearch sibling-aware facet aggregation failed: {exc}."
+            raise ESQueryError(msg) from exc
+
+        return [
+            ESFacetBucket(key=str(b.key), count=b.doc_count)
+            for name in agg_names
+            for b in response.aggregations[name].inner.buckets
+        ]
 
     @staticmethod
     def _build_author_dis_max_query(

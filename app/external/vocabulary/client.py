@@ -4,6 +4,7 @@ from functools import lru_cache
 
 import httpx
 import tenacity
+from async_lru import alru_cache
 from cachetools import LRUCache
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
@@ -30,15 +31,6 @@ class VocabularyArtifactClient:
         """Initialise the client with empty LRU caches."""
         self._vocabulary_cache: LRUCache[str, Graph] = LRUCache(maxsize=cache_maxsize)
         self._context_cache: LRUCache[str, dict] = LRUCache(maxsize=cache_maxsize)
-        self._concept_labels_cache: LRUCache[str, dict[str, str]] = LRUCache(
-            maxsize=cache_maxsize
-        )
-        self._concept_schemes_cache: LRUCache[str, dict[str, str]] = LRUCache(
-            maxsize=cache_maxsize
-        )
-        self._concept_siblings_cache: LRUCache[str, dict[str, frozenset[str]]] = (
-            LRUCache(maxsize=cache_maxsize)
-        )
 
     async def get_vocabulary(self, uri: str, rdf_format: str = "turtle") -> Graph:
         """
@@ -132,32 +124,20 @@ class VocabularyArtifactClient:
             "document": self._context_cache[url],
         }
 
+    @alru_cache(maxsize=128)
     async def get_concept_labels(self, uri: str) -> dict[str, str]:
         """Concept URI -> skos:prefLabel for the vocabulary."""
-        if uri in self._concept_labels_cache:
-            return self._concept_labels_cache[uri]
-        graph = await self.get_vocabulary(uri)
-        labels = _build_concept_labels(graph)
-        self._concept_labels_cache[uri] = labels
-        return labels
+        return _build_concept_labels(await self.get_vocabulary(uri))
 
+    @alru_cache(maxsize=128)
     async def get_concept_schemes(self, uri: str) -> dict[str, str]:
         """Concept URI -> skos:inScheme target for the vocabulary."""
-        if uri in self._concept_schemes_cache:
-            return self._concept_schemes_cache[uri]
-        graph = await self.get_vocabulary(uri)
-        schemes = _build_concept_schemes(graph)
-        self._concept_schemes_cache[uri] = schemes
-        return schemes
+        return _build_concept_schemes(await self.get_vocabulary(uri))
 
+    @alru_cache(maxsize=128)
     async def get_concept_siblings(self, uri: str) -> dict[str, frozenset[str]]:
         """Concept URI -> sibling set (self-inclusive) for the vocabulary."""
-        if uri in self._concept_siblings_cache:
-            return self._concept_siblings_cache[uri]
-        graph = await self.get_vocabulary(uri)
-        siblings = _build_concept_siblings(graph)
-        self._concept_siblings_cache[uri] = siblings
-        return siblings
+        return _build_concept_siblings(await self.get_vocabulary(uri))
 
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(httpx.TransportError),

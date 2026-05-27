@@ -677,7 +677,7 @@ class ParseError(DestinyRepositoryError):
 
 
 class SiblingGroupingError(ParseError):
-    """Concept filters can't be resolved into sibling groups against the vocab."""
+    """An exception for when concept filters cannot be resolved into sibling groups."""
 
 
 class DuplicateEnhancementError(DestinyRepositoryError):

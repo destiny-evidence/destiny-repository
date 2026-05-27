@@ -24,7 +24,7 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -382,28 +382,6 @@ def parse_linked_data_concept_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
-def parse_vocabulary_uri(
-    anti_corruption_service: Annotated[
-        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
-    ],
-    vocabulary: Annotated[
-        str,
-        Query(
-            description=(
-                "Vocabulary URI for sibling-aware facet counting. Required when "
-                "filtering on concepts and requesting the `concepts` facet."
-            ),
-            examples=["https://vocab.esea.education/vocabulary/v1"],
-        ),
-    ] = None,
-) -> str | None:
-    """Parse the optional ``?vocabulary=`` query parameter."""
-    try:
-        return anti_corruption_service.vocabulary_uri_from_query_parameter(vocabulary)
-    except (ValueError, ValidationError) as exc:
-        raise ParseError(detail=str(exc)) from exc
-
-
 def parse_search_query(
     q: Annotated[
         str,
@@ -535,7 +513,6 @@ async def count_facets_for_search(
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     query: Annotated[SearchQuery, Depends(parse_search_query)],
-    vocabulary_uri: Annotated[str | None, Depends(parse_vocabulary_uri)],
     facet: Annotated[
         list[destiny_sdk.references.FacetType],
         Query(
@@ -543,12 +520,24 @@ async def count_facets_for_search(
             description="One or more facet types to count.",
         ),
     ],
+    vocabulary: Annotated[
+        HttpUrl,
+        Query(
+            description=(
+                "Vocabulary URI for sibling-aware facet counting. Required when "
+                "filtering on concepts and requesting the `concepts` facet."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
+            ],
+        ),
+    ] = None,
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
     buckets_by_facet = await reference_service.aggregate_facets(
         query,
         anti_corruption_service.facet_types_from_sdk(facet),
-        vocabulary_uri=vocabulary_uri,
+        vocabulary_uri=str(vocabulary) if vocabulary else None,
     )
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 

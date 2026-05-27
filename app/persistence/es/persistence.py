@@ -5,9 +5,8 @@ from typing import Generic, Literal, Self
 from uuid import UUID
 
 from elasticsearch.dsl import AsyncDocument, InnerDoc
-from elasticsearch.dsl.query import Query
 from elasticsearch.dsl.response import Hit
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 from app.domain.base import SQLAttributeMixin
 from app.persistence.generics import GenericDomainModelType
@@ -123,29 +122,3 @@ class ESFacetBucket(BaseModel):
 
     key: str = Field(description="The bucket key (the field value being counted).")
     count: int = Field(description="The number of documents in the bucket.")
-
-
-class FilteredTermsAggSpec(BaseModel):
-    """A terms aggregation, optionally wrapped in a per-agg filter."""
-
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True)
-
-    name: str = Field(description="Aggregation name; used as the response key.")
-    field: str
-    filter_clauses: tuple[Query, ...] = Field(
-        default=(),
-        description=(
-            "Pre-filter clauses, ANDed. Empty wraps in ``MatchAll`` so the "
-            "response peel is uniform across specs."
-        ),
-    )
-    include: tuple[str, ...] | None = None
-    exclude: tuple[str, ...] | None = None
-    min_doc_count: int = Field(
-        default=1,
-        description=(
-            "Set to 0 to surface zero-count buckets for values listed in "
-            "``include``."
-        ),
-    )
-    size: int

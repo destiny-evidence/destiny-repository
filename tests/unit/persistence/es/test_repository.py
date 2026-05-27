@@ -4,7 +4,6 @@ from uuid import uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.dsl.query import Term, Terms
 from elasticsearch.helpers import async_bulk
 
 from app.core.exceptions import ESQueryError
@@ -15,7 +14,6 @@ from app.domain.references.services.world_bank_regions import (
     SOUTH_ASIA,
     SUB_SAHARAN_AFRICA,
 )
-from app.persistence.es.persistence import FilteredTermsAggSpec
 from app.persistence.es.repository import GenericAsyncESRepository
 from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
@@ -435,122 +433,3 @@ async def test_linked_data_field_search(
         assert str(results.hits[0].id) == linked_data_ref
     else:
         assert len(results.hits) == 0
-
-
-CONCEPT_A = "https://vocab.example.org/A"
-CONCEPT_B = "https://vocab.example.org/B"
-CONCEPT_C = "https://vocab.example.org/C"
-CONCEPT_D = "https://vocab.example.org/D"
-
-
-@pytest.fixture
-async def filtered_agg_refs(es_client: AsyncElasticsearch) -> None:
-    """Reference docs covering the filtered-agg scenarios."""
-    docs = [
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="alpha",
-            linked_data_concepts=[CONCEPT_A, CONCEPT_B],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="alpha",
-            linked_data_concepts=[CONCEPT_A, CONCEPT_C],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="beta",
-            linked_data_concepts=[CONCEPT_B],
-        ),
-        ReferenceDocument(
-            meta={"id": uuid7()},
-            visibility=Visibility.PUBLIC,
-            title="beta",
-            linked_data_concepts=[CONCEPT_D],
-        ),
-    ]
-    for doc in docs:
-        await doc.save(using=es_client)
-    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
-
-
-def _counts(buckets: list) -> dict[str, int]:
-    return {bucket.key: bucket.count for bucket in buckets}
-
-
-UNFILTERED_COUNTS = {CONCEPT_A: 2, CONCEPT_B: 2, CONCEPT_C: 1, CONCEPT_D: 1}
-
-
-async def test_filtered_terms_aggregation_per_agg_filter_and_unfiltered(
-    reference_repository: ReferenceESRepository,
-    filtered_agg_refs: None,  # noqa: ARG001
-) -> None:
-    """Per-spec filter_clauses scope that agg only; empty filter counts all matches."""
-    result = await reference_repository.execute_filtered_terms_aggregations(
-        "*",
-        aggs=[
-            FilteredTermsAggSpec(
-                name="with_a",
-                field="linked_data_concepts",
-                filter_clauses=(Terms(linked_data_concepts=[CONCEPT_A]),),
-                size=10,
-            ),
-            FilteredTermsAggSpec(name="all", field="linked_data_concepts", size=10),
-        ],
-    )
-
-    assert _counts(result["with_a"]) == {CONCEPT_A: 2, CONCEPT_B: 1, CONCEPT_C: 1}
-    assert _counts(result["all"]) == UNFILTERED_COUNTS
-
-
-async def test_filtered_terms_aggregation_include_exclude_and_min_doc_count(
-    reference_repository: ReferenceESRepository,
-    filtered_agg_refs: None,  # noqa: ARG001
-) -> None:
-    """``include`` with ``min_doc_count=0`` surfaces zero buckets; ``exclude`` drops."""
-    # `title:beta` matches only docs tagged B and D. A and C are indexed in the
-    # other (`alpha`) docs but absent here — `min_doc_count=0` + `include` should
-    # still emit A=0 and C=0. `exclude` over the same docs drops B.
-    result = await reference_repository.execute_filtered_terms_aggregations(
-        "title:beta",
-        aggs=[
-            FilteredTermsAggSpec(
-                name="included",
-                field="linked_data_concepts",
-                include=(CONCEPT_A, CONCEPT_B, CONCEPT_C),
-                min_doc_count=0,
-                size=10,
-            ),
-            FilteredTermsAggSpec(
-                name="excluded",
-                field="linked_data_concepts",
-                exclude=(CONCEPT_B,),
-                size=10,
-            ),
-        ],
-    )
-
-    assert _counts(result["included"]) == {CONCEPT_A: 0, CONCEPT_B: 1, CONCEPT_C: 0}
-    assert _counts(result["excluded"]) == {CONCEPT_D: 1}
-
-
-async def test_filtered_terms_aggregation_base_and_post_filter(
-    reference_repository: ReferenceESRepository,
-    filtered_agg_refs: None,  # noqa: ARG001
-) -> None:
-    """``base_filter_clauses`` apply to aggs; ``post_filter_clauses`` don't."""
-    # base_filter narrows the agg to "alpha" docs only ({A,B} and {A,C}).
-    # post_filter would narrow hits to docs tagged D, but the agg should ignore it.
-    result = await reference_repository.execute_filtered_terms_aggregations(
-        "*",
-        base_filter_clauses=(Term(title="alpha"),),
-        post_filter_clauses=(Terms(linked_data_concepts=[CONCEPT_D]),),
-        aggs=[
-            FilteredTermsAggSpec(name="cs", field="linked_data_concepts", size=10),
-        ],
-    )
-
-    assert _counts(result["cs"]) == {CONCEPT_A: 2, CONCEPT_B: 1, CONCEPT_C: 1}

@@ -9,7 +9,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl import AsyncSearch
 from elasticsearch.dsl.exceptions import UnknownDslObject
-from elasticsearch.dsl.query import Bool, MatchAll, Query, QueryString
+from elasticsearch.dsl.query import Bool, Query, QueryString
 from elasticsearch.dsl.response import Hit, Response
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
@@ -28,7 +28,6 @@ from app.persistence.es.persistence import (
     ESHit,
     ESSearchResult,
     ESSearchTotal,
-    FilteredTermsAggSpec,
 )
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
@@ -317,64 +316,6 @@ class GenericAsyncESRepository(
                 for bucket in response.aggregations[field].buckets
             ]
             for field in aggregate_on
-        }
-
-    @trace_repository_method(tracer)
-    async def execute_filtered_terms_aggregations(
-        self,
-        query: str,
-        *,
-        query_fields: Sequence[str] | None = None,
-        base_filter_clauses: Sequence[Query] = (),
-        post_filter_clauses: Sequence[Query] = (),
-        aggs: Sequence[FilteredTermsAggSpec],
-    ) -> dict[str, list[ESFacetBucket]]:
-        """
-        Run multiple (optionally filter-wrapped) terms aggregations + post_filter.
-
-        ``base_filter_clauses`` apply to both hits and aggregations under
-        ``bool.filter``. ``post_filter_clauses`` restrict hits only, so
-        aggregations can deliberately ignore a user-facing filter. Each spec
-        returns its own bucket list keyed by ``name``.
-        """
-        composed = self._compose_query(query, query_fields, base_filter_clauses)
-        search = (
-            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
-            .extra(size=0)
-            .query(composed)
-            .source(includes=[])
-        )
-        if post_filter_clauses:
-            search = search.post_filter(Bool(filter=list(post_filter_clauses)))
-        for spec in aggs:
-            outer_filter = (
-                Bool(filter=list(spec.filter_clauses))
-                if spec.filter_clauses
-                else MatchAll()
-            )
-            outer = search.aggs.bucket(spec.name, "filter", filter=outer_filter)
-            terms_kwargs: dict[str, object] = {
-                "field": spec.field,
-                "size": spec.size,
-                "min_doc_count": spec.min_doc_count,
-            }
-            if spec.include is not None:
-                terms_kwargs["include"] = list(spec.include)
-            if spec.exclude is not None:
-                terms_kwargs["exclude"] = list(spec.exclude)
-            outer.bucket("terms_inner", "terms", **terms_kwargs)
-        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
-        try:
-            response = await search.execute()
-        except BadRequestError as exc:
-            msg = f"Elasticsearch filtered terms aggregation failed: {exc}."
-            raise ESQueryError(msg) from exc
-        return {
-            spec.name: [
-                ESFacetBucket(key=str(bucket.key), count=bucket.doc_count)
-                for bucket in response.aggregations[spec.name].terms_inner.buckets
-            ]
-            for spec in aggs
         }
 
     def _compose_query(
