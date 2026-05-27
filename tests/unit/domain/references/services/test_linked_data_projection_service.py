@@ -24,8 +24,11 @@ from app.external.vocabulary.client import (
 )
 
 ESEA_NS = "https://vocab.esea.education/"
+EVREPO_NS = "https://vocab.evidence-repository.org/"
 
 _STATIC_VOCAB_DIR = get_settings().project_root / "app" / "static" / "vocab" / "esea"
+
+FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
@@ -47,7 +50,29 @@ def projector() -> LinkedDataProjectionService:
     return LinkedDataProjectionService(client)
 
 
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
+@pytest.fixture
+def projector_with_evrepo() -> LinkedDataProjectionService:
+    """Projector whose vocab graph also declares the evrepo core ontology.
+
+    Matches deployed reality: the ESEA project's published vocabulary embeds
+    the evrepo core concepts (EffectSizeMetricScheme, EstimateSourceScheme).
+    """
+    vocab_graph = Graph()
+    vocab_graph.parse(_STATIC_VOCAB_DIR / "esea-vocab.ttl", format="turtle")
+    vocab_graph.parse(FIXTURES_DIR / "evrepo-core.ttl", format="turtle")
+    with (_STATIC_VOCAB_DIR / "esea-context.jsonld").open() as f:
+        context = json.load(f)
+
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_vocabulary = AsyncMock(return_value=vocab_graph)
+    client.get_context = AsyncMock(return_value=context)
+    client.get_concept_labels = AsyncMock(
+        return_value=_build_concept_labels(vocab_graph)
+    )
+    client.get_concept_schemes = AsyncMock(
+        return_value=_build_concept_schemes(vocab_graph)
+    )
+    return LinkedDataProjectionService(client)
 
 
 @pytest.fixture
@@ -442,3 +467,102 @@ class TestLinkedDataProjectionService:
         assert mapping[f"{ESEA_NS}EducationLevelScheme"] == (f"{ESEA_NS}educationLevel")
         assert mapping[f"{ESEA_NS}EducationThemeScheme"] == (f"{ESEA_NS}educationTheme")
         assert mapping[f"{ESEA_NS}OutcomeScheme"] == f"{ESEA_NS}outcome"
+
+    @pytest.mark.asyncio
+    async def test_unwrapped_concept_properties_discovery(self, projector_with_evrepo):
+        """SPARQL discovers ObjectProperties whose range is a ConceptScheme.
+
+        These are the unwrapped concept references handled by the second-pass
+        walk (no CodingAnnotation envelope). With the evrepo core ontology
+        loaded, this returns exactly the two EffectEstimate concept properties.
+        """
+        vocab_uri = "https://vocab.esea.education/vocabulary/v1"
+        properties = await projector_with_evrepo._get_unwrapped_concept_properties(  # noqa: SLF001
+            vocab_uri
+        )
+
+        assert properties == {
+            f"{EVREPO_NS}effectSizeMetric",
+            f"{EVREPO_NS}estimateSource",
+        }
+
+    def test_unwrapped_concept_properties_discovers_direct_scheme_range(self):
+        """Property whose range IS skos:ConceptScheme (production vocab shape).
+
+        The shared evrepo-core.ttl fixture uses range = ConceptClass (a class
+        subClassOf skos:Concept), which exercises one UNION branch. This
+        synthetic graph covers the other branch.
+        """
+        graph = Graph()
+        graph.parse(
+            data="""
+            @prefix owl: <http://www.w3.org/2002/07/owl#> .
+            @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+            @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+            @prefix ex: <https://example.org/> .
+
+            ex:myConceptProperty a owl:ObjectProperty ;
+                rdfs:range ex:MyScheme .
+            ex:MyScheme a skos:ConceptScheme .
+            """,
+            format="turtle",
+        )
+
+        properties = LinkedDataProjectionService._build_unwrapped_concept_properties(  # noqa: SLF001
+            graph
+        )
+
+        assert properties == {"https://example.org/myConceptProperty"}
+
+    @pytest.mark.asyncio
+    async def test_extracts_effect_size_metric_uri(
+        self, projector_with_evrepo, enhancement
+    ):
+        """EffectEstimate.effectSizeMetric is an unwrapped concept reference
+        (no CodingAnnotation wrapper, no codedValue triple). It must still be
+        projected when the vocab declares the URI as a skos:Concept."""
+        result = await projector_with_evrepo.project(enhancement)
+
+        assert f"{EVREPO_NS}hedgesG" in result.concepts
+        assert f"{EVREPO_NS}effectSizeMetric" in result.evaluated_properties
+
+    @pytest.mark.asyncio
+    async def test_extracts_both_effect_estimate_concept_properties(
+        self, projector_with_evrepo
+    ):
+        """Both unwrapped concept properties on EffectEstimate (effectSizeMetric
+        and estimateSource) must project. The realistic fixture omits
+        estimateSource (the EEF mapping robot doesn't emit it), so cover that
+        path with a synthetic graph."""
+        data = {
+            "@context": "https://vocab.esea.education/context/v1.jsonld",
+            "@type": "Investigation",
+            "hasInvestigation": [
+                {
+                    "@type": "Investigation",
+                    "hasFinding": [
+                        {
+                            "@type": "Finding",
+                            "hasEffectEstimate": [
+                                {
+                                    "@type": "EffectEstimate",
+                                    "effectSizeMetric": "evrepo:hedgesG",
+                                    "estimateSource": "evrepo:computedFromStats",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+        enhancement = LinkedDataEnhancement(
+            context_uri="https://vocab.esea.education/context/v1.jsonld",
+            vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
+            data=data,
+        )
+        result = await projector_with_evrepo.project(enhancement)
+
+        assert f"{EVREPO_NS}hedgesG" in result.concepts
+        assert f"{EVREPO_NS}computedFromStats" in result.concepts
+        assert f"{EVREPO_NS}effectSizeMetric" in result.evaluated_properties
+        assert f"{EVREPO_NS}estimateSource" in result.evaluated_properties
