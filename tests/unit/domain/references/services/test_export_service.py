@@ -5,7 +5,7 @@ from uuid import uuid7
 
 import pytest
 
-from app.domain.references.models.models import SearchExport
+from app.domain.references.models.models import SearchExport, SearchQuery
 from app.domain.references.services.export_service import SearchExportService
 from app.domain.references.services.search_service import SearchService
 from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
@@ -38,7 +38,7 @@ async def test_collect_search_export_ids_flags_truncated_on_gte_total(
     )
 
     ids, truncated = await _collect_export_ids(
-        _make_service(), SearchExport(query="climate")
+        _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
     )
 
     assert len(ids) == 10_000
@@ -62,7 +62,7 @@ async def test_collect_search_export_ids_flags_truncated_on_eq_above_cap(
     )
 
     ids, truncated = await _collect_export_ids(
-        _make_service(), SearchExport(query="climate")
+        _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
     )
 
     assert len(ids) == 10_000
@@ -86,7 +86,7 @@ async def test_collect_search_export_ids_handles_empty_result_set(
     )
 
     ids, truncated = await _collect_export_ids(
-        _make_service(), SearchExport(query="climate")
+        _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
     )
 
     assert ids == []
@@ -110,7 +110,7 @@ async def test_collect_search_export_ids_exactly_at_cap_not_truncated(
     )
 
     ids, truncated = await _collect_export_ids(
-        _make_service(), SearchExport(query="climate")
+        _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
     )
 
     assert len(ids) == 10_000

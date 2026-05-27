@@ -526,26 +526,8 @@ Errors for individual references are provided <TBC>.
 class SearchExport(DomainBaseModel, SQLAttributeMixin):
     """A queued job that produces a JSONL file of references matching a search."""
 
-    query: str = Field(
-        description="The Lucene query string the export is filtering on.",
-    )
-    annotation_filters: list["AnnotationFilter"] | None = Field(
-        default=None,
-        description="Parsed annotation filters to apply to the search, if any.",
-    )
-    linked_data_concept_filters: list["LinkedDataConceptFilter"] | None = Field(
-        default=None,
-        description=(
-            "Parsed linked data concept filters to apply to the search, if any."
-        ),
-    )
-    start_year: int | None = Field(
-        default=None,
-        description="Inclusive lower bound on publication year, if any.",
-    )
-    end_year: int | None = Field(
-        default=None,
-        description="Inclusive upper bound on publication year, if any.",
+    query: "SearchQuery" = Field(
+        description="The search specification this export resolves.",
     )
     sort: list[str] | None = Field(
         default=None,

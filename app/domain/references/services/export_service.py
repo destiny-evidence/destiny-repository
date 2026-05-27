@@ -8,7 +8,6 @@ from opentelemetry import trace
 from app.core.config import UploadFile, get_settings
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    PublicationYearRange,
     SearchExport,
     SearchExportStatus,
     SearchQuery,
@@ -67,15 +66,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         sort: list[str] | None,
     ) -> SearchExport:
         """Create a pending search export job."""
-        year_range = query.publication_year_range
-        search_export = SearchExport(
-            query=query.query_string,
-            annotation_filters=query.annotation_filters or None,
-            linked_data_concept_filters=query.linked_data_concept_filters or None,
-            start_year=year_range.start if year_range else None,
-            end_year=year_range.end if year_range else None,
-            sort=sort,
-        )
+        search_export = SearchExport(query=query, sort=sort)
         await self.sql_uow.search_exports.add(search_export)
         return search_export
 
@@ -145,23 +136,8 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         only the first window's worth of matches is included). Deep
         pagination beyond the cap will be addressed by #661.
         """
-        publication_year_range = (
-            PublicationYearRange(
-                start=search_export.start_year,
-                end=search_export.end_year,
-            )
-            if search_export.start_year or search_export.end_year
-            else None
-        )
-        query = SearchQuery(
-            query_string=search_export.query,
-            annotation_filters=search_export.annotation_filters or [],
-            publication_year_range=publication_year_range,
-            linked_data_concept_filters=search_export.linked_data_concept_filters or [],
-        )
-
         search_result = await self._search_service.search(
-            query,
+            search_export.query,
             page=1,
             page_size=SearchService.MAX_RESULT_WINDOW,
             sort=search_export.sort,
