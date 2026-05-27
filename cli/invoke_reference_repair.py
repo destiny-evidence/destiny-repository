@@ -2,22 +2,16 @@
 
 # ruff: noqa: T201
 import argparse
-from collections.abc import Iterator
 from pathlib import Path
 
 import httpx
 from fastapi import status
 
 from app.core.config import Environment
+from app.utils.lists import list_chunker
 from cli.auth import CLIAuth
 
 from .config import get_settings
-
-
-def _batched(items: list[str], size: int) -> Iterator[list[str]]:
-    """Yield slices of length up to ``size``."""
-    for i in range(0, len(items), size):
-        yield items[i : i + size]
 
 
 def invoke_reference_repair(
@@ -30,7 +24,7 @@ def invoke_reference_repair(
 ) -> int:
     """Invoke subset repair on a list of reference ids in batches."""
     settings = get_settings(env)
-    batches = list(_batched(reference_ids, batch_size))
+    batches = list(list_chunker(reference_ids, batch_size))
     base_url = str(settings.destiny_repository_url).rstrip("/")
     url = f"{base_url}/v1/system/indices/reference/repair/"
 
