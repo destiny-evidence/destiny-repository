@@ -200,3 +200,50 @@ class TestLinkedDataConceptFilterFromQueryParameter:
     def test_empty_string_raises(self, service: ReferenceAntiCorruptionService) -> None:
         with pytest.raises(ValueError, match="Empty concept URI"):
             service.linked_data_concept_filter_from_query_parameter("")
+
+
+class TestLinkedDataCountryFilterFromQueryParameter:
+    """Tests for parsing country filters from query parameter values."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_uppercases_and_splits(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        result = service.linked_data_country_filter_from_query_parameter("us, gb,fr")
+        assert result.country_codes == ["US", "GB", "FR"]
+
+    def test_rejects_non_iso_2_shape(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        with pytest.raises(ValueError, match="Invalid ISO 3166-1 alpha-2"):
+            service.linked_data_country_filter_from_query_parameter("USA")
+
+    def test_rejects_empty_value(self, service: ReferenceAntiCorruptionService) -> None:
+        # Trailing comma → empty fragment fails the [A-Z]{2} format check.
+        with pytest.raises(ValueError, match="Invalid ISO 3166-1 alpha-2"):
+            service.linked_data_country_filter_from_query_parameter("US,")
+
+
+class TestLinkedDataCountryWBRegionFilterFromQueryParameter:
+    """Tests for parsing WB region filters from query parameter values."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_uppercases_and_splits(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        result = service.linked_data_country_wb_region_filter_from_query_parameter(
+            "eas, ecs"
+        )
+        assert result.region_ids == ["EAS", "ECS"]
+
+    def test_rejects_unknown_region_id(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        with pytest.raises(ValueError, match="Unknown World Bank region ID"):
+            service.linked_data_country_wb_region_filter_from_query_parameter("XXX")

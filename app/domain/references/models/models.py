@@ -2,6 +2,7 @@
 
 import datetime
 import json
+import re
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
@@ -32,10 +33,13 @@ from app.domain.base import (
     SQLTimestampMixin,
     StateMachineMixin,
 )
+from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
+
+_ISO_3166_ALPHA_2 = re.compile(r"[A-Z]{2}")
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,
@@ -1100,6 +1104,66 @@ class LinkedDataConceptFilter(BaseModel):
     )
 
 
+class LinkedDataCountryFilter(BaseModel):
+    """
+    A set of ISO 3166-1 alpha-2 codes to match on ``linked_data_countries``.
+
+    OR within a filter; AND between filters. Codes are validated for shape
+    ([A-Z]{2}) but not membership in any specific country list — codes added
+    after our regional snapshot still need to be searchable.
+    """
+
+    country_codes: list[str] = Field(
+        min_length=1,
+        description=(
+            "ISO 3166-1 alpha-2 country codes. At least one must appear on the "
+            "reference."
+        ),
+    )
+
+    @field_validator("country_codes")
+    @classmethod
+    def _check_iso_2_shape(cls, v: list[str]) -> list[str]:
+        invalid = [c for c in v if not _ISO_3166_ALPHA_2.fullmatch(c)]
+        if invalid:
+            msg = (
+                f"Invalid ISO 3166-1 alpha-2 code(s): "
+                f"{', '.join(repr(c) for c in invalid)}. "
+                "Each must be two uppercase letters."
+            )
+            raise ValueError(msg)
+        return v
+
+
+class LinkedDataCountryWBRegionFilter(BaseModel):
+    """
+    A set of World Bank region IDs to match on ``linked_data_country_wb_regions``.
+
+    OR within a filter; AND between filters. IDs must belong to the closed set
+    in :mod:`app.domain.references.services.world_bank_regions`.
+    """
+
+    region_ids: list[str] = Field(
+        min_length=1,
+        description=(
+            "World Bank region IDs. At least one must appear on the reference."
+        ),
+    )
+
+    @field_validator("region_ids")
+    @classmethod
+    def _check_known_region_ids(cls, v: list[str]) -> list[str]:
+        invalid = [r for r in v if r not in WORLD_BANK_REGIONS]
+        if invalid:
+            msg = (
+                f"Unknown World Bank region ID(s): "
+                f"{', '.join(repr(r) for r in invalid)}. "
+                f"Expected one of: {', '.join(sorted(WORLD_BANK_REGIONS))}."
+            )
+            raise ValueError(msg)
+        return v
+
+
 class FacetType(StrEnum):
     """A facet supported by the reference search facets endpoint."""
 
@@ -1130,6 +1194,22 @@ class SearchQuery(BaseModel):
             "OR-set of URIs."
         ),
     )
+    linked_data_country_filters: list[LinkedDataCountryFilter] = Field(
+        default_factory=list,
+        description=(
+            "Country code filters to AND with the query string. Each filter is an "
+            "OR-set of ISO 3166-1 alpha-2 codes."
+        ),
+    )
+    linked_data_country_wb_region_filters: list[LinkedDataCountryWBRegionFilter] = (
+        Field(
+            default_factory=list,
+            description=(
+                "World Bank region filters to AND with the query string. Each filter "
+                "is an OR-set of region IDs."
+            ),
+        )
+    )
 
 
 class SiblingGroup(BaseModel):
@@ -1138,12 +1218,14 @@ class SiblingGroup(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     selected: tuple[str, ...] = Field(
-        description="URIs the user selected from this sibling set.",
+        description="Values the user selected from this sibling set.",
     )
-    siblings_including_selected: frozenset[str] = Field(
+    siblings_including_selected: frozenset[str] | None = Field(
         description=(
-            "Union of the user's selection and their siblings. Used as the "
-            "``include`` set for the group's facet aggregation."
+            "Union of the user's selection and their siblings, used as the "
+            "``include`` set for the group's facet aggregation. ``None`` signals "
+            "universal mode: every value of the field is treated as a sibling, so "
+            "the agg uses no ``include`` filter."
         ),
     )
 

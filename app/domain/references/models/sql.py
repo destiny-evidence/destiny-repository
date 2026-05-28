@@ -29,6 +29,8 @@ from app.domain.references.models.models import (
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     SearchExportStatus,
@@ -457,6 +459,12 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
     linked_data_concept_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
         JSONB, nullable=True
     )
+    linked_data_country_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    linked_data_country_wb_region_filters: Mapped[list[dict[str, Any]] | None] = (
+        mapped_column(JSONB, nullable=True)
+    )
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
@@ -482,6 +490,14 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
             or None,
             linked_data_concept_filters=[
                 f.model_dump() for f in query.linked_data_concept_filters
+            ]
+            or None,
+            linked_data_country_filters=[
+                f.model_dump() for f in query.linked_data_country_filters
+            ]
+            or None,
+            linked_data_country_wb_region_filters=[
+                f.model_dump() for f in query.linked_data_country_wb_region_filters
             ]
             or None,
             start_year=year_range.start if year_range else None,
@@ -518,6 +534,14 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
                 linked_data_concept_filters=[
                     LinkedDataConceptFilter.model_validate(f)
                     for f in (self.linked_data_concept_filters or [])
+                ],
+                linked_data_country_filters=[
+                    LinkedDataCountryFilter.model_validate(f)
+                    for f in (self.linked_data_country_filters or [])
+                ],
+                linked_data_country_wb_region_filters=[
+                    LinkedDataCountryWBRegionFilter.model_validate(f)
+                    for f in (self.linked_data_country_wb_region_filters or [])
                 ],
             ),
             sort=self.sort,

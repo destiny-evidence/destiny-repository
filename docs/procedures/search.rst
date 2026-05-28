@@ -112,6 +112,43 @@ The ``concept`` parameter filters results by their linked-data concept URIs (mat
     # Get references annotated with (C00001 OR C00002) AND a third concept:
     ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001,https://vocab.evidence-repository.org/scheme/C00002&concept=https://vocab.evidence-repository.org/scheme/C00003
 
+Countries
+__________________________
+
+The ``country`` parameter filters results by ISO 3166-1 alpha-2 country codes.
+
+- Each ``country`` value is a single code, or a comma-separated list of codes.
+- Within a single value, codes are combined using ``OR``; multiple ``country`` parameters AND.
+- Codes are validated for shape only (two letters) and uppercased on input — e.g. ``us`` and ``US`` both pass through. Codes that don't match the ``[A-Z]{2}`` shape return ``400``.
+
+.. code-block::
+
+    # Get references tagged with the United States:
+    ?q=...&country=US
+
+    # Get references tagged with the United States, the UK, or France:
+    ?q=...&country=US,GB,FR
+
+    # Get references tagged with (US OR GB) AND (FR OR DE):
+    ?q=...&country=US,GB&country=FR,DE
+
+World Bank Regions
+__________________________
+
+The ``country_wb_region`` parameter filters results by World Bank region IDs.
+
+- Each value is a single region ID, or a comma-separated list of IDs.
+- Within a single value, IDs are combined using ``OR``; multiple parameters AND.
+- IDs come from a closed set: ``EAS``, ``ECS``, ``LCN``, ``MEA``, ``NAC``, ``SAS``, ``SSF``. Unknown IDs return ``400``.
+
+.. code-block::
+
+    # Get references tagged with North American countries:
+    ?q=...&country_wb_region=NAC
+
+    # Get references tagged with North America or East Asia & Pacific:
+    ?q=...&country_wb_region=NAC,EAS
+
 Page
 _____________
 
@@ -171,11 +208,17 @@ Accepts the same filter parameters as `/v1/references/search/` plus one or more 
 Sibling-aware facet counts
 __________________________
 
-When considering a facet's count, the behaviour is OR within its siblings and AND with everything else. For example, if you have two concept filters like:
-- ``concept=https://vocab.evidence-repository.org/Botany,https://vocab.evidence-repository.org/Zoology``
-- ``concept=https://vocab.evidence-repository.org/Africa``
+When you filter on a field *and* request that field's facet, the bucket counts show what you'd see if your selection were toggled - not the co-occurrence under your filter. The behaviour is OR within a sibling family and AND with everything else.
 
-Because of this, when ``concept=`` is supplied alongside ``facet=concepts``, you must also pass ``vocabulary=`` so that the repository can understand the sibling relationships.
+There are two flavours, distinguished by how siblings are defined:
+
+**Concepts.** A concept's siblings come from the SKOS vocabulary, so ``concept=`` must be supplied alongside ``vocabulary=`` when requesting ``facet=concepts``. Each ``concept=`` parameter is treated as one sibling group.
+
+For example, ``concept=Botany,Zoology`` AND ``concept=Africa`` with ``facet=concepts``:
+
+- The Botany/Zoology group's counts show every Topic concept (Botany, Zoology, Microbiology, …) as if you swapped the selection, with the Africa filter still applied.
+- The Africa group's counts show every Region concept (Africa, Asia, Europe, …), with the (Botany OR Zoology) filter still applied.
+- An "unselected" bucket surfaces any other concepts present on the matching references.
 
 .. code-block::
 
@@ -185,21 +228,31 @@ Because of this, when ``concept=`` is supplied alongside ``facet=concepts``, you
         &facet=concepts
         &vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
 
-Restrictions:
+Restrictions (400 on violation):
 
 1. URIs inside one ``concept=`` must share a sibling set in the vocabulary.
 2. Different ``concept=`` filters must have disjoint sibling sets.
 3. Every URI must resolve in the supplied vocabulary.
 
+**Countries and WB regions.** There's no vocabulary hierarchy here - the entire field is treated as one sibling family.
+
+.. code-block::
+
+    ?q=*&country=KE&facet=countries
+
+Restrictions (400 on violation):
+
+1. Only a single OR'd filter is supported when requesting the facet counts.
+
 Returns
 """"""""""
 
-Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceFacetResult>` object. The count for a URI is "references matching if you toggled this concept's selection state and left everything else alone."
+Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceFacetResult>` object. Each bucket's count is "references matching if you toggled this value's selection state and left everything else alone."
 
 Limitations
 """"""""""""
 
-Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). If a sibling group exceeds this, the request is refused rather than silently truncated.
+Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). For concept facets, if a sibling group's vocabulary set exceeds this the request is refused rather than silently truncated.
 
 .. _lookup-procedure:
 
