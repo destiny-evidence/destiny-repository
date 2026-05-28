@@ -19,6 +19,7 @@ from pydantic import (
     Field,
     HttpUrl,
     PositiveInt,
+    StringConstraints,
     TypeAdapter,
     field_validator,
     model_validator,
@@ -32,9 +33,8 @@ from app.domain.base import (
     SQLTimestampMixin,
     StateMachineMixin,
 )
-from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
+from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
-from app.utils.regex import ISO_3166_ALPHA_2_PATTERN
 from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
@@ -1109,54 +1109,30 @@ class LinkedDataCountryFilter(BaseModel):
     OR within a filter; AND between filters.
     """
 
-    country_codes: list[str] = Field(
-        min_length=1,
-        description=(
-            "ISO 3166-1 alpha-2 country codes. At least one must appear on the "
-            "reference."
-        ),
+    country_codes: list[Annotated[str, StringConstraints(pattern=r"^[A-Z]{2}$")]] = (
+        Field(
+            min_length=1,
+            description=(
+                "ISO 3166-1 alpha-2 country codes. At least one must appear on the "
+                "reference."
+            ),
+        )
     )
-
-    @field_validator("country_codes")
-    @classmethod
-    def _check_iso_2_shape(cls, v: list[str]) -> list[str]:
-        invalid = [c for c in v if not ISO_3166_ALPHA_2_PATTERN.fullmatch(c)]
-        if invalid:
-            msg = (
-                f"Invalid ISO 3166-1 alpha-2 code(s): "
-                f"{', '.join(repr(c) for c in invalid)}. "
-                "Each must be two uppercase letters."
-            )
-            raise ValueError(msg)
-        return v
 
 
 class LinkedDataCountryWBRegionFilter(BaseModel):
     """
     A set of World Bank region IDs to match on ``linked_data_country_wb_regions``.
 
-    OR within a filter; AND between filters. IDs come from a closed set.
+    OR within a filter; AND between filters.
     """
 
-    region_ids: list[str] = Field(
+    region_ids: list[WBRegionID] = Field(
         min_length=1,
         description=(
             "World Bank region IDs. At least one must appear on the reference."
         ),
     )
-
-    @field_validator("region_ids")
-    @classmethod
-    def _check_known_region_ids(cls, v: list[str]) -> list[str]:
-        invalid = [r for r in v if r not in WORLD_BANK_REGIONS]
-        if invalid:
-            msg = (
-                f"Unknown World Bank region ID(s): "
-                f"{', '.join(repr(r) for r in invalid)}. "
-                f"Expected one of: {', '.join(sorted(WORLD_BANK_REGIONS))}."
-            )
-            raise ValueError(msg)
-        return v
 
 
 class FacetType(StrEnum):

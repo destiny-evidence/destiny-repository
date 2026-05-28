@@ -129,7 +129,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     def _universal_sibling_groups(
         selections: Iterable[tuple[str, ...]],
     ) -> tuple[SiblingGroup, ...]:
-        """Build universal-mode groups (each group's siblings = entire field)."""
+        """Build universal-mode groups (siblings = entire field)."""
         groups = tuple(
             SiblingGroup(selected=selected, siblings_including_selected=None)
             for selected in selections

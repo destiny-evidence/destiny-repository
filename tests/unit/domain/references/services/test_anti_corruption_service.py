@@ -218,12 +218,12 @@ class TestLinkedDataCountryFilterFromQueryParameter:
     def test_rejects_non_iso_2_shape(
         self, service: ReferenceAntiCorruptionService
     ) -> None:
-        with pytest.raises(ValueError, match="Invalid ISO 3166-1 alpha-2"):
+        with pytest.raises(ValueError, match=r"should match pattern"):
             service.linked_data_country_filter_from_query_parameter("USA")
 
     def test_rejects_empty_value(self, service: ReferenceAntiCorruptionService) -> None:
-        # Trailing comma → empty fragment fails the [A-Z]{2} format check.
-        with pytest.raises(ValueError, match="Invalid ISO 3166-1 alpha-2"):
+        # Trailing comma → empty fragment fails the [A-Z]{2} pattern check.
+        with pytest.raises(ValueError, match=r"should match pattern"):
             service.linked_data_country_filter_from_query_parameter("US,")
 
 
@@ -245,5 +245,5 @@ class TestLinkedDataCountryWBRegionFilterFromQueryParameter:
     def test_rejects_unknown_region_id(
         self, service: ReferenceAntiCorruptionService
     ) -> None:
-        with pytest.raises(ValueError, match="Unknown World Bank region ID"):
+        with pytest.raises(ValueError, match=r"Input should be 'EAS'"):
             service.linked_data_country_wb_region_filter_from_query_parameter("XXX")

@@ -508,14 +508,23 @@ class ReferenceESRepository(
                 "filter",
                 filter=Bool(filter=other_clauses) if other_clauses else MatchAll(),
             )
-            terms_kwargs: dict[str, object] = {
-                "field": field,
-                "min_doc_count": 0,
-                "size": len(siblings) if siblings is not None else max_buckets,
-            }
-            if siblings is not None:
-                terms_kwargs["include"] = sorted(siblings)
-            outer.bucket("inner", "terms", **terms_kwargs)
+            if siblings is None:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=max_buckets,
+                )
+            else:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=len(siblings),
+                    include=sorted(siblings),
+                )
             names.append(name)
         return names
 
