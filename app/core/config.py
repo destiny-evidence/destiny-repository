@@ -565,6 +565,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    vocabulary_host: str = Field(
+        default="evidence-repository.org",
+        description=(
+            "Base host for vocabulary URIs accepted by vocabulary URI inputs. The "
+            "supplied URL must be a subdomain of this host."
+        ),
+    )
+
     full_text_max_byte_size: int = Field(
         default=1024**3,
         description=(

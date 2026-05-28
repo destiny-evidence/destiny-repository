@@ -4,10 +4,12 @@ from functools import lru_cache
 
 import httpx
 import tenacity
+from async_lru import alru_cache
 from cachetools import LRUCache
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from rdflib import Graph
+from rdflib import Graph, URIRef
+from rdflib.namespace import RDF, SKOS
 
 from app.core.exceptions import ContextNotPreFetchedError, VocabularyFetchError
 from app.core.telemetry.logger import get_logger
@@ -122,6 +124,21 @@ class VocabularyArtifactClient:
             "document": self._context_cache[url],
         }
 
+    @alru_cache(maxsize=128)
+    async def get_concept_labels(self, uri: str) -> dict[str, str]:
+        """Concept URI -> skos:prefLabel for the vocabulary."""
+        return _build_concept_labels(await self.get_vocabulary(uri))
+
+    @alru_cache(maxsize=128)
+    async def get_concept_schemes(self, uri: str) -> dict[str, str]:
+        """Concept URI -> skos:inScheme target for the vocabulary."""
+        return _build_concept_schemes(await self.get_vocabulary(uri))
+
+    @alru_cache(maxsize=128)
+    async def get_concept_siblings(self, uri: str) -> dict[str, frozenset[str]]:
+        """Concept URI -> sibling set (self-inclusive) for the vocabulary."""
+        return _build_concept_siblings(await self.get_vocabulary(uri))
+
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(httpx.TransportError),
         wait=tenacity.wait_exponential(multiplier=1, max=30),
@@ -158,3 +175,64 @@ class VocabularyArtifactClient:
 def get_vocabulary_artifact_client() -> VocabularyArtifactClient:
     """Return a singleton VocabularyArtifactClient instance."""
     return VocabularyArtifactClient()
+
+
+def _build_concept_labels(graph: Graph) -> dict[str, str]:
+    labels: dict[str, str] = {}
+    for concept, _, label in graph.triples((None, SKOS.prefLabel, None)):
+        if (concept, RDF.type, SKOS.Concept) in graph:
+            labels[str(concept)] = str(label)
+    return labels
+
+
+def _build_concept_schemes(graph: Graph) -> dict[str, str]:
+    return {
+        str(concept): str(scheme)
+        for concept, _, scheme in graph.triples((None, SKOS.inScheme, None))
+    }
+
+
+def _build_concept_siblings(graph: Graph) -> dict[str, frozenset[str]]:
+    children_by_parent: dict[URIRef, set[URIRef]] = {}
+    parents_by_concept: dict[URIRef, set[URIRef]] = {}
+    for concept, _, parent in graph.triples((None, SKOS.broader, None)):
+        if not isinstance(concept, URIRef) or not isinstance(parent, URIRef):
+            continue
+        children_by_parent.setdefault(parent, set()).add(concept)
+        parents_by_concept.setdefault(concept, set()).add(parent)
+
+    top_concepts_by_scheme: dict[URIRef, set[URIRef]] = {}
+    schemes_by_concept: dict[URIRef, set[URIRef]] = {}
+    # Vocabularies in the wild use both directions; rdflib doesn't derive
+    # SKOS inverses, so we read each direction explicitly.
+    top_concept_triples = list(graph.triples((None, SKOS.topConceptOf, None))) + [
+        (concept, None, scheme)
+        for scheme, _, concept in graph.triples((None, SKOS.hasTopConcept, None))
+    ]
+    for concept, _, scheme in top_concept_triples:
+        if not isinstance(concept, URIRef) or not isinstance(scheme, URIRef):
+            continue
+        top_concepts_by_scheme.setdefault(scheme, set()).add(concept)
+        schemes_by_concept.setdefault(concept, set()).add(scheme)
+
+    # Concepts declared only via skos:inScheme (no broader, no topConceptOf)
+    # are treated as implicit top concepts of their scheme — otherwise they'd
+    # be invisible to sibling lookups despite being valid SKOS.
+    for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
+        if not isinstance(concept, URIRef) or not isinstance(scheme, URIRef):
+            continue
+        if concept in parents_by_concept or concept in schemes_by_concept:
+            continue
+        top_concepts_by_scheme.setdefault(scheme, set()).add(concept)
+        schemes_by_concept.setdefault(concept, set()).add(scheme)
+
+    all_concepts: set[URIRef] = set(parents_by_concept) | set(schemes_by_concept)
+    siblings: dict[str, frozenset[str]] = {}
+    for concept in all_concepts:
+        peers: set[URIRef] = {concept}
+        for parent in parents_by_concept.get(concept, ()):
+            peers.update(children_by_parent[parent])
+        for scheme in schemes_by_concept.get(concept, ()):
+            peers.update(top_concepts_by_scheme[scheme])
+        siblings[str(concept)] = frozenset(str(peer) for peer in peers)
+    return siblings

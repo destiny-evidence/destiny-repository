@@ -154,6 +154,53 @@ Limitations
 
 There is a hard cap on the number of results at 10,000. You cannot page past this point, nor will :class:`total <libs.sdk.src.destiny_sdk.search.SearchResultTotal>` show more than this.
 
+.. _facets-procedure:
+
+API Facet Counts
+^^^^^^^^^^^^^^^^
+
+The `facets endpoint <https://api.evidence-repository.org/redoc#tag/search/operation/count_facets_for_search_v1_references_search_facets__get>`_ at `/v1/references/search/facets/` returns per-facet term counts across the references matching the search.
+
+Accepts the same filter parameters as `/v1/references/search/` plus one or more ``facet`` values. Only the requested facet types appear in the response.
+
+.. code-block::
+
+    # Count concepts across all references matching a query:
+    ?q=climate&facet=concepts
+
+Sibling-aware facet counts
+__________________________
+
+When considering a facet's count, the behaviour is OR within its siblings and AND with everything else. For example, if you have two concept filters like:
+- ``concept=https://vocab.evidence-repository.org/Botany,https://vocab.evidence-repository.org/Zoology``
+- ``concept=https://vocab.evidence-repository.org/Africa``
+
+Because of this, when ``concept=`` is supplied alongside ``facet=concepts``, you must also pass ``vocabulary=`` so that the repository can understand the sibling relationships.
+
+.. code-block::
+
+    # (Botany OR Zoology) AND Africa, with sibling-aware concept counts.
+    ?q=*&concept=https://vocab.evidence-repository.org/Botany,https://vocab.evidence-repository.org/Zoology
+        &concept=https://vocab.evidence-repository.org/Africa
+        &facet=concepts
+        &vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
+
+Restrictions:
+
+1. URIs inside one ``concept=`` must share a sibling set in the vocabulary.
+2. Different ``concept=`` filters must have disjoint sibling sets.
+3. Every URI must resolve in the supplied vocabulary.
+
+Returns
+""""""""""
+
+Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceFacetResult>` object. The count for a URI is "references matching if you toggled this concept's selection state and left everything else alone."
+
+Limitations
+""""""""""""
+
+Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). If a sibling group exceeds this, the request is refused rather than silently truncated.
+
 .. _lookup-procedure:
 
 API Lookup

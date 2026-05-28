@@ -4,6 +4,7 @@ from elasticsearch.dsl.query import Prefix, Range, Term, Terms
 
 from app.domain.references.models.models import (
     AnnotationFilter,
+    FacetType,
     LinkedDataConceptFilter,
     PublicationYearRange,
     SearchQuery,
@@ -153,4 +154,24 @@ def test_filters_combined_in_declaration_order():
         Range(publication_year={"gte": 2020}),
         Range(inclusion_destiny={"gte": 0.5}),
         Term(annotations="taxonomy:exposure/Heat"),
+    ]
+
+
+def test_build_filter_clauses_excludes_named_facet_filters():
+    """The sibling-aware path passes ``exclude_facet`` to drop that facet's filters."""
+    repository = _StubReferenceESRepository()
+    clauses = repository._build_filter_clauses(  # noqa: SLF001
+        SearchQuery(
+            query_string="*",
+            publication_year_range=PublicationYearRange(start=2020),
+            annotation_filters=[AnnotationFilter(scheme="taxonomy:x", label="y")],
+            linked_data_concept_filters=[
+                LinkedDataConceptFilter(concept_uris=["urn:a"]),
+            ],
+        ),
+        exclude_facet=FacetType.CONCEPTS,
+    )
+    assert clauses == [
+        Range(publication_year={"gte": 2020}),
+        Term(annotations="taxonomy:x/y"),
     ]

@@ -5,15 +5,22 @@ from collections.abc import Sequence
 from opentelemetry import trace
 
 from app.core.config import get_settings
+from app.core.exceptions import SiblingGroupingError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     FacetType,
+    LinkedDataConceptFilter,
     SearchQuery,
+    SiblingGroup,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.service import GenericService
+from app.external.vocabulary.client import (
+    VocabularyArtifactClient,
+    get_vocabulary_artifact_client,
+)
 from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -36,9 +43,11 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
         es_uow: AsyncESUnitOfWork,
+        vocab_client: VocabularyArtifactClient | None = None,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
+        self._vocab_client = vocab_client or get_vocabulary_artifact_client()
 
     async def search(
         self,
@@ -59,10 +68,87 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query: SearchQuery,
         facets: Sequence[FacetType],
+        vocabulary_uri: str | None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """Count occurrences per facet over references matching ``query``."""
+        max_buckets = settings.es_aggregation_max_buckets
+        sibling_groups_by_facet: dict[FacetType, tuple[SiblingGroup, ...]] = {}
+        if query.linked_data_concept_filters and FacetType.CONCEPTS in facets:
+            if not vocabulary_uri:
+                msg = (
+                    "`vocabulary=` is required when filtering on concepts and "
+                    "requesting the `concepts` facet."
+                )
+                raise SiblingGroupingError(msg)
+            groups = await self._resolve_concept_sibling_groups(
+                vocabulary_uri, query.linked_data_concept_filters
+            )
+            self._validate_groups_against_max_buckets(groups, max_buckets)
+            sibling_groups_by_facet[FacetType.CONCEPTS] = groups
         return await self.es_uow.references.aggregate_facets(
             query,
             facets,
-            max_buckets=settings.es_aggregation_max_buckets,
+            sibling_groups_by_facet=sibling_groups_by_facet,
+            max_buckets=max_buckets,
         )
+
+    @staticmethod
+    def _validate_groups_against_max_buckets(
+        groups: Sequence[SiblingGroup], max_buckets: int
+    ) -> None:
+        """Refuse if any group's sibling set would exceed ``max_buckets``."""
+        for i, group in enumerate(groups):
+            include_size = len(group.siblings_including_selected)
+            if include_size > max_buckets:
+                msg = (
+                    f"Sibling group {i} has {include_size} values (selected "
+                    f"+ siblings), exceeding max_buckets={max_buckets}. Counts "
+                    "would be silently truncated; refusing."
+                )
+                raise SiblingGroupingError(msg)
+
+    async def _resolve_concept_sibling_groups(
+        self,
+        vocabulary_uri: str,
+        concept_filters: Sequence[LinkedDataConceptFilter],
+    ) -> tuple[SiblingGroup, ...]:
+        """Resolve concept filters into sibling groups; raises on rule violations."""
+        siblings_map = await self._vocab_client.get_concept_siblings(vocabulary_uri)
+        groups: list[SiblingGroup] = []
+        for concept_filter in concept_filters:
+            unresolved = [
+                uri for uri in concept_filter.concept_uris if uri not in siblings_map
+            ]
+            if unresolved:
+                msg = (
+                    f"Concept URI(s) not found in vocabulary {vocabulary_uri!r}: "
+                    f"{', '.join(unresolved)}"
+                )
+                raise SiblingGroupingError(msg)
+            sibling_sets = {siblings_map[uri] for uri in concept_filter.concept_uris}
+            if len(sibling_sets) != 1:
+                msg = (
+                    "Concept filter mixes URIs from different sibling sets: "
+                    f"{concept_filter.concept_uris}"
+                )
+                raise SiblingGroupingError(msg)
+            (sibling_set,) = sibling_sets
+            groups.append(
+                SiblingGroup(
+                    selected=tuple(concept_filter.concept_uris),
+                    siblings_including_selected=sibling_set,
+                )
+            )
+        for i, group in enumerate(groups):
+            for other in groups[i + 1 :]:
+                overlap = (
+                    group.siblings_including_selected
+                    & other.siblings_including_selected
+                )
+                if overlap:
+                    msg = (
+                        "Two concept filters share a sibling set. Overlap: "
+                        f"{sorted(overlap)}"
+                    )
+                    raise SiblingGroupingError(msg)
+        return tuple(groups)

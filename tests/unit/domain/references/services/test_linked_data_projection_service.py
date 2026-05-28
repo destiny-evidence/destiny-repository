@@ -17,7 +17,11 @@ from app.domain.references.services.world_bank_regions import (
     SOUTH_ASIA,
     SUB_SAHARAN_AFRICA,
 )
-from app.external.vocabulary.client import VocabularyArtifactClient
+from app.external.vocabulary.client import (
+    VocabularyArtifactClient,
+    _build_concept_labels,
+    _build_concept_schemes,
+)
 
 ESEA_NS = "https://vocab.esea.education/"
 EVREPO_NS = "https://vocab.evidence-repository.org/"
@@ -37,6 +41,12 @@ def projector() -> LinkedDataProjectionService:
     client = MagicMock(spec=VocabularyArtifactClient)
     client.get_vocabulary = AsyncMock(return_value=vocab_graph)
     client.get_context = AsyncMock(return_value=context)
+    client.get_concept_labels = AsyncMock(
+        return_value=_build_concept_labels(vocab_graph)
+    )
+    client.get_concept_schemes = AsyncMock(
+        return_value=_build_concept_schemes(vocab_graph)
+    )
     return LinkedDataProjectionService(client)
 
 
@@ -56,6 +66,12 @@ def projector_with_evrepo() -> LinkedDataProjectionService:
     client = MagicMock(spec=VocabularyArtifactClient)
     client.get_vocabulary = AsyncMock(return_value=vocab_graph)
     client.get_context = AsyncMock(return_value=context)
+    client.get_concept_labels = AsyncMock(
+        return_value=_build_concept_labels(vocab_graph)
+    )
+    client.get_concept_schemes = AsyncMock(
+        return_value=_build_concept_schemes(vocab_graph)
+    )
     return LinkedDataProjectionService(client)
 
 
@@ -446,8 +462,7 @@ class TestLinkedDataProjectionService:
     @pytest.mark.asyncio
     async def test_scheme_to_property_mapping(self, projector):
         vocab_uri = "https://vocab.esea.education/vocabulary/v1"
-        vocab = await projector._get_vocabulary(vocab_uri)  # noqa: SLF001
-        mapping = vocab.scheme_to_property
+        mapping = await projector._get_scheme_to_property(vocab_uri)  # noqa: SLF001
         assert mapping[f"{ESEA_NS}DocumentTypeScheme"] == (f"{ESEA_NS}documentType")
         assert mapping[f"{ESEA_NS}EducationLevelScheme"] == (f"{ESEA_NS}educationLevel")
         assert mapping[f"{ESEA_NS}EducationThemeScheme"] == (f"{ESEA_NS}educationTheme")
@@ -462,9 +477,11 @@ class TestLinkedDataProjectionService:
         loaded, this returns exactly the two EffectEstimate concept properties.
         """
         vocab_uri = "https://vocab.esea.education/vocabulary/v1"
-        vocab = await projector_with_evrepo._get_vocabulary(vocab_uri)  # noqa: SLF001
+        properties = await projector_with_evrepo._get_unwrapped_concept_properties(  # noqa: SLF001
+            vocab_uri
+        )
 
-        assert vocab.unwrapped_concept_properties == {
+        assert properties == {
             f"{EVREPO_NS}effectSizeMetric",
             f"{EVREPO_NS}estimateSource",
         }

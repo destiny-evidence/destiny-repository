@@ -24,7 +24,14 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    HttpUrl,
+    ValidationError,
+    field_validator,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -382,6 +389,15 @@ def parse_linked_data_concept_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def _validate_vocab_host(url: HttpUrl) -> HttpUrl:
+    """Restrict ``vocabulary=`` to a subdomain of ``settings.vocabulary_host``."""
+    suffix = "." + settings.vocabulary_host
+    if not url.host or not url.host.endswith(suffix):
+        msg = f"vocabulary host must be a subdomain of {settings.vocabulary_host}."
+        raise ValueError(msg)
+    return url
+
+
 def parse_search_query(
     q: Annotated[
         str,
@@ -499,10 +515,15 @@ async def search_references(
         "(`concepts`), ISO 3166-1 alpha-2 country codes (`countries`), and World "
         "Bank region IDs (`country_wb_regions`). Only the requested facet types "
         "appear in the response.\n\n"
-        "⚠️ **Filters apply to facet counts of the same type.** If you filter on "
-        "a concept and request concept counts, the response shows co-occurrence "
-        "with your selection - siblings of selected concepts will typically appear "
-        "with very low counts, not their unfiltered counts.\n\n"
+        "When filtering on concepts and requesting the `concepts` facet, supply "
+        "`?vocabulary=` for sibling-aware counts. Each `?concept=` parameter is "
+        "treated as one sibling group; the server enforces (400 on violation):\n\n"
+        "1. URIs inside one `?concept=` must share a sibling set in the vocab.\n"
+        "2. Different `?concept=` filters must have disjoint sibling sets.\n"
+        "3. Every URI must resolve in the supplied vocabulary.\n\n"
+        "⚠️ **Other facets are not sibling-aware.** If you filter on a country and "
+        "request country counts, the response shows co-occurrence with your "
+        "selection, not the unfiltered counts.\n\n"
         f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets; "
         "very large vocabularies are truncated."
     ),
@@ -520,11 +541,26 @@ async def count_facets_for_search(
             description="One or more facet types to count.",
         ),
     ],
+    vocabulary: Annotated[
+        HttpUrl,
+        AfterValidator(_validate_vocab_host),
+        Query(
+            description=(
+                "Vocabulary URI for sibling-aware facet counting. Required when "
+                "filtering on concepts and requesting the `concepts` facet. "
+                f"Host must be a subdomain of `{settings.vocabulary_host}`."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
+            ],
+        ),
+    ] = None,
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
     buckets_by_facet = await reference_service.aggregate_facets(
         query,
         anti_corruption_service.facet_types_from_sdk(facet),
+        vocabulary_uri=str(vocabulary) if vocabulary else None,
     )
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 

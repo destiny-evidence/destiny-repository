@@ -15,6 +15,7 @@ from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     HttpUrl,
     PositiveInt,
@@ -1127,6 +1128,22 @@ class SearchQuery(BaseModel):
         description=(
             "Concept URI filters to AND with the query string. Each filter is an "
             "OR-set of URIs."
+        ),
+    )
+
+
+class SiblingGroup(BaseModel):
+    """A user-selected subset of a sibling set, for sibling-aware facet aggregation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    selected: tuple[str, ...] = Field(
+        description="URIs the user selected from this sibling set.",
+    )
+    siblings_including_selected: frozenset[str] = Field(
+        description=(
+            "Union of the user's selection and their siblings. Used as the "
+            "``include`` set for the group's facet aggregation."
         ),
     )
 

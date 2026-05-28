@@ -221,6 +221,15 @@ wheels = [
 ]
 
 [[package]]
+name = "async-lru"
+version = "2.3.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e8/1f/989ecfef8e64109a489fff357450cb73fa73a865a92bd8c272170a6922c2/async_lru-2.3.0.tar.gz", hash = "sha256:89bdb258a0140d7313cf8f4031d816a042202faa61d0ab310a0a538baa1c24b6", size = 16332, upload-time = "2026-03-19T01:04:32.413Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/e5/e2/c2e3abf398f80732e58b03be77bde9022550d221dd8781bf586bd4d97cc1/async_lru-2.3.0-py3-none-any.whl", hash = "sha256:eea27b01841909316f2cc739807acea1c623df2be8c5cfad7583286397bb8315", size = 8403, upload-time = "2026-03-19T01:04:30.883Z" },
+]
+
+[[package]]
 name = "asyncpg"
 version = "0.30.0"
 source = { registry = "https://pypi.org/simple" }
@@ -549,6 +558,7 @@ version = "2.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "async-lru" },
     { name = "asyncpg" },
     { name = "azure-identity" },
     { name = "azure-servicebus" },
@@ -620,6 +630,7 @@ test = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.16.1,<2" },
+    { name = "async-lru", specifier = ">=2.3.0" },
     { name = "asyncpg", specifier = ">=0.30.0,<0.31" },
     { name = "azure-identity", specifier = ">=1.21.0,<2" },
     { name = "azure-servicebus", specifier = ">=7.14.2,<8" },

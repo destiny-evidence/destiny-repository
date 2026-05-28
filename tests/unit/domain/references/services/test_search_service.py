@@ -1,19 +1,26 @@
 """Integration tests for search service."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import SiblingGroupingError
 from app.domain.references.models.models import (
     AnnotationFilter,
+    FacetType,
+    LinkedDataConceptFilter,
     PublicationYearRange,
     SearchQuery,
+    SiblingGroup,
 )
 from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.search_service import SearchService
+from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -52,10 +59,13 @@ async def search_service(
     es_uow.references = es_reference_repository
     sql_uow = AsyncSqlUnitOfWork(session)
 
+    vocab_client = MagicMock(spec=VocabularyArtifactClient)
+
     return SearchService(
         anti_corruption_service=anti_corruption_service,
         sql_uow=sql_uow,
         es_uow=es_uow,
+        vocab_client=vocab_client,
     )
 
 
@@ -237,3 +247,136 @@ async def test_search_with_query_string_taxonomy_annotation_filter(
         ),
     )
     assert (len(results.hits) == 1) == hit
+
+
+# ---- _resolve_sibling_grouping --------------------------------------------------
+
+VOCAB_URI = "https://vocab.example.org/vocabulary/v1"
+
+BOTANY = "https://vocab.example.org/Botany"
+ZOOLOGY = "https://vocab.example.org/Zoology"
+MICROBIOLOGY = "https://vocab.example.org/Microbiology"
+AFRICA = "https://vocab.example.org/Africa"
+ASIA = "https://vocab.example.org/Asia"
+EUROPE = "https://vocab.example.org/Europe"
+
+_TOPICS = frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY})
+_REGIONS = frozenset({AFRICA, ASIA, EUROPE})
+SIBLINGS_FIXTURE: dict[str, frozenset[str]] = {
+    **{uri: _TOPICS for uri in _TOPICS},
+    **{uri: _REGIONS for uri in _REGIONS},
+}
+
+
+@pytest.fixture
+def vocab_client_with_siblings() -> MagicMock:
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_concept_siblings = AsyncMock(return_value=SIBLINGS_FIXTURE)
+    return client
+
+
+def _service(vocab_client: MagicMock) -> SearchService:
+    return SearchService(
+        anti_corruption_service=MagicMock(spec=ReferenceAntiCorruptionService),
+        sql_uow=MagicMock(spec=AsyncSqlUnitOfWork),
+        es_uow=MagicMock(spec=AsyncESUnitOfWork),
+        vocab_client=vocab_client,
+    )
+
+
+async def test_resolve_concept_sibling_groups_happy_path(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Each filter becomes a group carrying its resolved sibling set."""
+    service = _service(vocab_client_with_siblings)
+    groups = await service._resolve_concept_sibling_groups(  # noqa: SLF001
+        VOCAB_URI,
+        [
+            LinkedDataConceptFilter(concept_uris=[BOTANY, ZOOLOGY]),
+            LinkedDataConceptFilter(concept_uris=[AFRICA]),
+        ],
+    )
+    assert [list(g.selected) for g in groups] == [
+        [BOTANY, ZOOLOGY],
+        [AFRICA],
+    ]
+    assert groups[0].siblings_including_selected == _TOPICS
+    assert groups[1].siblings_including_selected == _REGIONS
+
+
+async def test_resolve_concept_sibling_groups_raises_sibling_grouping_error(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Rule (a) violation: URIs from different sibling sets in one filter."""
+    with pytest.raises(SiblingGroupingError, match="different sibling sets"):
+        await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
+            VOCAB_URI,
+            [LinkedDataConceptFilter(concept_uris=[BOTANY, AFRICA])],
+        )
+
+
+async def test_resolve_concept_sibling_groups_rejects_overlapping_filters(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Rule (b) violation: two filters whose sibling sets overlap."""
+    with pytest.raises(SiblingGroupingError, match="share a sibling set"):
+        await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
+            VOCAB_URI,
+            [
+                LinkedDataConceptFilter(concept_uris=[BOTANY]),
+                LinkedDataConceptFilter(concept_uris=[ZOOLOGY]),
+            ],
+        )
+
+
+async def test_aggregate_facets_naive_when_concepts_not_requested(
+    vocab_client_with_siblings: MagicMock,
+):
+    """No concepts facet → repo called with empty mapping; vocab untouched."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    await service.aggregate_facets(
+        SearchQuery(
+            query_string="*",
+            linked_data_concept_filters=[
+                LinkedDataConceptFilter(concept_uris=[BOTANY])
+            ],
+        ),
+        facets=(),
+        vocabulary_uri=None,
+    )
+    vocab_client_with_siblings.get_concept_siblings.assert_not_called()
+    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert kwargs["sibling_groups_by_facet"] == {}
+
+
+async def test_aggregate_facets_raises_when_vocab_missing_but_required(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Concepts facet + concept filter + no vocab → SiblingGroupingError."""
+    service = _service(vocab_client_with_siblings)
+    with pytest.raises(SiblingGroupingError, match="`vocabulary=` is required"):
+        await service.aggregate_facets(
+            SearchQuery(
+                query_string="*",
+                linked_data_concept_filters=[
+                    LinkedDataConceptFilter(concept_uris=[BOTANY])
+                ],
+            ),
+            facets=(FacetType.CONCEPTS,),
+            vocabulary_uri=None,
+        )
+
+
+def test_validate_groups_against_max_buckets():
+    """Groups within the limit pass; over the limit raises SiblingGroupingError."""
+    groups = (
+        SiblingGroup(
+            selected=(BOTANY, ZOOLOGY),
+            siblings_including_selected=frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY}),
+        ),
+    )
+    SearchService._validate_groups_against_max_buckets(groups, max_buckets=3)  # noqa: SLF001
+    with pytest.raises(SiblingGroupingError, match="exceeding max_buckets"):
+        SearchService._validate_groups_against_max_buckets(groups, max_buckets=2)  # noqa: SLF001
