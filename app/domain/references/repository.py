@@ -425,7 +425,8 @@ class ReferenceESRepository(
         field = self._FACET_FIELDS[facet]
         group_clauses = [Terms(**{field: list(g.selected)}) for g in groups]
 
-        # Build search query wthout facet filter clauses
+        # Build search query excluding the facet's own filter so its agg
+        # includes sibling counts
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=0)
