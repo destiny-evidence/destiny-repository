@@ -418,16 +418,28 @@ class ReferenceESRepository(
         """
         Run sibling-aware aggregation for one facet.
 
-        Each group's selection becomes a Terms clause. Selections go on
-        ``post_filter`` so per-group aggs aren't constrained by other groups.
-        OR within a group (multi-URI Terms); AND between groups (per-group
-        agg filters by the *other* groups' selections).
+        Each group's selection becomes a Terms clause. Aggs are wrapped in
+        ``filter`` aggs that AND in the *other* groups' selections — OR within
+        a group (multi-URI Terms); AND between groups.
         """
         field = self._FACET_FIELDS[facet]
         group_clauses = [Terms(**{field: list(g.selected)}) for g in groups]
 
-        search = self._build_sibling_aware_base_search(query, facet, group_clauses)
+        # Build search query wthout facet filter clauses
+        search = (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .extra(size=0)
+            .query(
+                self._compose_query(
+                    query.query_string,
+                    self.default_search_fields,
+                    self._build_filter_clauses(query, exclude_facet=facet),
+                )
+            )
+            .source(includes=[])
+        )
 
+        # Attach aggregate groupings
         agg_names = [
             *self._attach_per_group_aggs(search, field, groups, group_clauses),
             self._attach_unselected_agg(
@@ -443,26 +455,6 @@ class ReferenceESRepository(
             raise ESQueryError(msg) from exc
 
         return self._parse_facet_buckets(response, agg_names)
-
-    def _build_sibling_aware_base_search(
-        self,
-        query: SearchQuery,
-        facet: FacetType,
-        group_clauses: Sequence[Query],
-    ) -> AsyncSearch:
-        """Compose the search: non-facet filters on hits+aggs, facet on post_filter."""
-        composed = self._compose_query(
-            query.query_string,
-            self.default_search_fields,
-            self._build_filter_clauses(query, exclude_facet=facet),
-        )
-        return (
-            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
-            .extra(size=0)
-            .query(composed)
-            .source(includes=[])
-            .post_filter(Bool(filter=list(group_clauses)))
-        )
 
     @staticmethod
     def _attach_per_group_aggs(

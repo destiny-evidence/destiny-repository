@@ -36,7 +36,7 @@ REGION_NAC = "NAC"
 
 # ---- Sibling vocabulary fixture for #703 ------------------------------------------
 
-VOCAB_URI = "https://vocab.example.org/test/v1"
+VOCAB_URI = "https://vocab.evidence-repository.org/test/v1"
 
 # Two schemes: a 2-level hierarchy and a flat one, mirroring the ticket's example.
 SIBLING_VOCAB_TURTLE = """\

@@ -24,7 +24,14 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, HttpUrl, ValidationError, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    HttpUrl,
+    ValidationError,
+    field_validator,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -382,6 +389,15 @@ def parse_linked_data_concept_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def _validate_vocab_host(url: HttpUrl) -> HttpUrl:
+    """Restrict ``vocabulary=`` to a subdomain of ``settings.vocabulary_host``."""
+    suffix = "." + settings.vocabulary_host
+    if not url.host or not url.host.endswith(suffix):
+        msg = f"vocabulary host must be a subdomain of {settings.vocabulary_host}."
+        raise ValueError(msg)
+    return url
+
+
 def parse_search_query(
     q: Annotated[
         str,
@@ -527,10 +543,12 @@ async def count_facets_for_search(
     ],
     vocabulary: Annotated[
         HttpUrl,
+        AfterValidator(_validate_vocab_host),
         Query(
             description=(
                 "Vocabulary URI for sibling-aware facet counting. Required when "
-                "filtering on concepts and requesting the `concepts` facet."
+                "filtering on concepts and requesting the `concepts` facet. "
+                f"Host must be a subdomain of `{settings.vocabulary_host}`."
             ),
             examples=[
                 "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
