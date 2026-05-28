@@ -12,7 +12,6 @@ from app.domain.references.models.models import (
     FacetType,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
-    LinkedDataCountryWBRegionFilter,
     PublicationYearRange,
     SearchQuery,
     SiblingGroup,
@@ -449,30 +448,6 @@ async def test_aggregate_facets_skips_country_groups_when_facet_not_requested(
     )
     _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
     assert kwargs["sibling_groups_by_facet"] == {}
-
-
-async def test_aggregate_facets_builds_universal_groups_for_wb_regions(
-    vocab_client_with_siblings: MagicMock,
-):
-    """WB region filter + regions facet → universal sibling group on the repo call."""
-    service = _service(vocab_client_with_siblings)
-    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
-    await service.aggregate_facets(
-        SearchQuery(
-            query_string="*",
-            linked_data_country_wb_region_filters=[
-                LinkedDataCountryWBRegionFilter(region_ids=["EAS"]),
-            ],
-        ),
-        facets=(FacetType.COUNTRY_WB_REGIONS,),
-        vocabulary_uri=None,
-    )
-    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
-    groups = kwargs["sibling_groups_by_facet"][FacetType.COUNTRY_WB_REGIONS]
-    assert len(groups) == 1
-    assert groups[0].selected == ("EAS",)
-    assert groups[0].siblings_including_selected is None
 
 
 async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(

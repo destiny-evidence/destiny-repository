@@ -7,6 +7,8 @@ _camel_case_pattern = re.compile(r"(?<!^)(?=[A-Z])")
 
 UNICODE_LETTER_PATTERN = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
 
+ISO_3166_ALPHA_2_PATTERN = re.compile(r"[A-Z]{2}")
+
 
 def is_meaningful_token(token: str, min_token_length: int) -> bool:
     """

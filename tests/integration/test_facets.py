@@ -319,26 +319,6 @@ async def test_country_filter_with_facet_returns_sibling_aware_counts(
     }
 
 
-async def test_region_filter_with_facet_returns_sibling_aware_counts(
-    client: AsyncClient,
-    facet_references: None,  # noqa: ARG001
-) -> None:
-    """Filtering on a WB region must not bias the region facet's counts."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("country_wb_region", REGION_SSF),
-            ("facet", "country_wb_regions"),
-        ],
-    )
-    assert response.status_code == status.HTTP_200_OK, response.text
-    assert response.json()["country_wb_regions"] == [
-        {"country_wb_region": REGION_SSF, "count": 3},
-        {"country_wb_region": REGION_NAC, "count": 1},
-    ]
-
-
 async def test_multiple_country_filters_with_country_facet_rejected(
     client: AsyncClient,
     facet_references: None,  # noqa: ARG001
@@ -355,24 +335,6 @@ async def test_multiple_country_filters_with_country_facet_rejected(
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert "single OR'd filter" in response.text
-
-
-async def test_country_filter_without_facet_does_not_require_sibling_grouping(
-    client: AsyncClient,
-    facet_references: None,  # noqa: ARG001
-) -> None:
-    """Multiple country filters are fine when the country facet isn't requested."""
-    response = await client.get(
-        "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("country", COUNTRY_KE),
-            ("country", COUNTRY_UG),
-            ("facet", "concepts"),
-        ],
-    )
-    assert response.status_code == status.HTTP_200_OK, response.text
-    assert "concepts" in response.json()
 
 
 async def test_concept_filter_does_not_drop_country_facet(

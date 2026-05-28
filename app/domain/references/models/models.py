@@ -2,7 +2,6 @@
 
 import datetime
 import json
-import re
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
@@ -35,11 +34,10 @@ from app.domain.base import (
 )
 from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.persistence.blob.models import BlobStorageFile
+from app.utils.regex import ISO_3166_ALPHA_2_PATTERN
 from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
-
-_ISO_3166_ALPHA_2 = re.compile(r"[A-Z]{2}")
 
 ExternalIdentifierAdapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
     ExternalIdentifier,
@@ -1108,9 +1106,7 @@ class LinkedDataCountryFilter(BaseModel):
     """
     A set of ISO 3166-1 alpha-2 codes to match on ``linked_data_countries``.
 
-    OR within a filter; AND between filters. Codes are validated for shape
-    ([A-Z]{2}) but not membership in any specific country list — codes added
-    after our regional snapshot still need to be searchable.
+    OR within a filter; AND between filters.
     """
 
     country_codes: list[str] = Field(
@@ -1124,7 +1120,7 @@ class LinkedDataCountryFilter(BaseModel):
     @field_validator("country_codes")
     @classmethod
     def _check_iso_2_shape(cls, v: list[str]) -> list[str]:
-        invalid = [c for c in v if not _ISO_3166_ALPHA_2.fullmatch(c)]
+        invalid = [c for c in v if not ISO_3166_ALPHA_2_PATTERN.fullmatch(c)]
         if invalid:
             msg = (
                 f"Invalid ISO 3166-1 alpha-2 code(s): "
@@ -1139,8 +1135,7 @@ class LinkedDataCountryWBRegionFilter(BaseModel):
     """
     A set of World Bank region IDs to match on ``linked_data_country_wb_regions``.
 
-    OR within a filter; AND between filters. IDs must belong to the closed set
-    in :mod:`app.domain.references.services.world_bank_regions`.
+    OR within a filter; AND between filters. IDs come from a closed set.
     """
 
     region_ids: list[str] = Field(
