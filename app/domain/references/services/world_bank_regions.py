@@ -7,6 +7,8 @@ snapshotted 2026-05-25. Validate against the live API with
 ``uv run python -m app.utils.refresh_world_bank_regions``.
 """
 
+from typing import Literal, get_args
+
 # Stored values are World Bank region IDs, matching the symmetric choice we
 # made for ``linked_data_countries`` (ISO codes, not country names). IDs are
 # stable across WB renames — e.g. ``MEA`` kept its ID when the region's
@@ -19,17 +21,9 @@ NORTH_AMERICA = "NAC"
 SOUTH_ASIA = "SAS"
 SUB_SAHARAN_AFRICA = "SSF"
 
-WORLD_BANK_REGIONS: frozenset[str] = frozenset(
-    {
-        EAST_ASIA_PACIFIC,
-        EUROPE_CENTRAL_ASIA,
-        LATIN_AMERICA_CARIBBEAN,
-        MIDDLE_EAST_NORTH_AFRICA_AFGHANISTAN_PAKISTAN,
-        NORTH_AMERICA,
-        SOUTH_ASIA,
-        SUB_SAHARAN_AFRICA,
-    }
-)
+WBRegionID = Literal["EAS", "ECS", "LCN", "MEA", "NAC", "SAS", "SSF"]
+
+WORLD_BANK_REGIONS: frozenset[str] = frozenset(get_args(WBRegionID))
 
 ISO_TO_WB_REGION: dict[str, str] = {
     "AD": EUROPE_CENTRAL_ASIA,

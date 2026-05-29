@@ -279,6 +279,87 @@ async def test_multiple_facets_returned_together(
     assert "country_wb_regions" not in body
 
 
+async def test_country_filter_applies_structurally_to_other_facets(
+    client: AsyncClient,
+    facet_references: None,  # noqa: ARG001
+) -> None:
+    """``?country=`` ANDs into the search; comma-separated values OR within."""
+    # Docs with KE OR UG: doc 1 (A,B), doc 2 (A), doc 4 (B). doc 3 (A,C; US)
+    # and doc 5 (no facets) must be excluded.
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("country", f"{COUNTRY_KE},{COUNTRY_UG}"),
+            ("facet", "concepts"),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    counts = {b["concept"]: b["count"] for b in response.json()["concepts"]}
+    assert counts == {CONCEPT_A: 2, CONCEPT_B: 2}
+
+
+async def test_country_filter_with_facet_returns_sibling_aware_counts(
+    client: AsyncClient,
+    facet_references: None,  # noqa: ARG001
+) -> None:
+    """Filtering on a country must not bias the country facet's counts."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[("q", "*"), ("country", COUNTRY_KE), ("facet", "countries")],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # Without sibling-aware counting we'd see only KE=2 + co-occurring UG=1 and
+    # miss US entirely. Universal-mode strips the country filter from the agg
+    # so the buckets reflect the unfiltered counts.
+    assert {(b["country"], b["count"]) for b in response.json()["countries"]} == {
+        (COUNTRY_KE, 2),
+        (COUNTRY_UG, 2),
+        (COUNTRY_US, 1),
+    }
+
+
+async def test_region_filter_with_facet_returns_sibling_aware_counts(
+    client: AsyncClient,
+    facet_references: None,  # noqa: ARG001
+) -> None:
+    """Filtering on a WB region must not bias the region facet's counts."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("country_wb_region", REGION_SSF),
+            ("facet", "country_wb_regions"),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # Without the sibling-aware path we'd see only SSF=3 and lose NAC entirely;
+    # universal mode strips the region filter from the agg so both buckets
+    # report their unrestricted counts.
+    assert response.json()["country_wb_regions"] == [
+        {"country_wb_region": REGION_SSF, "count": 3},
+        {"country_wb_region": REGION_NAC, "count": 1},
+    ]
+
+
+async def test_multiple_country_filters_with_country_facet_rejected(
+    client: AsyncClient,
+    facet_references: None,  # noqa: ARG001
+) -> None:
+    """AND'd country filters can't be sibling-aware aggregated; expect 400."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("country", COUNTRY_KE),
+            ("country", COUNTRY_UG),
+            ("facet", "countries"),
+        ],
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "single OR'd filter" in response.text
+
+
 async def test_concept_filter_does_not_drop_country_facet(
     client: AsyncClient,
     facet_references: None,  # noqa: ARG001

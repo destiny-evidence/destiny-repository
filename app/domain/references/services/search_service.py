@@ -1,6 +1,6 @@
 """Service for searching references."""
 
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 
 from opentelemetry import trace
 
@@ -85,6 +85,22 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             )
             self._validate_groups_against_max_buckets(groups, max_buckets)
             sibling_groups_by_facet[FacetType.CONCEPTS] = groups
+        if query.linked_data_country_filters and FacetType.COUNTRIES in facets:
+            sibling_groups_by_facet[FacetType.COUNTRIES] = (
+                self._universal_sibling_groups(
+                    tuple(f.country_codes) for f in query.linked_data_country_filters
+                )
+            )
+        if (
+            query.linked_data_country_wb_region_filters
+            and FacetType.COUNTRY_WB_REGIONS in facets
+        ):
+            sibling_groups_by_facet[FacetType.COUNTRY_WB_REGIONS] = (
+                self._universal_sibling_groups(
+                    tuple(f.region_ids)
+                    for f in query.linked_data_country_wb_region_filters
+                )
+            )
         return await self.es_uow.references.aggregate_facets(
             query,
             facets,
@@ -96,16 +112,36 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     def _validate_groups_against_max_buckets(
         groups: Sequence[SiblingGroup], max_buckets: int
     ) -> None:
-        """Refuse if any group's sibling set would exceed ``max_buckets``."""
+        """Refuse if any enumerated group would exceed ``max_buckets``."""
         for i, group in enumerate(groups):
-            include_size = len(group.siblings_including_selected)
-            if include_size > max_buckets:
+            siblings = group.siblings_including_selected
+            if siblings is None:
+                continue
+            if len(siblings) > max_buckets:
                 msg = (
-                    f"Sibling group {i} has {include_size} values (selected "
+                    f"Sibling group {i} has {len(siblings)} values (selected "
                     f"+ siblings), exceeding max_buckets={max_buckets}. Counts "
                     "would be silently truncated; refusing."
                 )
                 raise SiblingGroupingError(msg)
+
+    @staticmethod
+    def _universal_sibling_groups(
+        selections: Iterable[tuple[str, ...]],
+    ) -> tuple[SiblingGroup, ...]:
+        """Build universal-mode groups (siblings = entire field)."""
+        groups = tuple(
+            SiblingGroup(selected=selected, siblings_including_selected=None)
+            for selected in selections
+        )
+        if len(groups) > 1:
+            msg = (
+                "Multiple AND'd filters are not supported when requesting "
+                "sibling-aware counts for this facet. Combine them into a single OR'd "
+                "filter."
+            )
+            raise SiblingGroupingError(msg)
+        return groups
 
     async def _resolve_concept_sibling_groups(
         self,
@@ -139,12 +175,15 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                     siblings_including_selected=sibling_set,
                 )
             )
-        for i, group in enumerate(groups):
-            for other in groups[i + 1 :]:
-                overlap = (
-                    group.siblings_including_selected
-                    & other.siblings_including_selected
-                )
+        resolved_siblings: list[frozenset[str]] = []
+        for group in groups:
+            if group.siblings_including_selected is None:
+                msg = "_resolve_concept_sibling_groups produced a universal group."
+                raise ValueError(msg)
+            resolved_siblings.append(group.siblings_including_selected)
+        for i, sib_a in enumerate(resolved_siblings):
+            for sib_b in resolved_siblings[i + 1 :]:
+                overlap = sib_a & sib_b
                 if overlap:
                     msg = (
                         "Two concept filters share a sibling set. Overlap: "

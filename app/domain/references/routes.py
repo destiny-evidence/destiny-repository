@@ -59,6 +59,8 @@ from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
     LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceIds,
@@ -389,6 +391,72 @@ def parse_linked_data_concept_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def parse_linked_data_country_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    country: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of country filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_countries` "
+                "contain at least one of the listed ISO 3166-1 alpha-2 codes.\n"
+                "- Within a single value, separate multiple codes with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `country` parameters are combined with AND logic."
+            ),
+            examples=["US", "US,GB,FR"],
+        ),
+    ] = None,
+) -> list[LinkedDataCountryFilter]:
+    """Parse country filters from query parameters."""
+    if not country:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_country_filter_from_query_parameter(
+                country_filter_string
+            )
+            for country_filter_string in country
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def parse_linked_data_country_wb_region_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    country_wb_region: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of World Bank region filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_country_wb_"
+                "regions` contain at least one of the listed region IDs.\n"
+                "- Within a single value, separate multiple IDs with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `country_wb_region` parameters are combined with AND."
+            ),
+            examples=["EAS", "EAS,ECS"],
+        ),
+    ] = None,
+) -> list[LinkedDataCountryWBRegionFilter]:
+    """Parse World Bank region filters from query parameters."""
+    if not country_wb_region:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_country_wb_region_filter_from_query_parameter(
+                region_filter_string
+            )
+            for region_filter_string in country_wb_region
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
 def _validate_vocab_host(url: HttpUrl) -> HttpUrl:
     """Restrict ``vocabulary=`` to a subdomain of ``settings.vocabulary_host``."""
     suffix = "." + settings.vocabulary_host
@@ -415,6 +483,14 @@ def parse_search_query(
         list[LinkedDataConceptFilter],
         Depends(parse_linked_data_concept_filters),
     ],
+    linked_data_country_filters: Annotated[
+        list[LinkedDataCountryFilter],
+        Depends(parse_linked_data_country_filters),
+    ],
+    linked_data_country_wb_region_filters: Annotated[
+        list[LinkedDataCountryWBRegionFilter],
+        Depends(parse_linked_data_country_wb_region_filters),
+    ],
 ) -> SearchQuery:
     """Bundle the shared search parameters into a domain SearchQuery."""
     return SearchQuery(
@@ -422,6 +498,8 @@ def parse_search_query(
         annotation_filters=annotation_filters,
         publication_year_range=publication_year_range,
         linked_data_concept_filters=linked_data_concept_filters,
+        linked_data_country_filters=linked_data_country_filters,
+        linked_data_country_wb_region_filters=linked_data_country_wb_region_filters,
     )
 
 
@@ -509,23 +587,20 @@ async def search_references(
         }
     },
     description=(
-        "Return per-facet counts across the references matching the search.\n\n"
-        "Accepts the same filter parameters as `/references/search/`, plus one or "
-        "more `?facet=` values. Counts are available for linked-data concepts "
-        "(`concepts`), ISO 3166-1 alpha-2 country codes (`countries`), and World "
-        "Bank region IDs (`country_wb_regions`). Only the requested facet types "
-        "appear in the response.\n\n"
-        "When filtering on concepts and requesting the `concepts` facet, supply "
-        "`?vocabulary=` for sibling-aware counts. Each `?concept=` parameter is "
-        "treated as one sibling group; the server enforces (400 on violation):\n\n"
-        "1. URIs inside one `?concept=` must share a sibling set in the vocab.\n"
-        "2. Different `?concept=` filters must have disjoint sibling sets.\n"
-        "3. Every URI must resolve in the supplied vocabulary.\n\n"
-        "⚠️ **Other facets are not sibling-aware.** If you filter on a country and "
-        "request country counts, the response shows co-occurrence with your "
-        "selection, not the unfiltered counts.\n\n"
-        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets; "
-        "very large vocabularies are truncated."
+        "Per-facet term counts over the references matching the search. "
+        "Accepts the same filters as `/references/search/`; add one or more "
+        "`?facet=` values (`concepts`, `countries`, `country_wb_regions`).\n\n"
+        "**Sibling-aware counts.** When you filter on a field *and* request its "
+        "facet, the counts show what you'd see if your selection were toggled — "
+        "not the co-occurrence under your filter.\n\n"
+        "For `concepts`, supply `?vocabulary=`. Each `?concept=` parameter is "
+        "one sibling group; the server enforces (400 on violation):\n\n"
+        "- URIs inside one `?concept=` must share a sibling set.\n"
+        "- Different `?concept=` filters must have disjoint sibling sets.\n"
+        "- Every URI must resolve in the vocabulary.\n\n"
+        "For all other facets, supply a single OR'd filter when requesting "
+        "the matching facet (multiple AND'd filters return 400).\n\n"
+        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets."
     ),
 )
 async def count_facets_for_search(

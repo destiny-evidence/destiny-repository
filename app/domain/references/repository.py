@@ -42,6 +42,8 @@ from app.domain.references.models.models import (
     FacetType,
     GenericExternalIdentifier,
     LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceSearchProjection,
@@ -303,6 +305,20 @@ class ReferenceESRepository(
         """Terms clause matching any of the listed concept URIs (OR semantics)."""
         return Terms(linked_data_concepts=concept_filter.concept_uris)
 
+    def _build_linked_data_country_clause(
+        self,
+        country_filter: LinkedDataCountryFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed ISO codes (OR semantics)."""
+        return Terms(linked_data_countries=country_filter.country_codes)
+
+    def _build_linked_data_country_wb_region_clause(
+        self,
+        region_filter: LinkedDataCountryWBRegionFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed WB region IDs (OR semantics)."""
+        return Terms(linked_data_country_wb_regions=region_filter.region_ids)
+
     def _build_annotation_clause(self, annotation: AnnotationFilter) -> Query:
         """
         Build a structured DSL clause for an annotation filter.
@@ -340,6 +356,16 @@ class ReferenceESRepository(
             clauses.extend(
                 self._build_linked_data_concept_clause(concept_filter)
                 for concept_filter in query.linked_data_concept_filters
+            )
+        if exclude_facet is not FacetType.COUNTRIES:
+            clauses.extend(
+                self._build_linked_data_country_clause(country_filter)
+                for country_filter in query.linked_data_country_filters
+            )
+        if exclude_facet is not FacetType.COUNTRY_WB_REGIONS:
+            clauses.extend(
+                self._build_linked_data_country_wb_region_clause(region_filter)
+                for region_filter in query.linked_data_country_wb_region_filters
             )
         return clauses
 
@@ -441,12 +467,17 @@ class ReferenceESRepository(
         )
 
         # Attach aggregate groupings
-        agg_names = [
-            *self._attach_per_group_aggs(search, field, groups, group_clauses),
-            self._attach_unselected_agg(
-                search, field, groups, group_clauses, max_buckets=max_buckets
-            ),
-        ]
+        agg_names = self._attach_per_group_aggs(
+            search, field, groups, group_clauses, max_buckets=max_buckets
+        )
+        # Universal-mode groups cover the whole field domain, so the "unselected"
+        # bucket is empty - skip the agg in that case.
+        if all(g.siblings_including_selected is not None for g in groups):
+            agg_names.append(
+                self._attach_unselected_agg(
+                    search, field, groups, group_clauses, max_buckets=max_buckets
+                )
+            )
 
         trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
         try:
@@ -463,26 +494,37 @@ class ReferenceESRepository(
         field: str,
         groups: Sequence[SiblingGroup],
         group_clauses: Sequence[Query],
+        *,
+        max_buckets: int,
     ) -> list[str]:
         """Attach one filter+terms agg per group to count each group's sibling set."""
         names: list[str] = []
         for i, group in enumerate(groups):
             other_clauses = [c for j, c in enumerate(group_clauses) if j != i]
-            include = sorted(group.siblings_including_selected)
+            siblings = group.siblings_including_selected
             name = f"facet_group_{i}"
             outer = search.aggs.bucket(
                 name,
                 "filter",
                 filter=Bool(filter=other_clauses) if other_clauses else MatchAll(),
             )
-            outer.bucket(
-                "inner",
-                "terms",
-                field=field,
-                include=include,
-                min_doc_count=0,
-                size=len(include),
-            )
+            if siblings is None:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=max_buckets,
+                )
+            else:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=len(siblings),
+                    include=sorted(siblings),
+                )
             names.append(name)
         return names
 
@@ -496,9 +538,13 @@ class ReferenceESRepository(
         max_buckets: int,
     ) -> str:
         """Attach the ``unselected`` agg: field values outside any group's siblings."""
-        all_grouped_uris = frozenset().union(
-            *(g.siblings_including_selected for g in groups)
-        )
+        sibling_sets: list[frozenset[str]] = []
+        for g in groups:
+            if g.siblings_including_selected is None:
+                msg = "_attach_unselected_agg requires enumerated sibling groups."
+                raise ValueError(msg)
+            sibling_sets.append(g.siblings_including_selected)
+        all_grouped_uris: frozenset[str] = frozenset().union(*sibling_sets)
         outer = search.aggs.bucket(
             "unselected", "filter", filter=Bool(filter=list(group_clauses))
         )

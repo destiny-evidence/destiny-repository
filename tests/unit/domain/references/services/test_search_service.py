@@ -11,6 +11,7 @@ from app.domain.references.models.models import (
     AnnotationFilter,
     FacetType,
     LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
     PublicationYearRange,
     SearchQuery,
     SiblingGroup,
@@ -380,3 +381,91 @@ def test_validate_groups_against_max_buckets():
     SearchService._validate_groups_against_max_buckets(groups, max_buckets=3)  # noqa: SLF001
     with pytest.raises(SiblingGroupingError, match="exceeding max_buckets"):
         SearchService._validate_groups_against_max_buckets(groups, max_buckets=2)  # noqa: SLF001
+
+
+def test_validate_groups_against_max_buckets_skips_universal_groups():
+    """Universal-mode groups have no enumerated cardinality; validator skips them."""
+    groups = (SiblingGroup(selected=("US", "GB"), siblings_including_selected=None),)
+    SearchService._validate_groups_against_max_buckets(groups, max_buckets=1)  # noqa: SLF001
+
+
+def test_universal_sibling_groups_happy_path():
+    """One filter → one universal-mode group carrying the selected values."""
+    groups = SearchService._universal_sibling_groups(  # noqa: SLF001
+        [("US", "GB", "FR")],
+    )
+    assert len(groups) == 1
+    assert groups[0].selected == ("US", "GB", "FR")
+    assert groups[0].siblings_including_selected is None
+
+
+def test_universal_sibling_groups_rejects_multiple_filters():
+    """AND'd universal filters always overlap; reject with a clear message."""
+    with pytest.raises(SiblingGroupingError, match="single OR'd filter"):
+        SearchService._universal_sibling_groups([("US",), ("GB",)])  # noqa: SLF001
+
+
+async def test_aggregate_facets_builds_universal_groups_for_countries(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Country filter + countries facet → universal sibling group on the repo call."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    await service.aggregate_facets(
+        SearchQuery(
+            query_string="*",
+            linked_data_country_filters=[
+                LinkedDataCountryFilter(country_codes=["US", "GB"]),
+            ],
+        ),
+        facets=(FacetType.COUNTRIES,),
+        vocabulary_uri=None,
+    )
+    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    groups = kwargs["sibling_groups_by_facet"][FacetType.COUNTRIES]
+    assert len(groups) == 1
+    assert groups[0].selected == ("US", "GB")
+    assert groups[0].siblings_including_selected is None
+
+
+async def test_aggregate_facets_skips_country_groups_when_facet_not_requested(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Country filter without the countries facet → no sibling groups built."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    await service.aggregate_facets(
+        SearchQuery(
+            query_string="*",
+            linked_data_country_filters=[
+                LinkedDataCountryFilter(country_codes=["US"]),
+            ],
+        ),
+        facets=(),
+        vocabulary_uri=None,
+    )
+    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert kwargs["sibling_groups_by_facet"] == {}
+
+
+async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Two AND'd country filters with the countries facet → SiblingGroupingError."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    with pytest.raises(SiblingGroupingError, match="single OR'd filter"):
+        await service.aggregate_facets(
+            SearchQuery(
+                query_string="*",
+                linked_data_country_filters=[
+                    LinkedDataCountryFilter(country_codes=["US"]),
+                    LinkedDataCountryFilter(country_codes=["GB"]),
+                ],
+            ),
+            facets=(FacetType.COUNTRIES,),
+            vocabulary_uri=None,
+        )
