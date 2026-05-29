@@ -175,11 +175,15 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                     siblings_including_selected=sibling_set,
                 )
             )
-        for i, group in enumerate(groups):
-            for other in groups[i + 1 :]:
-                overlap = (group.siblings_including_selected or frozenset()) & (
-                    other.siblings_including_selected or frozenset()
-                )
+        resolved_siblings: list[frozenset[str]] = []
+        for group in groups:
+            if group.siblings_including_selected is None:
+                msg = "_resolve_concept_sibling_groups produced a universal group."
+                raise ValueError(msg)
+            resolved_siblings.append(group.siblings_including_selected)
+        for i, sib_a in enumerate(resolved_siblings):
+            for sib_b in resolved_siblings[i + 1 :]:
+                overlap = sib_a & sib_b
                 if overlap:
                     msg = (
                         "Two concept filters share a sibling set. Overlap: "

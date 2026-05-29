@@ -319,6 +319,29 @@ async def test_country_filter_with_facet_returns_sibling_aware_counts(
     }
 
 
+async def test_region_filter_with_facet_returns_sibling_aware_counts(
+    client: AsyncClient,
+    facet_references: None,  # noqa: ARG001
+) -> None:
+    """Filtering on a WB region must not bias the region facet's counts."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("country_wb_region", REGION_SSF),
+            ("facet", "country_wb_regions"),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # Without the sibling-aware path we'd see only SSF=3 and lose NAC entirely;
+    # universal mode strips the region filter from the agg so both buckets
+    # report their unrestricted counts.
+    assert response.json()["country_wb_regions"] == [
+        {"country_wb_region": REGION_SSF, "count": 3},
+        {"country_wb_region": REGION_NAC, "count": 1},
+    ]
+
+
 async def test_multiple_country_filters_with_country_facet_rejected(
     client: AsyncClient,
     facet_references: None,  # noqa: ARG001

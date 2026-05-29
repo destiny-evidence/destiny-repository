@@ -538,9 +538,13 @@ class ReferenceESRepository(
         max_buckets: int,
     ) -> str:
         """Attach the ``unselected`` agg: field values outside any group's siblings."""
-        all_grouped_uris: frozenset[str] = frozenset().union(
-            *(g.siblings_including_selected or () for g in groups)
-        )
+        sibling_sets: list[frozenset[str]] = []
+        for g in groups:
+            if g.siblings_including_selected is None:
+                msg = "_attach_unselected_agg requires enumerated sibling groups."
+                raise ValueError(msg)
+            sibling_sets.append(g.siblings_including_selected)
+        all_grouped_uris: frozenset[str] = frozenset().union(*sibling_sets)
         outer = search.aggs.bucket(
             "unselected", "filter", filter=Bool(filter=list(group_clauses))
         )
