@@ -139,6 +139,7 @@ env.bak/
 venv.bak/
 cli/.env.*
 !/cli/.env.example
+!/cli/.env.*.example
 
 # Spyder project settings
 .spyderproject
@@ -202,6 +203,7 @@ libs/fake_data/*.jsonl
 .data
 .env.*
 !.env.example
+!cli/.env.*.example
 .idea/
 
 .test.tmp

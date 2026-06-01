@@ -1,13 +1,17 @@
 """Repositories for references and associated models."""
 
 import datetime
+import json
 from abc import ABC
-from collections.abc import Sequence
-from typing import Literal
+from collections.abc import Mapping, Sequence
+from typing import ClassVar, Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
+from elasticsearch.dsl.query import Bool, MatchAll, Prefix, Query, Range, Term, Terms
+from elasticsearch.dsl.response import Response
+from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
 from sqlalchemy import (
     CompoundSelect,
@@ -24,19 +28,29 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.config import DedupCandidateScoringConfig, get_settings
+from app.core.exceptions import ESQueryError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
 )
 from app.domain.references.models.models import (
+    AnnotationFilter,
     CandidateCanonicalSearchFields,
     DuplicateDetermination,
+    FacetType,
     GenericExternalIdentifier,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
+    PublicationYearRange,
     ReferenceSearchProjection,
     ReferenceWithChangeset,
     RobotAutomationPercolationResult,
+    SearchQuery,
+    SiblingGroup,
 )
 from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
@@ -88,7 +102,11 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.models.sql import SearchExport as SQLSearchExport
 from app.persistence.blob.models import BlobStorageFile
-from app.persistence.es.persistence import ESScoreResult
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESScoreResult,
+    ESSearchResult,
+)
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
@@ -245,6 +263,19 @@ class ReferenceESRepository(
 ):
     """Concrete implementation of a repository for references using Elasticsearch."""
 
+    default_search_fields: ClassVar[tuple[str, ...]] = (
+        "title",
+        "abstract",
+    )
+    """Fields the user-supplied query string searches against by default."""
+
+    _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
+        FacetType.CONCEPTS: "linked_data_concepts",
+        FacetType.COUNTRIES: "linked_data_countries",
+        FacetType.COUNTRY_WB_REGIONS: "linked_data_country_wb_regions",
+    }
+    """Mapping from a facet type to the ES field its counts are aggregated on."""
+
     def __init__(self, client: AsyncElasticsearch) -> None:
         """Initialize the repository with the Elasticsearch client."""
         super().__init__(
@@ -252,6 +283,291 @@ class ReferenceESRepository(
             ReferenceSearchProjection,
             ReferenceDocument,
         )
+
+    def _build_publication_year_clause(
+        self,
+        publication_year_range: PublicationYearRange,
+    ) -> Query | None:
+        """Range clause on ``publication_year``; ``None`` if both bounds are unset."""
+        bounds: dict[str, int] = {}
+        if publication_year_range.start is not None:
+            bounds["gte"] = publication_year_range.start
+        if publication_year_range.end is not None:
+            bounds["lte"] = publication_year_range.end
+        if not bounds:
+            return None
+        return Range(publication_year=bounds)
+
+    def _build_linked_data_concept_clause(
+        self,
+        concept_filter: LinkedDataConceptFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed concept URIs (OR semantics)."""
+        return Terms(linked_data_concepts=concept_filter.concept_uris)
+
+    def _build_linked_data_country_clause(
+        self,
+        country_filter: LinkedDataCountryFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed ISO codes (OR semantics)."""
+        return Terms(linked_data_countries=country_filter.country_codes)
+
+    def _build_linked_data_country_wb_region_clause(
+        self,
+        region_filter: LinkedDataCountryWBRegionFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed WB region IDs (OR semantics)."""
+        return Terms(linked_data_country_wb_regions=region_filter.region_ids)
+
+    def _build_annotation_clause(self, annotation: AnnotationFilter) -> Query:
+        """
+        Build a structured DSL clause for an annotation filter.
+
+        Three cases are handled:
+        - ``score`` set: range on the dynamic ``<scheme>[_<label>]`` numeric field,
+          with ``:`` in the scheme replaced by ``_`` (e.g. ``inclusion_destiny``).
+        - scheme only, no score: prefix match on the ``annotations`` keyword field,
+          matching any ``<scheme>/...`` annotation.
+        - scheme + label: exact term match on ``annotations``.
+        """
+        if annotation.score is not None:
+            field = annotation.scheme.replace(":", "_")
+            if annotation.label:
+                field += f"_{annotation.label}"
+            return Range(**{field: {"gte": annotation.score}})
+        if not annotation.label:
+            return Prefix(annotations=f"{annotation.scheme}/")
+        return Term(annotations=f"{annotation.scheme}/{annotation.label}")
+
+    def _build_filter_clauses(
+        self, query: SearchQuery, *, exclude_facet: FacetType | None = None
+    ) -> list[Query]:
+        """Translate a SearchQuery's structured filters into bool.filter clauses."""
+        clauses: list[Query] = []
+        if query.publication_year_range and (
+            clause := self._build_publication_year_clause(query.publication_year_range)
+        ):
+            clauses.append(clause)
+        clauses.extend(
+            self._build_annotation_clause(annotation)
+            for annotation in query.annotation_filters
+        )
+        if exclude_facet is not FacetType.CONCEPTS:
+            clauses.extend(
+                self._build_linked_data_concept_clause(concept_filter)
+                for concept_filter in query.linked_data_concept_filters
+            )
+        if exclude_facet is not FacetType.COUNTRIES:
+            clauses.extend(
+                self._build_linked_data_country_clause(country_filter)
+                for country_filter in query.linked_data_country_filters
+            )
+        if exclude_facet is not FacetType.COUNTRY_WB_REGIONS:
+            clauses.extend(
+                self._build_linked_data_country_wb_region_clause(region_filter)
+                for region_filter in query.linked_data_country_wb_region_filters
+            )
+        return clauses
+
+    @trace_repository_method(tracer)
+    async def search(
+        self,
+        query: SearchQuery,
+        page: int = 1,
+        page_size: int = 20,
+        sort: list[str] | None = None,
+    ) -> ESSearchResult:
+        """Search references matching ``query``; structured filters AND with q."""
+        return await self.search_with_query_string(
+            query.query_string,
+            fields=self.default_search_fields,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            filter_clauses=self._build_filter_clauses(query),
+            parse_document=False,
+        )
+
+    @trace_repository_method(tracer)
+    async def aggregate_facets(
+        self,
+        query: SearchQuery,
+        facets: Sequence[FacetType],
+        *,
+        sibling_groups_by_facet: Mapping[FacetType, Sequence[SiblingGroup]]
+        | None = None,
+        max_buckets: int,
+    ) -> dict[FacetType, list[ESFacetBucket]]:
+        """
+        Count occurrences per facet over references matching ``query``.
+
+        For simplicity, constructs and executes different queries per facet type. If
+        we're hunting down performance gains later, consider constructing a single
+        query - it won't be easy though.
+        """
+        sibling_groups_by_facet = sibling_groups_by_facet or {}
+        results: dict[FacetType, list[ESFacetBucket]] = {}
+
+        ungrouped_facets = [f for f in facets if not sibling_groups_by_facet.get(f)]
+        if ungrouped_facets:
+            # Simple aggregation for facets without sibling groups
+            facet_to_field = {f: self._FACET_FIELDS[f] for f in ungrouped_facets}
+            buckets_by_field = await self.aggregate_terms(
+                query.query_string,
+                aggregate_on=list(facet_to_field.values()),
+                query_fields=self.default_search_fields,
+                filter_clauses=self._build_filter_clauses(query),
+                max_buckets=max_buckets,
+            )
+            results.update(
+                {f: buckets_by_field[field] for f, field in facet_to_field.items()}
+            )
+
+        for facet in facets:
+            groups = sibling_groups_by_facet.get(facet)
+            if not groups:
+                continue
+            results[facet] = await self._aggregate_facet_sibling_aware(
+                query, facet, groups, max_buckets=max_buckets
+            )
+
+        return results
+
+    async def _aggregate_facet_sibling_aware(
+        self,
+        query: SearchQuery,
+        facet: FacetType,
+        groups: Sequence[SiblingGroup],
+        *,
+        max_buckets: int,
+    ) -> list[ESFacetBucket]:
+        """
+        Run sibling-aware aggregation for one facet.
+
+        Each group's selection becomes a Terms clause. Aggs are wrapped in
+        ``filter`` aggs that AND in the *other* groups' selections — OR within
+        a group (multi-URI Terms); AND between groups.
+        """
+        field = self._FACET_FIELDS[facet]
+        group_clauses = [Terms(**{field: list(g.selected)}) for g in groups]
+
+        # Build search query excluding the facet's own filter so its agg
+        # includes sibling counts
+        search = (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .extra(size=0)
+            .query(
+                self._compose_query(
+                    query.query_string,
+                    self.default_search_fields,
+                    self._build_filter_clauses(query, exclude_facet=facet),
+                )
+            )
+            .source(includes=[])
+        )
+
+        # Attach aggregate groupings
+        agg_names = self._attach_per_group_aggs(
+            search, field, groups, group_clauses, max_buckets=max_buckets
+        )
+        # Universal-mode groups cover the whole field domain, so the "unselected"
+        # bucket is empty - skip the agg in that case.
+        if all(g.siblings_including_selected is not None for g in groups):
+            agg_names.append(
+                self._attach_unselected_agg(
+                    search, field, groups, group_clauses, max_buckets=max_buckets
+                )
+            )
+
+        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
+        try:
+            response = await search.execute()
+        except BadRequestError as exc:
+            msg = f"Elasticsearch sibling-aware facet aggregation failed: {exc}."
+            raise ESQueryError(msg) from exc
+
+        return self._parse_facet_buckets(response, agg_names)
+
+    @staticmethod
+    def _attach_per_group_aggs(
+        search: AsyncSearch,
+        field: str,
+        groups: Sequence[SiblingGroup],
+        group_clauses: Sequence[Query],
+        *,
+        max_buckets: int,
+    ) -> list[str]:
+        """Attach one filter+terms agg per group to count each group's sibling set."""
+        names: list[str] = []
+        for i, group in enumerate(groups):
+            other_clauses = [c for j, c in enumerate(group_clauses) if j != i]
+            siblings = group.siblings_including_selected
+            name = f"facet_group_{i}"
+            outer = search.aggs.bucket(
+                name,
+                "filter",
+                filter=Bool(filter=other_clauses) if other_clauses else MatchAll(),
+            )
+            if siblings is None:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=max_buckets,
+                )
+            else:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=len(siblings),
+                    include=sorted(siblings),
+                )
+            names.append(name)
+        return names
+
+    @staticmethod
+    def _attach_unselected_agg(
+        search: AsyncSearch,
+        field: str,
+        groups: Sequence[SiblingGroup],
+        group_clauses: Sequence[Query],
+        *,
+        max_buckets: int,
+    ) -> str:
+        """Attach the ``unselected`` agg: field values outside any group's siblings."""
+        sibling_sets: list[frozenset[str]] = []
+        for g in groups:
+            if g.siblings_including_selected is None:
+                msg = "_attach_unselected_agg requires enumerated sibling groups."
+                raise ValueError(msg)
+            sibling_sets.append(g.siblings_including_selected)
+        all_grouped_uris: frozenset[str] = frozenset().union(*sibling_sets)
+        outer = search.aggs.bucket(
+            "unselected", "filter", filter=Bool(filter=list(group_clauses))
+        )
+        outer.bucket(
+            "inner",
+            "terms",
+            field=field,
+            exclude=sorted(all_grouped_uris),
+            min_doc_count=1,
+            size=max_buckets,
+        )
+        return "unselected"
+
+    @staticmethod
+    def _parse_facet_buckets(
+        response: Response, agg_names: Sequence[str]
+    ) -> list[ESFacetBucket]:
+        """Flatten ``filter > terms`` buckets across ``agg_names`` into one list."""
+        return [
+            ESFacetBucket(key=str(b.key), count=b.doc_count)
+            for name in agg_names
+            for b in response.aggregations[name].inner.buckets
+        ]
 
     @staticmethod
     def _build_author_dis_max_query(

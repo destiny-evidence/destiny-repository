@@ -195,6 +195,39 @@ class TestOAuthClient:
         assert isinstance(result, ReferenceSearchResult)
         assert result.page.number == 2
 
+    def test_search_with_concept_filters(
+        self,
+        httpx_mock: HTTPXMock,
+        oauth_client: OAuthClient,
+        base_url: str,
+        mock_reference_response: dict,
+    ) -> None:
+        """Concepts: strings pass through, tuples join with comma for OR semantics."""
+        httpx_mock.add_response(
+            url=(
+                f"{base_url}/v1/references/search/?q=test&page=1"
+                "&concept=https://vocab.example.org/A"
+                "&concept=https://vocab.example.org/B,https://vocab.example.org/C"
+            ),
+            method="GET",
+            json={
+                "references": [mock_reference_response],
+                "total": {"count": 1, "is_lower_bound": False},
+                "page": {"count": 1, "number": 1},
+                "page_size": 10,
+            },
+        )
+
+        result = oauth_client.search(
+            query="test",
+            concepts=[
+                "https://vocab.example.org/A",
+                ["https://vocab.example.org/B", "https://vocab.example.org/C"],
+            ],
+        )
+
+        assert isinstance(result, ReferenceSearchResult)
+
     def test_lookup(
         self,
         httpx_mock: HTTPXMock,

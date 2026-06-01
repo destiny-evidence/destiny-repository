@@ -151,3 +151,99 @@ class TestFullTextEnhancementFromSdk:
         assert domain_ft.enhancement_type == EnhancementType.FULL_TEXT
         assert domain_ft.blob.is_remote
         assert domain_ft.blob.to_uri() == str(sdk_full_text.file_url)
+
+
+class TestLinkedDataConceptFilterFromQueryParameter:
+    """Tests for parsing concept filters from query parameter values."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_single_uri(self, service: ReferenceAntiCorruptionService) -> None:
+        result = service.linked_data_concept_filter_from_query_parameter(
+            "https://vocab.example.org/A",
+        )
+        assert result.concept_uris == ["https://vocab.example.org/A"]
+
+    def test_comma_separated_uris(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        result = service.linked_data_concept_filter_from_query_parameter(
+            "https://vocab.example.org/A,https://vocab.example.org/B",
+        )
+        assert result.concept_uris == [
+            "https://vocab.example.org/A",
+            "https://vocab.example.org/B",
+        ]
+
+    def test_trims_whitespace_around_each_uri(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        # URIs themselves never contain spaces; tolerate stray ones from clients.
+        result = service.linked_data_concept_filter_from_query_parameter(
+            "  https://vocab.example.org/A , https://vocab.example.org/B  ",
+        )
+        assert result.concept_uris == [
+            "https://vocab.example.org/A",
+            "https://vocab.example.org/B",
+        ]
+
+    def test_trailing_comma_raises(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        with pytest.raises(ValueError, match="Empty concept URI"):
+            service.linked_data_concept_filter_from_query_parameter(
+                "https://vocab.example.org/A,",
+            )
+
+    def test_empty_string_raises(self, service: ReferenceAntiCorruptionService) -> None:
+        with pytest.raises(ValueError, match="Empty concept URI"):
+            service.linked_data_concept_filter_from_query_parameter("")
+
+
+class TestLinkedDataCountryFilterFromQueryParameter:
+    """Tests for parsing country filters from query parameter values."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_uppercases_and_splits(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        result = service.linked_data_country_filter_from_query_parameter("us, gb,fr")
+        assert result.country_codes == ["US", "GB", "FR"]
+
+    def test_rejects_non_iso_2_shape(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        with pytest.raises(ValueError, match=r"should match pattern"):
+            service.linked_data_country_filter_from_query_parameter("USA")
+
+    def test_rejects_empty_value(self, service: ReferenceAntiCorruptionService) -> None:
+        # Trailing comma → empty fragment fails the [A-Z]{2} pattern check.
+        with pytest.raises(ValueError, match=r"should match pattern"):
+            service.linked_data_country_filter_from_query_parameter("US,")
+
+
+class TestLinkedDataCountryWBRegionFilterFromQueryParameter:
+    """Tests for parsing WB region filters from query parameter values."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_uppercases_and_splits(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        result = service.linked_data_country_wb_region_filter_from_query_parameter(
+            "eas, ecs"
+        )
+        assert result.region_ids == ["EAS", "ECS"]
+
+    def test_rejects_unknown_region_id(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        with pytest.raises(ValueError, match=r"Input should be 'EAS'"):
+            service.linked_data_country_wb_region_filter_from_query_parameter("XXX")

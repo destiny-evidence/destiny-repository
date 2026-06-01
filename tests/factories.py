@@ -41,6 +41,7 @@ from faker.providers import BaseProvider
 from app.domain.references.models.models import (
     Enhancement,
     FullTextEnhancement,
+    LinkedDataProjection,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
@@ -415,9 +416,24 @@ class ReferenceFactory(factory.Factory):
             self.enhancements = extracted
 
 
-def to_indexable(reference: Reference) -> ReferenceSearchProjection:
-    """Convert a Reference to an ReferenceSearchProjection for ES test indexing."""
+def to_indexable(
+    reference: Reference,
+    linked_data_concepts: list[str] | None = None,
+) -> ReferenceSearchProjection:
+    """
+    Convert a Reference to an ReferenceSearchProjection for ES test indexing.
+
+    ``linked_data_concepts`` short-circuits the RDF projection pipeline and
+    attaches the given concept URIs directly. Useful when a test needs a
+    reference with known linked-data facets without setting up a full
+    LinkedDataEnhancement.
+    """
     search_fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
+    linked_data_projection = (
+        LinkedDataProjection(concepts=set(linked_data_concepts))
+        if linked_data_concepts is not None
+        else None
+    )
     return ReferenceSearchProjection(
         id=reference.id,
         visibility=reference.visibility,
@@ -427,6 +443,7 @@ def to_indexable(reference: Reference) -> ReferenceSearchProjection:
             else None
         ),
         search_fields=search_fields,
+        linked_data_projection=linked_data_projection,
     )
 
 

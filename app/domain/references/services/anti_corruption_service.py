@@ -16,6 +16,9 @@ from app.domain.references.models.models import (
     FacetType,
     FullTextEnhancement,
     IdentifierLookup,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     LinkedExternalIdentifier,
     PublicationYearRange,
     Reference,
@@ -417,6 +420,20 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     )
                     for bucket in buckets
                 ]
+            elif facet is FacetType.COUNTRIES:
+                fields["countries"] = [
+                    destiny_sdk.references.CountryFacetCount(
+                        country=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
+            elif facet is FacetType.COUNTRY_WB_REGIONS:
+                fields["country_wb_regions"] = [
+                    destiny_sdk.references.CountryWBRegionFacetCount(
+                        country_wb_region=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
             else:
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
@@ -481,6 +498,41 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             label=label,
             score=score,
         )
+
+    def linked_data_concept_filter_from_query_parameter(
+        self,
+        concept_filter_string: str,
+    ) -> LinkedDataConceptFilter:
+        """
+        Parse a concept filter from a query parameter.
+
+        Values are comma-separated; each piece is stripped of surrounding
+        whitespace. Empty pieces raise ``ValueError``.
+        """
+        concept_uris = [uri.strip() for uri in concept_filter_string.split(",")]
+        if any(not uri for uri in concept_uris):
+            msg = (
+                "Empty concept URI in concept filter. "
+                f"Got: {concept_filter_string!r}."
+            )
+            raise ValueError(msg)
+        return LinkedDataConceptFilter(concept_uris=concept_uris)
+
+    def linked_data_country_filter_from_query_parameter(
+        self,
+        country_filter_string: str,
+    ) -> LinkedDataCountryFilter:
+        """Parse a country filter (comma-separated ISO 3166-1 alpha-2 codes)."""
+        codes = [code.strip().upper() for code in country_filter_string.split(",")]
+        return LinkedDataCountryFilter(country_codes=codes)
+
+    def linked_data_country_wb_region_filter_from_query_parameter(
+        self,
+        region_filter_string: str,
+    ) -> LinkedDataCountryWBRegionFilter:
+        """Parse a WB region filter (comma-separated region IDs)."""
+        ids = [rid.strip().upper() for rid in region_filter_string.split(",")]
+        return LinkedDataCountryWBRegionFilter(region_ids=ids)
 
     def duplicate_decision_from_sdk_make(
         self,

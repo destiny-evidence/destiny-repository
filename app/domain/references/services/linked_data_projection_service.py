@@ -1,7 +1,6 @@
 """Projection of LinkedDataEnhancement data into flat searchable fields."""
 
 import json
-from dataclasses import dataclass
 
 from destiny_sdk.enhancements import LinkedDataEnhancement
 from rdflib import Graph, Literal, Namespace, URIRef
@@ -20,32 +19,25 @@ ESEA = Namespace("https://vocab.esea.education/")
 _COUNTRY_PROPERTIES: frozenset[URIRef] = frozenset({ESEA.country})
 
 
-@dataclass(frozen=True)
-class _LoadedVocabulary:
-    """A parsed vocabulary with pre-built lookups."""
-
-    graph: Graph
-    concept_labels: dict[str, str]
-    concept_schemes: dict[str, str]
-    scheme_to_property: dict[str, str]
-
-
 class LinkedDataProjectionService:
-    """
-    Projects LinkedDataEnhancement data into flat searchable fields.
-
-    Vocabularies and contexts are resolved through a :class:`VocabularyClient`.
-    Derived lookups (concept labels, scheme mappings) are cached per vocabulary URI.
-    """
+    """Projects LinkedDataEnhancement data into flat searchable fields."""
 
     def __init__(self, vocabulary_client: VocabularyArtifactClient) -> None:
-        """Initialise with a vocabulary client and empty lookup caches."""
+        """Initialise with a vocabulary client and empty per-vocab caches."""
         self._vocabulary_client = vocabulary_client
-        self._vocabularies: dict[str, _LoadedVocabulary] = {}
+        self._scheme_to_property_cache: dict[str, dict[str, str]] = {}
+        self._unwrapped_concept_properties_cache: dict[str, set[str]] = {}
 
     async def project(self, enhancement: LinkedDataEnhancement) -> LinkedDataProjection:
         """Extract concepts, labels, evaluated properties, and countries."""
-        vocab = await self._get_vocabulary(str(enhancement.vocabulary_uri))
+        vocab_uri = str(enhancement.vocabulary_uri)
+        vocab_graph = await self._vocabulary_client.get_vocabulary(vocab_uri)
+        concept_labels = await self._vocabulary_client.get_concept_labels(vocab_uri)
+        concept_schemes = await self._vocabulary_client.get_concept_schemes(vocab_uri)
+        scheme_to_property = await self._get_scheme_to_property(vocab_uri)
+        unwrapped_concept_properties = await self._get_unwrapped_concept_properties(
+            vocab_uri
+        )
         context_uri = enhancement.data.get("@context")
         if context_uri is None:
             msg = "Enhancement data is missing @context"
@@ -72,22 +64,32 @@ class LinkedDataProjectionService:
 
             concept_uri = str(value)
 
-            if (value, RDF.type, SKOS.Concept) not in vocab.graph:
+            if (value, RDF.type, SKOS.Concept) not in vocab_graph:
                 continue
 
             status = self._get_status(data_graph, node)
 
             if status == EVREPO.coded or status is None:
                 concepts.add(concept_uri)
-                label = vocab.concept_labels.get(concept_uri)
+                label = concept_labels.get(concept_uri)
                 if label is not None:
                     labels.add(label)
 
-            scheme_uri = vocab.concept_schemes.get(concept_uri)
+            scheme_uri = concept_schemes.get(concept_uri)
             if scheme_uri is not None:
-                prop_uri = vocab.scheme_to_property.get(scheme_uri)
+                prop_uri = scheme_to_property.get(scheme_uri)
                 if prop_uri is not None:
                     evaluated_properties.add(prop_uri)
+
+        self._project_unwrapped_concept_properties(
+            data_graph,
+            vocab_graph,
+            concept_labels,
+            unwrapped_concept_properties,
+            concepts,
+            labels,
+            evaluated_properties,
+        )
 
         countries = self._extract_countries(data_graph)
         return LinkedDataProjection(
@@ -115,19 +117,55 @@ class LinkedDataProjectionService:
                             countries.add(code)
         return countries
 
-    # -- vocabulary resolution with derived-lookup caching ---------------------
+    @staticmethod
+    def _project_unwrapped_concept_properties(  # noqa: PLR0913
+        data_graph: Graph,
+        vocab_graph: Graph,
+        concept_labels: dict[str, str],
+        unwrapped_concept_properties: set[str],
+        concepts: set[str],
+        labels: set[str],
+        evaluated_properties: set[str],
+    ) -> None:
+        """
+        Project values discovered by ``_build_unwrapped_concept_properties``.
 
-    async def _get_vocabulary(self, uri: str) -> _LoadedVocabulary:
-        """Return cached derived lookups for *uri*, building on first access."""
-        if uri not in self._vocabularies:
-            graph = await self._vocabulary_client.get_vocabulary(uri)
-            self._vocabularies[uri] = _LoadedVocabulary(
-                graph=graph,
-                concept_labels=self._build_concept_labels(graph),
-                concept_schemes=self._build_concept_schemes(graph),
-                scheme_to_property=self._build_scheme_to_property(graph),
-            )
-        return self._vocabularies[uri]
+        Without a CodingAnnotation wrapper there is no provenance, so any present
+        value is treated as coded.
+        """
+        for prop_uri_str in unwrapped_concept_properties:
+            predicate = URIRef(prop_uri_str)
+            for _, _, value in data_graph.triples((None, predicate, None)):
+                if not isinstance(value, URIRef):
+                    continue
+                if (value, RDF.type, SKOS.Concept) not in vocab_graph:
+                    continue
+                concept_uri = str(value)
+                concepts.add(concept_uri)
+                label = concept_labels.get(concept_uri)
+                if label is not None:
+                    labels.add(label)
+                evaluated_properties.add(prop_uri_str)
+
+    async def _get_scheme_to_property(self, vocab_uri: str) -> dict[str, str]:
+        """Return scheme to property map for *vocab_uri*, building on first access."""
+        cached = self._scheme_to_property_cache.get(vocab_uri)
+        if cached is not None:
+            return cached
+        graph = await self._vocabulary_client.get_vocabulary(vocab_uri)
+        mapping = self._build_scheme_to_property(graph)
+        self._scheme_to_property_cache[vocab_uri] = mapping
+        return mapping
+
+    async def _get_unwrapped_concept_properties(self, vocab_uri: str) -> set[str]:
+        """Return unwrapped concept property URIs for *vocab_uri*."""
+        cached = self._unwrapped_concept_properties_cache.get(vocab_uri)
+        if cached is not None:
+            return cached
+        graph = await self._vocabulary_client.get_vocabulary(vocab_uri)
+        properties = self._build_unwrapped_concept_properties(graph)
+        self._unwrapped_concept_properties_cache[vocab_uri] = properties
+        return properties
 
     @staticmethod
     def _get_status(data_graph: Graph, node: URIRef) -> URIRef | None:
@@ -136,25 +174,6 @@ class LinkedDataProjectionService:
             if isinstance(status, URIRef):
                 return status
         return None
-
-    # -- vocabulary lookup builders --------------------------------------------
-
-    @staticmethod
-    def _build_concept_labels(graph: Graph) -> dict[str, str]:
-        """Build concept URI -> prefLabel lookup from the vocabulary."""
-        labels: dict[str, str] = {}
-        for concept, _, label in graph.triples((None, SKOS.prefLabel, None)):
-            if (concept, RDF.type, SKOS.Concept) in graph:
-                labels[str(concept)] = str(label)
-        return labels
-
-    @staticmethod
-    def _build_concept_schemes(graph: Graph) -> dict[str, str]:
-        """Build concept URI -> scheme URI lookup from the vocabulary."""
-        schemes: dict[str, str] = {}
-        for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
-            schemes[str(concept)] = str(scheme)
-        return schemes
 
     @staticmethod
     def _build_scheme_to_property(graph: Graph) -> dict[str, str]:
@@ -184,3 +203,34 @@ class LinkedDataProjectionService:
             """
         )
         return {str(row.scheme): str(row.prop) for row in results}
+
+    @staticmethod
+    def _build_unwrapped_concept_properties(graph: Graph) -> set[str]:
+        """
+        Build a set of property URIs for unwrapped concept references.
+
+        "Unwrapped" describes the data shape: the value is a direct concept
+        reference at the property's slot, with no CodingAnnotation envelope.
+        We discover these properties via their concept-typed range: either
+        ``skos:ConceptScheme`` directly, or a class ``subClassOf skos:Concept``
+        joined to a scheme via concept instances.
+        """
+        results = graph.query(
+            """
+            SELECT DISTINCT ?prop WHERE {
+                ?prop a owl:ObjectProperty ;
+                      rdfs:range ?range .
+                {
+                    ?range a skos:ConceptScheme .
+                }
+                UNION
+                {
+                    ?range rdfs:subClassOf+ skos:Concept .
+                    FILTER(?range != skos:Concept)
+                    ?concept a ?range ;
+                             skos:inScheme [] .
+                }
+            }
+            """
+        )
+        return {str(row.prop) for row in results}

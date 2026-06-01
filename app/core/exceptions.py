@@ -676,6 +676,10 @@ class ParseError(DestinyRepositoryError):
         super().__init__(detail)
 
 
+class SiblingGroupingError(ParseError):
+    """An exception for when concept filters cannot be resolved into sibling groups."""
+
+
 class DuplicateEnhancementError(DestinyRepositoryError):
     """An exception for when an exact duplicate enhancement is detected."""
 

@@ -24,7 +24,14 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, ValidationError, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    HttpUrl,
+    ValidationError,
+    field_validator,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -51,11 +58,15 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceIds,
     SearchQuery,
 )
+from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.access_control_service import (
     ReferenceAccessControlService,
@@ -340,6 +351,121 @@ def parse_annotation_filters(
         raise ParseError(detail=str(exc)) from exc
 
 
+def parse_linked_data_concept_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    concept: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of linked-data concept filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_concepts` "
+                "contain at least one of the listed URIs.\n"
+                "- Within a single value, separate multiple URIs with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `concept` parameters are combined with AND logic.\n\n"
+                "These must be fully-qualified URIs."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/scheme/C00001",
+                (
+                    "https://vocab.evidence-repository.org/scheme/C00001,"
+                    "https://vocab.evidence-repository.org/scheme/C00002"
+                ),
+            ],
+        ),
+    ] = None,
+) -> list[LinkedDataConceptFilter]:
+    """Parse linked-data concept filters from query parameters."""
+    if not concept:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_concept_filter_from_query_parameter(
+                concept_filter_string
+            )
+            for concept_filter_string in concept
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def parse_linked_data_country_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    country: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of country filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_countries` "
+                "contain at least one of the listed ISO 3166-1 alpha-2 codes.\n"
+                "- Within a single value, separate multiple codes with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `country` parameters are combined with AND logic."
+            ),
+            examples=["US", "US,GB,FR"],
+        ),
+    ] = None,
+) -> list[LinkedDataCountryFilter]:
+    """Parse country filters from query parameters."""
+    if not country:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_country_filter_from_query_parameter(
+                country_filter_string
+            )
+            for country_filter_string in country
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def parse_linked_data_country_wb_region_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    country_wb_region: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of World Bank region filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_country_wb_"
+                "regions` contain at least one of the listed region IDs.\n"
+                "- Within a single value, separate multiple IDs with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `country_wb_region` parameters are combined with AND."
+            ),
+            examples=["EAS", "EAS,ECS"],
+        ),
+    ] = None,
+) -> list[LinkedDataCountryWBRegionFilter]:
+    """Parse World Bank region filters from query parameters."""
+    if not country_wb_region:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_country_wb_region_filter_from_query_parameter(
+                region_filter_string
+            )
+            for region_filter_string in country_wb_region
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def _validate_vocab_host(url: HttpUrl) -> HttpUrl:
+    """Restrict ``vocabulary=`` to a subdomain of ``settings.vocabulary_host``."""
+    suffix = "." + settings.vocabulary_host
+    if not url.host or not url.host.endswith(suffix):
+        msg = f"vocabulary host must be a subdomain of {settings.vocabulary_host}."
+        raise ValueError(msg)
+    return url
+
+
 def parse_search_query(
     q: Annotated[
         str,
@@ -353,12 +479,27 @@ def parse_search_query(
         PublicationYearRange | None,
         Depends(parse_publication_year_range),
     ],
+    linked_data_concept_filters: Annotated[
+        list[LinkedDataConceptFilter],
+        Depends(parse_linked_data_concept_filters),
+    ],
+    linked_data_country_filters: Annotated[
+        list[LinkedDataCountryFilter],
+        Depends(parse_linked_data_country_filters),
+    ],
+    linked_data_country_wb_region_filters: Annotated[
+        list[LinkedDataCountryWBRegionFilter],
+        Depends(parse_linked_data_country_wb_region_filters),
+    ],
 ) -> SearchQuery:
     """Bundle the shared search parameters into a domain SearchQuery."""
     return SearchQuery(
         query_string=q,
         annotation_filters=annotation_filters,
         publication_year_range=publication_year_range,
+        linked_data_concept_filters=linked_data_concept_filters,
+        linked_data_country_filters=linked_data_country_filters,
+        linked_data_country_wb_region_filters=linked_data_country_wb_region_filters,
     )
 
 
@@ -386,7 +527,8 @@ SortParam = Annotated[
     description="Search for references using a query string in "
     "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
     ". If the query string does not specify search fields, the search will query over "
-    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    f"[{', '.join(ReferenceESRepository.default_search_fields)}]. The query string "
+    "can only "
     "search over fields on the root level of the Reference document.\n\n"
     "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
     "and if a query would return more than 10,000 results the total count is listed as "
@@ -445,16 +587,20 @@ async def search_references(
         }
     },
     description=(
-        "Return per-facet counts across the references matching the search.\n\n"
-        "Accepts the same filter parameters as `/references/search/`, plus one or "
-        "more `?facet=` values. Only the requested facet types appear in the response."
-        "\n\n"
-        "⚠️ **Filters apply to facet counts of the same type.** If you filter on "
-        "a concept and request concept counts, the response shows co-occurrence "
-        "with your selection - siblings of selected concepts will typically appear "
-        "with very low counts, not their unfiltered counts.\n\n"
-        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets; "
-        "very large vocabularies are truncated."
+        "Per-facet term counts over the references matching the search. "
+        "Accepts the same filters as `/references/search/`; add one or more "
+        "`?facet=` values (`concepts`, `countries`, `country_wb_regions`).\n\n"
+        "**Sibling-aware counts.** When you filter on a field *and* request its "
+        "facet, the counts show what you'd see if your selection were toggled — "
+        "not the co-occurrence under your filter.\n\n"
+        "For `concepts`, supply `?vocabulary=`. Each `?concept=` parameter is "
+        "one sibling group; the server enforces (400 on violation):\n\n"
+        "- URIs inside one `?concept=` must share a sibling set.\n"
+        "- Different `?concept=` filters must have disjoint sibling sets.\n"
+        "- Every URI must resolve in the vocabulary.\n\n"
+        "For all other facets, supply a single OR'd filter when requesting "
+        "the matching facet (multiple AND'd filters return 400).\n\n"
+        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets."
     ),
 )
 async def count_facets_for_search(
@@ -470,11 +616,26 @@ async def count_facets_for_search(
             description="One or more facet types to count.",
         ),
     ],
+    vocabulary: Annotated[
+        HttpUrl,
+        AfterValidator(_validate_vocab_host),
+        Query(
+            description=(
+                "Vocabulary URI for sibling-aware facet counting. Required when "
+                "filtering on concepts and requesting the `concepts` facet. "
+                f"Host must be a subdomain of `{settings.vocabulary_host}`."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
+            ],
+        ),
+    ] = None,
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
     buckets_by_facet = await reference_service.aggregate_facets(
         query,
         anti_corruption_service.facet_types_from_sdk(facet),
+        vocabulary_uri=str(vocabulary) if vocabulary else None,
     )
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 

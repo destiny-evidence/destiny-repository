@@ -92,6 +92,63 @@ Multiple annotations can be provided; they will be combined using a logical ``AN
     # Get references annotated with `classification:taxonomy:Outcomes/Stroke` as true and inclusion:destiny as true:
     ?q=...&annotation=classification:taxonomy:Outcomes/Stroke&annotation=inclusion:destiny
 
+Concepts
+__________________________
+
+The ``concept`` parameter filters results by their linked-data concept URIs (matched against the ``linked_data_concepts`` field).
+
+- Each ``concept`` value is a fully-qualified concept URI, or a comma-separated list of URIs.
+- Within a single ``concept`` value, URIs are combined using a logical ``OR`` - a reference matches if it carries any one of them.
+- Multiple ``concept`` parameters are combined using a logical ``AND`` - a reference must match each one.
+
+.. code-block::
+
+    # Get references annotated with the C00001 concept:
+    ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001
+
+    # Get references annotated with either the C00001 or C00002 concept:
+    ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001,https://vocab.evidence-repository.org/scheme/C00002
+
+    # Get references annotated with (C00001 OR C00002) AND a third concept:
+    ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001,https://vocab.evidence-repository.org/scheme/C00002&concept=https://vocab.evidence-repository.org/scheme/C00003
+
+Countries
+__________________________
+
+The ``country`` parameter filters results by ISO 3166-1 alpha-2 country codes.
+
+- Each ``country`` value is a single code, or a comma-separated list of codes.
+- Within a single value, codes are combined using ``OR``; multiple ``country`` parameters AND.
+- Codes are validated for shape only (two letters) and uppercased on input — e.g. ``us`` and ``US`` both pass through. Codes that don't match the ``[A-Z]{2}`` shape return ``400``.
+
+.. code-block::
+
+    # Get references tagged with the United States:
+    ?q=...&country=US
+
+    # Get references tagged with the United States, the UK, or France:
+    ?q=...&country=US,GB,FR
+
+    # Get references tagged with (US OR GB) AND (FR OR DE):
+    ?q=...&country=US,GB&country=FR,DE
+
+World Bank Regions
+__________________________
+
+The ``country_wb_region`` parameter filters results by World Bank region IDs.
+
+- Each value is a single region ID, or a comma-separated list of IDs.
+- Within a single value, IDs are combined using ``OR``; multiple parameters AND.
+- IDs come from a closed set: ``EAS``, ``ECS``, ``LCN``, ``MEA``, ``NAC``, ``SAS``, ``SSF``. Unknown IDs return ``400``.
+
+.. code-block::
+
+    # Get references tagged with North American countries:
+    ?q=...&country_wb_region=NAC
+
+    # Get references tagged with North America or East Asia & Pacific:
+    ?q=...&country_wb_region=NAC,EAS
+
 Page
 _____________
 
@@ -133,6 +190,69 @@ Limitations
 """""""""""
 
 There is a hard cap on the number of results at 10,000. You cannot page past this point, nor will :class:`total <libs.sdk.src.destiny_sdk.search.SearchResultTotal>` show more than this.
+
+.. _facets-procedure:
+
+API Facet Counts
+^^^^^^^^^^^^^^^^
+
+The `facets endpoint <https://api.evidence-repository.org/redoc#tag/search/operation/count_facets_for_search_v1_references_search_facets__get>`_ at `/v1/references/search/facets/` returns per-facet term counts across the references matching the search.
+
+Accepts the same filter parameters as `/v1/references/search/` plus one or more ``facet`` values. Only the requested facet types appear in the response.
+
+.. code-block::
+
+    # Count concepts across all references matching a query:
+    ?q=climate&facet=concepts
+
+Sibling-aware facet counts
+__________________________
+
+When you filter on a field *and* request that field's facet, the bucket counts show what you'd see if your selection were toggled - not the co-occurrence under your filter. The behaviour is OR within a sibling family and AND with everything else.
+
+There are two flavours, distinguished by how siblings are defined:
+
+**Concepts.** A concept's siblings come from the SKOS vocabulary, so ``concept=`` must be supplied alongside ``vocabulary=`` when requesting ``facet=concepts``. Each ``concept=`` parameter is treated as one sibling group.
+
+For example, ``concept=Botany,Zoology`` AND ``concept=Africa`` with ``facet=concepts``:
+
+- The Botany/Zoology group's counts show every Topic concept (Botany, Zoology, Microbiology, …) as if you swapped the selection, with the Africa filter still applied.
+- The Africa group's counts show every Region concept (Africa, Asia, Europe, …), with the (Botany OR Zoology) filter still applied.
+- An "unselected" bucket surfaces any other concepts present on the matching references.
+
+.. code-block::
+
+    # (Botany OR Zoology) AND Africa, with sibling-aware concept counts.
+    ?q=*&concept=https://vocab.evidence-repository.org/Botany,https://vocab.evidence-repository.org/Zoology
+        &concept=https://vocab.evidence-repository.org/Africa
+        &facet=concepts
+        &vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
+
+Restrictions (400 on violation):
+
+1. URIs inside one ``concept=`` must share a sibling set in the vocabulary.
+2. Different ``concept=`` filters must have disjoint sibling sets.
+3. Every URI must resolve in the supplied vocabulary.
+
+**Countries and WB regions.** There's no vocabulary hierarchy here - the entire field is treated as one sibling family.
+
+.. code-block::
+
+    ?q=*&country=KE&facet=countries
+
+Restrictions (400 on violation):
+
+1. Only a single OR'd filter is supported when requesting the facet counts.
+
+Returns
+""""""""""
+
+Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceFacetResult>` object. Each bucket's count is "references matching if you toggled this value's selection state and left everything else alone."
+
+Limitations
+""""""""""""
+
+Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). For concept facets, if a sibling group's vocabulary set exceeds this the request is refused rather than silently truncated.
 
 .. _lookup-procedure:
 
