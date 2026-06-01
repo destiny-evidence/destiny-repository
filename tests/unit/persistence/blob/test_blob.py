@@ -3,14 +3,17 @@ Unit tests for the blob module (repository, client, models, stream).
 """
 
 import hashlib
+import logging
 import types
 from io import BytesIO
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
+from app.core.config import AzureBlobConfig
 from app.core.exceptions import BlobSizeExceededError, BlobStorageError
 from app.persistence.blob.client import GenericBlobStorageClient
+from app.persistence.blob.clients.azure import AzureBlobStorageClient
 from app.persistence.blob.models import (
     BlobContainer,
     BlobSignedUrlType,
@@ -18,7 +21,7 @@ from app.persistence.blob.models import (
     BlobStorageLocation,
     infer_content_type,
 )
-from app.persistence.blob.repository import BlobRepository
+from app.persistence.blob.repository import BlobRepository, _BlobClientRegistry
 from app.persistence.blob.stream import FileStream
 
 
@@ -383,3 +386,147 @@ async def test_generic_blob_storage_client_interface():
         None,
     )
     assert url.startswith("http://signed/")
+
+
+class _CloseRecordingClient(GenericBlobStorageClient):
+    """Test double tracking aclose() calls; raises on demand."""
+
+    def __init__(self, *, raise_on_close: bool = False) -> None:
+        self.aclose_calls = 0
+        self._raise = raise_on_close
+
+    async def upload_file(self, content, file, content_type=None):
+        return None
+
+    async def stream_chunks(self, file):
+        yield b""
+
+    async def generate_signed_url(self, file, interaction_type, content_disposition):
+        return "http://unused"
+
+    async def aclose(self) -> None:
+        self.aclose_calls += 1
+        if self._raise:
+            msg = "boom"
+            raise RuntimeError(msg)
+
+
+@pytest.mark.asyncio
+async def test_blob_registry_get_reuses_client_per_location():
+    """Same location returns the same instance; different locations get distinct."""
+    registry = _BlobClientRegistry()
+    minio_file_a = BlobStorageFile(
+        location=BlobStorageLocation.MINIO,
+        container="c",
+        path="p",
+        filename="a.txt",
+    )
+    minio_file_b = BlobStorageFile(
+        location=BlobStorageLocation.MINIO,
+        container="c",
+        path="p",
+        filename="b.txt",
+    )
+    https_file = BlobStorageFile.from_uri("https://example.com/foo.pdf")
+
+    sentinel_minio = _CloseRecordingClient()
+    sentinel_https = _CloseRecordingClient()
+
+    def fake_instantiate(file: BlobStorageFile) -> GenericBlobStorageClient:
+        if file.location == BlobStorageLocation.MINIO:
+            return sentinel_minio
+        return sentinel_https
+
+    with patch.object(
+        _BlobClientRegistry, "_instantiate", side_effect=fake_instantiate
+    ):
+        first = await registry.get(minio_file_a)
+        second = await registry.get(minio_file_b)
+        remote = await registry.get(https_file)
+
+    assert first is sentinel_minio
+    assert second is sentinel_minio
+    assert remote is sentinel_https
+    assert first is not remote
+
+
+@pytest.mark.asyncio
+async def test_blob_registry_aclose_closes_each_and_clears(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """aclose() invokes aclose on every held client, clears the dict, logs failures."""
+    registry = _BlobClientRegistry()
+    good = _CloseRecordingClient()
+    bad = _CloseRecordingClient(raise_on_close=True)
+    registry._clients[BlobStorageLocation.MINIO] = good  # noqa: SLF001
+    registry._clients[BlobStorageLocation.HTTPS] = bad  # noqa: SLF001
+
+    with caplog.at_level(logging.WARNING, logger="app.persistence.blob.repository"):
+        await registry.aclose()
+
+    assert good.aclose_calls == 1
+    assert bad.aclose_calls == 1
+    assert registry._clients == {}  # noqa: SLF001
+    # The raising client's failure was logged, not propagated.
+    assert any(
+        "Error closing blob client" in record.message for record in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_azure_blob_client_aclose_closes_service_client_and_credential():
+    """aclose() closes both BlobServiceClient and managed-identity credential."""
+    config = AzureBlobConfig(
+        storage_account_name="acct",
+        # credential=None -> uses_managed_identity == True
+        containers={c: "test" for c in BlobContainer},
+    )
+    assert config.uses_managed_identity
+
+    fake_credential = AsyncMock()
+    fake_service_client = AsyncMock()
+
+    with (
+        patch(
+            "app.persistence.blob.clients.azure.DefaultAzureCredential",
+            return_value=fake_credential,
+        ),
+        patch(
+            "app.persistence.blob.clients.azure.BlobServiceClient",
+            return_value=fake_service_client,
+        ),
+    ):
+        client = AzureBlobStorageClient(config, presigned_url_expiry_seconds=60)
+        await client.aclose()
+
+    fake_service_client.close.assert_awaited_once()
+    fake_credential.close.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_azure_blob_client_aclose_no_credential_when_using_account_key():
+    """With an account key (no managed identity), only the service client is closed."""
+    config = AzureBlobConfig(
+        storage_account_name="acct",
+        credential="account-key",
+        containers={c: "test" for c in BlobContainer},
+    )
+    assert not config.uses_managed_identity
+
+    fake_service_client = AsyncMock()
+
+    with (
+        patch(
+            "app.persistence.blob.clients.azure.DefaultAzureCredential"
+        ) as default_credential_cls,
+        patch(
+            "app.persistence.blob.clients.azure.BlobServiceClient",
+            return_value=fake_service_client,
+        ),
+    ):
+        client = AzureBlobStorageClient(config, presigned_url_expiry_seconds=60)
+        await client.aclose()
+
+    default_credential_cls.assert_not_called()
+    fake_service_client.close.assert_awaited_once()
+    assert client._aio_credential is None  # noqa: SLF001

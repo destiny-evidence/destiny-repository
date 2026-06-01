@@ -97,14 +97,15 @@ class _BlobClientRegistry:
         raise BlobStorageError(msg)
 
     async def aclose(self) -> None:
-        clients = list(self._clients.values())
-        self._clients.clear()
-        results = await asyncio.gather(
-            *(c.aclose() for c in clients), return_exceptions=True
-        )
-        for result in results:
-            if isinstance(result, BaseException):
-                logger.warning("Error closing blob client", exc_info=result)
+        async with self._lock:
+            clients = list(self._clients.values())
+            self._clients.clear()
+            results = await asyncio.gather(
+                *(c.aclose() for c in clients), return_exceptions=True
+            )
+            for result in results:
+                if isinstance(result, BaseException):
+                    logger.warning("Error closing blob client", exc_info=result)
 
 
 _registry = _BlobClientRegistry()
