@@ -413,7 +413,7 @@ class _CloseRecordingClient(GenericBlobStorageClient):
 
 @pytest.mark.asyncio
 async def test_blob_registry_get_reuses_client_per_location():
-    """Same location returns the same instance; different locations get distinct."""
+    """Repeated get()s for one location instantiate once; distinct per location."""
     registry = _BlobClientRegistry()
     minio_file_a = BlobStorageFile(
         location=BlobStorageLocation.MINIO,
@@ -429,13 +429,13 @@ async def test_blob_registry_get_reuses_client_per_location():
     )
     https_file = BlobStorageFile.from_uri("https://example.com/foo.pdf")
 
-    sentinel_minio = _CloseRecordingClient()
-    sentinel_https = _CloseRecordingClient()
+    # Fresh client per call so identity-equality (first is second) can only hold
+    # if get() returned the cached instance instead of calling _instantiate again.
+    instantiate_count: dict[BlobStorageLocation, int] = {}
 
     def fake_instantiate(file: BlobStorageFile) -> GenericBlobStorageClient:
-        if file.location == BlobStorageLocation.MINIO:
-            return sentinel_minio
-        return sentinel_https
+        instantiate_count[file.location] = instantiate_count.get(file.location, 0) + 1
+        return _CloseRecordingClient()
 
     with patch.object(
         _BlobClientRegistry, "_instantiate", side_effect=fake_instantiate
@@ -444,10 +444,12 @@ async def test_blob_registry_get_reuses_client_per_location():
         second = await registry.get(minio_file_b)
         remote = await registry.get(https_file)
 
-    assert first is sentinel_minio
-    assert second is sentinel_minio
-    assert remote is sentinel_https
-    assert first is not remote
+    assert first is second  # cached: same instance for two MINIO gets
+    assert first is not remote  # distinct backend, distinct instance
+    assert instantiate_count == {
+        BlobStorageLocation.MINIO: 1,
+        BlobStorageLocation.HTTPS: 1,
+    }
 
 
 @pytest.mark.asyncio
