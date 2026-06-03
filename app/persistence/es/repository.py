@@ -289,7 +289,7 @@ class GenericAsyncESRepository(
         :return: A mapping from each requested field name to its term buckets.
         :rtype: dict[str, list[ESFacetBucket]]
         """
-        search = self._aggregation_search(query, query_fields, filter_clauses)
+        search = self._build_aggregation_search(query, query_fields, filter_clauses)
         for field in aggregate_on:
             search.aggs.bucket(field, "terms", field=field, size=max_buckets)
         response = await self._execute_search(search)
@@ -317,7 +317,7 @@ class GenericAsyncESRepository(
             return main
         return Bool(must=[main], filter=list(filter_clauses))
 
-    def _aggregation_search(
+    def _build_aggregation_search(
         self,
         query_string: str,
         query_fields: Sequence[str] | None,

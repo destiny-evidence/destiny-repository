@@ -452,7 +452,7 @@ class ReferenceESRepository(
 
         # Build search query excluding the facet's own filter so its agg
         # includes sibling counts
-        search = self._aggregation_search(
+        search = self._build_aggregation_search(
             query.query_string,
             self.default_search_fields,
             self._build_filter_clauses(query, exclude_facet=facet),
@@ -569,13 +569,13 @@ class ReferenceESRepository(
         Returns the non-zero cells plus the exact grand total (``track_total_hits`` is
         enabled so the count isn't capped at the result window).
         """
-        search = self._aggregation_search(
+        search = self._build_aggregation_search(
             query.query_string,
             self.default_search_fields,
             self._build_filter_clauses(query),
         ).extra(track_total_hits=True)
-        outer = search.aggs.bucket("rows", "terms", **self._terms_agg_params(row))
-        outer.bucket("columns", "terms", **self._terms_agg_params(column))
+        outer = search.aggs.bucket("rows", "terms", **self._facet_agg_params(row))
+        outer.bucket("columns", "terms", **self._facet_agg_params(column))
 
         response = await self._execute_search(search)
         return (
@@ -586,7 +586,7 @@ class ReferenceESRepository(
             ),
         )
 
-    def _terms_agg_params(self, axis: CrossFacetAxis) -> dict[str, object]:
+    def _facet_agg_params(self, axis: CrossFacetAxis) -> dict[str, object]:
         """``terms`` agg params for an axis: field, size, and (for schemes) include."""
         params: dict[str, object] = {
             "field": self._FACET_FIELDS[axis.facet_type],

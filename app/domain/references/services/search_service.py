@@ -1,6 +1,7 @@
 """Service for searching references."""
 
 from collections.abc import Iterable, Sequence
+from typing import ClassVar
 
 from opentelemetry import trace
 
@@ -36,22 +37,6 @@ logger = get_logger(__name__)
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
-# The terms ``size`` for each literal (non-scheme) axis. A token is a literal axis
-# iff ``FacetType(token)`` is one of these; their code sets are small and bounded.
-_LITERAL_AXIS_SIZES: dict[FacetType, int] = {
-    FacetType.COUNTRIES: 256,  # conservative bound on the ~249 ISO 3166-1 alpha-2 codes
-    FacetType.COUNTRY_WB_REGIONS: len(WORLD_BANK_REGIONS),
-}
-
-
-def _literal_axis_facet(token: str) -> FacetType | None:
-    """Return the FacetType for a literal axis token, or None for a scheme URI."""
-    try:
-        facet = FacetType(token)
-    except ValueError:
-        return None
-    return facet if facet in _LITERAL_AXIS_SIZES else None
-
 
 class SearchService(GenericService[ReferenceAntiCorruptionService]):
     """Service for searching references."""
@@ -60,6 +45,13 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     # produces `relation == "gte"` totals rather than exact counts. Lifting
     # the cap is tracked in destiny-repository#661.
     MAX_RESULT_WINDOW = 10_000
+
+    # The terms `size` for each literal (non-scheme) axis. A token is a literal axis
+    # iff `FacetType(token)` is one of these; their value sets are small and bounded.
+    _LITERAL_AXIS_SIZES: ClassVar[dict[FacetType, int]] = {
+        FacetType.COUNTRIES: 256,  # conservative bound on the ~249 ISO 3166-1 codes
+        FacetType.COUNTRY_WB_REGIONS: len(WORLD_BANK_REGIONS),
+    }
 
     def __init__(
         self,
@@ -141,39 +133,50 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         """
         Cross-tabulate two axes over references matching ``query``.
 
-        Each axis is the literal ``countries`` or ``country_wb_regions``, or a
-        concept-scheme URI (scoped to its members via ``vocabulary_uri``). Returns
-        the non-zero cells and the exact grand total.
+        Each axis is a literal axis or a concept-scheme URI (scoped to its members
+        via ``vocabulary_uri``). Returns the non-zero cells and the exact grand total.
         """
         scheme_members: dict[str, frozenset[str]] | None = None
         if vocabulary_uri and (
-            _literal_axis_facet(row_token) is None
-            or _literal_axis_facet(column_token) is None
+            self._literal_axis_facet(row_token) is None
+            or self._literal_axis_facet(column_token) is None
         ):
             scheme_members = await self._vocab_client.get_scheme_members(vocabulary_uri)
         row = self._resolve_cross_facet_axis(row_token, vocabulary_uri, scheme_members)
         column = self._resolve_cross_facet_axis(
             column_token, vocabulary_uri, scheme_members
         )
-        self._validate_cross_facet_cell_count(row, column)
+        self._validate_cross_facet_cell_count(
+            row, column, settings.es_cross_facet_max_cells
+        )
         return await self.es_uow.references.aggregate_cross_facet(query, row, column)
 
-    @staticmethod
+    @classmethod
+    def _literal_axis_facet(cls, token: str) -> FacetType | None:
+        """Return the FacetType for a literal (non-scheme) axis token, else None."""
+        try:
+            facet = FacetType(token)
+        except ValueError:
+            return None
+        return facet if facet in cls._LITERAL_AXIS_SIZES else None
+
+    @classmethod
     def _resolve_cross_facet_axis(
+        cls,
         token: str,
         vocabulary_uri: str | None,
         scheme_members: dict[str, frozenset[str]] | None,
     ) -> CrossFacetAxis:
-        """Resolve an axis token into a ``CrossFacetAxis``; raises 400 on bad input."""
-        literal_facet = _literal_axis_facet(token)
+        """Resolve an axis token into a ``CrossFacetAxis``, or raise ``ParseError``."""
+        literal_facet = cls._literal_axis_facet(token)
         if literal_facet is not None:
             return CrossFacetAxis(
                 token=token,
                 facet_type=literal_facet,
                 include=None,
-                size=_LITERAL_AXIS_SIZES[literal_facet],
+                size=cls._LITERAL_AXIS_SIZES[literal_facet],
             )
-        # Any non-literal token is treated as a concept-scheme URI.
+        # A non-literal token is treated as a concept-scheme URI.
         if not vocabulary_uri or scheme_members is None:
             msg = (
                 "`vocabulary=` is required when an axis is a concept scheme: "
@@ -196,10 +199,9 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
 
     @staticmethod
     def _validate_cross_facet_cell_count(
-        row: CrossFacetAxis, column: CrossFacetAxis
+        row: CrossFacetAxis, column: CrossFacetAxis, max_cells: int
     ) -> None:
-        """Refuse a matrix whose cell count would exceed the configured limit."""
-        max_cells = settings.es_cross_facet_max_cells
+        """Refuse a matrix whose cell count would exceed ``max_cells``."""
         cells = row.size * column.size
         if cells > max_cells:
             msg = (

@@ -518,22 +518,19 @@ def test_resolve_cross_facet_axis():
     ],
 )
 def test_resolve_cross_facet_axis_rejects(token, vocab, members, match):
-    """A scheme axis without a vocabulary, or absent from it, is a 400-level error."""
+    """A scheme axis without a vocabulary, or absent from it, raises ParseError."""
     with pytest.raises(ParseError, match=match):
         SearchService._resolve_cross_facet_axis(token, vocab, members)  # noqa: SLF001
 
 
 def test_validate_cross_facet_cell_count():
-    """A matrix within the cell limit passes; over it raises ParseError."""
-    small = CrossFacetAxis(
+    """A matrix within ``max_cells`` passes; over it raises ParseError."""
+    axis = CrossFacetAxis(
         token="countries", facet_type=FacetType.COUNTRIES, include=None, size=100
     )
-    SearchService._validate_cross_facet_cell_count(small, small)  # noqa: SLF001
-    big = CrossFacetAxis(
-        token="x", facet_type=FacetType.CONCEPTS, include=None, size=300
-    )
+    SearchService._validate_cross_facet_cell_count(axis, axis, max_cells=10_000)  # noqa: SLF001
     with pytest.raises(ParseError, match="exceeding the limit"):
-        SearchService._validate_cross_facet_cell_count(big, big)  # noqa: SLF001
+        SearchService._validate_cross_facet_cell_count(axis, axis, max_cells=9_999)  # noqa: SLF001
 
 
 async def test_aggregate_cross_facet_literal_axes_skip_vocab_fetch(

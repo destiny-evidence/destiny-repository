@@ -167,8 +167,7 @@ class ReferenceCrossFacetResult(BaseModel):
     value, all panel filters, and the query string. Only non-zero cells are returned.
 
     Note: cells may sum to more than ``total`` because a reference can carry multiple
-    values on an axis (e.g. coded with several countries), so it contributes to
-    multiple cells.
+    values on a single axis, so it contributes to multiple cells.
     """
 
     total: SearchResultTotal = Field(

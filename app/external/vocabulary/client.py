@@ -245,13 +245,11 @@ def _build_concept_siblings(graph: Graph) -> dict[str, frozenset[str]]:
 
 def _build_scheme_members(graph: Graph) -> dict[str, frozenset[str]]:
     """
-    Map each concept-scheme URI to the full set of its member concept URIs.
+    Map each concept-scheme URI to the full set of concept URIs that belong to it.
 
-    Membership comes from explicit assertions (``skos:inScheme``,
-    ``skos:topConceptOf``, ``skos:hasTopConcept``); a concept with no assertion of its
-    own inherits its ``skos:broader`` ancestor's scheme(s), so descendants that omit
-    ``inScheme`` are still captured. Concepts that declare their own scheme are never
-    reassigned, so a ``broader`` edge across scheme boundaries does not leak members.
+    A concept belongs to a scheme if it says so directly, via ``skos:inScheme``,
+    ``skos:topConceptOf``, or ``skos:hasTopConcept``. A concept that makes no such
+    declaration falls back to the scheme(s) of its ``skos:broader`` ancestors.
     """
     explicit_schemes: dict[URIRef, set[URIRef]] = {}
 
