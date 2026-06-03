@@ -57,16 +57,28 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         self.presigned_url_expiry_seconds = presigned_url_expiry_seconds
         self.uses_managed_identity = config.uses_managed_identity
         self.user_delegation_key_duration = config.user_delegation_key_duration
+        # Hold the aio credential explicitly so aclose() can release it; the
+        # azure SDK's close() doesn't propagate to externally-constructed
+        # credentials, so without this its httpx clients leak.
+        self._aio_credential = (
+            DefaultAzureCredential() if self.uses_managed_identity else None
+        )
         self.blob_service_client = BlobServiceClient(
             self.account_url,
-            credential=DefaultAzureCredential()
-            if self.uses_managed_identity
+            credential=self._aio_credential
+            if self._aio_credential is not None
             else self.credential,
         )
         self._user_delegation_key_cache: TTLCache[None, UserDelegationKey] = TTLCache(
             maxsize=1, ttl=self.user_delegation_key_duration / 2
         )
         self._user_delegation_key_lock = asyncio.Lock()
+
+    async def aclose(self) -> None:
+        """Close the aiohttp-backed BlobServiceClient and aio credential."""
+        await self.blob_service_client.close()
+        if self._aio_credential is not None:
+            await self._aio_credential.close()
 
     @trace_blob_client_method(tracer)
     async def upload_file(
