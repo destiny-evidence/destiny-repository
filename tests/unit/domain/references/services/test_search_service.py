@@ -274,7 +274,7 @@ SIBLINGS_FIXTURE: dict[str, frozenset[str]] = {
 @pytest.fixture
 def vocab_client_with_siblings() -> MagicMock:
     client = MagicMock(spec=VocabularyArtifactClient)
-    client.get_concept_siblings = AsyncMock(return_value=SIBLINGS_FIXTURE)
+    client.get_concept_scheme_members = AsyncMock(return_value=SIBLINGS_FIXTURE)
     return client
 
 
@@ -290,7 +290,7 @@ def _service(vocab_client: MagicMock) -> SearchService:
 async def test_resolve_concept_sibling_groups_happy_path(
     vocab_client_with_siblings: MagicMock,
 ):
-    """Each filter becomes a group carrying its resolved sibling set."""
+    """Each filter becomes a group carrying its resolved scheme membership."""
     service = _service(vocab_client_with_siblings)
     groups = await service._resolve_concept_sibling_groups(  # noqa: SLF001
         VOCAB_URI,
@@ -310,8 +310,8 @@ async def test_resolve_concept_sibling_groups_happy_path(
 async def test_resolve_concept_sibling_groups_raises_sibling_grouping_error(
     vocab_client_with_siblings: MagicMock,
 ):
-    """Rule (a) violation: URIs from different sibling sets in one filter."""
-    with pytest.raises(SiblingGroupingError, match="different sibling sets"):
+    """Rule (a) violation: URIs from different schemes in one filter."""
+    with pytest.raises(SiblingGroupingError, match="different schemes"):
         await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
             VOCAB_URI,
             [LinkedDataConceptFilter(concept_uris=[BOTANY, AFRICA])],
@@ -321,8 +321,8 @@ async def test_resolve_concept_sibling_groups_raises_sibling_grouping_error(
 async def test_resolve_concept_sibling_groups_rejects_overlapping_filters(
     vocab_client_with_siblings: MagicMock,
 ):
-    """Rule (b) violation: two filters whose sibling sets overlap."""
-    with pytest.raises(SiblingGroupingError, match="share a sibling set"):
+    """Rule (b) violation: two filters resolving to the same scheme."""
+    with pytest.raises(SiblingGroupingError, match="same scheme"):
         await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
             VOCAB_URI,
             [
@@ -349,7 +349,7 @@ async def test_aggregate_facets_naive_when_concepts_not_requested(
         facets=(),
         vocabulary_uri=None,
     )
-    vocab_client_with_siblings.get_concept_siblings.assert_not_called()
+    vocab_client_with_siblings.get_concept_scheme_members.assert_not_called()
     _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
     assert kwargs["sibling_groups_by_facet"] == {}
 

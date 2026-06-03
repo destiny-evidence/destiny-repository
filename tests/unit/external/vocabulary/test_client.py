@@ -324,36 +324,34 @@ class TestSkosDerivedLookups:
         assert schemes[_concept("Apple")] == _concept("Fruits")
 
     @pytest.mark.asyncio
-    async def test_siblings_covers_broader_and_top_concept_variants(
+    async def test_concept_scheme_members_span_the_whole_scheme(
         self, skos_client: VocabularyArtifactClient
     ):
-        siblings = await skos_client.get_concept_siblings(VOCAB_URI)
+        members = await skos_client.get_concept_scheme_members(VOCAB_URI)
 
-        # Hierarchical (skos:broader) — set includes the concept itself.
-        biology_children = frozenset(
-            {_concept("Botany"), _concept("Zoology"), _concept("Microbiology")}
+        # A concept maps to every member of its scheme regardless of depth: a
+        # parent (Biology) and a child (Botany) share the same full Topics set.
+        topics = frozenset(
+            {
+                _concept("Biology"),
+                _concept("Chemistry"),
+                _concept("Botany"),
+                _concept("Zoology"),
+                _concept("Microbiology"),
+            }
         )
-        assert siblings[_concept("Botany")] == biology_children
-        assert siblings[_concept("Microbiology")] == biology_children
+        assert members[_concept("Botany")] == topics
+        assert members[_concept("Biology")] == topics
 
-        # Flat scheme via skos:topConceptOf.
-        assert siblings[_concept("Biology")] == frozenset(
-            {_concept("Biology"), _concept("Chemistry")}
+        # A deep child (Quantum) sits with its parents (Physics, Mathematics).
+        assert members[_concept("Quantum")] == frozenset(
+            {_concept("Physics"), _concept("Mathematics"), _concept("Quantum")}
         )
 
-        # Flat scheme via skos:hasTopConcept (normalised to topConceptOf on load).
-        assert siblings[_concept("Apple")] == frozenset(
+        # Flat schemes are unchanged.
+        assert members[_concept("Apple")] == frozenset(
             {_concept("Apple"), _concept("Pear")}
         )
-
-        # Flat scheme with only skos:inScheme — treated as implicit top concepts.
-        assert siblings[_concept("English")] == frozenset(
-            {_concept("English"), _concept("Spanish")}
-        )
-
-        # Multi-parented: union of co-children across both parents.
-        # Quantum is the only child of both Physics and Mathematics.
-        assert siblings[_concept("Quantum")] == frozenset({_concept("Quantum")})
 
     @pytest.mark.asyncio
     async def test_scheme_members_covers_every_membership_shape(

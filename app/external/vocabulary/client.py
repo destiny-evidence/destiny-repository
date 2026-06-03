@@ -135,14 +135,14 @@ class VocabularyArtifactClient:
         return _build_concept_schemes(await self.get_vocabulary(uri))
 
     @alru_cache(maxsize=128)
-    async def get_concept_siblings(self, uri: str) -> dict[str, frozenset[str]]:
-        """Concept URI -> sibling set (self-inclusive) for the vocabulary."""
-        return _build_concept_siblings(await self.get_vocabulary(uri))
-
-    @alru_cache(maxsize=128)
     async def get_scheme_members(self, uri: str) -> dict[str, frozenset[str]]:
         """Concept-scheme URI -> member concept URIs (all depths) for the vocabulary."""
         return _build_scheme_members(await self.get_vocabulary(uri))
+
+    @alru_cache(maxsize=128)
+    async def get_concept_scheme_members(self, uri: str) -> dict[str, frozenset[str]]:
+        """Concept URI -> the members of every scheme it belongs to (self-inclusive)."""
+        return _build_concept_scheme_members(await self.get_vocabulary(uri))
 
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(httpx.TransportError),
@@ -197,50 +197,14 @@ def _build_concept_schemes(graph: Graph) -> dict[str, str]:
     }
 
 
-def _build_concept_siblings(graph: Graph) -> dict[str, frozenset[str]]:
-    children_by_parent: dict[URIRef, set[URIRef]] = {}
-    parents_by_concept: dict[URIRef, set[URIRef]] = {}
-    for concept, _, parent in graph.triples((None, SKOS.broader, None)):
-        if not isinstance(concept, URIRef) or not isinstance(parent, URIRef):
-            continue
-        children_by_parent.setdefault(parent, set()).add(concept)
-        parents_by_concept.setdefault(concept, set()).add(parent)
-
-    top_concepts_by_scheme: dict[URIRef, set[URIRef]] = {}
-    schemes_by_concept: dict[URIRef, set[URIRef]] = {}
-    # Vocabularies in the wild use both directions; rdflib doesn't derive
-    # SKOS inverses, so we read each direction explicitly.
-    top_concept_triples = list(graph.triples((None, SKOS.topConceptOf, None))) + [
-        (concept, None, scheme)
-        for scheme, _, concept in graph.triples((None, SKOS.hasTopConcept, None))
-    ]
-    for concept, _, scheme in top_concept_triples:
-        if not isinstance(concept, URIRef) or not isinstance(scheme, URIRef):
-            continue
-        top_concepts_by_scheme.setdefault(scheme, set()).add(concept)
-        schemes_by_concept.setdefault(concept, set()).add(scheme)
-
-    # Concepts declared only via skos:inScheme (no broader, no topConceptOf)
-    # are treated as implicit top concepts of their scheme — otherwise they'd
-    # be invisible to sibling lookups despite being valid SKOS.
-    for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
-        if not isinstance(concept, URIRef) or not isinstance(scheme, URIRef):
-            continue
-        if concept in parents_by_concept or concept in schemes_by_concept:
-            continue
-        top_concepts_by_scheme.setdefault(scheme, set()).add(concept)
-        schemes_by_concept.setdefault(concept, set()).add(scheme)
-
-    all_concepts: set[URIRef] = set(parents_by_concept) | set(schemes_by_concept)
-    siblings: dict[str, frozenset[str]] = {}
-    for concept in all_concepts:
-        peers: set[URIRef] = {concept}
-        for parent in parents_by_concept.get(concept, ()):
-            peers.update(children_by_parent[parent])
-        for scheme in schemes_by_concept.get(concept, ()):
-            peers.update(top_concepts_by_scheme[scheme])
-        siblings[str(concept)] = frozenset(str(peer) for peer in peers)
-    return siblings
+def _build_concept_scheme_members(graph: Graph) -> dict[str, frozenset[str]]:
+    """Map each concept URI to the members of every scheme it belongs to."""
+    members_by_scheme = _build_scheme_members(graph)
+    siblings: dict[str, set[str]] = {}
+    for members in members_by_scheme.values():
+        for concept in members:
+            siblings.setdefault(concept, set()).update(members)
+    return {concept: frozenset(peers) for concept, peers in siblings.items()}
 
 
 def _build_scheme_members(graph: Graph) -> dict[str, frozenset[str]]:
