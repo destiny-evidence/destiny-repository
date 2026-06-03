@@ -565,6 +565,18 @@ class Settings(BaseSettings):
         ),
     )
 
+    es_cross_facet_max_cells: int = Field(
+        default=50_000,
+        ge=1,
+        le=65_536,
+        description=(
+            "Maximum cells (row buckets x column buckets) a cross-facet aggregation "
+            "may request. Kept below the Elasticsearch cluster default for "
+            "`search.max_buckets` so a large matrix is refused with a 400 rather than "
+            "aborting the query server-side."
+        ),
+    )
+
     vocabulary_host: str = Field(
         default="evidence-repository.org",
         description=(

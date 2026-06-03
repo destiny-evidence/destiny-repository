@@ -19,6 +19,7 @@ from app.core.exceptions import (
     SDKToDomainError,
     SQLIntegrityError,
     SQLNotFoundError,
+    VocabularyFetchError,
 )
 
 
@@ -144,6 +145,22 @@ async def parse_error_exception_handler(
     exception: ParseError,
 ) -> APIExceptionResponse:
     """Return bad request response when a parsing error occurs."""
+    return APIExceptionResponse(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        content=APIExceptionContent(detail=exception.detail),
+    )
+
+
+async def vocabulary_fetch_exception_handler(
+    _request: Request,
+    exception: VocabularyFetchError,
+) -> APIExceptionResponse:
+    """
+    Return bad request response when a vocabulary artifact can't be fetched or parsed.
+
+    The vocabulary host is validated before this point, so the remaining causes
+    (unresolvable/typo'd URI, unparseable document) are user-actionable input errors.
+    """
     return APIExceptionResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
         content=APIExceptionContent(detail=exception.detail),

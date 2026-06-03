@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
     AnnotationFilter,
+    CrossFacetCell,
     Enhancement,
     EnhancementRequest,
     EnhancementType,
@@ -32,7 +33,11 @@ from app.domain.references.services.access_control_service import RedactedRefere
 from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
-from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESSearchResult,
+    ESSearchTotal,
+)
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
@@ -439,6 +444,30 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 raise NotImplementedError(msg)
         try:
             return destiny_sdk.references.ReferenceFacetResult(**fields)
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def cross_facet_to_sdk(
+        self,
+        cells: Sequence[CrossFacetCell],
+        total: ESSearchTotal,
+    ) -> destiny_sdk.references.ReferenceCrossFacetResult:
+        """Convert a cross-facet result into the SDK response model."""
+        try:
+            return destiny_sdk.references.ReferenceCrossFacetResult(
+                total={
+                    "count": total.value,
+                    "is_lower_bound": total.relation == "gte",
+                },
+                cells=[
+                    destiny_sdk.references.CrossFacetCell(
+                        row=cell.row,
+                        column=cell.column,
+                        count=cell.count,
+                    )
+                    for cell in cells
+                ],
+            )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 

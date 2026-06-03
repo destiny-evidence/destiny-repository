@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field, HttpUrl, TypeAdapter
 from destiny_sdk.core import UUID, SearchResultMixIn, _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement, EnhancementFileInput
 from destiny_sdk.identifiers import ExternalIdentifier
+from destiny_sdk.search import SearchResultTotal
 from destiny_sdk.visibility import Visibility
 
 external_identifier_adapter: TypeAdapter[ExternalIdentifier] = TypeAdapter(
@@ -132,6 +133,49 @@ class ReferenceFacetResult(BaseModel):
     country_wb_regions: list[CountryWBRegionFacetCount] | None = Field(
         default=None,
         description="Counts of matching references per World Bank region ID.",
+    )
+
+
+class CrossFacetCell(BaseModel):
+    """A single non-zero cell of a cross-facet (cross-tabulation) matrix."""
+
+    row: str = Field(
+        description=(
+            "The row axis value. "
+            "If the row axis is a concept scheme, this will be its URI."
+        ),
+    )
+    column: str = Field(
+        description=(
+            "The column axis value. "
+            "If the column axis is a concept scheme, this will be its URI."
+        ),
+    )
+    count: int = Field(
+        description=(
+            "Number of references matching this row and column together, under all "
+            "filters and the query string."
+        ),
+    )
+
+
+class ReferenceCrossFacetResult(BaseModel):
+    """
+    Cross-tabulation of two axes over the references matching a search.
+
+    Each cell counts references at the strict intersection of its row value, column
+    value, all panel filters, and the query string. Only non-zero cells are returned.
+
+    Note: cells may sum to more than ``total`` because a reference can carry multiple
+    values on an axis (e.g. coded with several countries), so it contributes to
+    multiple cells.
+    """
+
+    total: SearchResultTotal = Field(
+        description="The total number of references matching the search criteria.",
+    )
+    cells: list[CrossFacetCell] = Field(
+        description="The non-zero cells of the cross-facet matrix.",
     )
 
 

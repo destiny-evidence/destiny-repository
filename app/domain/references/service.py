@@ -23,6 +23,7 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    CrossFacetCell,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
@@ -72,7 +73,11 @@ from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.es.persistence import ESFacetBucket, ESSearchResult
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -1291,6 +1296,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Count occurrences per facet across references matching the query."""
         return await self._search_service.aggregate_facets(
             query, facets, vocabulary_uri
+        )
+
+    @es_unit_of_work
+    async def aggregate_cross_facet(
+        self,
+        query: SearchQuery,
+        row: str,
+        column: str,
+        vocabulary_uri: str | None = None,
+    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+        """Cross-tabulate two axes across references matching the query."""
+        return await self._search_service.aggregate_cross_facet(
+            query, row, column, vocabulary_uri
         )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")

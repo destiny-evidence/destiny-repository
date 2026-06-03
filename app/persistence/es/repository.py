@@ -245,23 +245,17 @@ class GenericAsyncESRepository(
         :return: A list of matching records.
         :rtype: ESSearchResult
         """
-        composed = self._compose_query(query, fields, filter_clauses)
-        trace_attribute(Attributes.DB_QUERY, json.dumps(composed.to_dict()))
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=page_size)
             .extra(from_=(page - 1) * page_size)
-            .query(composed)
+            .query(self._compose_query(query, fields, filter_clauses))
         )
         if sort:
             search = search.sort(*sort)
         if not parse_document:
             search = search.source(includes=[])
-        try:
-            response = await search.execute()
-        except BadRequestError as exc:
-            msg = f"Elasticsearch query string search failed: {exc}."
-            raise ESQueryError(msg) from exc
+        response = await self._execute_search(search)
         return self._parse_search_result(response, page, parse_document=parse_document)
 
     @trace_repository_method(tracer)
@@ -295,21 +289,10 @@ class GenericAsyncESRepository(
         :return: A mapping from each requested field name to its term buckets.
         :rtype: dict[str, list[ESFacetBucket]]
         """
-        composed = self._compose_query(query, query_fields, filter_clauses)
-        trace_attribute(Attributes.DB_QUERY, json.dumps(composed.to_dict()))
-        search = (
-            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
-            .extra(size=0)
-            .query(composed)
-            .source(includes=[])
-        )
+        search = self._aggregation_search(query, query_fields, filter_clauses)
         for field in aggregate_on:
             search.aggs.bucket(field, "terms", field=field, size=max_buckets)
-        try:
-            response = await search.execute()
-        except BadRequestError as exc:
-            msg = f"Elasticsearch terms aggregation failed: {exc}."
-            raise ESQueryError(msg) from exc
+        response = await self._execute_search(search)
         return {
             field: [
                 ESFacetBucket(key=str(bucket.key), count=bucket.doc_count)
@@ -333,3 +316,26 @@ class GenericAsyncESRepository(
         if not filter_clauses:
             return main
         return Bool(must=[main], filter=list(filter_clauses))
+
+    def _aggregation_search(
+        self,
+        query_string: str,
+        query_fields: Sequence[str] | None,
+        filter_clauses: Sequence[Query] | None,
+    ) -> AsyncSearch:
+        """Build a ``size=0``, source-stripped search ready for aggregations."""
+        return (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .extra(size=0)
+            .query(self._compose_query(query_string, query_fields, filter_clauses))
+            .source(includes=[])
+        )
+
+    async def _execute_search(self, search: AsyncSearch) -> Response:
+        """Trace and execute a search, mapping an ES ``400`` to ``ESQueryError``."""
+        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
+        try:
+            return await search.execute()
+        except BadRequestError as exc:
+            msg = f"Elasticsearch query failed: {exc}."
+            raise ESQueryError(msg) from exc

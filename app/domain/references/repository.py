@@ -1,7 +1,6 @@
 """Repositories for references and associated models."""
 
 import datetime
-import json
 from abc import ABC
 from collections.abc import Mapping, Sequence
 from typing import ClassVar, Literal
@@ -11,7 +10,6 @@ from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from elasticsearch.dsl.query import Bool, MatchAll, Prefix, Query, Range, Term, Terms
 from elasticsearch.dsl.response import Response
-from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
 from sqlalchemy import (
     CompoundSelect,
@@ -28,8 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from app.core.config import DedupCandidateScoringConfig, get_settings
-from app.core.exceptions import ESQueryError
-from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -38,6 +34,8 @@ from app.domain.references.models.es import (
 from app.domain.references.models.models import (
     AnnotationFilter,
     CandidateCanonicalSearchFields,
+    CrossFacetAxis,
+    CrossFacetCell,
     DuplicateDetermination,
     FacetType,
     GenericExternalIdentifier,
@@ -106,6 +104,7 @@ from app.persistence.es.persistence import (
     ESFacetBucket,
     ESScoreResult,
     ESSearchResult,
+    ESSearchTotal,
 )
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
@@ -453,17 +452,10 @@ class ReferenceESRepository(
 
         # Build search query excluding the facet's own filter so its agg
         # includes sibling counts
-        search = (
-            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
-            .extra(size=0)
-            .query(
-                self._compose_query(
-                    query.query_string,
-                    self.default_search_fields,
-                    self._build_filter_clauses(query, exclude_facet=facet),
-                )
-            )
-            .source(includes=[])
+        search = self._aggregation_search(
+            query.query_string,
+            self.default_search_fields,
+            self._build_filter_clauses(query, exclude_facet=facet),
         )
 
         # Attach aggregate groupings
@@ -479,12 +471,7 @@ class ReferenceESRepository(
                 )
             )
 
-        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
-        try:
-            response = await search.execute()
-        except BadRequestError as exc:
-            msg = f"Elasticsearch sibling-aware facet aggregation failed: {exc}."
-            raise ESQueryError(msg) from exc
+        response = await self._execute_search(search)
 
         return self._parse_facet_buckets(response, agg_names)
 
@@ -568,6 +555,61 @@ class ReferenceESRepository(
             for name in agg_names
             for b in response.aggregations[name].inner.buckets
         ]
+
+    @trace_repository_method(tracer)
+    async def aggregate_cross_facet(
+        self,
+        query: SearchQuery,
+        row: CrossFacetAxis,
+        column: CrossFacetAxis,
+    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+        """
+        Cross-tabulate two axes over references matching ``query``.
+
+        Returns the non-zero cells plus the exact grand total (``track_total_hits`` is
+        enabled so the count isn't capped at the result window).
+        """
+        search = self._aggregation_search(
+            query.query_string,
+            self.default_search_fields,
+            self._build_filter_clauses(query),
+        ).extra(track_total_hits=True)
+        outer = search.aggs.bucket("rows", "terms", **self._terms_agg_params(row))
+        outer.bucket("columns", "terms", **self._terms_agg_params(column))
+
+        response = await self._execute_search(search)
+        return (
+            self._parse_cross_facet_cells(response),
+            ESSearchTotal(
+                value=response.hits.total.value,  # type: ignore[attr-defined]
+                relation=response.hits.total.relation,  # type: ignore[attr-defined]
+            ),
+        )
+
+    def _terms_agg_params(self, axis: CrossFacetAxis) -> dict[str, object]:
+        """``terms`` agg params for an axis: field, size, and (for schemes) include."""
+        params: dict[str, object] = {
+            "field": self._FACET_FIELDS[axis.facet_type],
+            "size": axis.size,
+        }
+        if axis.include:
+            params["include"] = sorted(axis.include)
+        return params
+
+    @staticmethod
+    def _parse_cross_facet_cells(response: Response) -> list[CrossFacetCell]:
+        """Flatten nested ``rows > columns`` buckets into deterministic cells."""
+        cells = [
+            CrossFacetCell(
+                row=str(row_bucket.key),
+                column=str(col_bucket.key),
+                count=col_bucket.doc_count,
+            )
+            for row_bucket in response.aggregations.rows.buckets
+            for col_bucket in row_bucket.columns.buckets
+        ]
+        cells.sort(key=lambda cell: (-cell.count, cell.row, cell.column))
+        return cells
 
     @staticmethod
     def _build_author_dis_max_query(

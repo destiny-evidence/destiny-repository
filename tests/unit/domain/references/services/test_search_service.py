@@ -6,9 +6,10 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import SiblingGroupingError
+from app.core.exceptions import ParseError, SiblingGroupingError
 from app.domain.references.models.models import (
     AnnotationFilter,
+    CrossFacetAxis,
     FacetType,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
@@ -21,6 +22,7 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.search_service import SearchService
+from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.uow import AsyncESUnitOfWork
@@ -469,3 +471,98 @@ async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
             facets=(FacetType.COUNTRIES,),
             vocabulary_uri=None,
         )
+
+
+# ---- aggregate_cross_facet ------------------------------------------------------
+
+TOPICS_SCHEME = "https://vocab.example.org/Topics"
+REGION_SCHEME = "https://vocab.example.org/Region"
+MEMBERS_FIXTURE: dict[str, frozenset[str]] = {
+    TOPICS_SCHEME: _TOPICS,
+    REGION_SCHEME: _REGIONS,
+}
+
+
+@pytest.fixture
+def vocab_client_with_members() -> MagicMock:
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_scheme_members = AsyncMock(return_value=MEMBERS_FIXTURE)
+    return client
+
+
+def test_resolve_cross_facet_axis():
+    """Literal axes carry a fixed size; a scheme axis is scoped to its members."""
+    countries = SearchService._resolve_cross_facet_axis("countries", None, None)  # noqa: SLF001
+    regions = SearchService._resolve_cross_facet_axis("country_wb_regions", None, None)  # noqa: SLF001
+    scheme = SearchService._resolve_cross_facet_axis(  # noqa: SLF001
+        TOPICS_SCHEME, VOCAB_URI, MEMBERS_FIXTURE
+    )
+    assert (countries.facet_type, countries.include, countries.size) == (
+        FacetType.COUNTRIES,
+        None,
+        256,
+    )
+    assert regions.size == len(WORLD_BANK_REGIONS)
+    assert (scheme.facet_type, scheme.include, scheme.size) == (
+        FacetType.CONCEPTS,
+        _TOPICS,
+        len(_TOPICS),
+    )
+
+
+@pytest.mark.parametrize(
+    ("token", "vocab", "members", "match"),
+    [
+        (TOPICS_SCHEME, None, None, "`vocabulary=` is required"),
+        ("https://vocab.example.org/Missing", VOCAB_URI, MEMBERS_FIXTURE, "no members"),
+    ],
+)
+def test_resolve_cross_facet_axis_rejects(token, vocab, members, match):
+    """A scheme axis without a vocabulary, or absent from it, is a 400-level error."""
+    with pytest.raises(ParseError, match=match):
+        SearchService._resolve_cross_facet_axis(token, vocab, members)  # noqa: SLF001
+
+
+def test_validate_cross_facet_cell_count():
+    """A matrix within the cell limit passes; over it raises ParseError."""
+    small = CrossFacetAxis(
+        token="countries", facet_type=FacetType.COUNTRIES, include=None, size=100
+    )
+    SearchService._validate_cross_facet_cell_count(small, small)  # noqa: SLF001
+    big = CrossFacetAxis(
+        token="x", facet_type=FacetType.CONCEPTS, include=None, size=300
+    )
+    with pytest.raises(ParseError, match="exceeding the limit"):
+        SearchService._validate_cross_facet_cell_count(big, big)  # noqa: SLF001
+
+
+async def test_aggregate_cross_facet_literal_axes_skip_vocab_fetch(
+    vocab_client_with_members: MagicMock,
+):
+    """Two literal axes need no vocabulary lookup and pass resolved axes to the repo."""
+    service = _service(vocab_client_with_members)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
+    await service.aggregate_cross_facet(
+        SearchQuery(query_string="*"), "countries", "country_wb_regions", None
+    )
+    vocab_client_with_members.get_scheme_members.assert_not_called()
+    (_query, row, column), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
+    assert row.facet_type is FacetType.COUNTRIES
+    assert column.facet_type is FacetType.COUNTRY_WB_REGIONS
+
+
+async def test_aggregate_cross_facet_scheme_axis_fetches_members_once(
+    vocab_client_with_members: MagicMock,
+):
+    """A scheme axis triggers a single vocabulary fetch shared across both axes."""
+    service = _service(vocab_client_with_members)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
+    await service.aggregate_cross_facet(
+        SearchQuery(query_string="*"), TOPICS_SCHEME, REGION_SCHEME, VOCAB_URI
+    )
+    vocab_client_with_members.get_scheme_members.assert_awaited_once_with(VOCAB_URI)
+    (_query, row, column), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
+    assert row.include == _TOPICS
+    assert column.include == _REGIONS
