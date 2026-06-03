@@ -164,7 +164,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
 
 
 def _cells(body: dict) -> set[tuple[str, str, int]]:
-    return {(c["row"], c["column"], c["count"]) for c in body["cells"]}
+    return {(c["axes"][0], c["axes"][1], c["count"]) for c in body["cells"]}
 
 
 async def test_scheme_by_scheme_cross_tab(
@@ -177,8 +177,7 @@ async def test_scheme_by_scheme_cross_tab(
         "/v1/references/search/cross-facets/",
         params={
             "q": "*",
-            "row": TOPICS_SCHEME,
-            "column": REGION_SCHEME,
+            "axes": [TOPICS_SCHEME, REGION_SCHEME],
             "vocabulary": primed_vocab,
         },
     )
@@ -186,23 +185,19 @@ async def test_scheme_by_scheme_cross_tab(
     body = response.json()
     assert body["total"] == {"count": 5, "is_lower_bound": False}
     assert body["cells"] == [
-        {"row": BOTANY, "column": AFRICA, "count": 3},
-        {"row": MICROBIOLOGY, "column": EUROPE, "count": 1},
-        {"row": ZOOLOGY, "column": AFRICA, "count": 1},
-        {"row": ZOOLOGY, "column": ASIA, "count": 1},
+        {"axes": [BOTANY, AFRICA], "count": 3},
+        {"axes": [MICROBIOLOGY, EUROPE], "count": 1},
+        {"axes": [ZOOLOGY, AFRICA], "count": 1},
+        {"axes": [ZOOLOGY, ASIA], "count": 1},
     ]
 
 
 @pytest.mark.parametrize(
     ("params", "expected"),
     [
-        # concept rows x region-literal columns (include omitted on the column)
+        # concept axis x region-literal axis (include omitted on the literal axis)
         (
-            {
-                "row": TOPICS_SCHEME,
-                "column": "country_wb_regions",
-                "vocabulary": VOCAB_URI,
-            },
+            {"axes": [TOPICS_SCHEME, "country_wb_regions"], "vocabulary": VOCAB_URI},
             {
                 (BOTANY, REGION_SSF, 3),
                 (ZOOLOGY, REGION_NAC, 1),
@@ -212,7 +207,7 @@ async def test_scheme_by_scheme_cross_tab(
         ),
         # two literal axes, no vocabulary needed
         (
-            {"row": "countries", "column": "country_wb_regions"},
+            {"axes": ["countries", "country_wb_regions"]},
             {
                 (COUNTRY_KE, REGION_SSF, 3),
                 (COUNTRY_US, REGION_NAC, 1),
@@ -221,7 +216,7 @@ async def test_scheme_by_scheme_cross_tab(
         ),
         # identical axes -> diagonal co-occurrence matrix
         (
-            {"row": "country_wb_regions", "column": "country_wb_regions"},
+            {"axes": ["country_wb_regions", "country_wb_regions"]},
             {(REGION_SSF, REGION_SSF, 4), (REGION_NAC, REGION_NAC, 1)},
         ),
     ],
@@ -248,7 +243,7 @@ async def test_query_string_and_empty_result(
     """`q` narrows the matrix; a query matching nothing yields an empty matrix."""
     response = await client.get(
         "/v1/references/search/cross-facets/",
-        params={"q": "title:Asia", "row": "countries", "column": "country_wb_regions"},
+        params={"q": "title:Asia", "axes": ["countries", "country_wb_regions"]},
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     assert response.json()["total"] == {"count": 1, "is_lower_bound": False}
@@ -256,11 +251,7 @@ async def test_query_string_and_empty_result(
 
     response = await client.get(
         "/v1/references/search/cross-facets/",
-        params={
-            "q": "title:nope_xyz",
-            "row": "countries",
-            "column": "country_wb_regions",
-        },
+        params={"q": "title:nope_xyz", "axes": ["countries", "country_wb_regions"]},
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     assert response.json() == {
@@ -273,21 +264,24 @@ async def test_query_string_and_empty_result(
     ("params", "expected_status", "detail"),
     [
         # scheme axis with no vocabulary
-        ({"row": TOPICS_SCHEME, "column": "countries"}, 400, "vocabulary"),
+        ({"axes": [TOPICS_SCHEME, "countries"]}, 400, "vocabulary"),
         # matrix too large (256 x 256 countries)
-        ({"row": "countries", "column": "countries"}, 400, "exceeding the limit"),
+        ({"axes": ["countries", "countries"]}, 400, "exceeding the limit"),
         # scheme URI absent from the vocabulary
         (
-            {"row": NOT_A_SCHEME, "column": "countries", "vocabulary": VOCAB_URI},
+            {"axes": [NOT_A_SCHEME, "countries"], "vocabulary": VOCAB_URI},
             400,
             "no members",
         ),
         # vocabulary host outside the allowed domain
         (
-            {"row": TOPICS_SCHEME, "column": "countries", "vocabulary": BAD_HOST_VOCAB},
+            {"axes": [TOPICS_SCHEME, "countries"], "vocabulary": BAD_HOST_VOCAB},
             422,
             None,
         ),
+        # not exactly two axes (tuple length enforced by the schema)
+        ({"axes": ["countries"]}, 422, None),
+        ({"axes": ["countries", "countries", "countries"]}, 422, None),
     ],
 )
 async def test_cross_facet_request_rejected(
@@ -325,8 +319,7 @@ async def test_unfetchable_vocabulary_returns_400(
         "/v1/references/search/cross-facets/",
         params={
             "q": "*",
-            "row": TOPICS_SCHEME,
-            "column": "countries",
+            "axes": [TOPICS_SCHEME, "countries"],
             "vocabulary": "https://vocab.evidence-repository.org/test/missing",
         },
     )

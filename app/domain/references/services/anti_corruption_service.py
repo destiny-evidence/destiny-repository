@@ -461,8 +461,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 },
                 cells=[
                     destiny_sdk.references.CrossFacetCell(
-                        row=cell.row,
-                        column=cell.column,
+                        axes=cell.axes,
                         count=cell.count,
                     )
                     for cell in cells

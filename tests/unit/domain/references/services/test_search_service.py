@@ -528,9 +528,9 @@ def test_validate_cross_facet_cell_count():
     axis = CrossFacetAxis(
         token="countries", facet_type=FacetType.COUNTRIES, include=None, size=100
     )
-    SearchService._validate_cross_facet_cell_count(axis, axis, max_cells=10_000)  # noqa: SLF001
+    SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=10_000)  # noqa: SLF001
     with pytest.raises(ParseError, match="exceeding the limit"):
-        SearchService._validate_cross_facet_cell_count(axis, axis, max_cells=9_999)  # noqa: SLF001
+        SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=9_999)  # noqa: SLF001
 
 
 async def test_aggregate_cross_facet_literal_axes_skip_vocab_fetch(
@@ -541,12 +541,12 @@ async def test_aggregate_cross_facet_literal_axes_skip_vocab_fetch(
     service.es_uow.references = MagicMock()  # type: ignore[union-attr]
     service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
     await service.aggregate_cross_facet(
-        SearchQuery(query_string="*"), "countries", "country_wb_regions", None
+        SearchQuery(query_string="*"), ("countries", "country_wb_regions"), None
     )
     vocab_client_with_members.get_scheme_members.assert_not_called()
-    (_query, row, column), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
-    assert row.facet_type is FacetType.COUNTRIES
-    assert column.facet_type is FacetType.COUNTRY_WB_REGIONS
+    (_query, axes), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
+    assert axes[0].facet_type is FacetType.COUNTRIES
+    assert axes[1].facet_type is FacetType.COUNTRY_WB_REGIONS
 
 
 async def test_aggregate_cross_facet_scheme_axis_fetches_members_once(
@@ -557,9 +557,9 @@ async def test_aggregate_cross_facet_scheme_axis_fetches_members_once(
     service.es_uow.references = MagicMock()  # type: ignore[union-attr]
     service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
     await service.aggregate_cross_facet(
-        SearchQuery(query_string="*"), TOPICS_SCHEME, REGION_SCHEME, VOCAB_URI
+        SearchQuery(query_string="*"), (TOPICS_SCHEME, REGION_SCHEME), VOCAB_URI
     )
     vocab_client_with_members.get_scheme_members.assert_awaited_once_with(VOCAB_URI)
-    (_query, row, column), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
-    assert row.include == _TOPICS
-    assert column.include == _REGIONS
+    (_query, axes), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
+    assert axes[0].include == _TOPICS
+    assert axes[1].include == _REGIONS

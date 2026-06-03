@@ -139,21 +139,16 @@ class ReferenceFacetResult(BaseModel):
 class CrossFacetCell(BaseModel):
     """A single non-zero cell of a cross-facet (cross-tabulation) matrix."""
 
-    row: str = Field(
+    axes: tuple[str, str] = Field(
         description=(
-            "The row axis value. "
-            "If the row axis is a concept scheme, this will be its URI."
-        ),
-    )
-    column: str = Field(
-        description=(
-            "The column axis value. "
-            "If the column axis is a concept scheme, this will be its URI."
+            "The cell's value on each axis, in the same order as the requested "
+            "`axes`. Each value is a concept URI (for a concept-scheme axis) or a "
+            "code (for a country/region axis)."
         ),
     )
     count: int = Field(
         description=(
-            "Number of references matching this row and column together, under all "
+            "Number of references matching both axis values together, under all "
             "filters and the query string."
         ),
     )
@@ -163,8 +158,8 @@ class ReferenceCrossFacetResult(BaseModel):
     """
     Cross-tabulation of two axes over the references matching a search.
 
-    Each cell counts references at the strict intersection of its row value, column
-    value, all panel filters, and the query string. Only non-zero cells are returned.
+    Each cell counts references at the strict intersection of its two axis values,
+    all panel filters, and the query string. Only non-zero cells are returned.
 
     Note: cells may sum to more than ``total`` because a reference can carry multiple
     values on a single axis, so it contributes to multiple cells.

@@ -1,5 +1,6 @@
 """Service for searching references."""
 
+import math
 from collections.abc import Iterable, Sequence
 from typing import ClassVar
 
@@ -126,30 +127,27 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     async def aggregate_cross_facet(
         self,
         query: SearchQuery,
-        row_token: str,
-        column_token: str,
+        axes: tuple[str, str],
         vocabulary_uri: str | None,
     ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
         """
         Cross-tabulate two axes over references matching ``query``.
 
         Each axis is a literal axis or a concept-scheme URI (scoped to its members
-        via ``vocabulary_uri``). Returns the non-zero cells and the exact grand total.
+        via ``vocabulary_uri``). Cells are reported in the given axis order. Returns
+        the non-zero cells and the exact grand total.
         """
         scheme_members: dict[str, frozenset[str]] | None = None
-        if vocabulary_uri and (
-            self._literal_axis_facet(row_token) is None
-            or self._literal_axis_facet(column_token) is None
-        ):
+        if vocabulary_uri and any(self._is_concept_scheme(token) for token in axes):
             scheme_members = await self._vocab_client.get_scheme_members(vocabulary_uri)
-        row = self._resolve_cross_facet_axis(row_token, vocabulary_uri, scheme_members)
-        column = self._resolve_cross_facet_axis(
-            column_token, vocabulary_uri, scheme_members
+        resolved = tuple(
+            self._resolve_cross_facet_axis(token, vocabulary_uri, scheme_members)
+            for token in axes
         )
         self._validate_cross_facet_cell_count(
-            row, column, settings.es_cross_facet_max_cells
+            resolved, settings.es_cross_facet_max_cells
         )
-        return await self.es_uow.references.aggregate_cross_facet(query, row, column)
+        return await self.es_uow.references.aggregate_cross_facet(query, resolved)
 
     @classmethod
     def _literal_axis_facet(cls, token: str) -> FacetType | None:
@@ -159,6 +157,11 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         except ValueError:
             return None
         return facet if facet in cls._LITERAL_AXIS_SIZES else None
+
+    @classmethod
+    def _is_concept_scheme(cls, token: str) -> bool:
+        """Whether an axis token is a concept-scheme URI (i.e. not a literal axis)."""
+        return cls._literal_axis_facet(token) is None
 
     @classmethod
     def _resolve_cross_facet_axis(
@@ -199,15 +202,15 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
 
     @staticmethod
     def _validate_cross_facet_cell_count(
-        row: CrossFacetAxis, column: CrossFacetAxis, max_cells: int
+        axes: Sequence[CrossFacetAxis], max_cells: int
     ) -> None:
         """Refuse a matrix whose cell count would exceed ``max_cells``."""
-        cells = row.size * column.size
+        cells = math.prod(axis.size for axis in axes)
         if cells > max_cells:
+            sizes = " x ".join(str(axis.size) for axis in axes)
             msg = (
-                f"Cross-facet matrix would request {cells} cells ({row.size} x "
-                f"{column.size}), exceeding the limit of {max_cells}. Choose axes "
-                "with fewer members."
+                f"Cross-facet matrix would request {cells} cells ({sizes}), "
+                f"exceeding the limit of {max_cells}. Choose axes with fewer members."
             )
             raise ParseError(msg)
 

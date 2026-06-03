@@ -560,8 +560,7 @@ class ReferenceESRepository(
     async def aggregate_cross_facet(
         self,
         query: SearchQuery,
-        row: CrossFacetAxis,
-        column: CrossFacetAxis,
+        axes: Sequence[CrossFacetAxis],
     ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
         """
         Cross-tabulate two axes over references matching ``query``.
@@ -569,13 +568,14 @@ class ReferenceESRepository(
         Returns the non-zero cells plus the exact grand total (``track_total_hits`` is
         enabled so the count isn't capped at the result window).
         """
+        axis_0, axis_1 = axes
         search = self._build_aggregation_search(
             query.query_string,
             self.default_search_fields,
             self._build_filter_clauses(query),
         ).extra(track_total_hits=True)
-        outer = search.aggs.bucket("rows", "terms", **self._facet_agg_params(row))
-        outer.bucket("columns", "terms", **self._facet_agg_params(column))
+        outer = search.aggs.bucket("axis_0", "terms", **self._facet_agg_params(axis_0))
+        outer.bucket("axis_1", "terms", **self._facet_agg_params(axis_1))
 
         response = await self._execute_search(search)
         return (
@@ -598,17 +598,16 @@ class ReferenceESRepository(
 
     @staticmethod
     def _parse_cross_facet_cells(response: Response) -> list[CrossFacetCell]:
-        """Flatten nested ``rows > columns`` buckets into deterministic cells."""
+        """Flatten nested ``axis_0 > axis_1`` buckets into deterministic cells."""
         cells = [
             CrossFacetCell(
-                row=str(row_bucket.key),
-                column=str(col_bucket.key),
-                count=col_bucket.doc_count,
+                axes=(str(bucket_0.key), str(bucket_1.key)),
+                count=bucket_1.doc_count,
             )
-            for row_bucket in response.aggregations.rows.buckets
-            for col_bucket in row_bucket.columns.buckets
+            for bucket_0 in response.aggregations.axis_0.buckets
+            for bucket_1 in bucket_0.axis_1.buckets
         ]
-        cells.sort(key=lambda cell: (-cell.count, cell.row, cell.column))
+        cells.sort(key=lambda cell: (-cell.count, cell.axes))
         return cells
 
     @staticmethod

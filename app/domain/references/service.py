@@ -1302,13 +1302,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def aggregate_cross_facet(
         self,
         query: SearchQuery,
-        row: str,
-        column: str,
+        axes: tuple[str, str],
         vocabulary_uri: str | None = None,
     ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
         """Cross-tabulate two axes across references matching the query."""
         return await self._search_service.aggregate_cross_facet(
-            query, row, column, vocabulary_uri
+            query, axes, vocabulary_uri
         )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")

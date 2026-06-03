@@ -1227,9 +1227,10 @@ class CrossFacetAxis(BaseModel):
 class CrossFacetCell(BaseModel):
     """A single non-zero cell of a cross-facet matrix."""
 
-    row: str = Field(description="The row axis value.")
-    column: str = Field(description="The column axis value.")
-    count: int = Field(description="References matching this row and column together.")
+    axes: tuple[str, str] = Field(
+        description="The cell's value on each axis, in requested axis order.",
+    )
+    count: int = Field(description="References matching both axis values together.")
 
 
 class ReferenceSearchResult(BaseModel):
