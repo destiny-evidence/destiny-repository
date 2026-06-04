@@ -115,6 +115,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
     - doc 3: Zoology, Asia;           US; NAC
     - doc 4: Microbiology, Europe;    UG; SSF
     - doc 5: Botany, Zoology, Africa; KE; SSF   (multi-valued on Topics)
+    - doc 6: Botany, Zoology, Africa; KE; SSF   (multi-valued on Topics)
     """
     docs = [
         ReferenceDocument(
@@ -157,6 +158,14 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
             linked_data_countries=[COUNTRY_KE],
             linked_data_country_wb_regions=[REGION_SSF],
         ),
+        ReferenceDocument(
+            meta={"id": uuid7()},
+            visibility=Visibility.PUBLIC,
+            title="More botany and zoology in Africa",
+            linked_data_concepts=[BOTANY, ZOOLOGY, AFRICA],
+            linked_data_countries=[COUNTRY_KE],
+            linked_data_country_wb_regions=[REGION_SSF],
+        ),
     ]
     for doc in docs:
         await doc.save(using=es_client)
@@ -172,7 +181,7 @@ async def test_scheme_by_scheme_cross_tab(
     cross_references: None,  # noqa: ARG001
     primed_vocab: str,
 ) -> None:
-    """Cells are ordered by count desc; doc 5 puts two cells over the total of 5."""
+    """Cells are sorted by descending count, interleaving axis values."""
     response = await client.get(
         "/v1/references/search/cross-facets/",
         params={
@@ -183,11 +192,11 @@ async def test_scheme_by_scheme_cross_tab(
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     body = response.json()
-    assert body["total"] == {"count": 5, "is_lower_bound": False}
+    assert body["total"] == {"count": 6, "is_lower_bound": False}
     assert body["cells"] == [
-        {"axes": [BOTANY, AFRICA], "count": 3},
+        {"axes": [BOTANY, AFRICA], "count": 4},
+        {"axes": [ZOOLOGY, AFRICA], "count": 2},
         {"axes": [MICROBIOLOGY, EUROPE], "count": 1},
-        {"axes": [ZOOLOGY, AFRICA], "count": 1},
         {"axes": [ZOOLOGY, ASIA], "count": 1},
     ]
 
@@ -199,9 +208,9 @@ async def test_scheme_by_scheme_cross_tab(
         (
             {"axes": [TOPICS_SCHEME, "country_wb_regions"], "vocabulary": VOCAB_URI},
             {
-                (BOTANY, REGION_SSF, 3),
+                (BOTANY, REGION_SSF, 4),
                 (ZOOLOGY, REGION_NAC, 1),
-                (ZOOLOGY, REGION_SSF, 1),
+                (ZOOLOGY, REGION_SSF, 2),
                 (MICROBIOLOGY, REGION_SSF, 1),
             },
         ),
@@ -209,7 +218,7 @@ async def test_scheme_by_scheme_cross_tab(
         (
             {"axes": ["countries", "country_wb_regions"]},
             {
-                (COUNTRY_KE, REGION_SSF, 3),
+                (COUNTRY_KE, REGION_SSF, 4),
                 (COUNTRY_US, REGION_NAC, 1),
                 (COUNTRY_UG, REGION_SSF, 1),
             },
@@ -217,7 +226,7 @@ async def test_scheme_by_scheme_cross_tab(
         # identical axes -> diagonal co-occurrence matrix
         (
             {"axes": ["country_wb_regions", "country_wb_regions"]},
-            {(REGION_SSF, REGION_SSF, 4), (REGION_NAC, REGION_NAC, 1)},
+            {(REGION_SSF, REGION_SSF, 5), (REGION_NAC, REGION_NAC, 1)},
         ),
     ],
 )

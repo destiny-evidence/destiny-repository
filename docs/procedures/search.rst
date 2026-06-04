@@ -259,30 +259,36 @@ Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000)
 API Cross-Facet Counts
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-The cross-facets endpoint at `/v1/references/search/cross-facets/` cross-tabulates two axes over the references matching the search, for evidence maps. It accepts the same filter parameters as `/v1/references/search/` plus a ``row`` and a ``column`` axis.
+The cross-facets endpoint at `/v1/references/search/cross-facets/` cross-tabulates two axes over the references matching the search, for evidence maps. It accepts the same filter parameters as `/v1/references/search/` plus two ``axes``.
 
-Each axis is the literal ``countries``, the literal ``country_wb_regions``, or a concept-scheme URI; mixed types are allowed. When an axis is a scheme URI, supply ``vocabulary=`` — its concepts scope that axis (via the SKOS membership of the scheme, at every depth).
+Each axis is one of:
+
+* a concept-scheme URI
+* the literal ``countries``
+* the literal ``country_wb_regions``
+
+Mixed types are allowed. When an axis is a concept-scheme URI, supply ``vocabulary=`` — its concepts scope that axis (via the SKOS membership of the scheme, at every depth). Cell values are reported in the same order the axes are given.
 
 .. code-block::
 
-    # WHO region (rows) x thematic focus (columns), across malaria references since 2015:
+    # WHO region x thematic focus, across malaria references since 2015:
     ?q=malaria
-        &row=https://vocab.evidence-repository.org/scheme/WHORegion
-        &column=https://vocab.evidence-repository.org/scheme/Themes
+        &axes=https://vocab.evidence-repository.org/scheme/WHORegion
+        &axes=https://vocab.evidence-repository.org/scheme/Themes
         &vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
         &start_year=2015
 
-Counting is simpler than the facets endpoint: each returned cell is a strict intersection - references matching its row value, its column value, all panel filters and the query string. Only non-zero cells are returned.
+Counting is simpler than the facets endpoint: each returned cell is a strict intersection - references matching both its axis values, all panel filters and the query string. Only non-zero cells are returned.
 
 Returns
 """"""""""
 
-Returns a :class:`ReferenceCrossFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceCrossFacetResult>`: an exact ``total`` plus the non-zero ``{row, column, count}`` cells, sorted by descending count. Cells may sum to more than ``total`` because a reference can carry multiple values on an axis (e.g. several countries), so it contributes to multiple cells.
+Returns a :class:`ReferenceCrossFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceCrossFacetResult>`: an exact ``total`` plus the non-zero ``{axes, count}`` cells (``axes`` is a 2-tuple in the requested order), sorted by descending count. Cells may sum to more than ``total`` because a reference can carry multiple values on an axis, and to less because a reference matching the filters need not have a value on either axis.
 
 Restrictions (400 on violation):
 
-1. A scheme axis requires ``vocabulary=`` (whose host must be a subdomain of the configured vocabulary host), and the scheme must resolve to at least one concept in it.
-2. A matrix whose row × column bucket count would exceed ``ES_CROSS_FACET_MAX_CELLS`` (default 50,000) is refused rather than aborting server-side.
+1. A concept-scheme axis requires ``vocabulary=`` (whose host must be a subdomain of the configured vocabulary host), and the scheme must resolve to at least one concept in it.
+2. A matrix whose bucket count would exceed ``ES_CROSS_FACET_MAX_CELLS`` (default 50,000) is refused rather than aborting server-side.
 
 .. _lookup-procedure:
 
