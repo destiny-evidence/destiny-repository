@@ -524,13 +524,13 @@ def test_resolve_cross_facet_axis_rejects(token, vocab, members, match):
 
 
 def test_validate_cross_facet_cell_count():
-    """A matrix within ``max_cells`` passes; over it raises ParseError."""
+    """The guard counts parent buckets too: axes (100, 100) -> 100 + 100*100 buckets."""
     axis = CrossFacetAxis(
         token="countries", facet_type=FacetType.COUNTRIES, include=None, size=100
     )
-    SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=10_000)  # noqa: SLF001
+    SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=10_100)  # noqa: SLF001
     with pytest.raises(ParseError, match="exceeding the limit"):
-        SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=9_999)  # noqa: SLF001
+        SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=10_099)  # noqa: SLF001
 
 
 async def test_aggregate_cross_facet_literal_axes_skip_vocab_fetch(

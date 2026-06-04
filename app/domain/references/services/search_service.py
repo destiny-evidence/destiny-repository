@@ -1,6 +1,5 @@
 """Service for searching references."""
 
-import math
 from collections.abc import Iterable, Sequence
 from typing import ClassVar
 
@@ -204,13 +203,18 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     def _validate_cross_facet_cell_count(
         axes: Sequence[CrossFacetAxis], max_cells: int
     ) -> None:
-        """Refuse a matrix whose cell count would exceed ``max_cells``."""
-        cells = math.prod(axis.size for axis in axes)
-        if cells > max_cells:
+        """Refuse a matrix that would materialise more than ``max_cells`` ES buckets."""
+        buckets = 0
+        running = 1
+        for axis in axes:
+            running *= axis.size
+            buckets += running
+        if buckets > max_cells:
             sizes = " x ".join(str(axis.size) for axis in axes)
             msg = (
-                f"Cross-facet matrix would request {cells} cells ({sizes}), "
-                f"exceeding the limit of {max_cells}. Choose axes with fewer members."
+                f"Cross-facet matrix would materialise {buckets} aggregation buckets "
+                f"({sizes}), exceeding the limit of {max_cells}. Choose axes with "
+                "fewer members."
             )
             raise ParseError(msg)
 

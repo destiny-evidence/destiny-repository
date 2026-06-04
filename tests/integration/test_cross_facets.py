@@ -269,6 +269,71 @@ async def test_query_string_and_empty_result(
     }
 
 
+async def test_panel_filter_narrows_whole_matrix(
+    client: AsyncClient,
+    cross_references: None,  # noqa: ARG001
+) -> None:
+    """A panel filter narrows every cell, even where it overlaps an axis."""
+    response = await client.get(
+        "/v1/references/search/cross-facets/",
+        params={
+            "q": "*",
+            "axes": ["countries", "country_wb_regions"],
+            "country": COUNTRY_KE,
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # Only KE docs (1, 2, 5, 6) survive, all SSF — the country filter overlaps the
+    # country axis and still applies, leaving KE as the only row.
+    assert response.json()["total"] == {"count": 4, "is_lower_bound": False}
+    assert _cells(response.json()) == {(COUNTRY_KE, REGION_SSF, 4)}
+
+
+async def test_multiple_andd_filters_narrow(
+    client: AsyncClient,
+    cross_references: None,  # noqa: ARG001
+) -> None:
+    """Multiple filters AND (no OR-grouping): KE and US together match nothing."""
+    response = await client.get(
+        "/v1/references/search/cross-facets/",
+        params={
+            "q": "*",
+            "axes": ["countries", "country_wb_regions"],
+            "country": [COUNTRY_KE, COUNTRY_US],
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert response.json() == {
+        "total": {"count": 0, "is_lower_bound": False},
+        "cells": [],
+    }
+
+
+async def test_filter_overlapping_a_scheme_axis_still_applies(
+    client: AsyncClient,
+    cross_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """A concept filter on the row scheme narrows docs but doesn't restrict the axis."""
+    response = await client.get(
+        "/v1/references/search/cross-facets/",
+        params={
+            "q": "*",
+            "axes": [TOPICS_SCHEME, "country_wb_regions"],
+            "concept": BOTANY,
+            "vocabulary": primed_vocab,
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # Restricted to Botany docs (1, 2, 5, 6); Zoology still surfaces because docs 5/6
+    # carry it too — the overlapping filter narrows the matrix, not the axis.
+    assert response.json()["total"] == {"count": 4, "is_lower_bound": False}
+    assert _cells(response.json()) == {
+        (BOTANY, REGION_SSF, 4),
+        (ZOOLOGY, REGION_SSF, 2),
+    }
+
+
 @pytest.mark.parametrize(
     ("params", "expected_status", "detail"),
     [
@@ -313,12 +378,12 @@ async def test_cross_facet_request_rejected(
         assert detail in response.text
 
 
-async def test_unfetchable_vocabulary_returns_400(
+async def test_unfetchable_vocabulary_returns_502(
     client: AsyncClient,
     cross_references: None,  # noqa: ARG001
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A host-valid but unfetchable vocabulary surfaces as a 400, not a 500."""
+    """An unfetchable (but host-valid) vocabulary is an upstream failure: 502."""
     monkeypatch.setattr(
         get_vocabulary_artifact_client(),
         "get_scheme_members",
@@ -332,4 +397,4 @@ async def test_unfetchable_vocabulary_returns_400(
             "vocabulary": "https://vocab.evidence-repository.org/test/missing",
         },
     )
-    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert response.status_code == status.HTTP_502_BAD_GATEWAY

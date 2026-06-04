@@ -570,10 +570,11 @@ class Settings(BaseSettings):
         ge=1,
         le=65_536,
         description=(
-            "Maximum cells (row buckets x column buckets) a cross-facet aggregation "
-            "may request. Kept below the Elasticsearch cluster default for "
-            "`search.max_buckets` so a large matrix is refused with a 400 rather than "
-            "aborting the query server-side."
+            "Maximum aggregation buckets a cross-facet matrix may materialise "
+            "(the nested terms agg counts parent buckets too, so for axes sized "
+            "(a, b) this is a + a*b). Kept below the Elasticsearch cluster default "
+            "for `search.max_buckets` so a large matrix is refused with a 400 rather "
+            "than aborting the query server-side."
         ),
     )
 
