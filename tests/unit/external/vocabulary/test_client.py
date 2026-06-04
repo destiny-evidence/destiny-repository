@@ -23,10 +23,10 @@ SAMPLE_CONTEXT = {"@context": {"ex": "http://example.org/"}}
 VOCAB_URI = "https://vocab.example.org/vocabulary/v1"
 CONTEXT_URI = "https://vocab.example.org/context/v1.jsonld"
 
-# SKOS vocab covering the four shapes the lookups have to handle:
+# SKOS vocab covering the membership shapes the lookups have to handle:
 #   - hierarchical scheme: Biology -> Botany, Zoology, Microbiology
 #   - flat scheme using skos:topConceptOf:        Africa, Asia
-#   - flat scheme using skos:hasTopConcept:       Apple, Pear
+#   - flat scheme via skos:hasTopConcept only:    Apple, Pear (no inScheme)
 #   - flat scheme using only skos:inScheme:       English, Spanish
 #   - multi-parented concept under two parents:   Quantum (under both Physics & Math)
 SKOS_TURTLE = """\
@@ -56,8 +56,8 @@ ex:Asia   a skos:Concept ; skos:inScheme ex:Regions ; skos:prefLabel "Asia" ;
 
 ex:Fruits a skos:ConceptScheme ;
           skos:hasTopConcept ex:Apple , ex:Pear .
-ex:Apple a skos:Concept ; skos:inScheme ex:Fruits ; skos:prefLabel "Apple" .
-ex:Pear  a skos:Concept ; skos:inScheme ex:Fruits ; skos:prefLabel "Pear" .
+ex:Apple a skos:Concept ; skos:prefLabel "Apple" .
+ex:Pear  a skos:Concept ; skos:prefLabel "Pear" .
 
 ex:Languages a skos:ConceptScheme .
 ex:English a skos:Concept ; skos:inScheme ex:Languages ; skos:prefLabel "English" .
@@ -321,7 +321,7 @@ class TestSkosDerivedLookups:
 
         assert labels[_concept("Botany")] == "Botany"
         assert schemes[_concept("Botany")] == _concept("Topics")
-        assert schemes[_concept("Apple")] == _concept("Fruits")
+        assert schemes[_concept("English")] == _concept("Languages")
 
     @pytest.mark.asyncio
     async def test_concept_scheme_members_span_the_whole_scheme(
@@ -406,6 +406,30 @@ ex:Leaf   a skos:Concept ; skos:broader ex:Botany .
         # Leaf carries no inScheme, but is reachable up the broader chain to Topics.
         assert members[_concept("Topics")] == frozenset(
             {_concept("Bio"), _concept("Botany"), _concept("Leaf")}
+        )
+
+    def test_multi_parent_without_inscheme_unions_each_parents_scheme(self):
+        """A leaf with no inScheme inherits the union of all its parents' schemes."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:SchemeA a skos:ConceptScheme .
+ex:SchemeB a skos:ConceptScheme .
+ex:ParentA a skos:Concept ; skos:inScheme ex:SchemeA .
+ex:ParentB a skos:Concept ; skos:inScheme ex:SchemeB .
+ex:Child   a skos:Concept ; skos:broader ex:ParentA , ex:ParentB .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        # Child has no inScheme; the broader fallback unions both parents' schemes.
+        assert members[_concept("SchemeA")] == frozenset(
+            {_concept("ParentA"), _concept("Child")}
+        )
+        assert members[_concept("SchemeB")] == frozenset(
+            {_concept("ParentB"), _concept("Child")}
         )
 
     def test_explicit_scheme_is_not_reassigned_via_broader(self):
