@@ -134,7 +134,7 @@ services:
       APP_NAME: destiny-worker
     networks:
       - default
-    entrypoint: taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover --reload
+    entrypoint: watchmedo auto-restart --directory=./app --pattern=*.py --recursive -- taskiq worker app.tasks:broker --tasks-pattern app/**/tasks.py --fs-discover
 
   scheduler:
     profiles: ["scheduler"]
