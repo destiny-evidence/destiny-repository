@@ -640,6 +640,78 @@ async def count_facets_for_search(
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 
 
+@search_router.get(
+    "/cross-facets/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description=(
+        "Cross-tabulate two axes over the references matching the search, for "
+        "evidence maps. Accepts the same filters as `/references/search/`, plus the "
+        "two `axes`.\n\n"
+        "When an axis is a concept-scheme URI, supply `?vocabulary=`.\n\n"
+        "**Counting.** Each returned cell is a strict intersection: references "
+        "matching both its axis values, all panel filters and the query string. "
+        "Only non-zero cells are returned, sorted by descending count.\n\n"
+        "Cells may sum to more than `total` because a reference can carry multiple "
+        "values on an axis (and to less, as a reference matching the filters need "
+        "not have a value on either axis). `total` is exact. A matrix whose bucket "
+        f"count would exceed {settings.es_cross_facet_max_cells:,} is rejected."
+    ),
+)
+async def cross_tabulate_facets(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    axes: Annotated[
+        tuple[str, str],
+        Query(
+            description=(
+                "The two axes to cross-tabulate, in order. Each is one of:\n\n"
+                "- a concept-scheme URI\n"
+                "- the literal `countries`\n"
+                "- the literal `country_wb_regions`\n\n"
+                "Mixed types are allowed. Each cell reports its values in this same "
+                "axis order."
+            ),
+            examples=[
+                [
+                    "country_wb_regions",
+                    "https://vocab.evidence-repository.org/scheme/Themes",
+                ]
+            ],
+        ),
+    ],
+    vocabulary: Annotated[
+        HttpUrl,
+        AfterValidator(_validate_vocab_host),
+        Query(
+            description=(
+                "Vocabulary URI scoping concept-scheme axes to their members. "
+                "Required when an axis is a concept-scheme URI. "
+                f"Host must be a subdomain of `{settings.vocabulary_host}`."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
+            ],
+        ),
+    ] = None,
+) -> destiny_sdk.references.ReferenceCrossFacetResult:
+    """Cross-tabulate two axes for references matching the query."""
+    cells, total = await reference_service.aggregate_cross_facet(
+        query,
+        axes,
+        vocabulary_uri=str(vocabulary) if vocabulary else None,
+    )
+    return anti_corruption_service.cross_facet_to_sdk(cells, total)
+
+
 @exports_router.post(
     "/",
     status_code=status.HTTP_202_ACCEPTED,

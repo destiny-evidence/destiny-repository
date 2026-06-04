@@ -139,6 +139,11 @@ class VocabularyArtifactClient:
         """Concept URI -> sibling set (self-inclusive) for the vocabulary."""
         return _build_concept_siblings(await self.get_vocabulary(uri))
 
+    @alru_cache(maxsize=128)
+    async def get_scheme_members(self, uri: str) -> dict[str, frozenset[str]]:
+        """Concept-scheme URI -> member concept URIs (all depths) for the vocabulary."""
+        return _build_scheme_members(await self.get_vocabulary(uri))
+
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(httpx.TransportError),
         wait=tenacity.wait_exponential(multiplier=1, max=30),
@@ -236,3 +241,47 @@ def _build_concept_siblings(graph: Graph) -> dict[str, frozenset[str]]:
             peers.update(top_concepts_by_scheme[scheme])
         siblings[str(concept)] = frozenset(str(peer) for peer in peers)
     return siblings
+
+
+def _build_scheme_members(graph: Graph) -> dict[str, frozenset[str]]:
+    """
+    Map each concept-scheme URI to the full set of concept URIs that belong to it.
+
+    A concept belongs to a scheme if it says so directly, via ``skos:inScheme``,
+    ``skos:topConceptOf``, or ``skos:hasTopConcept``. A concept that makes no such
+    declaration falls back to the scheme(s) of its ``skos:broader`` ancestors.
+    """
+    explicit_schemes: dict[URIRef, set[URIRef]] = {}
+
+    def _assert(concept: object, scheme: object) -> None:
+        if isinstance(concept, URIRef) and isinstance(scheme, URIRef):
+            explicit_schemes.setdefault(concept, set()).add(scheme)
+
+    for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
+        _assert(concept, scheme)
+    for concept, _, scheme in graph.triples((None, SKOS.topConceptOf, None)):
+        _assert(concept, scheme)
+    for scheme, _, concept in graph.triples((None, SKOS.hasTopConcept, None)):
+        _assert(concept, scheme)
+
+    parents_by_concept: dict[URIRef, set[URIRef]] = {}
+    for concept, _, parent in graph.triples((None, SKOS.broader, None)):
+        if isinstance(concept, URIRef) and isinstance(parent, URIRef):
+            parents_by_concept.setdefault(concept, set()).add(parent)
+
+    def schemes_for(concept: URIRef, seen: set[URIRef]) -> set[URIRef]:
+        if concept in explicit_schemes:
+            return explicit_schemes[concept]
+        if concept in seen:
+            return set()
+        seen.add(concept)
+        inherited: set[URIRef] = set()
+        for parent in parents_by_concept.get(concept, ()):
+            inherited |= schemes_for(parent, seen)
+        return inherited
+
+    members: dict[str, set[str]] = {}
+    for concept in set(explicit_schemes) | set(parents_by_concept):
+        for scheme in schemes_for(concept, set()):
+            members.setdefault(str(scheme), set()).add(str(concept))
+    return {scheme: frozenset(uris) for scheme, uris in members.items()}

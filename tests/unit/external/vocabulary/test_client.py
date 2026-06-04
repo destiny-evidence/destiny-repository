@@ -4,11 +4,13 @@ import httpx
 import pytest
 import pytest_asyncio
 from pytest_httpx import HTTPXMock
+from rdflib import Graph
 
 from app.core.exceptions import VocabularyFetchError
 from app.external.vocabulary.client import (
     ContextNotPreFetchedError,
     VocabularyArtifactClient,
+    _build_scheme_members,
 )
 
 SAMPLE_TURTLE = """\
@@ -352,3 +354,94 @@ class TestSkosDerivedLookups:
         # Multi-parented: union of co-children across both parents.
         # Quantum is the only child of both Physics and Mathematics.
         assert siblings[_concept("Quantum")] == frozenset({_concept("Quantum")})
+
+    @pytest.mark.asyncio
+    async def test_scheme_members_covers_every_membership_shape(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        members = await skos_client.get_scheme_members(VOCAB_URI)
+
+        # Hierarchical scheme: top concepts and their broader-children alike.
+        assert members[_concept("Topics")] == frozenset(
+            {
+                _concept("Biology"),
+                _concept("Chemistry"),
+                _concept("Botany"),
+                _concept("Zoology"),
+                _concept("Microbiology"),
+            }
+        )
+        # Flat scheme via skos:topConceptOf.
+        assert members[_concept("Regions")] == frozenset(
+            {_concept("Africa"), _concept("Asia")}
+        )
+        # Flat scheme via skos:hasTopConcept.
+        assert members[_concept("Fruits")] == frozenset(
+            {_concept("Apple"), _concept("Pear")}
+        )
+        # Flat scheme via skos:inScheme only.
+        assert members[_concept("Languages")] == frozenset(
+            {_concept("English"), _concept("Spanish")}
+        )
+        # Unknown scheme URIs are simply absent.
+        assert _concept("DoesNotExist") not in members
+
+
+class TestBuildSchemeMembers:
+    """Edge cases for scheme membership that the shared fixture can't express."""
+
+    def test_descendant_without_inscheme_inherits_via_broader(self):
+        """A leaf with only skos:broader is still a member of its ancestor's scheme."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:Topics a skos:ConceptScheme .
+ex:Bio    a skos:Concept ; skos:inScheme ex:Topics ; skos:topConceptOf ex:Topics .
+ex:Botany a skos:Concept ; skos:inScheme ex:Topics ; skos:broader ex:Bio .
+ex:Leaf   a skos:Concept ; skos:broader ex:Botany .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        # Leaf carries no inScheme, but is reachable up the broader chain to Topics.
+        assert members[_concept("Topics")] == frozenset(
+            {_concept("Bio"), _concept("Botany"), _concept("Leaf")}
+        )
+
+    def test_explicit_scheme_is_not_reassigned_via_broader(self):
+        """A broader edge crossing scheme boundaries does not leak members."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:SchemeA a skos:ConceptScheme .
+ex:SchemeB a skos:ConceptScheme .
+ex:Parent a skos:Concept ; skos:inScheme ex:SchemeA .
+ex:Child  a skos:Concept ; skos:inScheme ex:SchemeB ; skos:broader ex:Parent .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        # Child declares SchemeB, so it is not pulled into SchemeA via its parent.
+        assert members[_concept("SchemeA")] == frozenset({_concept("Parent")})
+        assert members[_concept("SchemeB")] == frozenset({_concept("Child")})
+
+    def test_concept_in_multiple_schemes_appears_in_each(self):
+        """A concept asserted in two schemes is a member of both."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:SchemeA a skos:ConceptScheme .
+ex:SchemeB a skos:ConceptScheme .
+ex:Shared a skos:Concept ; skos:inScheme ex:SchemeA , ex:SchemeB .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        assert members[_concept("SchemeA")] == frozenset({_concept("Shared")})
+        assert members[_concept("SchemeB")] == frozenset({_concept("Shared")})

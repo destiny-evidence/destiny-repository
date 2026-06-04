@@ -19,6 +19,7 @@ from app.core.exceptions import (
     SDKToDomainError,
     SQLIntegrityError,
     SQLNotFoundError,
+    VocabularyFetchError,
 )
 
 
@@ -146,5 +147,25 @@ async def parse_error_exception_handler(
     """Return bad request response when a parsing error occurs."""
     return APIExceptionResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
+        content=APIExceptionContent(detail=exception.detail),
+    )
+
+
+async def vocabulary_fetch_exception_handler(
+    _request: Request,
+    exception: VocabularyFetchError,
+) -> APIExceptionResponse:
+    """
+    Return a bad-gateway response when a vocabulary artifact can't be fetched.
+
+    The vocabulary host is validated before this point, so the URI targets our own
+    vocab service rather than arbitrary client input. A failure fetching or parsing
+    it is therefore an upstream-dependency problem (service down, transient blip, or
+    a malformed/missing artifact), which a client can't act on — surface it as a
+    5xx so a trickle of these (e.g. a cache-miss window after a deploy) reads as an
+    upstream issue, not a client bug.
+    """
+    return APIExceptionResponse(
+        status_code=status.HTTP_502_BAD_GATEWAY,
         content=APIExceptionContent(detail=exception.detail),
     )

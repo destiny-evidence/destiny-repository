@@ -1201,6 +1201,38 @@ class SiblingGroup(BaseModel):
     )
 
 
+class CrossFacetAxis(BaseModel):
+    """One resolved axis of a cross-facet aggregation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    token: str = Field(
+        description="The original axis request string (literal or scheme URI).",
+    )
+    facet_type: FacetType = Field(
+        description="The facet whose field this axis aggregates on.",
+    )
+    include: frozenset[str] | None = Field(
+        description=(
+            "The concept URIs scoping a scheme axis (used as the terms ``include`` "
+            "set). ``None`` for other axes, whose field domain is bounded."
+        ),
+    )
+    size: int = Field(
+        description="The terms ``size`` to request for this axis's bucket count.",
+        gt=0,
+    )
+
+
+class CrossFacetCell(BaseModel):
+    """A single non-zero cell of a cross-facet matrix."""
+
+    axes: tuple[str, str] = Field(
+        description="The cell's value on each axis, in requested axis order.",
+    )
+    count: int = Field(description="References matching both axis values together.")
+
+
 class ReferenceSearchResult(BaseModel):
     """Wrapping class for Elasticsearch search results."""
 

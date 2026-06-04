@@ -565,6 +565,19 @@ class Settings(BaseSettings):
         ),
     )
 
+    es_cross_facet_max_cells: int = Field(
+        default=50_000,
+        ge=1,
+        le=65_536,
+        description=(
+            "Maximum aggregation buckets a cross-facet matrix may materialise "
+            "(the nested terms agg counts parent buckets too, so for axes sized "
+            "(a, b) this is a + a*b). Kept below the Elasticsearch cluster default "
+            "for `search.max_buckets` so a large matrix is refused with a 400 rather "
+            "than aborting the query server-side."
+        ),
+    )
+
     vocabulary_host: str = Field(
         default="evidence-repository.org",
         description=(
