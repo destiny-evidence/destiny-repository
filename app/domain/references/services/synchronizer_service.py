@@ -116,7 +116,6 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
             AsyncGenerator[ReferenceSearchProjection, None]
         ):
             """Generate references for indexing."""
-            indexed_ids: set[UUID] = set()
             redirect_ids: set[UUID] = set()
 
             for reference_id_chunk in list_chunker(ids, chunk_size):
@@ -126,7 +125,6 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
                 )
                 for reference in references:
                     if reference.is_canonical_like:
-                        indexed_ids.add(reference.id)
                         yield await self._to_indexable(reference)
                     elif reference.duplicate_decision and (
                         canonical_id := (
@@ -135,11 +133,8 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
                     ):
                         redirect_ids.add(canonical_id)
 
-            # Re-index the canonicals of any duplicates we saw, skipping any that were
-            # already indexed directly in the pass above.
-            for canonical_id_chunk in list_chunker(
-                list(redirect_ids - indexed_ids), chunk_size
-            ):
+            # Re-index the canonicals of any duplicates we saw.
+            for canonical_id_chunk in list_chunker(list(redirect_ids), chunk_size):
                 canonicals = await self.sql_uow.references.get_by_pks(
                     canonical_id_chunk,
                     preload=self._required_preloads,

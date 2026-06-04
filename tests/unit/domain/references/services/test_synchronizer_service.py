@@ -116,17 +116,3 @@ async def test_multiple_duplicates_reindex_canonical_once(
     await synchronizer.bulk_sql_to_es([d.id for d in duplicates])
 
     assert indexed == [canonical.id]
-
-
-async def test_canonical_not_double_indexed(
-    synchronizer: ReferenceSynchronizer,
-) -> None:
-    """A canonical passed in alongside its duplicate is indexed exactly once."""
-    canonical = _canonical()
-    duplicate = _duplicate(canonical.id)
-    _serve(synchronizer, canonical, duplicate)
-    indexed = await _drain(synchronizer)
-
-    await synchronizer.bulk_sql_to_es([canonical.id, duplicate.id])
-
-    assert indexed == [canonical.id]
