@@ -212,8 +212,9 @@ class LinkedDataProjectionService:
         "Unwrapped" describes the data shape: the value is a direct concept
         reference at the property's slot, with no CodingAnnotation envelope.
         We discover these properties via their concept-typed range: either
-        ``skos:ConceptScheme`` directly, or a class ``subClassOf skos:Concept``
-        joined to a scheme via concept instances.
+        ``skos:ConceptScheme`` directly, a class ``subClassOf skos:Concept``
+        joined to a scheme via concept instances, or the bare ``skos:Concept``
+        class itself when the vocab contains at least one concept in a scheme.
         """
         results = graph.query(
             """
@@ -228,6 +229,12 @@ class LinkedDataProjectionService:
                     ?range rdfs:subClassOf+ skos:Concept .
                     FILTER(?range != skos:Concept)
                     ?concept a ?range ;
+                             skos:inScheme [] .
+                }
+                UNION
+                {
+                    ?prop rdfs:range skos:Concept .
+                    ?concept a skos:Concept ;
                              skos:inScheme [] .
                 }
             }
