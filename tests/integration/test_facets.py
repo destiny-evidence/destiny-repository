@@ -85,7 +85,7 @@ def primed_vocab() -> Iterator[str]:
         client._vocabulary_cache.pop(VOCAB_URI, None)  # noqa: SLF001
         client.get_concept_labels.cache_clear()
         client.get_concept_schemes.cache_clear()
-        client.get_concept_siblings.cache_clear()
+        client.get_concept_scheme_members.cache_clear()
 
 
 @pytest.fixture
@@ -393,6 +393,7 @@ async def test_concept_filter_does_not_drop_country_facet(
 # ---- Sibling-aware facets (#703) -------------------------------------------------
 
 
+BIOLOGY = "https://vocab.example.org/test/Biology"
 CHEMISTRY = "https://vocab.example.org/test/Chemistry"
 _SIBLING_DOC_CONCEPTS = [
     [BOTANY, AFRICA],
@@ -438,13 +439,9 @@ async def test_sibling_facets_worked_example(
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
-    # Topics counts are filtered to docs with Africa; Region counts to docs with
-    # (Botany OR Zoology). Microbiology=0 (its only doc is Europe-not-Africa);
-    # Europe=0 (its only doc has Microbiology, not Botany/Zoology). Unselected
-    # bucket is empty: every concept seen in the post-filtered hits is in a
-    # known group.
     counts = _counts_by_concept(response.json())
     assert counts == {
+        CHEMISTRY: 1,
         BOTANY: 2,
         ZOOLOGY: 1,
         MICROBIOLOGY: 0,
@@ -460,7 +457,7 @@ async def test_sibling_facets_unselected_bucket_surfaces_other_concepts(
     sibling_references: None,  # noqa: ARG001
     primed_vocab: str,
 ) -> None:
-    """Concepts outside the filter's sibling sets appear in the unselected agg."""
+    """Concepts outside the filter's scheme appear in the unselected agg."""
     response = await client.get(
         "/v1/references/search/facets/",
         params=[
@@ -471,11 +468,33 @@ async def test_sibling_facets_unselected_bucket_surfaces_other_concepts(
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
-    # Topics group (filter empty) counts {Botany:2, Zoology:2, Microbiology:1}.
-    # Unselected agg restricts to docs with Botany (docs 1, 2), so only Africa
-    # (their other concept) surfaces — Chemistry is excluded because its doc
-    # has no Botany.
     assert _counts_by_concept(response.json()) == {
+        CHEMISTRY: 1,
+        BOTANY: 2,
+        ZOOLOGY: 2,
+        MICROBIOLOGY: 1,
+        AFRICA: 2,
+    }
+
+
+async def test_sibling_facets_accept_parent_and_child_in_one_filter(
+    client: AsyncClient,
+    sibling_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """A parent and a child share a scheme, so they OR together in one filter."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("concept", f"{BIOLOGY},{BOTANY}"),
+            ("facet", "concepts"),
+            ("vocabulary", primed_vocab),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _counts_by_concept(response.json()) == {
+        CHEMISTRY: 1,
         BOTANY: 2,
         ZOOLOGY: 2,
         MICROBIOLOGY: 1,

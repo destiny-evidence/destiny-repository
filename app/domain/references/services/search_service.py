@@ -258,12 +258,21 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         vocabulary_uri: str,
         concept_filters: Sequence[LinkedDataConceptFilter],
     ) -> tuple[SiblingGroup, ...]:
-        """Resolve concept filters into sibling groups; raises on rule violations."""
-        siblings_map = await self._vocab_client.get_concept_siblings(vocabulary_uri)
+        """
+        Resolve concept filters into one sibling group per scheme.
+
+        Raises on rule violations: one scheme per filter, distinct schemes across
+        filters.
+        """
+        members_by_concept = await self._vocab_client.get_concept_scheme_members(
+            vocabulary_uri
+        )
         groups: list[SiblingGroup] = []
         for concept_filter in concept_filters:
             unresolved = [
-                uri for uri in concept_filter.concept_uris if uri not in siblings_map
+                uri
+                for uri in concept_filter.concept_uris
+                if uri not in members_by_concept
             ]
             if unresolved:
                 msg = (
@@ -271,32 +280,32 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                     f"{', '.join(unresolved)}"
                 )
                 raise SiblingGroupingError(msg)
-            sibling_sets = {siblings_map[uri] for uri in concept_filter.concept_uris}
-            if len(sibling_sets) != 1:
+            schemes = {members_by_concept[uri] for uri in concept_filter.concept_uris}
+            if len(schemes) != 1:
                 msg = (
-                    "Concept filter mixes URIs from different sibling sets: "
+                    "Concept filter mixes URIs from different schemes: "
                     f"{concept_filter.concept_uris}"
                 )
                 raise SiblingGroupingError(msg)
-            (sibling_set,) = sibling_sets
+            (scheme_members,) = schemes
             groups.append(
                 SiblingGroup(
                     selected=tuple(concept_filter.concept_uris),
-                    siblings_including_selected=sibling_set,
+                    siblings_including_selected=scheme_members,
                 )
             )
-        resolved_siblings: list[frozenset[str]] = []
+        members_per_group: list[frozenset[str]] = []
         for group in groups:
             if group.siblings_including_selected is None:
                 msg = "_resolve_concept_sibling_groups produced a universal group."
                 raise ValueError(msg)
-            resolved_siblings.append(group.siblings_including_selected)
-        for i, sib_a in enumerate(resolved_siblings):
-            for sib_b in resolved_siblings[i + 1 :]:
-                overlap = sib_a & sib_b
+            members_per_group.append(group.siblings_including_selected)
+        for i, scheme_a in enumerate(members_per_group):
+            for scheme_b in members_per_group[i + 1 :]:
+                overlap = scheme_a & scheme_b
                 if overlap:
                     msg = (
-                        "Two concept filters share a sibling set. Overlap: "
+                        "Two concept filters resolve to the same scheme. Overlap: "
                         f"{sorted(overlap)}"
                     )
                     raise SiblingGroupingError(msg)

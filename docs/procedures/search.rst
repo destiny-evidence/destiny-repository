@@ -212,12 +212,12 @@ When you filter on a field *and* request that field's facet, the bucket counts s
 
 There are two flavours, distinguished by how siblings are defined:
 
-**Concepts.** A concept's siblings come from the SKOS vocabulary, so ``concept=`` must be supplied alongside ``vocabulary=`` when requesting ``facet=concepts``. Each ``concept=`` parameter is treated as one sibling group.
+**Concepts.** A concept's siblings are every member of its scheme in the SKOS vocabulary, so ``concept=`` must be supplied alongside ``vocabulary=`` when requesting ``facet=concepts``. Each ``concept=`` parameter is one scheme's selection.
 
 For example, ``concept=Botany,Zoology`` AND ``concept=Africa`` with ``facet=concepts``:
 
-- The Botany/Zoology group's counts show every Topic concept (Botany, Zoology, Microbiology, …) as if you swapped the selection, with the Africa filter still applied.
-- The Africa group's counts show every Region concept (Africa, Asia, Europe, …), with the (Botany OR Zoology) filter still applied.
+- The Botany/Zoology group's counts show every concept in the Topics scheme (Biology, Chemistry, Botany, Zoology, Microbiology, …) as if you swapped the selection, with the Africa filter still applied.
+- The Africa group's counts show every concept in the Region scheme (Africa, Asia, Europe, …), with the (Botany OR Zoology) filter still applied.
 - An "unselected" bucket surfaces any other concepts present on the matching references.
 
 .. code-block::
@@ -230,8 +230,8 @@ For example, ``concept=Botany,Zoology`` AND ``concept=Africa`` with ``facet=conc
 
 Restrictions (400 on violation):
 
-1. URIs inside one ``concept=`` must share a sibling set in the vocabulary.
-2. Different ``concept=`` filters must have disjoint sibling sets.
+1. URIs inside one ``concept=`` must belong to the same scheme.
+2. Different ``concept=`` filters must be in different schemes.
 3. Every URI must resolve in the supplied vocabulary.
 
 **Countries and WB regions.** There's no vocabulary hierarchy here - the entire field is treated as one sibling family.
