@@ -371,7 +371,8 @@ class AzureJwtAuth(JwtAuth):
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is expired."
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
                 ) from exc
             except exceptions.JWTClaimsError as exc:
                 unverified = jwt.get_unverified_claims(token)
@@ -569,7 +570,7 @@ class KeycloakJwtAuth(JwtAuth):
         except joserfc_errors.ExpiredTokenError as exc:
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token is expired.",
+                detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
             ) from exc
 
         except joserfc_errors.InvalidClaimError as exc:

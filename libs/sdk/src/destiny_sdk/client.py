@@ -13,7 +13,7 @@ from msal import (
 )
 from pydantic import HttpUrl, SecretStr, TypeAdapter
 
-from destiny_sdk.auth import create_signature
+from destiny_sdk.auth import TOKEN_EXPIRED_MESSAGE, create_signature
 from destiny_sdk.core import UUID, sdk_version
 from destiny_sdk.identifiers import IdentifierLookup
 from destiny_sdk.keycloak_auth import (
@@ -446,7 +446,7 @@ class OAuthMiddleware(httpx.Auth):
             except ValueError:
                 error_detail = ""
 
-            if error_detail == "Token has expired.":
+            if error_detail == TOKEN_EXPIRED_MESSAGE:
                 # Force refresh token and retry
                 token = self._get_token(force_refresh=True)
                 request.headers["Authorization"] = f"Bearer {token}"
@@ -610,7 +610,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
             except ValueError:
                 error_detail = ""
 
-            if error_detail == "Token has expired.":
+            if error_detail == TOKEN_EXPIRED_MESSAGE:
                 # Force refresh token and retry
                 token = self._get_token(force_refresh=True)
                 request.headers["Authorization"] = f"Bearer {token}"
