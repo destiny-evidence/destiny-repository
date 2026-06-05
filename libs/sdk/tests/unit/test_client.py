@@ -5,6 +5,7 @@ from uuid import UUID, uuid7
 
 import httpx
 import pytest
+from destiny_sdk.auth import TOKEN_EXPIRED_MESSAGE
 from destiny_sdk.client import (
     KeycloakOAuthMiddleware,
     OAuthClient,
@@ -446,7 +447,7 @@ class TestOAuthMiddleware:
         # Simulate token expiry response
         expired_response = httpx.Response(
             status_code=401,
-            json={"detail": "Token has expired."},
+            json={"detail": TOKEN_EXPIRED_MESSAGE},
             request=authenticated_request,
         )
 
@@ -542,7 +543,7 @@ class TestKeycloakOAuthMiddleware:
         # Simulate token expiry
         expired_response = httpx.Response(
             status_code=401,
-            json={"detail": "Token has expired."},
+            json={"detail": TOKEN_EXPIRED_MESSAGE},
             request=authenticated_request,
         )
 
