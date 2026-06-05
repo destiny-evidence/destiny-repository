@@ -514,6 +514,62 @@ class TestLinkedDataProjectionService:
 
         assert properties == {"https://example.org/myConceptProperty"}
 
+    def test_unwrapped_concept_properties_discovers_direct_concept_range(self):
+        """Property whose range IS the bare skos:Concept class (HPV vocab shape).
+
+        HPV's ``evrepo:hasAppliedConcept`` declares ``rdfs:range skos:Concept``
+        directly — not a subclass. The discovery must recognise it as long as
+        the vocab contains at least one concept scoped to a scheme.
+        """
+        graph = Graph()
+        graph.parse(
+            data="""
+            @prefix owl: <http://www.w3.org/2002/07/owl#> .
+            @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+            @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+            @prefix ex: <https://example.org/> .
+
+            ex:hasAppliedConcept a owl:ObjectProperty ;
+                rdfs:range skos:Concept .
+            ex:Scheme a skos:ConceptScheme .
+            ex:c1 a skos:Concept ;
+                skos:inScheme ex:Scheme .
+            """,
+            format="turtle",
+        )
+
+        properties = LinkedDataProjectionService._build_unwrapped_concept_properties(  # noqa: SLF001
+            graph
+        )
+
+        assert properties == {"https://example.org/hasAppliedConcept"}
+
+    def test_unwrapped_concept_properties_skips_direct_concept_range_without_instances(
+        self,
+    ):
+        """A property ranging over skos:Concept is not discovered when no
+        concrete concepts exist in the graph — matches branch 2's intent of
+        requiring at least one populated scheme."""
+        graph = Graph()
+        graph.parse(
+            data="""
+            @prefix owl: <http://www.w3.org/2002/07/owl#> .
+            @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+            @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+            @prefix ex: <https://example.org/> .
+
+            ex:hasAppliedConcept a owl:ObjectProperty ;
+                rdfs:range skos:Concept .
+            """,
+            format="turtle",
+        )
+
+        properties = LinkedDataProjectionService._build_unwrapped_concept_properties(  # noqa: SLF001
+            graph
+        )
+
+        assert properties == set()
+
     @pytest.mark.asyncio
     async def test_extracts_effect_size_metric_uri(
         self, projector_with_evrepo, enhancement
