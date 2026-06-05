@@ -12,6 +12,8 @@ from destiny_sdk.core import UUID
 
 FIVE_MINUTES = 60 * 5
 
+TOKEN_EXPIRED_MESSAGE = "Token is expired."  # noqa: S105
+
 
 class AuthException(HTTPException):
     """
@@ -127,7 +129,7 @@ class HMACAuthorizationHeaders(BaseModel):
         if (time.time() - float(timestamp)) > FIVE_MINUTES:
             raise AuthException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Request timestamp has expired.",
+                detail=TOKEN_EXPIRED_MESSAGE,
             )
 
         return cls(signature=signature, client_id=client_id, timestamp=timestamp)
