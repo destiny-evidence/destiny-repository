@@ -239,6 +239,12 @@ variable "destiny_demonstrator_ui_app_name" {
   default     = "demonstrator-ui"
 }
 
+variable "ai_evidence_summariser_app_name" {
+  description = "The name of the AI evidence summariser application. Set to null to disable its role assignments."
+  type        = string
+  default     = null
+}
+
 # elasticsearch is not available in all regions, see https://www.elastic.co/cloud/regions
 variable "elasticsearch_region" {
   description = "Region for the Elasticsearch cluster"
