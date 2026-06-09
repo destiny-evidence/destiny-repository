@@ -1277,12 +1277,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query: SearchQuery,
         page: int = 1,
+        page_size: int = 20,
         sort: list[str] | None = None,
     ) -> ESSearchResult:
         """Search for references matching the given query specification."""
         return await self._search_service.search(
             query,
             page=page,
+            page_size=page_size,
             sort=sort,
         )
 

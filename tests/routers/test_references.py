@@ -58,6 +58,7 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.search_service import SearchService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
@@ -874,6 +875,63 @@ async def test_search_references_preserves_es_order(
 
     # Order should match ES order (A, B, C), not SQL order (C, A, B)
     assert returned_ids == [str(ref_a.id), str(ref_b.id), str(ref_c.id)]
+
+
+async def test_search_reference_ids_returns_ids_only(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ids endpoint returns matching IDs in order without fetching references."""
+    ref_a = ReferenceFactory.build()
+    ref_b = ReferenceFactory.build()
+
+    mock_search_result = ESSearchResult(
+        hits=[
+            ESHit(id=ref_a.id, score=2.0),
+            ESHit(id=ref_b.id, score=1.0),
+        ],
+        total=ESSearchTotal(value=2, relation="eq"),
+        page=1,
+    )
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+    mock_get_dedup = AsyncMock()
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
+
+    response = await client.get("/v1/references/search/ids/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["reference_ids"] == [str(ref_a.id), str(ref_b.id)]
+    assert data["total"] == {"count": 2, "is_lower_bound": False}
+
+    # IDs are read straight off the search hits — references are never fetched.
+    mock_get_dedup.assert_not_awaited()
+    mock_search.assert_awaited_once()
+    assert mock_search.call_args.kwargs["page_size"] == SearchService.MAX_RESULT_WINDOW
+
+
+async def test_search_reference_ids_reports_lower_bound_when_truncated(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `gte` total surfaces as `is_lower_bound: true`."""
+    reference = ReferenceFactory.build()
+    mock_search_result = ESSearchResult(
+        hits=[ESHit(id=reference.id, score=1.0)],
+        total=ESSearchTotal(value=10000, relation="gte"),
+        page=1,
+    )
+    monkeypatch.setattr(
+        ReferenceService,
+        "search_references",
+        AsyncMock(return_value=mock_search_result),
+    )
+
+    response = await client.get("/v1/references/search/ids/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["total"] == {"count": 10000, "is_lower_bound": True}
 
 
 async def test_search_references_with_annotation_filters(
