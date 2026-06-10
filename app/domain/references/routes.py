@@ -576,7 +576,6 @@ async def search_references(
     )
 
 
-@experimental
 @search_router.get(
     "/ids/",
     status_code=status.HTTP_200_OK,
@@ -586,12 +585,8 @@ async def search_references(
             "model": APIExceptionContent,
         }
     },
-    description="Search for references and return only the matching reference IDs, "
-    "without the reference data. Accepts the same query and filter parameters as "
-    "`/references/search/` without pagination. Returns the IDs in result order, "
-    f"capped at the first {SearchService.MAX_RESULT_WINDOW:,} matches. When more "
-    "references match than are returned, `total.is_lower_bound` is true.",
 )
+@experimental
 async def search_reference_ids(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
     anti_corruption_service: Annotated[
@@ -600,7 +595,15 @@ async def search_reference_ids(
     query: Annotated[SearchQuery, Depends(parse_search_query)],
     sort: SortParam = None,
 ) -> destiny_sdk.references.ReferenceIDSearchResult:
-    """Search for references and return the matching reference IDs."""
+    """
+    Search for references and return only the matching reference IDs.
+
+    Returns the matching reference IDs without the reference data. Accepts the
+    same query and filter parameters as `/references/search/` without
+    pagination. Returns the IDs in result order, capped at the first 10,000
+    matches. When more references match than are returned,
+    `total.is_lower_bound` is true.
+    """
     search_result = await reference_service.search_references(
         query,
         page=1,
