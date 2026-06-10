@@ -577,6 +577,43 @@ async def search_references(
 
 
 @search_router.get(
+    "/ids/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+)
+@experimental
+async def search_reference_ids(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    sort: SortParam = None,
+) -> destiny_sdk.references.ReferenceIDSearchResult:
+    """
+    Search for references and return only the matching reference IDs.
+
+    Returns the matching reference IDs without the reference data. Accepts the
+    same query and filter parameters as `/references/search/` without
+    pagination. Returns the IDs in result order, capped at the first 10,000
+    matches. When more references match than are returned,
+    `total.is_lower_bound` is true.
+    """
+    search_result = await reference_service.search_references(
+        query,
+        page=1,
+        page_size=SearchService.MAX_RESULT_WINDOW,
+        sort=sort,
+    )
+    return anti_corruption_service.reference_id_search_result_to_sdk(search_result)
+
+
+@search_router.get(
     "/facets/",
     status_code=status.HTTP_200_OK,
     response_model_exclude_none=True,

@@ -497,6 +497,22 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
+    def reference_id_search_result_to_sdk(
+        self,
+        search_result: ESSearchResult,
+    ) -> destiny_sdk.references.ReferenceIDSearchResult:
+        """Convert a search result to the SDK ID-only search result model."""
+        try:
+            return destiny_sdk.references.ReferenceIDSearchResult(
+                total={
+                    "count": search_result.total.value,
+                    "is_lower_bound": search_result.total.relation == "gte",
+                },
+                reference_ids=[hit.id for hit in search_result.hits],
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
     def publication_year_range_from_query_parameter(
         self,
         start_year: int | None,

@@ -79,6 +79,17 @@ class ReferenceSearchResult(SearchResultMixIn, BaseModel):
     )
 
 
+class ReferenceIDSearchResult(BaseModel):
+    """The matching reference IDs for a search, without the reference data."""
+
+    total: SearchResultTotal = Field(
+        description="The total number of references matching the search criteria."
+    )
+    reference_ids: list[UUID] = Field(
+        description="The IDs of the references matching the search, in result order."
+    )
+
+
 class FacetType(StrEnum):
     """Search facets of references."""
 
