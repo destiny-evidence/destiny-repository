@@ -331,7 +331,7 @@ resource "azuread_app_role_assignment" "destiny_demonstrator_ui_to_reference_rea
 # AI Evidence Summariser role assignments
 data "azurerm_user_assigned_identity" "ai_evidence_summariser" {
   count               = var.environment != "development" && var.ai_evidence_summariser_app_name != null ? 1 : 0
-  name                = var.ai_evidence_summariser_app_name
+  name                = "${var.ai_evidence_summariser_app_name}-${var.environment}"
   resource_group_name = "rg-${var.ai_evidence_summariser_app_name}-${var.environment}"
 }
 
