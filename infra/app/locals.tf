@@ -29,8 +29,8 @@ locals {
     }
 
     staging = {
-      db_storage_mb   = 131072 # 128GB
-      db_storage_tier = "P10"
+      db_storage_mb   = 262144 # 256GB
+      db_storage_tier = "P15"
       db_backup_days  = 7
       db_ha_enabled   = false
       db_sku_name     = "GP_Standard_D2ds_v4"
