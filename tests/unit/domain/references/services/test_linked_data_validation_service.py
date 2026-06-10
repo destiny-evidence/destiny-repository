@@ -207,6 +207,61 @@ async def test_hpv_investigation_without_finding_conforms(
 
 
 @pytest.mark.asyncio
+async def test_investigation_with_multiple_findings_conforms(
+    service: LinkedDataValidationService,
+):
+    """An Investigation may hold more than one Finding."""
+    data = {
+        "@context": {"evrepo": EVREPO},
+        "@type": "evrepo:LinkedDataEnhancement",
+        "evrepo:hasInvestigation": {
+            "@type": "evrepo:Investigation",
+            "evrepo:hasFinding": [
+                {
+                    "@type": "evrepo:Finding",
+                    "evrepo:hasOutcome": {
+                        "@type": "evrepo:Outcome",
+                        "evrepo:name": "Reading comprehension",
+                    },
+                },
+                {
+                    "@type": "evrepo:Finding",
+                    "evrepo:hasContext": {"@type": "evrepo:Context"},
+                },
+            ],
+        },
+    }
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
+
+
+@pytest.mark.asyncio
+async def test_investigation_with_findings_and_applied_concepts_conforms(
+    service: LinkedDataValidationService,
+):
+    """Findings and applied concepts may coexist on the same Investigation."""
+    data = {
+        "@context": {"evrepo": EVREPO},
+        "@type": "evrepo:LinkedDataEnhancement",
+        "evrepo:hasInvestigation": {
+            "@type": "evrepo:Investigation",
+            "evrepo:hasFinding": {
+                "@type": "evrepo:Finding",
+                "evrepo:hasOutcome": {
+                    "@type": "evrepo:Outcome",
+                    "evrepo:name": "Reading comprehension",
+                },
+            },
+            "evrepo:hasAppliedConcept": [
+                {"@id": "https://vocab.aliveevidence.org/hpv/Country/NG"},
+            ],
+        },
+    }
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
+
+
+@pytest.mark.asyncio
 async def test_applied_concept_literal_fails(service: LinkedDataValidationService):
     """hasAppliedConcept values must be IRIs, not literals."""
     data = {
