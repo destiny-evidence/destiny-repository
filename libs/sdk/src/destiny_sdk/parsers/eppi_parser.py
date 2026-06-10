@@ -197,15 +197,21 @@ class EPPIParser:
     def _create_annotation_enhancement(self) -> EnhancementContent | None:
         if not self.tags:
             return None
-        annotations = [
-            BooleanAnnotation(
-                annotation_type=AnnotationType.BOOLEAN,
-                scheme=self.parser_source,
-                label=tag,
-                value=True,
+        annotations = []
+        for tag in self.tags:
+            # Tags are in the format <scheme>/<label>[@<score>], e.g.
+            # "domain-inclusion/hpv@0.9".
+            scheme_label, _, score = tag.partition("@")
+            scheme, _, label = scheme_label.partition("/")
+            annotations.append(
+                BooleanAnnotation(
+                    annotation_type=AnnotationType.BOOLEAN,
+                    scheme=scheme,
+                    label=label,
+                    value=True,
+                    score=float(score) if score else None,
+                )
             )
-            for tag in self.tags
-        ]
         return AnnotationEnhancement(
             annotations=annotations,
         )

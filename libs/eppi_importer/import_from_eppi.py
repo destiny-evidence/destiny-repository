@@ -4,6 +4,7 @@ import argparse
 import base64
 import hashlib
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -13,13 +14,28 @@ from destiny_sdk.parsers.eppi_parser import EPPIParser
 def parse_date(date_to_parse: str) -> datetime:
     """Parse a date string and return a datetime object."""
     try:
-        return datetime.strptime(date_to_parse, "%Y-%m-%d %H:%M %Z")  # noqa: DTZ007
+        return datetime.strptime(date_to_parse, "%Y-%m-%d %Z")  # noqa: DTZ007
     except ValueError as e:
         msg = (
             f"Could not parse --source-export-date {date_to_parse}, "
-            "ensure in format YYYY-MM-DD hh:mm TZ"
+            "ensure in format YYYY-MM-DD TZ"
         )
         raise RuntimeError(msg) from e
+
+
+TAG_PATTERN = re.compile(r"^[^/@]+/[^/@]+(@[^/@]+)?$")
+
+
+def parse_tag(tag: str) -> str:
+    """Validate a tag is in the format <scheme>/<label>[@<score>]."""
+    if not TAG_PATTERN.match(tag):
+        msg = (
+            f"Could not parse --tags entry '{tag}', "
+            "ensure in format <scheme>/<label>[@<score>], "
+            "e.g. 'domain-inclusion/hpv@0.9'"
+        )
+        raise argparse.ArgumentTypeError(msg)
+    return tag
 
 
 def main() -> None:
@@ -45,8 +61,12 @@ def main() -> None:
     arg_parser.add_argument(
         "--tags",
         nargs="+",
+        type=parse_tag,
         default=[],
-        help="A list of tags to add as annotation enhancements.",
+        help=(
+            "A list of tags to add as annotation enhancements, each in the "
+            "format <scheme>/<label>[@<score>], e.g. 'domain-inclusion/hpv@0.9'."
+        ),
     )
     arg_parser.add_argument(
         "--source",
@@ -67,8 +87,8 @@ def main() -> None:
         default=None,
         help=(
             "Date and time when the source file was exported. "
-            "Format: 'YEAR-MONTH-DAY HOUR:MINUTE TIMEZONE' "
-            "For example '2023-12-2 16:30 UTC'"
+            "Format: 'YEAR-MONTH-DAY TIMEZONE' "
+            "For example '2023-12-2 UTC'"
         ),
     )
 
