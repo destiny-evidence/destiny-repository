@@ -327,3 +327,24 @@ resource "azuread_app_role_assignment" "destiny_demonstrator_ui_to_reference_rea
   principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui[0].principal_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
+
+# AI Evidence Summariser role assignments
+data "azurerm_user_assigned_identity" "ai_evidence_summariser" {
+  count               = var.environment != "development" && var.ai_evidence_summariser_app_name != null ? 1 : 0
+  name                = var.ai_evidence_summariser_app_name
+  resource_group_name = "rg-${var.ai_evidence_summariser_app_name}-${var.environment}"
+}
+
+resource "azuread_app_role_assignment" "ai_evidence_summariser_to_reference_reader" {
+  count               = length(data.azurerm_user_assigned_identity.ai_evidence_summariser)
+  app_role_id         = azuread_application_app_role.reference_reader.role_id
+  principal_object_id = data.azurerm_user_assigned_identity.ai_evidence_summariser[0].principal_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
+
+resource "azuread_app_role_assignment" "ai_evidence_summariser_to_reference_full_text_reader" {
+  count               = length(data.azurerm_user_assigned_identity.ai_evidence_summariser)
+  app_role_id         = azuread_application_app_role.reference_full_text_reader.role_id
+  principal_object_id = data.azurerm_user_assigned_identity.ai_evidence_summariser[0].principal_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
