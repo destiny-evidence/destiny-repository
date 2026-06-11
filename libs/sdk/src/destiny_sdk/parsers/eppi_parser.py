@@ -23,6 +23,7 @@ from destiny_sdk.identifiers import (
     ERICIdentifier,
     ExternalIdentifier,
     OpenAlexIdentifier,
+    OtherIdentifier,
     ProQuestIdentifier,
 )
 from destiny_sdk.parsers.exceptions import ExternalIdentifierNotFoundError
@@ -80,6 +81,14 @@ class EPPIParser:
         self, ref_to_import: dict[str, Any]
     ) -> list[ExternalIdentifier]:
         identifiers: list[ExternalIdentifier] = []
+        if item_id := ref_to_import.get("ItemId"):
+            identifiers.append(
+                OtherIdentifier(
+                    identifier=str(item_id),
+                    other_identifier_name="EPPI ItemId",
+                )
+            )
+
         if doi := ref_to_import.get("DOI"):
             doi_identifier = self._parse_doi(doi=doi)
             if doi_identifier:
