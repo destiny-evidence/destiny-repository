@@ -19,6 +19,17 @@ _FIXTURES_DIR = Path(__file__).parent / "fixtures"
 def ontology() -> Graph:
     g = Graph()
     g.parse(str(_FIXTURES_DIR / "evrepo-core.ttl"), format="turtle")
+    # The published HPV vocab types its applied concepts as skos:Concept; mirror
+    # a few here so sh:class on hasAppliedConcept resolves.
+    g.parse(
+        data="""
+        @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+        <https://vocab.aliveevidence.org/hpv/Country/NG> a skos:Concept .
+        <https://vocab.aliveevidence.org/hpv/StudyDesign/HPVV0148> a skos:Concept .
+        <https://vocab.aliveevidence.org/hpv/EquityDimension/HPVV0011> a skos:Concept .
+        """,
+        format="turtle",
+    )
     return g
 
 
@@ -143,6 +154,20 @@ VALID_DATA_WITHOUT_ARM_DATA = {
 }
 
 
+HPV_DATA = {
+    "@context": {"evrepo": EVREPO},
+    "@type": "evrepo:LinkedDataEnhancement",
+    "evrepo:hasInvestigation": {
+        "@type": "evrepo:Investigation",
+        "evrepo:hasAppliedConcept": [
+            {"@id": "https://vocab.aliveevidence.org/hpv/Country/NG"},
+            {"@id": "https://vocab.aliveevidence.org/hpv/StudyDesign/HPVV0148"},
+            {"@id": "https://vocab.aliveevidence.org/hpv/EquityDimension/HPVV0011"},
+        ],
+    },
+}
+
+
 VOCAB_URI = "https://vocab.evidence-repository.org/vocabulary/v1"
 
 
@@ -167,6 +192,144 @@ async def test_ontology_concept_types_resolved_via_graph_merge(
     result = await service.validate(
         data=VALID_DATA_WITH_ONTOLOGY_CONCEPT, vocabulary_uri=VOCAB_URI
     )
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
+
+
+@pytest.mark.asyncio
+async def test_hpv_investigation_without_finding_conforms(
+    service: LinkedDataValidationService,
+):
+    """HPV-style enhancement: an Investigation carrying applied concepts and no
+    Finding conforms — hasFinding is optional."""
+    result = await service.validate(data=HPV_DATA, vocabulary_uri=VOCAB_URI)
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
+    assert result.errors == []
+
+
+@pytest.mark.asyncio
+async def test_investigation_with_multiple_findings_conforms(
+    service: LinkedDataValidationService,
+):
+    """An Investigation may hold more than one Finding."""
+    data = {
+        "@context": {"evrepo": EVREPO},
+        "@type": "evrepo:LinkedDataEnhancement",
+        "evrepo:hasInvestigation": {
+            "@type": "evrepo:Investigation",
+            "evrepo:hasFinding": [
+                {
+                    "@type": "evrepo:Finding",
+                    "evrepo:hasOutcome": {
+                        "@type": "evrepo:Outcome",
+                        "evrepo:name": "Reading comprehension",
+                    },
+                },
+                {
+                    "@type": "evrepo:Finding",
+                    "evrepo:hasContext": {"@type": "evrepo:Context"},
+                },
+            ],
+        },
+    }
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
+
+
+@pytest.mark.asyncio
+async def test_investigation_with_findings_and_applied_concepts_conforms(
+    service: LinkedDataValidationService,
+):
+    """Findings and applied concepts may coexist on the same Investigation."""
+    data = {
+        "@context": {"evrepo": EVREPO},
+        "@type": "evrepo:LinkedDataEnhancement",
+        "evrepo:hasInvestigation": {
+            "@type": "evrepo:Investigation",
+            "evrepo:hasFinding": {
+                "@type": "evrepo:Finding",
+                "evrepo:hasOutcome": {
+                    "@type": "evrepo:Outcome",
+                    "evrepo:name": "Reading comprehension",
+                },
+            },
+            "evrepo:hasAppliedConcept": [
+                {"@id": "https://vocab.aliveevidence.org/hpv/Country/NG"},
+            ],
+        },
+    }
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
+
+
+@pytest.mark.asyncio
+async def test_applied_concept_literal_fails(service: LinkedDataValidationService):
+    """hasAppliedConcept values must be IRIs, not literals."""
+    data = {
+        "@context": {"evrepo": EVREPO},
+        "@type": "evrepo:LinkedDataEnhancement",
+        "evrepo:hasInvestigation": {
+            "@type": "evrepo:Investigation",
+            "evrepo:hasAppliedConcept": "not-an-iri",
+        },
+    }
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert not result.conforms
+    assert any("SHACL validation failed" in e for e in result.errors)
+
+
+@pytest.mark.asyncio
+async def test_applied_concept_not_a_concept_fails(
+    service: LinkedDataValidationService,
+):
+    """An applied-concept IRI the vocab doesn't type as skos:Concept fails."""
+    data = {
+        "@context": {"evrepo": EVREPO},
+        "@type": "evrepo:LinkedDataEnhancement",
+        "evrepo:hasInvestigation": {
+            "@type": "evrepo:Investigation",
+            "evrepo:hasAppliedConcept": [
+                {"@id": "https://vocab.aliveevidence.org/hpv/Country/ZZ"},
+            ],
+        },
+    }
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
+    assert not result.conforms
+    assert any("SHACL validation failed" in e for e in result.errors)
+
+
+@pytest.mark.asyncio
+async def test_applied_concept_subclass_of_concept_conforms():
+    """An applied concept typed as a subclass of skos:Concept conforms —
+    sh:class is subclass-aware under inference="none"."""
+    ontology = Graph()
+    ontology.parse(
+        data="""
+        @prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+        @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+        @prefix owl: <http://www.w3.org/2002/07/owl#> .
+        <https://vocab.aliveevidence.org/hpv/Country> a owl:Class ;
+            rdfs:subClassOf skos:Concept .
+        <https://vocab.aliveevidence.org/hpv/Country/NG> a
+            <https://vocab.aliveevidence.org/hpv/Country> .
+        """,
+        format="turtle",
+    )
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_vocabulary = AsyncMock(return_value=ontology)
+    client.get_context = AsyncMock()
+    service = LinkedDataValidationService(vocab_client=client)
+
+    data = {
+        "@context": {"evrepo": EVREPO},
+        "@type": "evrepo:LinkedDataEnhancement",
+        "evrepo:hasInvestigation": {
+            "@type": "evrepo:Investigation",
+            "evrepo:hasAppliedConcept": [
+                {"@id": "https://vocab.aliveevidence.org/hpv/Country/NG"},
+            ],
+        },
+    }
+    result = await service.validate(data=data, vocabulary_uri=VOCAB_URI)
     assert result.conforms, f"Expected conforms=True, got errors: {result.errors}"
 
 
