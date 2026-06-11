@@ -18,13 +18,14 @@ import httpx
 from destiny_sdk.imports import (
     ImportBatchIn,
     ImportBatchRead,
-    ImportBatchSummary,
+    ImportBatchStatus,
     ImportRecordIn,
     ImportRecordRead,
 )
 
 from app.core.config import Environment
 from cli.auth import CLIAuth
+from cli.get_import_batch_summary import check_import_batch_status
 
 from .config import get_settings
 
@@ -82,33 +83,33 @@ def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None
 
 def poll_and_summarise(
     client: httpx.Client,
+    env: Environment,
     import_record_id: UUID,
     import_batch_id: UUID,
     poll_interval: float = 5,
 ) -> None:
     """Poll for completion and produce a summary of the import."""
     print(f"Polling import batch {import_batch_id} for completion...")
-    for _ in range(5):
+    for _ in range(10):
         response = client.get(
             f"/v1/imports/records/{import_record_id}/batches/{import_batch_id}/"
         )
         response.raise_for_status()
         import_batch = ImportBatchRead.model_validate(response.json())
         print(import_batch)
-        if import_batch.status == "completed":
+        if import_batch.status in ImportBatchStatus.get_terminal_statuses():
             print("Import batch complete.")
             break
         print(f"Import batch not complete, sleeping for {poll_interval} seconds...")
         time.sleep(poll_interval)
     else:
-        print("Import batch did not complete in time.")
-        sys.exit(1)
+        print("Import batch did not complete in time. Fetching current summary...")
 
-    response = client.get(
-        f"/v1/imports/records/{import_record_id}/batches/{import_batch_id}/summary/"
+    import_batch_summary = check_import_batch_status(
+        env=env,
+        import_record_id=import_record_id,
+        import_batch_id=import_batch_id,
     )
-    response.raise_for_status()
-    import_batch_summary = ImportBatchSummary.model_validate(response.json())
     print(f"Import batch {import_batch_id} summary:")
     print(import_batch_summary)
 
@@ -137,7 +138,11 @@ def post_import_file(  # noqa: PLR0913
         import_batch = register_import_batch(client, import_record.id, file_url)
         finalise_import_record(client, import_record.id)
         poll_and_summarise(
-            client, import_record.id, import_batch.id, poll_interval=poll_interval
+            client,
+            env,
+            import_record.id,
+            import_batch.id,
+            poll_interval=poll_interval,
         )
 
     print("Import process complete.")
@@ -153,7 +158,7 @@ def argument_parser() -> argparse.ArgumentParser:
         "--env",
         type=Environment,
         default=Environment.LOCAL,
-        required=True,
+        help="Environment to run the cli against.",
     )
     parser.add_argument("--file-url", required=True, help="URL of the file to import")
     parser.add_argument(
