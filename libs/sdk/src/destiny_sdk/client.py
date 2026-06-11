@@ -440,6 +440,7 @@ class OAuthMiddleware(httpx.Auth):
 
         # Check if token expired and retry once with fresh token
         if response.status_code == httpx.codes.UNAUTHORIZED:
+            response.read()
             try:
                 json_response: dict = response.json()
                 error_detail: str = json_response.get("detail", {})
@@ -604,6 +605,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
 
         # Check if token expired and retry once with fresh token
         if response.status_code == httpx.codes.UNAUTHORIZED:
+            response.read()
             try:
                 json_response: dict = response.json()
                 error_detail: str = json_response.get("detail", {})
