@@ -37,7 +37,9 @@ def test_parse_data_with_annotations():
     input_path = test_data_path / "eppi_report.json"
     output_path = test_data_path / "eppi_import_with_annotations.jsonl"
 
-    parser = EPPIParser(tags=["test-tag", "another-tag"])
+    parser = EPPIParser(
+        tags=["test-scheme/test-label", "another-scheme/another-label@0.9"]
+    )
 
     # Override the parser_source so the test isn't dependent on
     # parser versioning
