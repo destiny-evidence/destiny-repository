@@ -255,10 +255,6 @@ class OAuthMiddleware(httpx.Auth):
 
     """
 
-    # auth_flow inspects the response body to detect token expiry, so httpx
-    # must read the body before resuming the generator.
-    requires_response_body = True
-
     def __init__(
         self,
         azure_client_id: str,
@@ -444,6 +440,7 @@ class OAuthMiddleware(httpx.Auth):
 
         # Check if token expired and retry once with fresh token
         if response.status_code == httpx.codes.UNAUTHORIZED:
+            response.read()
             try:
                 json_response: dict = response.json()
                 error_detail: str = json_response.get("detail", {})
@@ -492,10 +489,6 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         )
 
     """
-
-    # auth_flow inspects the response body to detect token expiry, so httpx
-    # must read the body before resuming the generator.
-    requires_response_body = True
 
     def __init__(  # noqa: PLR0913
         self,
@@ -612,6 +605,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
 
         # Check if token expired and retry once with fresh token
         if response.status_code == httpx.codes.UNAUTHORIZED:
+            response.read()
             try:
                 json_response: dict = response.json()
                 error_detail: str = json_response.get("detail", {})
