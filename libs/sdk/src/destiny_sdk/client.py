@@ -255,6 +255,10 @@ class OAuthMiddleware(httpx.Auth):
 
     """
 
+    # auth_flow inspects the response body to detect token expiry, so httpx
+    # must read the body before resuming the generator.
+    requires_response_body = True
+
     def __init__(
         self,
         azure_client_id: str,
@@ -488,6 +492,10 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         )
 
     """
+
+    # auth_flow inspects the response body to detect token expiry, so httpx
+    # must read the body before resuming the generator.
+    requires_response_body = True
 
     def __init__(  # noqa: PLR0913
         self,
