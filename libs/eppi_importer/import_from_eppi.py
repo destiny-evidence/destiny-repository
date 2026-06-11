@@ -25,6 +25,8 @@ def parse_date(date_to_parse: str) -> datetime:
 
 TAG_PATTERN = re.compile(r"^[^/@]+/[^/@]+(@[^/@]+)?$")
 
+DOMAIN_INCLUSION_TAG_SCHEME = "domain-inclusion"
+
 
 def parse_tag(tag: str) -> str:
     """Validate a tag is in the format <scheme>/<label>[@<score>]."""
@@ -36,6 +38,11 @@ def parse_tag(tag: str) -> str:
         )
         raise argparse.ArgumentTypeError(msg)
     return tag
+
+
+def tag_scheme(tag: str) -> str:
+    """Return the scheme (portion before the first slash) of a tag."""
+    return tag.partition("/")[0]
 
 
 def main() -> None:
@@ -82,6 +89,15 @@ def main() -> None:
     )
 
     arg_parser.add_argument(
+        "--include-eppi-id",
+        action="store_true",
+        help=(
+            "Whether to include the EPPI ItemId as an OtherIdentifier "
+            "on each reference"
+        ),
+    )
+
+    arg_parser.add_argument(
         "--source-export-date",
         type=parse_date,
         default=None,
@@ -111,6 +127,15 @@ def main() -> None:
 
     args = arg_parser.parse_args()
 
+    if args.include_eppi_id and not any(
+        tag_scheme(tag) == DOMAIN_INCLUSION_TAG_SCHEME for tag in args.tags
+    ):
+        arg_parser.error(
+            "At least one --tags entry must use the "
+            f"'{DOMAIN_INCLUSION_TAG_SCHEME}' scheme when --include-eppi-id is set, "
+            f"e.g. '{DOMAIN_INCLUSION_TAG_SCHEME}/hpv'."
+        )
+
     input_path = Path(args.input)
 
     with input_path.open("rb") as f:
@@ -126,6 +151,7 @@ def main() -> None:
     eppi_parser = EPPIParser(
         tags=args.tags,
         include_raw_data=args.include_raw,
+        include_eppi_id=args.include_eppi_id,
         source_export_date=args.source_export_date,
         data_description=args.description,
         raw_enhancement_excludes=args.exclude_from_raw,

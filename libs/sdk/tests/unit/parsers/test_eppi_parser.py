@@ -114,7 +114,28 @@ def test_parsing_identifiers():
 
 
 def test_parsing_item_id_as_other_identifier():
-    """Test that the ItemId is parsed as an OtherIdentifier first."""
+    """Test that the ItemId is parsed as an OtherIdentifier first when enabled."""
+    test_data = {
+        "References": [
+            {
+                "ItemId": 109014171,
+                "DOI": "10.1080/00220973.1978.11011636",
+            },
+        ]
+    }
+
+    parser = EPPIParser(include_eppi_id=True)
+    references, _ = parser.parse_data(test_data)
+    assert len(references) == 1
+    identifiers = references[0].identifiers
+    assert identifiers[0].identifier_type == ExternalIdentifierType.OTHER
+    assert identifiers[0].identifier == "109014171"
+    assert identifiers[0].other_identifier_name == "EPPI ItemId"
+    assert identifiers[1].identifier_type == ExternalIdentifierType.DOI
+
+
+def test_item_id_not_included_by_default():
+    """Test that the ItemId is not parsed unless include_eppi_id is set."""
     test_data = {
         "References": [
             {
@@ -128,10 +149,8 @@ def test_parsing_item_id_as_other_identifier():
     references, _ = parser.parse_data(test_data)
     assert len(references) == 1
     identifiers = references[0].identifiers
-    assert identifiers[0].identifier_type == ExternalIdentifierType.OTHER
-    assert identifiers[0].identifier == "109014171"
-    assert identifiers[0].other_identifier_name == "EPPI ItemId"
-    assert identifiers[1].identifier_type == ExternalIdentifierType.DOI
+    assert len(identifiers) == 1
+    assert identifiers[0].identifier_type == ExternalIdentifierType.DOI
 
 
 def test_parsing_doi_from_url():

@@ -40,11 +40,12 @@ class EPPIParser:
 
     version = "2.0"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         tags: list[str] | None = None,
         include_raw_data: bool = False,
+        include_eppi_id: bool = False,
         source_export_date: datetime | None = None,
         data_description: str | None = None,
         raw_enhancement_excludes: list[str] | None = None,
@@ -54,11 +55,14 @@ class EPPIParser:
 
         Args:
             tags (list[str] | None): Optional list of tags to annotate references.
+            include_eppi_id (bool): Whether to include the EPPI ItemId as an
+                OtherIdentifier on each reference.
 
         """
         self.tags = tags or []
         self.parser_source = f"destiny_sdk.eppi_parser@{self.version}"
         self.include_raw_data = include_raw_data
+        self.include_eppi_id = include_eppi_id
         self.source_export_date = source_export_date
         self.data_description = data_description
         self.raw_enhancement_excludes = (
@@ -81,7 +85,7 @@ class EPPIParser:
         self, ref_to_import: dict[str, Any]
     ) -> list[ExternalIdentifier]:
         identifiers: list[ExternalIdentifier] = []
-        if item_id := ref_to_import.get("ItemId"):
+        if self.include_eppi_id and (item_id := ref_to_import.get("ItemId")):
             identifiers.append(
                 OtherIdentifier(
                     identifier=str(item_id),
