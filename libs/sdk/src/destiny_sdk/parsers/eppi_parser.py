@@ -87,7 +87,7 @@ class EPPIParser:
 
         if url := ref_to_import.get("URL"):
             identifier = self._parse_url_to_identifier(url=url)
-            if identifier:
+            if identifier and identifier not in identifiers:
                 identifiers.append(identifier)
 
         if not identifiers:
@@ -112,7 +112,9 @@ class EPPIParser:
         """Attempt to parse an external identifier from a url string."""
         url = url.strip()
         identifier_cls: type[ExternalIdentifier] | None = None
-        if "eric" in url:
+        if "doi.org" in url:
+            identifier_cls = DOIIdentifier
+        elif "eric" in url:
             identifier_cls = ERICIdentifier
         elif "proquest" in url:
             identifier_cls = ProQuestIdentifier

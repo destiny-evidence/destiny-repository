@@ -111,6 +111,48 @@ def test_parsing_identifiers():
     assert references[1].identifiers[0].identifier_type == ExternalIdentifierType.ERIC
 
 
+def test_parsing_doi_from_url():
+    """Test that a DOI can be parsed from a doi.org URL."""
+    test_data = {
+        "References": [
+            {
+                # A DOI provided only as a URL
+                "URL": "https://doi.org/10.1080/00220973.1978.11011636",
+            },
+            {
+                # A DOI provided only as a dx.doi.org URL
+                "URL": "http://dx.doi.org/10.1080/00220973.1978.11011636",
+            },
+        ]
+    }
+
+    parser = EPPIParser()
+    references, _ = parser.parse_data(test_data)
+    assert len(references) == 2
+    for reference in references:
+        assert len(reference.identifiers) == 1
+        assert reference.identifiers[0].identifier_type == ExternalIdentifierType.DOI
+        assert reference.identifiers[0].identifier == "10.1080/00220973.1978.11011636"
+
+
+def test_duplicate_doi_in_field_and_url_is_deduplicated():
+    """Test that a DOI present in both the DOI field and URL is only added once."""
+    test_data = {
+        "References": [
+            {
+                "DOI": "10.1080/00220973.1978.11011636",
+                "URL": "https://doi.org/10.1080/00220973.1978.11011636",
+            },
+        ]
+    }
+
+    parser = EPPIParser()
+    references, _ = parser.parse_data(test_data)
+    assert len(references) == 1
+    assert len(references[0].identifiers) == 1
+    assert references[0].identifiers[0].identifier_type == ExternalIdentifierType.DOI
+
+
 def test_reference_with_no_identifiers_is_not_included():
     """Test that we do not return references with no identifiers."""
     test_data = {
