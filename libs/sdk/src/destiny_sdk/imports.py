@@ -37,6 +37,15 @@ class ImportBatchStatus(StrEnum):
     COMPLETED = auto()
     """Processing has been completed."""
 
+    @classmethod
+    def get_terminal_statuses(cls) -> set["ImportBatchStatus"]:
+        """Return the set of terminal ImportBatchStatuses."""
+        return {
+            cls.FAILED,
+            cls.PARTIALLY_FAILED,
+            cls.COMPLETED,
+        }
+
 
 class ImportResultStatus(StrEnum):
     """Describes the status of an import result."""

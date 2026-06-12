@@ -18,6 +18,89 @@ def _bibliographic_title(record: dict) -> str | None:
 
 
 @pytest.fixture
+def eppi_export_with_item_id(tmp_path: Path) -> Path:
+    """Build an EPPI export with an ItemId on the single reference."""
+    data = {
+        "CodeSets": [],
+        "References": [
+            {
+                "ItemId": 109014171,
+                "DOI": "10.1111/j.1468-0297.2008.02247.x",
+            }
+        ],
+    }
+    path = tmp_path / "eppi_item_id.json"
+    path.write_bytes(json.dumps(data, ensure_ascii=False).encode("utf-8"))
+    return path
+
+
+def test_include_eppi_id_adds_other_identifier(
+    eppi_export_with_item_id: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--include-eppi-id adds the ItemId as an OtherIdentifier."""
+    output_path = tmp_path / "out.jsonl"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "import_from_eppi",
+            "--input",
+            str(eppi_export_with_item_id),
+            "--output",
+            str(output_path),
+            "--source",
+            "test-source",
+            "--include-eppi-id",
+            "--tags",
+            "domain-inclusion/hpv",
+        ],
+    )
+
+    import_from_eppi.main()
+
+    record = json.loads(output_path.read_text(encoding="utf-8").splitlines()[0])
+    other = [
+        i
+        for i in record["identifiers"]
+        if i.get("other_identifier_name") == "EPPI ItemId"
+    ]
+    assert len(other) == 1
+    assert other[0]["identifier"] == "109014171"
+
+
+def test_include_eppi_id_requires_domain_inclusion_tag(
+    eppi_export_with_item_id: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """--include-eppi-id fails fast without a domain-inclusion tag."""
+    output_path = tmp_path / "out.jsonl"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "import_from_eppi",
+            "--input",
+            str(eppi_export_with_item_id),
+            "--output",
+            str(output_path),
+            "--source",
+            "test-source",
+            "--include-eppi-id",
+            "--tags",
+            "some-other-scheme/hpv",
+        ],
+    )
+
+    with pytest.raises(SystemExit):
+        import_from_eppi.main()
+
+    assert not output_path.exists()
+
+
+@pytest.fixture
 def utf8_eppi_export(tmp_path: Path) -> Path:
     """
     Build an EPPI export written as UTF-8 with U+2019 in the title.

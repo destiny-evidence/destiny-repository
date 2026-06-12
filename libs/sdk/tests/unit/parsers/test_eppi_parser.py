@@ -37,7 +37,9 @@ def test_parse_data_with_annotations():
     input_path = test_data_path / "eppi_report.json"
     output_path = test_data_path / "eppi_import_with_annotations.jsonl"
 
-    parser = EPPIParser(tags=["test-tag", "another-tag"])
+    parser = EPPIParser(
+        tags=["test-scheme/test-label", "another-scheme/another-label@0.9"]
+    )
 
     # Override the parser_source so the test isn't dependent on
     # parser versioning
@@ -109,6 +111,88 @@ def test_parsing_identifiers():
         references[0].identifiers[1].identifier_type == ExternalIdentifierType.PRO_QUEST
     )
     assert references[1].identifiers[0].identifier_type == ExternalIdentifierType.ERIC
+
+
+def test_parsing_item_id_as_other_identifier():
+    """Test that the ItemId is parsed as an OtherIdentifier first when enabled."""
+    test_data = {
+        "References": [
+            {
+                "ItemId": 109014171,
+                "DOI": "10.1080/00220973.1978.11011636",
+            },
+        ]
+    }
+
+    parser = EPPIParser(include_eppi_id=True)
+    references, _ = parser.parse_data(test_data)
+    assert len(references) == 1
+    identifiers = references[0].identifiers
+    assert identifiers[0].identifier_type == ExternalIdentifierType.OTHER
+    assert identifiers[0].identifier == "109014171"
+    assert identifiers[0].other_identifier_name == "EPPI ItemId"
+    assert identifiers[1].identifier_type == ExternalIdentifierType.DOI
+
+
+def test_item_id_not_included_by_default():
+    """Test that the ItemId is not parsed unless include_eppi_id is set."""
+    test_data = {
+        "References": [
+            {
+                "ItemId": 109014171,
+                "DOI": "10.1080/00220973.1978.11011636",
+            },
+        ]
+    }
+
+    parser = EPPIParser()
+    references, _ = parser.parse_data(test_data)
+    assert len(references) == 1
+    identifiers = references[0].identifiers
+    assert len(identifiers) == 1
+    assert identifiers[0].identifier_type == ExternalIdentifierType.DOI
+
+
+def test_parsing_doi_from_url():
+    """Test that a DOI can be parsed from a doi.org URL."""
+    test_data = {
+        "References": [
+            {
+                # A DOI provided only as a URL
+                "URL": "https://doi.org/10.1080/00220973.1978.11011636",
+            },
+            {
+                # A DOI provided only as a dx.doi.org URL
+                "URL": "http://dx.doi.org/10.1080/00220973.1978.11011636",
+            },
+        ]
+    }
+
+    parser = EPPIParser()
+    references, _ = parser.parse_data(test_data)
+    assert len(references) == 2
+    for reference in references:
+        assert len(reference.identifiers) == 1
+        assert reference.identifiers[0].identifier_type == ExternalIdentifierType.DOI
+        assert reference.identifiers[0].identifier == "10.1080/00220973.1978.11011636"
+
+
+def test_duplicate_doi_in_field_and_url_is_deduplicated():
+    """Test that a DOI present in both the DOI field and URL is only added once."""
+    test_data = {
+        "References": [
+            {
+                "DOI": "10.1080/00220973.1978.11011636",
+                "URL": "https://doi.org/10.1080/00220973.1978.11011636",
+            },
+        ]
+    }
+
+    parser = EPPIParser()
+    references, _ = parser.parse_data(test_data)
+    assert len(references) == 1
+    assert len(references[0].identifiers) == 1
+    assert references[0].identifiers[0].identifier_type == ExternalIdentifierType.DOI
 
 
 def test_reference_with_no_identifiers_is_not_included():
