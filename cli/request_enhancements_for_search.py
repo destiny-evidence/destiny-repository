@@ -12,6 +12,7 @@ enhancement-request endpoints are called directly via httpx.
 # ruff: noqa: T201
 import argparse
 import sys
+from datetime import UTC, datetime
 from uuid import UUID
 
 import httpx
@@ -64,12 +65,54 @@ def create_enhancement_request(
     print(f"Created enhancement request {response.json()['id']}")
 
 
-def _preview(reference_ids: list[UUID], limit: int = 10) -> None:
+_PREVIEW_LIMIT = 10
+
+
+def _preview(reference_ids: list[UUID], limit: int = _PREVIEW_LIMIT) -> None:
     """Print the first `limit` reference IDs."""
     for reference_id in reference_ids[:limit]:
         print(reference_id)
     if len(reference_ids) > limit:
         print("...")
+
+
+_UUID_VERSION_7 = 7
+
+
+def _parse_created_after(value: str) -> datetime:
+    """Parse an ISO-8601 datetime arg, treating naive values as UTC."""
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError as exc:
+        msg = f"Invalid ISO-8601 datetime: {value!r}"
+        raise argparse.ArgumentTypeError(msg) from exc
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
+
+
+def _uuid7_created_at(reference_id: UUID) -> datetime:
+    """Extract the creation time embedded in a UUID7's leading 48-bit ms timestamp."""
+    return datetime.fromtimestamp((reference_id.int >> 80) / 1000, tz=UTC)
+
+
+def _filter_created_after(
+    reference_ids: list[UUID], created_after: datetime
+) -> list[UUID]:
+    """
+    Keep only references created at or after `created_after`, per their UUID7 IDs.
+
+    Errors if any ID is not a UUID7, since its creation time cannot be derived.
+    """
+    non_uuid7 = [rid for rid in reference_ids if rid.version != _UUID_VERSION_7]
+    if non_uuid7:
+        shown = non_uuid7[:_PREVIEW_LIMIT]
+        ellipsis = ", ..." if len(non_uuid7) > _PREVIEW_LIMIT else ""
+        msg = (
+            f"--created-after cannot be applied: {len(non_uuid7)} matched reference(s) "
+            "have non-UUID7 IDs whose creation time cannot be derived from the ID. "
+            f"Offending IDs: {', '.join(str(rid) for rid in shown)}{ellipsis}"
+        )
+        raise ValueError(msg)
+    return [rid for rid in reference_ids if _uuid7_created_at(rid) >= created_after]
 
 
 def request_enhancements(  # noqa: PLR0913
@@ -78,6 +121,7 @@ def request_enhancements(  # noqa: PLR0913
     robot_id: UUID,
     source: str,
     exclude_reference_ids: set[UUID] | None = None,
+    created_after: datetime | None = None,
     *,
     dry_run: bool = False,
 ) -> None:
@@ -91,6 +135,13 @@ def request_enhancements(  # noqa: PLR0913
         reference_ids = [rid for rid in all_reference_ids if rid not in exclude]
         if exclude:
             print(f"{len(reference_ids)} references after exclusions.")
+
+        if created_after is not None:
+            reference_ids = _filter_created_after(reference_ids, created_after)
+            print(
+                f"{len(reference_ids)} references created after "
+                f"{created_after.isoformat()}."
+            )
 
         if not reference_ids:
             print("No references to enhance. Exiting.")
@@ -148,6 +199,17 @@ def argument_parser() -> argparse.ArgumentParser:
         help="Reference ID to exclude (repeatable).",
     )
     parser.add_argument(
+        "--created-after",
+        type=_parse_created_after,
+        default=None,
+        help=(
+            "Only request enhancements for references created at or after this "
+            "ISO-8601 datetime, derived from the reference's UUID7 ID (e.g. "
+            "'2026-01-01' or '2026-01-01T12:00:00+00:00'). Naive datetimes are "
+            "treated as UTC. Errors if any matched reference has a non-UUID7 ID."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Print what would be requested without creating an enhancement request.",
@@ -166,8 +228,12 @@ if __name__ == "__main__":
             robot_id=args.robot_id,
             source=args.source,
             exclude_reference_ids=set(args.exclude_reference_ids),
+            created_after=args.created_after,
             dry_run=args.dry_run,
         )
+    except ValueError as exc:
+        print(str(exc))
+        sys.exit(1)
     except httpx.HTTPError as exc:
         print(f"Enhancement request failed: {exc}")
         sys.exit(1)
