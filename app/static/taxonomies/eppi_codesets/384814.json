@@ -1,0 +1,327 @@
+{
+  "SetName": "HPV Learning Convening 2026",
+  "SetId": 384814,
+  "ReviewSetId": 384856,
+  "SetDescription": "",
+  "SetType": {
+    "SetTypeDescription": "The Standard codeset type is used for regular coding such as keywording or data-extraction. This codeset type can contain multiple levels of child codes but cannot contain the special code types \"Include\" and \"Exclude\".",
+    "SetTypeName": "Standard",
+    "SetTypeId": 3
+  },
+  "Attributes": {
+    "AttributesList": [
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "OldestKnownId": 0,
+        "AttributeSetId": 19710543,
+        "AttributeId": 19712354,
+        "AttributeSetDescription": "",
+        "AttributeType": "Selectable (show checkbox)",
+        "AttributeTypeId": 2,
+        "AttributeName": "Demand",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710569,
+              "AttributeId": 19712380,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Understanding Demand (Behavioral and Social Drivers and Segmentation)\u200b"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710570,
+              "AttributeId": 19712381,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Designing Effective Demand Interventions\u200b"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19715131,
+              "AttributeId": 19716942,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Delivery,  Scale and Institutionalization\u200b"
+            }
+          ]
+        }
+      },
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "OldestKnownId": 0,
+        "AttributeSetId": 19710544,
+        "AttributeId": 19712355,
+        "AttributeSetDescription": "",
+        "AttributeType": "Selectable (show checkbox)",
+        "AttributeTypeId": 2,
+        "AttributeName": "Sustained and optimized delivery",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710572,
+              "AttributeId": 19712383,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Health system and workforce\u200b"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710573,
+              "AttributeId": 19712384,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Delivery strategy design"
+            }
+          ]
+        }
+      },
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "OldestKnownId": 0,
+        "AttributeSetId": 19710545,
+        "AttributeId": 19712356,
+        "AttributeSetDescription": "",
+        "AttributeType": "Selectable (show checkbox)",
+        "AttributeTypeId": 2,
+        "AttributeName": "Integration",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710574,
+              "AttributeId": 19712385,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Adolescent service integration"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710575,
+              "AttributeId": 19712386,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Life course integration"
+            }
+          ]
+        }
+      },
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "OldestKnownId": 0,
+        "AttributeSetId": 19710546,
+        "AttributeId": 19712357,
+        "AttributeSetDescription": "",
+        "AttributeType": "Selectable (show checkbox)",
+        "AttributeTypeId": 2,
+        "AttributeName": "Equity",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710576,
+              "AttributeId": 19712387,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Out-of-school girls"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710577,
+              "AttributeId": 19712388,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Fragile and conflict areas"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710578,
+              "AttributeId": 19712389,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Other hard-to-reach populations"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710579,
+              "AttributeId": 19712390,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "People with disabilities"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710580,
+              "AttributeId": 19712391,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Immunocompromised"
+            }
+          ]
+        }
+      },
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "OldestKnownId": 0,
+        "AttributeSetId": 19710547,
+        "AttributeId": 19712358,
+        "AttributeSetDescription": "",
+        "AttributeType": "Selectable (show checkbox)",
+        "AttributeTypeId": 2,
+        "AttributeName": "Financing",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710581,
+              "AttributeId": 19712392,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Cost Structure and Budget Integration\u200b"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710582,
+              "AttributeId": 19712393,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Financing Constraints and Sustainability Pathways\u200b"
+            }
+          ]
+        }
+      },
+      {
+        "AttributeDescription": "",
+        "ExtURL": "",
+        "ExtType": "",
+        "OriginalAttributeID": 0,
+        "OldestKnownId": 0,
+        "AttributeSetId": 19710551,
+        "AttributeId": 19712362,
+        "AttributeSetDescription": "",
+        "AttributeType": "Selectable (show checkbox)",
+        "AttributeTypeId": 2,
+        "AttributeName": "Measurement",
+        "Attributes": {
+          "AttributesList": [
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710583,
+              "AttributeId": 19712394,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Admin Data & Enumeration\u200b"
+            },
+            {
+              "AttributeDescription": "",
+              "ExtURL": "",
+              "ExtType": "",
+              "OriginalAttributeID": 0,
+              "OldestKnownId": 0,
+              "AttributeSetId": 19710584,
+              "AttributeId": 19712395,
+              "AttributeSetDescription": "",
+              "AttributeType": "Selectable (show checkbox)",
+              "AttributeTypeId": 2,
+              "AttributeName": "Improving Coverage Estimation\u200b"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "OldestKnownId": 0,
+  "OriginalSetId": 0
+}

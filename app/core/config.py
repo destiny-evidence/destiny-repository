@@ -13,12 +13,14 @@ from pydantic import (
     FilePath,
     HttpUrl,
     PostgresDsn,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import ExternalIdentifierType
+from app.persistence.blob.models import BlobContainer, BlobStorageLocation
 from app.utils.time_and_date import iso8601_duration_adapter
 
 logger = get_logger(__name__)
@@ -157,23 +159,44 @@ class ESConfig(BaseModel):
         return self
 
 
-class MinioConfig(BaseModel):
+class BlobBackendConfig(BaseModel):
+    """Shared shape for blob storage backend configurations."""
+
+    containers: dict[BlobContainer, str]
+    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+
+    @field_validator("containers")
+    @classmethod
+    def _all_containers_required(
+        cls, v: dict[BlobContainer, str]
+    ) -> dict[BlobContainer, str]:
+        missing = set(BlobContainer) - set(v)
+        if missing:
+            msg = (
+                f"Blob backend config is missing containers: "
+                f"{sorted(c.value for c in missing)}"
+            )
+            raise ValueError(msg)
+        return v
+
+
+class MinioConfig(BlobBackendConfig):
     """Minio configuration."""
+
+    location: Literal[BlobStorageLocation.MINIO] = BlobStorageLocation.MINIO
 
     host: str
     access_key: str
     secret_key: str
-    bucket: str = "destiny-repository"
-    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
 
 
-class AzureBlobConfig(BaseModel):
+class AzureBlobConfig(BlobBackendConfig):
     """Azure Blob Storage configuration."""
 
+    location: Literal[BlobStorageLocation.AZURE] = BlobStorageLocation.AZURE
+
     storage_account_name: str
-    container: str
     credential: str | None = None
-    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
     user_delegation_key_duration: int = 60 * 60 * 24  # 1 day
 
     @property
@@ -301,6 +324,7 @@ class UploadFile(StrEnum):
 
     ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
     ROBOT_ENHANCEMENT_REFERENCE_DATA = auto()
+    SEARCH_EXPORT = auto()
 
 
 class TOML(BaseModel):
@@ -419,6 +443,22 @@ class Settings(BaseSettings):
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
+    message_broker_priority_queue_name: str = "taskiq-priority"
+    message_broker_queue_max_wait: int = Field(
+        default=2,
+        description=(
+            "Max time to wait to receive messages on the normal priority task queue "
+            "(in seconds)."
+        ),
+    )
+    message_broker_priority_queue_max_wait: int = Field(
+        default=1,
+        description=(
+            "Max time to wait to receive messages on the high priority task queue "
+            "(in seconds)."
+        ),
+    )
+
     cli_client_id: str | None = None
     app_name: str
 
@@ -448,12 +488,13 @@ class Settings(BaseSettings):
         description=("Override the default Elasticsearch indexing chunk size."),
     )
 
-    es_reference_repair_chunk_size: int = Field(
+    es_reference_repair_max_batch_size: int = Field(
         default=1000,
         description=(
-            "Number of reference records to process in a single distributed task "
-            "when repairing or rebuilding the reference index in Elasticsearch. "
-            "Be wary that if increased too far, then the "
+            "Maximum number of reference records that may be repaired in a single "
+            "task. Caps both the partition size used when distributing a full "
+            "reference index repair and the size of a caller-supplied subset accepted "
+            "by the repair endpoint. Be wary that if increased too far, then the "
             "`repair_reference_index_for_chunk` task will require `long_running=True` "
             "and subsequent lock management."
         ),
@@ -496,7 +537,7 @@ class Settings(BaseSettings):
         ),
     )
     upload_file_chunk_size_override: dict[UploadFile, int] = Field(
-        default_factory=dict,
+        default_factory=lambda: {UploadFile.SEARCH_EXPORT: 1000},
         description=("Override the default upload file chunk size."),
     )
 
@@ -512,6 +553,45 @@ class Settings(BaseSettings):
     presigned_url_expiry_seconds: int = Field(
         default=3600,
         description="The number of seconds a signed URL is valid for.",
+    )
+
+    es_aggregation_max_buckets: int = Field(
+        default=1000,
+        ge=1,
+        le=65_536,
+        description=(
+            "Maximum buckets returned per Elasticsearch terms aggregation. "
+            "Capped at the Elasticsearch cluster default for `search.max_buckets`."
+        ),
+    )
+
+    es_cross_facet_max_cells: int = Field(
+        default=50_000,
+        ge=1,
+        le=65_536,
+        description=(
+            "Maximum aggregation buckets a cross-facet matrix may materialise "
+            "(the nested terms agg counts parent buckets too, so for axes sized "
+            "(a, b) this is a + a*b). Kept below the Elasticsearch cluster default "
+            "for `search.max_buckets` so a large matrix is refused with a 400 rather "
+            "than aborting the query server-side."
+        ),
+    )
+
+    vocabulary_host: str = Field(
+        default="evidence-repository.org",
+        description=(
+            "Base host for vocabulary URIs accepted by vocabulary URI inputs. The "
+            "supplied URL must be a subdomain of this host."
+        ),
+    )
+
+    full_text_max_byte_size: int = Field(
+        default=1024**3,
+        description=(
+            "Maximum size in bytes accepted when fetching a remote full-text "
+            "source. Aborts the stream and rejects the enhancement if exceeded."
+        ),
     )
 
     default_pending_enhancement_lease_duration: datetime.timedelta = Field(
@@ -590,38 +670,6 @@ class Settings(BaseSettings):
         if self.bypass_auth is not None:
             return self.bypass_auth
         return True
-
-    @property
-    def default_blob_location(self) -> str:
-        """Return the default blob location."""
-        if self.running_locally:
-            if self.minio_config:
-                return "minio"
-            if self.azure_blob_config:
-                return "azure"
-            if self.env == Environment.TEST:
-                # If we reach here, we are in a test environment and haven't
-                # specified a blob config, so assume it is mocked. Just return
-                # minio to keep pydantic happy.
-                return "minio"
-        return "azure"
-
-    @property
-    def default_blob_container(self) -> str:
-        """Return the default blob container."""
-        if self.running_locally:
-            if self.minio_config:
-                return self.minio_config.bucket
-            if self.azure_blob_config:
-                return self.azure_blob_config.container
-            if self.env == Environment.TEST:
-                # If we reach here, we are in a test environment and haven't
-                # specified a blob config, so assume it is mocked.
-                return "test"
-        if not self.azure_blob_config:
-            msg = "Azure Blob Storage configuration is not given."
-            raise ValueError(msg)
-        return self.azure_blob_config.container
 
     @property
     def trace_repr(self) -> str:

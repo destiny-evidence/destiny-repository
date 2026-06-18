@@ -11,6 +11,7 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -52,11 +53,21 @@ from app.domain.references.models.sql import (
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
+from app.domain.references.models.sql import (
+    SearchExport as SQLSearchExport,
+)
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.search_service import SearchService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESHit,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
@@ -125,7 +136,9 @@ def mock_blob_repository(monkeypatch: pytest.MonkeyPatch) -> None:
             self,
             file: BlobStorageFile,
             interaction_type: BlobSignedUrlType,
+            content_disposition: str | None = "attachment",
         ) -> HttpUrl:
+            del content_disposition
             return HttpUrl(f"http://signed/{file.filename}/{interaction_type}")
 
     monkeypatch.setattr(
@@ -550,6 +563,7 @@ async def test_request_robot_enhancement_batch(
         limit=10,
         lease_duration=datetime.timedelta(minutes=5),
         blob_repository=ANY,
+        access_control_service=ANY,
     )
 
 
@@ -863,6 +877,63 @@ async def test_search_references_preserves_es_order(
     assert returned_ids == [str(ref_a.id), str(ref_b.id), str(ref_c.id)]
 
 
+async def test_search_reference_ids_returns_ids_only(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ids endpoint returns matching IDs in order without fetching references."""
+    ref_a = ReferenceFactory.build()
+    ref_b = ReferenceFactory.build()
+
+    mock_search_result = ESSearchResult(
+        hits=[
+            ESHit(id=ref_a.id, score=2.0),
+            ESHit(id=ref_b.id, score=1.0),
+        ],
+        total=ESSearchTotal(value=2, relation="eq"),
+        page=1,
+    )
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+    mock_get_dedup = AsyncMock()
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
+
+    response = await client.get("/v1/references/search/ids/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["reference_ids"] == [str(ref_a.id), str(ref_b.id)]
+    assert data["total"] == {"count": 2, "is_lower_bound": False}
+
+    # IDs are read straight off the search hits — references are never fetched.
+    mock_get_dedup.assert_not_awaited()
+    mock_search.assert_awaited_once()
+    assert mock_search.call_args.kwargs["page_size"] == SearchService.MAX_RESULT_WINDOW
+
+
+async def test_search_reference_ids_reports_lower_bound_when_truncated(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `gte` total surfaces as `is_lower_bound: true`."""
+    reference = ReferenceFactory.build()
+    mock_search_result = ESSearchResult(
+        hits=[ESHit(id=reference.id, score=1.0)],
+        total=ESSearchTotal(value=10000, relation="gte"),
+        page=1,
+    )
+    monkeypatch.setattr(
+        ReferenceService,
+        "search_references",
+        AsyncMock(return_value=mock_search_result),
+    )
+
+    response = await client.get("/v1/references/search/ids/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["total"] == {"count": 10000, "is_lower_bound": True}
+
+
 async def test_search_references_with_annotation_filters(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -903,29 +974,212 @@ async def test_search_references_with_annotation_filters(
 
     # Verify the service was called with the correct annotation filters
     mock_search.assert_awaited_once()
-    call_kwargs = mock_search.call_args.kwargs
-    assert call_kwargs["annotations"] is not None
-    assert len(call_kwargs["annotations"]) == 4
+    search_query = mock_search.call_args.args[0]
+    assert len(search_query.annotation_filters) == 4
 
     # Check first annotation filter
-    assert call_kwargs["annotations"][0].scheme == "test:scheme"
-    assert call_kwargs["annotations"][0].label == "test_label"
-    assert call_kwargs["annotations"][0].score is None
+    assert search_query.annotation_filters[0].scheme == "test:scheme"
+    assert search_query.annotation_filters[0].label == "test_label"
+    assert search_query.annotation_filters[0].score is None
 
     # Check second annotation filter with score
-    assert call_kwargs["annotations"][1].scheme == "another:scheme"
-    assert call_kwargs["annotations"][1].label == "another_label"
-    assert call_kwargs["annotations"][1].score == 0.8
+    assert search_query.annotation_filters[1].scheme == "another:scheme"
+    assert search_query.annotation_filters[1].label == "another_label"
+    assert search_query.annotation_filters[1].score == 0.8
 
     # Check third annotation filter without label is ignored
-    assert call_kwargs["annotations"][2].scheme == "just_a_scheme"
-    assert not call_kwargs["annotations"][2].label
-    assert call_kwargs["annotations"][2].score == 0.8
+    assert search_query.annotation_filters[2].scheme == "just_a_scheme"
+    assert not search_query.annotation_filters[2].label
+    assert search_query.annotation_filters[2].score == 0.8
 
     # Check fourth annotation filter with slashes in label
-    assert call_kwargs["annotations"][3].scheme == "test:scheme"
-    assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
-    assert call_kwargs["annotations"][3].score is None
+    assert search_query.annotation_filters[3].scheme == "test:scheme"
+    assert search_query.annotation_filters[3].label == "label/with/lots/of/slashes"
+    assert search_query.annotation_filters[3].score is None
+
+
+async def test_request_search_export_happy_path(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test queuing a reference export, then polling its completed status."""
+    fake_reference_id = uuid7()
+    fake_result_file = BlobStorageFile(
+        location="minio",
+        container="destiny-repository",
+        path="search_exports",
+        filename="fake.jsonl",
+    )
+
+    monkeypatch.setattr(
+        SearchExportService,
+        "_collect_search_export_ids",
+        AsyncMock(return_value=([fake_reference_id], False)),
+    )
+    monkeypatch.setattr(
+        SearchExportService,
+        "_stream_search_export_jsonl",
+        AsyncMock(return_value=(fake_result_file, 1)),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "climate", "start_year": 2020},
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    body = response.json()
+    export_id = body["id"]
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+    assert body["truncated"] is False
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/search/exports/{export_id}/")
+    assert status_response.status_code == status.HTTP_200_OK
+    status_body = status_response.json()
+    assert status_body["status"] == "completed"
+    assert status_body["n_references"] == 1
+    assert status_body["truncated"] is False
+    assert status_body["result_url"] is not None
+    assert status_body["error"] is None
+
+
+async def test_request_search_export_marks_failed_on_error(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test that a failure during the export job is reflected via the status API."""
+    monkeypatch.setattr(
+        SearchExportService,
+        "_collect_search_export_ids",
+        AsyncMock(side_effect=RuntimeError("kaboom")),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    export_id = response.json()["id"]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/search/exports/{export_id}/")
+    status_body = status_response.json()
+    assert status_body["status"] == "failed"
+    assert status_body["result_url"] is None
+    assert "kaboom" in status_body["error"]
+
+
+async def test_request_search_export_rejects_empty_query(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Empty `q` returns 422 from FastAPI's min_length validation."""
+    response = await client.post("/v1/references/search/exports/", params={"q": ""})
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_references_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on malformed annotation — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_search_references_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on end < start — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_search_export_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A malformed annotation filter returns 400 at request time, not job failure."""
+    response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_search_export_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """An inverted publication year range returns 400 at request time."""
+    response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_search_export_marks_failed_when_enqueue_fails(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """If queueing the task fails, the row is flipped to failed and 503 returned."""
+    monkeypatch.setattr(
+        references,
+        "queue_task_with_trace",
+        AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+    rows = (await session.execute(select(SQLSearchExport))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert "broker down" in rows[0].error
+
+
+async def test_get_search_export_pending_has_no_url(
+    session: AsyncSession,
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A pending export exposes no signed URL until the file is ready."""
+    export = SQLSearchExport(
+        query="climate",
+        status="pending",
+    )
+    session.add(export)
+    await session.commit()
+
+    response = await client.get(f"/v1/references/search/exports/{export.id}/")
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+    assert body["n_references"] is None
 
 
 async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
@@ -1209,3 +1463,122 @@ async def test_make_duplicate_decisions_resolve_duplicate_to_different_canonical
     assert results[0]["outcome"] == "duplicate"
     assert results[0]["active_decision"] is True
     assert results[0]["canonical_reference_id"] == str(canonical_b.id)
+
+
+async def test_search_facets_concepts_happy_path(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concept facet counts are surfaced under `facets.concepts`."""
+    from app.domain.references.models.models import FacetType
+
+    buckets = [
+        ESFacetBucket(key="http://example.org/concept/a", count=5),
+        ESFacetBucket(key="http://example.org/concept/b", count=2),
+    ]
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: buckets})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body == {
+        "concepts": [
+            {"concept": "http://example.org/concept/a", "count": 5},
+            {"concept": "http://example.org/concept/b", "count": 2},
+        ],
+    }
+
+    # Service was called with the parsed SearchQuery and the requested facets.
+    mock_aggregate.assert_awaited_once()
+    search_query, facets = mock_aggregate.call_args.args
+    assert search_query.query_string == "climate"
+    assert list(facets) == [FacetType.CONCEPTS]
+
+
+async def test_search_facets_concepts_and_countries(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concept and country facets are surfaced together under their own keys."""
+    from app.domain.references.models.models import FacetType
+
+    mock_aggregate = AsyncMock(
+        return_value={
+            FacetType.CONCEPTS: [ESFacetBucket(key="http://example.org/c/a", count=7)],
+            FacetType.COUNTRIES: [
+                ESFacetBucket(key="KE", count=3),
+                ESFacetBucket(key="UG", count=1),
+            ],
+        }
+    )
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "climate"),
+            ("facet", "concepts"),
+            ("facet", "countries"),
+        ],
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {
+        "concepts": [{"concept": "http://example.org/c/a", "count": 7}],
+        "countries": [
+            {"country": "KE", "count": 3},
+            {"country": "UG", "count": 1},
+        ],
+    }
+
+    _, facets = mock_aggregate.call_args.args
+    assert list(facets) == [FacetType.CONCEPTS, FacetType.COUNTRIES]
+
+
+async def test_search_facets_unrequested_keys_omitted(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Facet keys not asked for are stripped from the response (not set to null)."""
+    from app.domain.references.models.models import FacetType
+
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: []})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"concepts": []}
+
+
+async def test_search_facets_requires_facet_param(client: AsyncClient) -> None:
+    """Missing `facet=` is rejected by FastAPI validation."""
+    response = await client.get(
+        "/v1/references/search/facets/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_unknown_facet(client: AsyncClient) -> None:
+    """An unsupported `facet=` value is rejected at the enum boundary."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "bogus"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_empty_query(client: AsyncClient) -> None:
+    """The shared `q` validation (min_length=1) applies to the facets endpoint too."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT

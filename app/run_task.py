@@ -15,6 +15,7 @@ import importlib
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger, logger_configurer
 from app.core.telemetry.otel import configure_otel
+from app.persistence.blob.repository import close_blob_clients
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 
@@ -78,6 +79,7 @@ async def run_task(task_path: str) -> None:
         logger.info("Cleaning up resources")
         await db_manager.close()
         await es_manager.close()
+        await close_blob_clients()
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -1,10 +1,12 @@
 """Tests client authentication"""
 
+import json
 import time
 from uuid import UUID, uuid7
 
 import httpx
 import pytest
+from destiny_sdk.auth import TOKEN_EXPIRED_MESSAGE
 from destiny_sdk.client import (
     AzureOAuthMiddleware,
     KeycloakOAuthMiddleware,
@@ -198,6 +200,39 @@ class TestOAuthClient:
 
         assert isinstance(result, ReferenceSearchResult)
         assert result.page.number == 2
+
+    def test_search_with_concept_filters(
+        self,
+        httpx_mock: HTTPXMock,
+        oauth_client: OAuthClient,
+        base_url: str,
+        mock_reference_response: dict,
+    ) -> None:
+        """Concepts: strings pass through, tuples join with comma for OR semantics."""
+        httpx_mock.add_response(
+            url=(
+                f"{base_url}/v1/references/search/?q=test&page=1"
+                "&concept=https://vocab.example.org/A"
+                "&concept=https://vocab.example.org/B,https://vocab.example.org/C"
+            ),
+            method="GET",
+            json={
+                "references": [mock_reference_response],
+                "total": {"count": 1, "is_lower_bound": False},
+                "page": {"count": 1, "number": 1},
+                "page_size": 10,
+            },
+        )
+
+        result = oauth_client.search(
+            query="test",
+            concepts=[
+                "https://vocab.example.org/A",
+                ["https://vocab.example.org/B", "https://vocab.example.org/C"],
+            ],
+        )
+
+        assert isinstance(result, ReferenceSearchResult)
 
     def test_lookup(
         self,
@@ -478,7 +513,7 @@ class TestAzureOAuthMiddleware:
         # Simulate token expiry response
         expired_response = httpx.Response(
             status_code=401,
-            json={"detail": "Token has expired."},
+            json={"detail": TOKEN_EXPIRED_MESSAGE},
             request=authenticated_request,
         )
 
@@ -574,7 +609,7 @@ class TestKeycloakOAuthMiddleware:
         # Simulate token expiry
         expired_response = httpx.Response(
             status_code=401,
-            json={"detail": "Token has expired."},
+            json={"detail": TOKEN_EXPIRED_MESSAGE},
             request=authenticated_request,
         )
 
@@ -738,3 +773,87 @@ class TestOAuthMiddleware:
             )
 
         assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
+
+
+def _build_keycloak_middleware(_monkeypatch) -> KeycloakOAuthMiddleware:
+    return KeycloakOAuthMiddleware(
+        keycloak_url="http://localhost:8080",
+        realm="destiny",
+        client_id="test-service-client",
+        client_secret=SecretStr("test-secret"),
+    )
+
+
+def _build_azure_middleware(monkeypatch) -> OAuthMiddleware:
+    class _NoOpPublicClientApp(PublicClientApplication):
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "destiny_sdk.client.PublicClientApplication", _NoOpPublicClientApp
+    )
+    return OAuthMiddleware(
+        azure_login_url="test-url",
+        azure_client_id="test-client",
+        azure_application_id="test-app",
+    )
+
+
+@pytest.mark.parametrize(
+    "build_middleware",
+    [_build_keycloak_middleware, _build_azure_middleware],
+    ids=["keycloak", "azure"],
+)
+def test_token_refresh_through_real_client(monkeypatch, build_middleware) -> None:
+    """
+    Renewal must work through httpx's full auth flow on a streamed response.
+
+    This drives a real ``httpx.Client`` with an unread, streamed response to
+    catch that regression, across both OAuth middlewares.
+    """
+
+    class _Stream(httpx.SyncByteStream):
+        def __init__(self, data: bytes) -> None:
+            self._data = data
+
+        def __iter__(self):
+            yield self._data
+
+        def close(self) -> None:
+            pass
+
+    def streamed(status_code: int, payload: dict) -> httpx.Response:
+        return httpx.Response(
+            status_code,
+            headers={"Content-Type": "application/json"},
+            stream=_Stream(json.dumps(payload).encode()),
+        )
+
+    server_requests = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        server_requests["count"] += 1
+        if server_requests["count"] == 1:
+            return streamed(401, {"detail": TOKEN_EXPIRED_MESSAGE})
+        return streamed(200, {"ok": True})
+
+    middleware = build_middleware(monkeypatch)
+
+    token_calls = {"count": 0, "force_refresh": 0}
+
+    def fake_get_token(*, force_refresh: bool = False) -> str:
+        token_calls["count"] += 1
+        if force_refresh:
+            token_calls["force_refresh"] += 1
+            return "refreshed-token"
+        return "initial-token"
+
+    # Bypass real token acquisition; only the auth_flow retry logic is under test.
+    middleware._get_token = fake_get_token  # noqa: SLF001
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), auth=middleware)
+    response = client.get("https://api.example.com/test")
+
+    assert response.status_code == 200
+    assert server_requests["count"] == 2
+    assert token_calls["force_refresh"] == 1

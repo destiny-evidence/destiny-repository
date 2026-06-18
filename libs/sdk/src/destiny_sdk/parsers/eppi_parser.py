@@ -23,6 +23,7 @@ from destiny_sdk.identifiers import (
     ERICIdentifier,
     ExternalIdentifier,
     OpenAlexIdentifier,
+    OtherIdentifier,
     ProQuestIdentifier,
 )
 from destiny_sdk.parsers.exceptions import ExternalIdentifierNotFoundError
@@ -39,11 +40,12 @@ class EPPIParser:
 
     version = "2.0"
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         *,
         tags: list[str] | None = None,
         include_raw_data: bool = False,
+        include_eppi_id: bool = False,
         source_export_date: datetime | None = None,
         data_description: str | None = None,
         raw_enhancement_excludes: list[str] | None = None,
@@ -53,11 +55,14 @@ class EPPIParser:
 
         Args:
             tags (list[str] | None): Optional list of tags to annotate references.
+            include_eppi_id (bool): Whether to include the EPPI ItemId as an
+                OtherIdentifier on each reference.
 
         """
         self.tags = tags or []
         self.parser_source = f"destiny_sdk.eppi_parser@{self.version}"
         self.include_raw_data = include_raw_data
+        self.include_eppi_id = include_eppi_id
         self.source_export_date = source_export_date
         self.data_description = data_description
         self.raw_enhancement_excludes = (
@@ -79,7 +84,15 @@ class EPPIParser:
     def _parse_identifiers(
         self, ref_to_import: dict[str, Any]
     ) -> list[ExternalIdentifier]:
-        identifiers = []
+        identifiers: list[ExternalIdentifier] = []
+        if self.include_eppi_id and (item_id := ref_to_import.get("ItemId")):
+            identifiers.append(
+                OtherIdentifier(
+                    identifier=str(item_id),
+                    other_identifier_name="EPPI ItemId",
+                )
+            )
+
         if doi := ref_to_import.get("DOI"):
             doi_identifier = self._parse_doi(doi=doi)
             if doi_identifier:
@@ -87,7 +100,7 @@ class EPPIParser:
 
         if url := ref_to_import.get("URL"):
             identifier = self._parse_url_to_identifier(url=url)
-            if identifier:
+            if identifier and identifier not in identifiers:
                 identifiers.append(identifier)
 
         if not identifiers:
@@ -111,8 +124,10 @@ class EPPIParser:
     def _parse_url_to_identifier(self, url: str) -> ExternalIdentifier | None:
         """Attempt to parse an external identifier from a url string."""
         url = url.strip()
-        identifier_cls = None
-        if "eric" in url:
+        identifier_cls: type[ExternalIdentifier] | None = None
+        if "doi.org" in url:
+            identifier_cls = DOIIdentifier
+        elif "eric" in url:
             identifier_cls = ERICIdentifier
         elif "proquest" in url:
             identifier_cls = ProQuestIdentifier
@@ -197,15 +212,21 @@ class EPPIParser:
     def _create_annotation_enhancement(self) -> EnhancementContent | None:
         if not self.tags:
             return None
-        annotations = [
-            BooleanAnnotation(
-                annotation_type=AnnotationType.BOOLEAN,
-                scheme=self.parser_source,
-                label=tag,
-                value=True,
+        annotations = []
+        for tag in self.tags:
+            # Tags are in the format <scheme>/<label>[@<score>], e.g.
+            # "domain-inclusion/hpv@0.9".
+            scheme_label, _, score = tag.partition("@")
+            scheme, _, label = scheme_label.partition("/")
+            annotations.append(
+                BooleanAnnotation(
+                    annotation_type=AnnotationType.BOOLEAN,
+                    scheme=scheme,
+                    label=label,
+                    value=True,
+                    score=float(score) if score else None,
+                )
             )
-            for tag in self.tags
-        ]
         return AnnotationEnhancement(
             annotations=annotations,
         )

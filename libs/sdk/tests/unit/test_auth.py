@@ -176,7 +176,7 @@ async def test_hmac_authentication_request_too_old(client: AsyncClient):
     )
 
     assert response.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "Request timestamp has expired." in response.json()["detail"]
+    assert destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE in response.json()["detail"]
 
 
 async def test_hmac_authentication_incorrect_signature(client: AsyncClient):

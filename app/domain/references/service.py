@@ -2,7 +2,7 @@
 
 import datetime
 from collections import defaultdict
-from collections.abc import Collection, Iterable
+from collections.abc import Collection, Iterable, Sequence
 from uuid import UUID
 
 from opentelemetry.trace import get_tracer
@@ -14,6 +14,7 @@ from app.core.config import (
 )
 from app.core.exceptions import (
     DuplicateEnhancementError,
+    FullTextIngestionError,
     InvalidParentEnhancementError,
     SQLNotFoundError,
     VocabularyFetchError,
@@ -22,18 +23,18 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
-    AnnotationFilter,
+    CrossFacetCell,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifier,
+    FacetType,
     IdentifierLookup,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
-    PublicationYearRange,
     Reference,
     ReferenceDuplicateDecision,
     ReferenceIds,
@@ -41,12 +42,16 @@ from app.domain.references.models.models import (
     RobotAutomation,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
+    SearchQuery,
 )
 from app.domain.references.models.projections import DeduplicatedReferenceProjection
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.repository import (
     EnhancementRequestSQLPreloadable,
     RobotEnhancementBatchSQLPreloadable,
+)
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -68,7 +73,11 @@ from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -380,8 +389,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement)
 
-    async def _get_jsonl_deduplicated_references(
+    async def get_jsonl_deduplicated_references(
         self,
+        access_control_service: ReferenceAccessControlService,
         reference_ids: list[UUID],
     ) -> list[str]:
         """Get JSONL strings for deduplicated (flattened) references by id."""
@@ -389,7 +399,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_ids=reference_ids
         )
         return [
-            self._anti_corruption_service.reference_to_sdk(ref).to_jsonl()
+            (
+                await self._anti_corruption_service.reference_to_sdk(
+                    access_control_service.redact_reference(ref)
+                )
+            ).to_jsonl()
             for ref in deduplicated
         ]
 
@@ -472,10 +486,52 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         return await self.sql_uow.external_identifiers.add(db_identifier)
 
+    async def _store_full_texts(
+        self,
+        reference: Reference,
+        blob_repository: BlobRepository,
+    ) -> list[str]:
+        """
+        Copy every remote full-text enhancement into our blob storage.
+
+        FT enhancements that fail to store (fetch error, declared
+        sha256/byte_size mismatch) are dropped from ``reference.enhancements``
+        and a description of the failure is returned. The reference itself is
+        not failed.
+        """
+        if not reference.enhancements:
+            return []
+
+        errors: list[str] = []
+        kept: list[Enhancement] = []
+        for enhancement in reference.enhancements:
+            if enhancement.content.enhancement_type != EnhancementType.FULL_TEXT:
+                kept.append(enhancement)
+                continue
+            try:
+                await self._enhancement_service.store_full_text(
+                    enhancement, blob_repository
+                )
+            except FullTextIngestionError as exc:
+                logger.warning(
+                    "Failed to store full text enhancement.",
+                    reference_id=str(reference.id),
+                    enhancement_id=str(enhancement.id),
+                    exc=repr(exc),
+                )
+                errors.append(str(exc))
+                continue
+            kept.append(enhancement)
+        reference.enhancements = kept
+        return errors
+
     @sql_unit_of_work
     @es_unit_of_work
     async def ingest_reference(
-        self, record_str: str, entry_ref: int
+        self,
+        record_str: str,
+        entry_ref: int,
+        blob_repository: BlobRepository,
     ) -> ReferenceCreateResult:
         """Ingest a reference from a file."""
         # Full deduplication flow
@@ -514,6 +570,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         reference_create_result.reference_id = reference.id
         trace_attribute(Attributes.REFERENCE_ID, str(reference.id))
+
+        reference_create_result.errors.extend(
+            await self._store_full_texts(reference, blob_repository)
+        )
 
         canonical_reference = await self._deduplication_service.find_exact_duplicate(
             reference
@@ -1088,6 +1148,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         limit: int,
         lease_duration: datetime.timedelta,
         blob_repository: BlobRepository,
+        access_control_service: ReferenceAccessControlService,
     ) -> RobotEnhancementBatch | None:
         """
         Atomically claim pending enhancements and create a robot enhancement batch.
@@ -1128,9 +1189,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         file_stream = FileStream(
-            self._get_jsonl_deduplicated_references,
+            self.get_jsonl_deduplicated_references,
             [
                 {
+                    "access_control_service": access_control_service,
                     "reference_ids": reference_id_chunk,
                 }
                 for reference_id_chunk in list_chunker(
@@ -1150,6 +1212,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         return await self._enhancement_service.build_robot_enhancement_batch(
+            blob_repository=blob_repository,
             robot_enhancement_batch=robot_enhancement_batch,
             reference_data_file=reference_data_file,
         )
@@ -1212,19 +1275,41 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @es_unit_of_work
     async def search_references(
         self,
-        query: str,
+        query: SearchQuery,
         page: int = 1,
-        annotations: list[AnnotationFilter] | None = None,
-        publication_year_range: PublicationYearRange | None = None,
+        page_size: int = 20,
         sort: list[str] | None = None,
     ) -> ESSearchResult:
-        """Search for references given a query string."""
-        return await self._search_service.search_with_query_string(
+        """Search for references matching the given query specification."""
+        return await self._search_service.search(
             query,
             page=page,
-            annotations=annotations,
-            publication_year_range=publication_year_range,
+            page_size=page_size,
             sort=sort,
+        )
+
+    @es_unit_of_work
+    async def aggregate_facets(
+        self,
+        query: SearchQuery,
+        facets: Sequence[FacetType],
+        vocabulary_uri: str | None = None,
+    ) -> dict[FacetType, list[ESFacetBucket]]:
+        """Count occurrences per facet across references matching the query."""
+        return await self._search_service.aggregate_facets(
+            query, facets, vocabulary_uri
+        )
+
+    @es_unit_of_work
+    async def aggregate_cross_facet(
+        self,
+        query: SearchQuery,
+        axes: tuple[str, str],
+        vocabulary_uri: str | None = None,
+    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+        """Cross-tabulate two axes across references matching the query."""
+        return await self._search_service.aggregate_cross_facet(
+            query, axes, vocabulary_uri
         )
 
     @tracer.start_as_current_span("Detect and dispatch robot automations")

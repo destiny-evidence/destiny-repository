@@ -48,8 +48,8 @@ resource "azuread_group_member" "container_app_tasks_to_crud" {
 locals {
   # When external directory is enabled, use the external directory app and tenant
   # Otherwise, use the application tenant
-  auth_application_id = var.external_directory_enabled ? azuread_application.external_directory_destiny_repository.client_id : azuread_application.destiny_repository.client_id
-  auth_login_url      = var.external_directory_enabled ? var.azure_login_url : "https://login.microsoftonline.com/${var.azure_tenant_id}"
+  auth_application_id = azuread_application.destiny_repository.client_id
+  auth_login_url      = "https://login.microsoftonline.com/${var.azure_tenant_id}"
 
   env_vars = [
     {
@@ -85,10 +85,17 @@ locals {
       value = local.active_servicebus_queue.name
     },
     {
+      name  = "MESSAGE_BROKER_PRIORITY_QUEUE_NAME"
+      value = local.active_servicebus_priority_queue.name
+    },
+    {
       name = "AZURE_BLOB_CONFIG"
       value = jsonencode({
         storage_account_name = azurerm_storage_account.this.name
-        container            = azurerm_storage_container.operations.name
+        containers = {
+          operations = azurerm_storage_container.operations.name
+          full_texts = azurerm_storage_container.full_texts.name
+        }
       })
     },
     {
@@ -112,8 +119,16 @@ locals {
       value = tostring(var.default_upload_file_chunk_size)
     },
     {
+      name  = "UPLOAD_FILE_CHUNK_SIZE_OVERRIDE",
+      value = jsonencode(var.upload_file_chunk_size_override)
+    },
+    {
       name  = "MAX_REFERENCE_LOOKUP_QUERY_LENGTH",
       value = var.max_reference_lookup_query_length
+    },
+    {
+      name  = "ES_AGGREGATION_MAX_BUCKETS",
+      value = tostring(var.es_aggregation_max_buckets)
     },
     {
       name  = "MESSAGE_LOCK_RENEWAL_DURATION",
@@ -140,11 +155,8 @@ locals {
       value = var.auth_provider != "azure" ? "destiny-repository-client-${var.environment}" : ""
     },
     {
-      name = "CORS_ALLOW_ORIGINS",
-      value = jsonencode(concat(var.cors_allow_origins, [
-        "https://${local.ui_hostname}",
-        "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
-      ]))
+      name  = "CORS_ALLOW_ORIGINS",
+      value = jsonencode(local.cors_allow_origins)
     },
   ]
 
@@ -298,6 +310,19 @@ module "container_app_tasks" {
         trigger_parameter = "connection"
       }
     },
+    {
+      name             = "priority-queue-length-scale-rule"
+      custom_rule_type = "azure-servicebus"
+      metadata = {
+        namespace    = local.active_servicebus_ns.name
+        queueName    = local.active_servicebus_priority_queue.name
+        messageCount = var.priority_queue_active_jobs_scaling_threshold
+      }
+      authentication = {
+        secret_name       = "servicebus-connection-string"
+        trigger_parameter = "connection"
+      }
+    },
   ]
 }
 
@@ -323,7 +348,7 @@ module "container_app_ui" {
   env_vars = [
     {
       name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
-      value = var.external_directory_enabled ? azuread_application_registration.external_directory_destiny_repository_auth_ui.client_id : azuread_application_registration.destiny_repository_auth_ui.client_id
+      value = azuread_application_registration.destiny_repository_auth_ui.client_id
     },
     {
       name  = "NEXT_PUBLIC_AZURE_LOGIN_URL"
@@ -365,9 +390,10 @@ module "container_app_ui" {
 }
 
 locals {
-  servicebus_is_premium   = var.prod_servicebus_is_premium && var.environment == "production"
-  active_servicebus_ns    = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
-  active_servicebus_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
+  servicebus_is_premium            = var.prod_servicebus_is_premium && var.environment == "production"
+  active_servicebus_ns             = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
+  active_servicebus_queue          = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
+  active_servicebus_priority_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_priority_premium[0] : azurerm_servicebus_queue.taskiq_priority
 }
 
 resource "azurerm_servicebus_namespace" "this" {
@@ -381,6 +407,14 @@ resource "azurerm_servicebus_namespace" "this" {
 
 resource "azurerm_servicebus_queue" "taskiq" {
   name         = "taskiq"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  partitioning_enabled = true
+  lock_duration        = "PT5M"
+}
+
+resource "azurerm_servicebus_queue" "taskiq_priority" {
+  name         = "taskiq-priority"
   namespace_id = azurerm_servicebus_namespace.this.id
 
   partitioning_enabled = true
@@ -406,6 +440,16 @@ resource "azurerm_servicebus_queue" "taskiq_premium" {
   namespace_id = azurerm_servicebus_namespace.premium[0].id
 
   partitioning_enabled = true
+  lock_duration        = "PT5M"
+}
+
+resource "azurerm_servicebus_queue" "taskiq_priority_premium" {
+  count = local.servicebus_is_premium ? 1 : 0
+
+  name         = "taskiq-priority"
+  namespace_id = azurerm_servicebus_namespace.premium[0].id
+
+  partitioning_enabled = true
 }
 
 resource "azurerm_storage_account" "this" {
@@ -417,6 +461,24 @@ resource "azurerm_storage_account" "this" {
   account_tier             = "Standard"
   account_replication_type = "LRS"
   tags                     = local.minimum_resource_tags
+
+  blob_properties {
+    delete_retention_policy {
+      days = 30
+    }
+    container_delete_retention_policy {
+      days = 30
+    }
+
+    cors_rule {
+      allowed_origins = local.cors_allow_origins
+      allowed_methods = ["GET", "HEAD"]
+      allowed_headers = ["*"]
+      exposed_headers = ["*"]
+      # Match chrome maximum of two hours
+      max_age_in_seconds = 7200
+    }
+  }
 
   # Avoid accidental blob storage deletion
   lifecycle {
@@ -444,6 +506,13 @@ resource "azurerm_storage_container" "file_uploads" {
 resource "azurerm_storage_container" "import_files" {
   # This is a container designed for storing pre-processed jsonl files to be imported into the DESTINY repository.
   name                  = "import-files"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "full_texts" {
+  # This is a container designed for storing full-text files.
+  name                  = "full-texts"
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "private"
 }

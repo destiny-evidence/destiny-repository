@@ -187,7 +187,7 @@ class TestMultiIssuerAuth:
         token = _generate_azure_token(scope=AuthScope.REFERENCE_READER)
         credentials = Mock()
         credentials.credentials = token
-        assert await multi_issuer_auth(fake_request, credentials) is True
+        assert isinstance(await multi_issuer_auth(fake_request, credentials), frozenset)
 
     async def test_keycloak_token_accepted(
         self,
@@ -199,7 +199,7 @@ class TestMultiIssuerAuth:
         token = _generate_keycloak_token(scope=AuthScope.REFERENCE_READER)
         credentials = Mock()
         credentials.credentials = token
-        assert await multi_issuer_auth(fake_request, credentials) is True
+        assert isinstance(await multi_issuer_auth(fake_request, credentials), frozenset)
 
     async def test_unknown_issuer_token(
         self,

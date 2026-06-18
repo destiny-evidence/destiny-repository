@@ -40,6 +40,8 @@ from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
+    FullTextEnhancement,
+    LinkedDataProjection,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
@@ -49,6 +51,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.domain.robots.models.models import Robot
+from app.persistence.blob.models import BlobStorageFile, BlobStorageLocation
 from app.utils.time_and_date import utc_now
 
 
@@ -312,6 +315,33 @@ class LinkedDataEnhancementFactory(factory.Factory):
     )
 
 
+class BlobStorageFileFactory(factory.Factory):
+    class Meta:
+        model = BlobStorageFile
+
+    location = BlobStorageLocation.MINIO
+    container = factory.Faker("word")
+    path = factory.LazyFunction(lambda: "/".join(fake.words(nb=2)))
+    filename = factory.LazyFunction(lambda: f"{fake.word()}.pdf")
+
+
+class FullTextEnhancementFactory(factory.Factory):
+    class Meta:
+        model = FullTextEnhancement
+
+    enhancement_type = EnhancementType.FULL_TEXT
+    blob = factory.LazyFunction(lambda: BlobStorageFileFactory.build())
+    byte_size = factory.Faker("pyint", min_value=1, max_value=10_000_000)
+    sha256_checksum = factory.Faker("sha256")
+    mime_type = "application/pdf"
+    version = factory.Faker("enum", enum_cls=DriverVersion)
+    is_oa = factory.Faker("pybool")
+    license = factory.Faker("license_plate")
+    source = factory.Faker("company")
+    source_url = factory.Faker("url")
+    retrieved_at = factory.Faker("date_time_this_month")
+
+
 class RawEnhancementFactory(factory.Factory):
     class Meta:
         model = RawEnhancement
@@ -386,9 +416,24 @@ class ReferenceFactory(factory.Factory):
             self.enhancements = extracted
 
 
-def to_indexable(reference: Reference) -> ReferenceSearchProjection:
-    """Convert a Reference to an ReferenceSearchProjection for ES test indexing."""
+def to_indexable(
+    reference: Reference,
+    linked_data_concepts: list[str] | None = None,
+) -> ReferenceSearchProjection:
+    """
+    Convert a Reference to an ReferenceSearchProjection for ES test indexing.
+
+    ``linked_data_concepts`` short-circuits the RDF projection pipeline and
+    attaches the given concept URIs directly. Useful when a test needs a
+    reference with known linked-data facets without setting up a full
+    LinkedDataEnhancement.
+    """
     search_fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
+    linked_data_projection = (
+        LinkedDataProjection(concepts=set(linked_data_concepts))
+        if linked_data_concepts is not None
+        else None
+    )
     return ReferenceSearchProjection(
         id=reference.id,
         visibility=reference.visibility,
@@ -398,6 +443,7 @@ def to_indexable(reference: Reference) -> ReferenceSearchProjection:
             else None
         ),
         search_fields=search_fields,
+        linked_data_projection=linked_data_projection,
     )
 
 

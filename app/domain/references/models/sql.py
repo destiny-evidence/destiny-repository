@@ -8,9 +8,11 @@ from sqlalchemy import (
     UUID as SQL_UUID,
 )
 from sqlalchemy import (
+    Boolean,
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     UniqueConstraint,
 )
@@ -18,14 +20,21 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.core.exceptions import SQLPreloadError
+from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
 from app.domain.references.models.models import (
+    AnnotationFilter,
     DuplicateDetermination,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
+    PublicationYearRange,
+    SearchExportStatus,
+    SearchQuery,
     Visibility,
 )
 from app.domain.references.models.models import (
@@ -51,6 +60,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
+)
+from app.domain.references.models.models import (
+    SearchExport as DomainSearchExport,
 )
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.sql.generics import GenericSQLPreloadableType
@@ -308,6 +320,15 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
         timestamps when converting from the domain. They're purely managed
         by the persistence model.
         """
+        if (
+            domain_obj.content.enhancement_type == EnhancementType.FULL_TEXT
+            and domain_obj.content.blob.is_remote
+        ):
+            msg = (
+                "Attempted to persist a full text enhancement that has not been "
+                "copied to repository storage, which is not allowed."
+            )
+            raise UnstoredFullTextError(msg)
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
@@ -387,13 +408,13 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             if domain_obj.enhancement_parameters
             else None,
             error=domain_obj.error,
-            reference_data_file=domain_obj.reference_data_file.to_sql()
+            reference_data_file=domain_obj.reference_data_file.to_uri()
             if domain_obj.reference_data_file
             else None,
-            result_file=domain_obj.result_file.to_sql()
+            result_file=domain_obj.result_file.to_uri()
             if domain_obj.result_file
             else None,
-            validation_result_file=domain_obj.validation_result_file.to_sql()
+            validation_result_file=domain_obj.validation_result_file.to_uri()
             if domain_obj.validation_result_file
             else None,
             pending_enhancements=[
@@ -417,18 +438,120 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             if self.enhancement_parameters
             else {},
             error=self.error,
-            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
-            if self.reference_data_file
-            else None,
-            result_file=BlobStorageFile.from_sql(self.result_file)
-            if self.result_file
-            else None,
-            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
-            if self.validation_result_file
-            else None,
+            reference_data_file=self.reference_data_file,
+            result_file=self.result_file,
+            validation_result_file=self.validation_result_file,
             pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
             if "pending_enhancements" in (preload or [])
             else [],
+        )
+
+
+class SearchExport(GenericSQLPersistence[DomainSearchExport]):
+    """SQL Persistence model for a SearchExport job."""
+
+    __tablename__ = "search_export"
+
+    query: Mapped[str] = mapped_column(String, nullable=False)
+    annotation_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    linked_data_concept_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    linked_data_country_filters: Mapped[list[dict[str, Any]] | None] = mapped_column(
+        JSONB, nullable=True
+    )
+    linked_data_country_wb_region_filters: Mapped[list[dict[str, Any]] | None] = (
+        mapped_column(JSONB, nullable=True)
+    )
+    start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+
+    status: Mapped[SearchExportStatus] = mapped_column(String, nullable=False)
+
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    truncated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="false"
+    )
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainSearchExport) -> Self:
+        """Create a persistence model from a domain SearchExport object."""
+        query = domain_obj.query
+        year_range = query.publication_year_range
+        return cls(
+            id=domain_obj.id,
+            query=query.query_string,
+            annotation_filters=[f.model_dump() for f in query.annotation_filters]
+            or None,
+            linked_data_concept_filters=[
+                f.model_dump() for f in query.linked_data_concept_filters
+            ]
+            or None,
+            linked_data_country_filters=[
+                f.model_dump() for f in query.linked_data_country_filters
+            ]
+            or None,
+            linked_data_country_wb_region_filters=[
+                f.model_dump() for f in query.linked_data_country_wb_region_filters
+            ]
+            or None,
+            start_year=year_range.start if year_range else None,
+            end_year=year_range.end if year_range else None,
+            sort=domain_obj.sort,
+            status=domain_obj.status,
+            result_file=domain_obj.result_file.to_uri()
+            if domain_obj.result_file
+            else None,
+            n_references=domain_obj.n_references,
+            truncated=domain_obj.truncated,
+            error=domain_obj.error,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainSearchExport:
+        """Convert the persistence model into a Domain SearchExport object."""
+        publication_year_range = (
+            PublicationYearRange(start=self.start_year, end=self.end_year)
+            if self.start_year is not None or self.end_year is not None
+            else None
+        )
+        return DomainSearchExport(
+            id=self.id,
+            query=SearchQuery(
+                query_string=self.query,
+                annotation_filters=[
+                    AnnotationFilter.model_validate(f)
+                    for f in (self.annotation_filters or [])
+                ],
+                publication_year_range=publication_year_range,
+                linked_data_concept_filters=[
+                    LinkedDataConceptFilter.model_validate(f)
+                    for f in (self.linked_data_concept_filters or [])
+                ],
+                linked_data_country_filters=[
+                    LinkedDataCountryFilter.model_validate(f)
+                    for f in (self.linked_data_country_filters or [])
+                ],
+                linked_data_country_wb_region_filters=[
+                    LinkedDataCountryWBRegionFilter.model_validate(f)
+                    for f in (self.linked_data_country_wb_region_filters or [])
+                ],
+            ),
+            sort=self.sort,
+            status=self.status,
+            result_file=BlobStorageFile.from_uri(self.result_file)
+            if self.result_file
+            else None,
+            n_references=self.n_references,
+            truncated=self.truncated,
+            error=self.error,
         )
 
 
@@ -692,13 +815,13 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return cls(
             id=domain_obj.id,
             robot_id=domain_obj.robot_id,
-            reference_data_file=domain_obj.reference_data_file.to_sql()
+            reference_data_file=domain_obj.reference_data_file.to_uri()
             if domain_obj.reference_data_file
             else None,
-            result_file=domain_obj.result_file.to_sql()
+            result_file=domain_obj.result_file.to_uri()
             if domain_obj.result_file
             else None,
-            validation_result_file=domain_obj.validation_result_file.to_sql()
+            validation_result_file=domain_obj.validation_result_file.to_uri()
             if domain_obj.validation_result_file
             else None,
             error=domain_obj.error,
@@ -718,15 +841,9 @@ class RobotEnhancementBatch(GenericSQLPersistence[DomainRobotEnhancementBatch]):
         return DomainRobotEnhancementBatch(
             id=self.id,
             robot_id=self.robot_id,
-            reference_data_file=BlobStorageFile.from_sql(self.reference_data_file)
-            if self.reference_data_file
-            else None,
-            result_file=BlobStorageFile.from_sql(self.result_file)
-            if self.result_file
-            else None,
-            validation_result_file=BlobStorageFile.from_sql(self.validation_result_file)
-            if self.validation_result_file
-            else None,
+            reference_data_file=self.reference_data_file,
+            result_file=self.result_file,
+            validation_result_file=self.validation_result_file,
             error=self.error,
             pending_enhancements=[pe.to_domain() for pe in self.pending_enhancements]
             if "pending_enhancements" in (preload or [])

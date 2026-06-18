@@ -1,5 +1,6 @@
 """Generic repositories define expected functionality."""
 
+import json
 from abc import ABC
 from collections.abc import AsyncGenerator, Sequence
 from typing import Generic, Never
@@ -8,7 +9,7 @@ from uuid import UUID
 from elasticsearch import AsyncElasticsearch, NotFoundError
 from elasticsearch.dsl import AsyncSearch
 from elasticsearch.dsl.exceptions import UnknownDslObject
-from elasticsearch.dsl.query import QueryString
+from elasticsearch.dsl.query import Bool, Query, QueryString
 from elasticsearch.dsl.response import Hit, Response
 from elasticsearch.exceptions import BadRequestError
 from opentelemetry import trace
@@ -22,7 +23,12 @@ from app.core.exceptions import (
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import trace_repository_method
 from app.persistence.es.generics import GenericESPersistenceType
-from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESHit,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 
@@ -212,11 +218,12 @@ class GenericAsyncESRepository(
         page_size: int = 20,
         fields: Sequence[str] | None = None,
         sort: list[str] | None = None,
+        filter_clauses: Sequence[Query] | None = None,
         *,
         parse_document: bool = False,
     ) -> ESSearchResult:
         """
-        Search for records using a query string.
+        Search for records using a query string with optional structured filters.
 
         :param query: The query string to search with.
         :type query: str
@@ -229,30 +236,106 @@ class GenericAsyncESRepository(
         :type fields: Sequence[str] | None
         :param sort: The sorting criteria for the search results.
         :type sort: list[str] | None
+        :param filter_clauses: Structured DSL clauses ANDed with the query string under
+            ``bool.filter`` (non-scoring). ``None`` or empty issues the bare query.
+        :type filter_clauses: Sequence[Query] | None
         :param parse_document: Whether to retrieve the documents and include them in the
             hits as domain models.
         :type parse_document: bool
         :return: A list of matching records.
         :rtype: ESSearchResult
         """
-        trace_attribute(Attributes.DB_QUERY, query)
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .extra(size=page_size)
             .extra(from_=(page - 1) * page_size)
-            .query(
-                QueryString(query=query, fields=fields)
-                if fields
-                else QueryString(query=query)
-            )
+            .query(self._compose_query(query, fields, filter_clauses))
         )
         if sort:
             search = search.sort(*sort)
         if not parse_document:
             search = search.source(includes=[])
-        try:
-            response = await search.execute()
-        except BadRequestError as exc:
-            msg = f"Elasticsearch query string search failed: {exc}."
-            raise ESQueryError(msg) from exc
+        response = await self._execute_search(search)
         return self._parse_search_result(response, page, parse_document=parse_document)
+
+    @trace_repository_method(tracer)
+    async def aggregate_terms(
+        self,
+        query: str,
+        aggregate_on: Sequence[str],
+        *,
+        query_fields: Sequence[str] | None = None,
+        filter_clauses: Sequence[Query] | None = None,
+        max_buckets: int,
+    ) -> dict[str, list[ESFacetBucket]]:
+        """
+        Run terms aggregations over documents matching a query string.
+
+        Executes a single ``size=0`` search and returns one terms bucket list
+        per requested field, ordered by document count descending.
+
+        :param query: The query string filtering which documents are counted.
+        :type query: str
+        :param aggregate_on: ES field names to aggregate on.
+        :type aggregate_on: Sequence[str]
+        :param query_fields: Fields the query string should match against.
+            ``None`` defers to the query string's own ``default_field``.
+        :type query_fields: Sequence[str] | None
+        :param filter_clauses: Structured DSL clauses ANDed with the query string under
+            ``bool.filter``. ``None`` or empty issues the bare query.
+        :type filter_clauses: Sequence[Query] | None
+        :param max_buckets: Maximum buckets to return per aggregation.
+        :type max_buckets: int
+        :return: A mapping from each requested field name to its term buckets.
+        :rtype: dict[str, list[ESFacetBucket]]
+        """
+        search = self._build_aggregation_search(query, query_fields, filter_clauses)
+        for field in aggregate_on:
+            search.aggs.bucket(field, "terms", field=field, size=max_buckets)
+        response = await self._execute_search(search)
+        return {
+            field: [
+                ESFacetBucket(key=str(bucket.key), count=bucket.doc_count)
+                for bucket in response.aggregations[field].buckets
+            ]
+            for field in aggregate_on
+        }
+
+    def _compose_query(
+        self,
+        query_string: str,
+        fields: Sequence[str] | None,
+        filter_clauses: Sequence[Query] | None,
+    ) -> Query:
+        """Build the top-level query: a bare QueryString, or wrapped in bool.filter."""
+        main = (
+            QueryString(query=query_string, fields=fields)
+            if fields
+            else QueryString(query=query_string)
+        )
+        if not filter_clauses:
+            return main
+        return Bool(must=[main], filter=list(filter_clauses))
+
+    def _build_aggregation_search(
+        self,
+        query_string: str,
+        query_fields: Sequence[str] | None,
+        filter_clauses: Sequence[Query] | None,
+    ) -> AsyncSearch:
+        """Build a ``size=0``, source-stripped search ready for aggregations."""
+        return (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .extra(size=0)
+            .query(self._compose_query(query_string, query_fields, filter_clauses))
+            .source(includes=[])
+        )
+
+    async def _execute_search(self, search: AsyncSearch) -> Response:
+        """Trace and execute a search, mapping an ES ``400`` to ``ESQueryError``."""
+        trace_attribute(Attributes.DB_QUERY, json.dumps(search.to_dict()))
+        try:
+            return await search.execute()
+        except BadRequestError as exc:
+            msg = f"Elasticsearch query failed: {exc}."
+            raise ESQueryError(msg) from exc

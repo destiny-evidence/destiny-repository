@@ -2,12 +2,15 @@
 
 import httpx
 import pytest
+import pytest_asyncio
 from pytest_httpx import HTTPXMock
+from rdflib import Graph
 
 from app.core.exceptions import VocabularyFetchError
 from app.external.vocabulary.client import (
     ContextNotPreFetchedError,
     VocabularyArtifactClient,
+    _build_scheme_members,
 )
 
 SAMPLE_TURTLE = """\
@@ -20,10 +23,73 @@ SAMPLE_CONTEXT = {"@context": {"ex": "http://example.org/"}}
 VOCAB_URI = "https://vocab.example.org/vocabulary/v1"
 CONTEXT_URI = "https://vocab.example.org/context/v1.jsonld"
 
+# SKOS vocab covering the membership shapes the lookups have to handle:
+#   - hierarchical scheme: Biology -> Botany, Zoology, Microbiology
+#   - flat scheme using skos:topConceptOf:        Africa, Asia
+#   - flat scheme via skos:hasTopConcept only:    Apple, Pear (no inScheme)
+#   - flat scheme using only skos:inScheme:       English, Spanish
+#   - multi-parented concept under two parents:   Quantum (under both Physics & Math)
+SKOS_TURTLE = """\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+ex:Topics a skos:ConceptScheme .
+
+ex:Biology  a skos:Concept ; skos:inScheme ex:Topics ; skos:prefLabel "Biology" ;
+            skos:topConceptOf ex:Topics .
+ex:Chemistry a skos:Concept ; skos:inScheme ex:Topics ; skos:prefLabel "Chemistry" ;
+             skos:topConceptOf ex:Topics .
+
+ex:Botany       a skos:Concept ; skos:inScheme ex:Topics ;
+                skos:prefLabel "Botany" ; skos:broader ex:Biology .
+ex:Zoology      a skos:Concept ; skos:inScheme ex:Topics ;
+                skos:prefLabel "Zoology" ; skos:broader ex:Biology .
+ex:Microbiology a skos:Concept ; skos:inScheme ex:Topics ;
+                skos:prefLabel "Microbiology" ; skos:broader ex:Biology .
+
+ex:Regions a skos:ConceptScheme .
+ex:Africa a skos:Concept ; skos:inScheme ex:Regions ; skos:prefLabel "Africa" ;
+          skos:topConceptOf ex:Regions .
+ex:Asia   a skos:Concept ; skos:inScheme ex:Regions ; skos:prefLabel "Asia" ;
+          skos:topConceptOf ex:Regions .
+
+ex:Fruits a skos:ConceptScheme ;
+          skos:hasTopConcept ex:Apple , ex:Pear .
+ex:Apple a skos:Concept ; skos:prefLabel "Apple" .
+ex:Pear  a skos:Concept ; skos:prefLabel "Pear" .
+
+ex:Languages a skos:ConceptScheme .
+ex:English a skos:Concept ; skos:inScheme ex:Languages ; skos:prefLabel "English" .
+ex:Spanish a skos:Concept ; skos:inScheme ex:Languages ; skos:prefLabel "Spanish" .
+
+ex:Sciences a skos:ConceptScheme .
+ex:Physics a skos:Concept ; skos:inScheme ex:Sciences ; skos:prefLabel "Physics" ;
+           skos:topConceptOf ex:Sciences .
+ex:Mathematics a skos:Concept ; skos:inScheme ex:Sciences ;
+               skos:prefLabel "Mathematics" ;
+               skos:topConceptOf ex:Sciences .
+ex:Quantum a skos:Concept ; skos:inScheme ex:Sciences ; skos:prefLabel "Quantum" ;
+           skos:broader ex:Physics , ex:Mathematics .
+"""
+
 
 @pytest.fixture
 def client() -> VocabularyArtifactClient:
     return VocabularyArtifactClient()
+
+
+@pytest_asyncio.fixture
+async def skos_client(
+    client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+) -> VocabularyArtifactClient:
+    """Client primed to serve the SKOS sample vocabulary at VOCAB_URI."""
+    httpx_mock.add_response(
+        url=VOCAB_URI,
+        text=SKOS_TURTLE,
+        headers={"content-type": "text/turtle"},
+    )
+    return client
 
 
 class TestGetVocabulary:
@@ -239,3 +305,165 @@ class TestDocumentLoader:
             client.document_loader("https://not-fetched.example.org/ctx.jsonld")
 
         assert exc_info.value.uri == "https://not-fetched.example.org/ctx.jsonld"
+
+
+def _concept(name: str) -> str:
+    return f"http://example.org/{name}"
+
+
+class TestSkosDerivedLookups:
+    @pytest.mark.asyncio
+    async def test_concept_labels_and_schemes(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        labels = await skos_client.get_concept_labels(VOCAB_URI)
+        schemes = await skos_client.get_concept_schemes(VOCAB_URI)
+
+        assert labels[_concept("Botany")] == "Botany"
+        assert schemes[_concept("Botany")] == _concept("Topics")
+        assert schemes[_concept("English")] == _concept("Languages")
+
+    @pytest.mark.asyncio
+    async def test_concept_scheme_members_span_the_whole_scheme(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        members = await skos_client.get_concept_scheme_members(VOCAB_URI)
+
+        # A concept maps to every member of its scheme regardless of depth: a
+        # parent (Biology) and a child (Botany) share the same full Topics set.
+        topics = frozenset(
+            {
+                _concept("Biology"),
+                _concept("Chemistry"),
+                _concept("Botany"),
+                _concept("Zoology"),
+                _concept("Microbiology"),
+            }
+        )
+        assert members[_concept("Botany")] == topics
+        assert members[_concept("Biology")] == topics
+
+        # A deep child (Quantum) sits with its parents (Physics, Mathematics).
+        assert members[_concept("Quantum")] == frozenset(
+            {_concept("Physics"), _concept("Mathematics"), _concept("Quantum")}
+        )
+
+        # Flat schemes are unchanged.
+        assert members[_concept("Apple")] == frozenset(
+            {_concept("Apple"), _concept("Pear")}
+        )
+
+    @pytest.mark.asyncio
+    async def test_scheme_members_covers_every_membership_shape(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        members = await skos_client.get_scheme_members(VOCAB_URI)
+
+        # Hierarchical scheme: top concepts and their broader-children alike.
+        assert members[_concept("Topics")] == frozenset(
+            {
+                _concept("Biology"),
+                _concept("Chemistry"),
+                _concept("Botany"),
+                _concept("Zoology"),
+                _concept("Microbiology"),
+            }
+        )
+        # Flat scheme via skos:topConceptOf.
+        assert members[_concept("Regions")] == frozenset(
+            {_concept("Africa"), _concept("Asia")}
+        )
+        # Flat scheme via skos:hasTopConcept.
+        assert members[_concept("Fruits")] == frozenset(
+            {_concept("Apple"), _concept("Pear")}
+        )
+        # Flat scheme via skos:inScheme only.
+        assert members[_concept("Languages")] == frozenset(
+            {_concept("English"), _concept("Spanish")}
+        )
+        # Unknown scheme URIs are simply absent.
+        assert _concept("DoesNotExist") not in members
+
+
+class TestBuildSchemeMembers:
+    """Edge cases for scheme membership that the shared fixture can't express."""
+
+    def test_descendant_without_inscheme_inherits_via_broader(self):
+        """A leaf with only skos:broader is still a member of its ancestor's scheme."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:Topics a skos:ConceptScheme .
+ex:Bio    a skos:Concept ; skos:inScheme ex:Topics ; skos:topConceptOf ex:Topics .
+ex:Botany a skos:Concept ; skos:inScheme ex:Topics ; skos:broader ex:Bio .
+ex:Leaf   a skos:Concept ; skos:broader ex:Botany .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        # Leaf carries no inScheme, but is reachable up the broader chain to Topics.
+        assert members[_concept("Topics")] == frozenset(
+            {_concept("Bio"), _concept("Botany"), _concept("Leaf")}
+        )
+
+    def test_multi_parent_without_inscheme_unions_each_parents_scheme(self):
+        """A leaf with no inScheme inherits the union of all its parents' schemes."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:SchemeA a skos:ConceptScheme .
+ex:SchemeB a skos:ConceptScheme .
+ex:ParentA a skos:Concept ; skos:inScheme ex:SchemeA .
+ex:ParentB a skos:Concept ; skos:inScheme ex:SchemeB .
+ex:Child   a skos:Concept ; skos:broader ex:ParentA , ex:ParentB .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        # Child has no inScheme; the broader fallback unions both parents' schemes.
+        assert members[_concept("SchemeA")] == frozenset(
+            {_concept("ParentA"), _concept("Child")}
+        )
+        assert members[_concept("SchemeB")] == frozenset(
+            {_concept("ParentB"), _concept("Child")}
+        )
+
+    def test_explicit_scheme_is_not_reassigned_via_broader(self):
+        """A broader edge crossing scheme boundaries does not leak members."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:SchemeA a skos:ConceptScheme .
+ex:SchemeB a skos:ConceptScheme .
+ex:Parent a skos:Concept ; skos:inScheme ex:SchemeA .
+ex:Child  a skos:Concept ; skos:inScheme ex:SchemeB ; skos:broader ex:Parent .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        # Child declares SchemeB, so it is not pulled into SchemeA via its parent.
+        assert members[_concept("SchemeA")] == frozenset({_concept("Parent")})
+        assert members[_concept("SchemeB")] == frozenset({_concept("Child")})
+
+    def test_concept_in_multiple_schemes_appears_in_each(self):
+        """A concept asserted in two schemes is a member of both."""
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:SchemeA a skos:ConceptScheme .
+ex:SchemeB a skos:ConceptScheme .
+ex:Shared a skos:Concept ; skos:inScheme ex:SchemeA , ex:SchemeB .
+""",
+            format="turtle",
+        )
+        members = _build_scheme_members(graph)
+        assert members[_concept("SchemeA")] == frozenset({_concept("Shared")})
+        assert members[_concept("SchemeB")] == frozenset({_concept("Shared")})

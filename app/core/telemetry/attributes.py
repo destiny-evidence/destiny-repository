@@ -74,6 +74,7 @@ class Attributes(StrEnum):
     USER_ID = _user_attributes.USER_ID
     USER_ROLES = _user_attributes.USER_ROLES
     USER_AUTH_METHOD = "user.auth.method"
+    USER_SUBJECT_TYPE = "user.subject.type"
 
     USER_AGENT_ORIGINAL = user_agent_attributes.USER_AGENT_ORIGINAL
 
@@ -90,6 +91,7 @@ class Attributes(StrEnum):
     ROBOT_ID = "app.robot.id"
     ROBOT_AUTOMATION_ID = "app.robot_automation.id"
     REFERENCE_DUPLICATE_DECISION_ID = "app.reference_duplicate_decision.id"
+    SEARCH_EXPORT_ID = "app.search_export.id"
 
     # Other
     FILE_LINE_NO = "app.file.line_number"

@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import InMemoryBroker
 
 from app.core.exceptions import SQLIntegrityError
 from app.domain.references.models.models import (
@@ -16,15 +18,20 @@ from app.domain.references.models.models import (
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
 )
+from app.domain.references.models.sql import SearchExport as SQLSearchExport
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.enhancement_service import ProcessedResults
+from app.domain.references.services.export_service import SearchExportService
 from app.domain.references.tasks import (
     process_reference_duplicate_decision,
+    run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
+from app.persistence.blob.models import BlobStorageFile
+from app.tasks import broker
 
 
 async def test_robot_automations(monkeypatch, fake_uow, fake_repository):
@@ -553,3 +560,43 @@ class TestProcessReferenceDuplicateDecisionRaceCondition:
 
         assert exc_info.value.lookup_model == "ReferenceDuplicateDecision"
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
+
+
+async def test_run_search_export_task_skips_non_pending_row(
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A redelivered task must not redo work or clobber an already-completed row."""
+    existing_file = BlobStorageFile(
+        location="minio",
+        container="destiny-repository",
+        path="search_exports",
+        filename="prior.jsonl",
+    )
+    export = SQLSearchExport(
+        query="climate",
+        status="completed",
+        result_file=existing_file.to_uri(),
+        n_references=42,
+        truncated=False,
+    )
+    session.add(export)
+    await session.commit()
+    export_id = export.id
+
+    collect_mock = AsyncMock()
+    stream_mock = AsyncMock()
+    monkeypatch.setattr(SearchExportService, "_collect_search_export_ids", collect_mock)
+    monkeypatch.setattr(SearchExportService, "_stream_search_export_jsonl", stream_mock)
+
+    assert isinstance(broker, InMemoryBroker)
+    await run_search_export_task.kiq(search_export_id=export_id, entitlements=[])
+    await broker.wait_all()
+
+    collect_mock.assert_not_awaited()
+    stream_mock.assert_not_awaited()
+
+    await session.refresh(export)
+    assert export.status == "completed"
+    assert export.result_file == existing_file.to_uri()
+    assert export.n_references == 42

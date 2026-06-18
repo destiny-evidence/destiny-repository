@@ -69,7 +69,9 @@ async def get_reference_service(
     return ReferenceService(
         sql_uow=sql_uow,
         es_uow=es_uow,
-        anti_corruption_service=ReferenceAntiCorruptionService(BlobRepository()),
+        anti_corruption_service=ReferenceAntiCorruptionService(
+            sign_url=BlobRepository().get_signed_url
+        ),
     )
 
 
@@ -100,6 +102,7 @@ async def import_reference(
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         import_service = await get_import_service(sql_uow=sql_uow)
         reference_service = await get_reference_service(sql_uow=sql_uow, es_uow=es_uow)
+        blob_repository = BlobRepository()
 
         # Rarely we can see a race condition where the task is picked up before the
         # queuing process has committed the record.
@@ -126,6 +129,7 @@ async def import_reference(
 
         import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
+            blob_repository,
             import_result,
             content,
             line_number,

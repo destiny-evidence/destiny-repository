@@ -3,18 +3,23 @@
 import datetime
 import json
 from enum import StrEnum, auto
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
 from uuid import UUID
 
 import destiny_sdk
 
-# Explicitly import these models for easy use in the rest of the codebase
-from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
+# Explicitly import these models for easy importing in the rest of the codebase
+# This allows us to abstract them later if we need (as has already happened with
+# EnhancementContent!)
+from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
+    HttpUrl,
     PositiveInt,
+    StringConstraints,
     TypeAdapter,
     field_validator,
     model_validator,
@@ -28,6 +33,7 @@ from app.domain.base import (
     SQLTimestampMixin,
     StateMachineMixin,
 )
+from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import apply_positive_timedelta
 
@@ -61,6 +67,19 @@ class EnhancementRequestStatus(StrEnum):
     """Enhancements have been imported but indexing failed."""
     COMPLETED = auto()
     """All enhancements have been created."""
+
+
+class SearchExportStatus(StrEnum):
+    """The status of a search export job."""
+
+    PENDING = auto()
+    """Export job has been queued."""
+    RUNNING = auto()
+    """Export job is being processed."""
+    COMPLETED = auto()
+    """Export job has completed and the file is available."""
+    FAILED = auto()
+    """Export job failed before producing a file."""
 
 
 class Visibility(StrEnum):
@@ -298,6 +317,114 @@ class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
+class FullTextEnhancement(DomainBaseModel):
+    """
+    An enhancement for storing a link to the full text and its metadata.
+
+    We separate this from the SDK model as it contains a file pointer, not
+    the URL to the file itself.
+    """
+
+    enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
+    blob: BlobStorageFile = Field(
+        description="Blob storage pointer to the full text file.",
+    )
+    byte_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the file in bytes. "
+            "If provided on import, will be used to validate the file size. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    sha256_checksum: str | None = Field(
+        default=None,
+        description=(
+            "SHA256 checksum of the file. "
+            "If provided on import, will be used to verify the integrity of the file. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    mime_type: str = Field(
+        default="application/pdf",
+        description="The MIME type of the file.",
+    )
+    version: destiny_sdk.enhancements.DriverVersion | None = Field(
+        default=None,
+        description=(
+            "The version (according to the DRIVER versioning scheme) of this full text."
+        ),
+    )
+    is_oa: bool | None = Field(
+        default=None,
+        description=(
+            "If this full text is Open Access. "
+            "May be left as null if this is unknown."
+        ),
+    )
+    license: str | None = Field(
+        default=None,
+        description="The publishing license for this full text.",
+        examples=[
+            "apache-2-0",
+            "cc-by",
+            "cc-by-nc",
+            "cc-by-nc-nd",
+            "cc-by-nc-sa",
+            "cc-by-nd",
+            "cc-by-sa",
+            "gpl-v2",
+            "gpl-v3",
+            "isc",
+            "mit",
+            "other-oa",
+            "public-domain",
+        ],
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source from which this full text was obtained.",
+    )
+    source_url: HttpUrl | None = Field(
+        default=None,
+        description="The URL of the source from which this full text was obtained.",
+    )
+    retrieved_at: datetime.datetime | None = Field(
+        default=None,
+        description="The timestamp when this full text was retrieved.",
+    )
+
+    @property
+    def fingerprint(self) -> str:
+        """
+        The unique fingerprint of this full text enhancement.
+
+        Excludes retrieved_at and blob location.
+        """
+        return json.dumps(
+            self.model_dump(
+                mode="json",
+                exclude={"retrieved_at", "blob"},
+                exclude_none=True,
+            ),
+            sort_keys=True,
+        )
+
+
+EnhancementContent = Annotated[
+    destiny_sdk.enhancements.BibliographicMetadataEnhancement
+    | destiny_sdk.enhancements.AbstractContentEnhancement
+    | destiny_sdk.enhancements.AnnotationEnhancement
+    | destiny_sdk.enhancements.LocationEnhancement
+    | destiny_sdk.enhancements.ReferenceAssociationEnhancement
+    | destiny_sdk.enhancements.LinkedDataEnhancement
+    # Domain defines its own FullTextEnhancement
+    | FullTextEnhancement
+    | destiny_sdk.enhancements.RawEnhancement,
+    Field(discriminator="enhancement_type"),
+]
+
+
 class Enhancement(DomainBaseModel, SQLTimestampMixin):
     """Core enhancement model with database attributes included."""
 
@@ -396,6 +523,42 @@ Errors for individual references are provided <TBC>.
     def n_references(self) -> int:
         """The number of references in the request."""
         return len(self.reference_ids)
+
+
+class SearchExport(DomainBaseModel, SQLAttributeMixin):
+    """A queued job that produces a JSONL file of references matching a search."""
+
+    query: "SearchQuery" = Field(
+        description="The search specification this export resolves.",
+    )
+    sort: list[str] | None = Field(
+        default=None,
+        description="Sort fields, in the same form `/references/search/` accepts.",
+    )
+    status: SearchExportStatus = Field(
+        default=SearchExportStatus.PENDING,
+        description="The current status of the export job.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The JSONL file produced by the job, once completed.",
+    )
+    n_references: int | None = Field(
+        default=None,
+        description="The number of references in the produced file.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the matching result set was larger than the server's "
+            "result-window cap. When true, the JSONL contains only the first "
+            "window's worth of matches."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message, if the job failed.",
+    )
 
 
 class RobotResultValidationEntry(DomainBaseModel):
@@ -573,6 +736,8 @@ class LinkedDataProjection(ProjectedBaseModel):
     concepts: set[str] = Field(default_factory=set)
     labels: set[str] = Field(default_factory=set)
     evaluated_properties: set[str] = Field(default_factory=set)
+    countries: set[str] = Field(default_factory=set)
+    country_wb_regions: set[str] = Field(default_factory=set)
 
 
 class ReferenceSearchProjection(SQLAttributeMixin):
@@ -921,6 +1086,151 @@ class AnnotationFilter(BaseModel):
         ge=0.0,
         le=1.0,
     )
+
+
+class LinkedDataConceptFilter(BaseModel):
+    """
+    A set of fully-qualified concept URIs to match on ``linked_data_concepts``.
+
+    Within a single filter, references must carry at least one of the listed URIs
+    (logical OR). Multiple filters on a query are ANDed together.
+    """
+
+    concept_uris: list[str] = Field(
+        min_length=1,
+        description="Concept URIs to match. At least one must appear on the reference.",
+    )
+
+
+class LinkedDataCountryFilter(BaseModel):
+    """
+    A set of ISO 3166-1 alpha-2 codes to match on ``linked_data_countries``.
+
+    OR within a filter; AND between filters.
+    """
+
+    country_codes: list[Annotated[str, StringConstraints(pattern=r"^[A-Z]{2}$")]] = (
+        Field(
+            min_length=1,
+            description=(
+                "ISO 3166-1 alpha-2 country codes. At least one must appear on the "
+                "reference."
+            ),
+        )
+    )
+
+
+class LinkedDataCountryWBRegionFilter(BaseModel):
+    """
+    A set of World Bank region IDs to match on ``linked_data_country_wb_regions``.
+
+    OR within a filter; AND between filters.
+    """
+
+    region_ids: list[WBRegionID] = Field(
+        min_length=1,
+        description=(
+            "World Bank region IDs. At least one must appear on the reference."
+        ),
+    )
+
+
+class FacetType(StrEnum):
+    """A facet supported by the reference search facets endpoint."""
+
+    CONCEPTS = auto()
+    """Counts of references per linked-data concept URI."""
+    COUNTRIES = auto()
+    """Counts of references per ISO 3166-1 alpha-2 country code."""
+    COUNTRY_WB_REGIONS = auto()
+    """Counts of references per World Bank region ID."""
+
+
+class SearchQuery(BaseModel):
+    """A specification for searching references."""
+
+    query_string: str = Field(description="The Lucene query string to search with.")
+    annotation_filters: list[AnnotationFilter] = Field(
+        default_factory=list,
+        description="Annotation filters to AND with the query string.",
+    )
+    publication_year_range: PublicationYearRange | None = Field(
+        default=None,
+        description="Publication year range to AND with the query string.",
+    )
+    linked_data_concept_filters: list[LinkedDataConceptFilter] = Field(
+        default_factory=list,
+        description=(
+            "Concept URI filters to AND with the query string. Each filter is an "
+            "OR-set of URIs."
+        ),
+    )
+    linked_data_country_filters: list[LinkedDataCountryFilter] = Field(
+        default_factory=list,
+        description=(
+            "Country code filters to AND with the query string. Each filter is an "
+            "OR-set of ISO 3166-1 alpha-2 codes."
+        ),
+    )
+    linked_data_country_wb_region_filters: list[LinkedDataCountryWBRegionFilter] = (
+        Field(
+            default_factory=list,
+            description=(
+                "World Bank region filters to AND with the query string. Each filter "
+                "is an OR-set of region IDs."
+            ),
+        )
+    )
+
+
+class SiblingGroup(BaseModel):
+    """A user-selected subset of a sibling set, for sibling-aware facet aggregation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    selected: tuple[str, ...] = Field(
+        description="Values the user selected from this sibling set.",
+    )
+    siblings_including_selected: frozenset[str] | None = Field(
+        description=(
+            "Union of the user's selection and their siblings, used as the "
+            "``include`` set for the group's facet aggregation. ``None`` signals "
+            "universal mode: every value of the field is treated as a sibling, so "
+            "the agg uses no ``include`` filter."
+        ),
+    )
+
+
+class CrossFacetAxis(BaseModel):
+    """One resolved axis of a cross-facet aggregation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    token: str = Field(
+        description="The original axis request string (literal or scheme URI).",
+    )
+    facet_type: FacetType = Field(
+        description="The facet whose field this axis aggregates on.",
+    )
+    include: frozenset[str] | None = Field(
+        description=(
+            "The concept URIs scoping a scheme axis (used as the terms ``include`` "
+            "set). ``None`` for other axes, whose field domain is bounded."
+        ),
+    )
+    size: int = Field(
+        description="The terms ``size`` to request for this axis's bucket count.",
+        gt=0,
+    )
+
+
+class CrossFacetCell(BaseModel):
+    """A single non-zero cell of a cross-facet matrix."""
+
+    axes: tuple[str, str] = Field(
+        description="The cell's value on each axis, in requested axis order.",
+    )
+    count: int = Field(description="References matching both axis values together.")
 
 
 class ReferenceSearchResult(BaseModel):

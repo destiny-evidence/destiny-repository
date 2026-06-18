@@ -1,10 +1,9 @@
 """Minio implementations for blob storage operations."""
 
 import datetime
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
 from io import BytesIO
 
-from cachetools import TTLCache
 from minio import Minio
 from minio.error import S3Error
 from opentelemetry import trace
@@ -19,6 +18,7 @@ from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
+    infer_content_type,
 )
 from app.persistence.blob.stream import FileStream
 
@@ -49,58 +49,51 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             secret_key=self.secret_key,
             secure=False,
         )
-        self.presigned_url_cache: TTLCache[
-            tuple[BlobStorageFile, BlobSignedUrlType], str
-        ] = TTLCache(
-            maxsize=1000,
-            ttl=self.presigned_url_expiry_seconds / 2,
-        )
 
     @trace_blob_client_method(tracer)
     async def upload_file(
         self,
-        content: FileStream | BytesIO,
+        content: FileStream | BytesIO | AsyncIterator[bytes],
         file: BlobStorageFile,
+        content_type: str | None = None,
     ) -> None:
         """Upload a file to MinIO."""
         try:
             if isinstance(content, FileStream):
-                content = await content.read()
+                buffer = await content.read()
+            elif isinstance(content, BytesIO):
+                buffer = content
+            else:
+                # Async iterator of bytes: buffer in memory. MinIO is dev/test only,
+                # so memory pressure is acceptable.
+                buffer = BytesIO()
+                async for chunk in content:
+                    buffer.write(chunk)
+                buffer.seek(0)
             self.client.put_object(
                 bucket_name=file.container,
                 object_name=f"{file.path}/{file.filename}",
-                data=content,
-                length=content.getbuffer().nbytes,
-                content_type=file.content_type,
+                data=buffer,
+                length=buffer.getbuffer().nbytes,
+                content_type=content_type or infer_content_type(file.filename),
             )
         except S3Error as e:
             msg = f"Failed to upload file to MinIO: {e}"
             raise MinioBlobStorageError(msg) from e
 
     @trace_blob_client_generator(tracer)
-    async def stream_file(
+    async def stream_chunks(
         self,
         file: BlobStorageFile,
-    ) -> AsyncGenerator[str, None]:
-        """
-        Yield lines from a file in MinIO as a generator.
-
-        Splits the file content by newline.
-        """
+    ) -> AsyncGenerator[bytes, None]:
+        """Yield raw byte chunks from a file in MinIO."""
         try:
             response = self.client.get_object(
                 bucket_name=file.container,
                 object_name=f"{file.path}/{file.filename}",
             )
-            buffer = ""
             for chunk in response.stream(1024):
-                text = chunk.decode("utf-8")
-                buffer += text
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    yield line
-            if buffer:
-                yield buffer
+                yield chunk
         except S3Error as e:
             msg = f"Failed to get file from MinIO: {e}"
             raise MinioBlobStorageError(msg) from e
@@ -110,18 +103,25 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
         self,
         file: BlobStorageFile,
         interaction_type: BlobSignedUrlType,
+        content_disposition: str | None,
     ) -> str:
         """Get a signed URL for a file in MinIO."""
-        if url := self.presigned_url_cache.get(lookup_key := (file, interaction_type)):
-            return url
         try:
             if interaction_type == BlobSignedUrlType.DOWNLOAD:
+                # S3-style `response-content-disposition` override, signed into
+                # the URL so the server returns this header on fetch.
+                response_headers: dict[str, str | list[str] | tuple[str]] | None = (
+                    {"response-content-disposition": content_disposition}
+                    if content_disposition is not None
+                    else None
+                )
                 url = self.client.presigned_get_object(
                     bucket_name=file.container,
                     object_name=f"{file.path}/{file.filename}",
                     expires=datetime.timedelta(
                         seconds=self.presigned_url_expiry_seconds
                     ),
+                    response_headers=response_headers,
                 )
             if interaction_type == BlobSignedUrlType.UPLOAD:
                 url = self.client.presigned_put_object(
@@ -138,5 +138,4 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             if not url:
                 msg = "Failed to generate signed URL from MinIO."
                 raise MinioBlobStorageError(msg)
-            self.presigned_url_cache[lookup_key] = url
             return url

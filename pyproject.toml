@@ -47,6 +47,7 @@ authors = [
 ]
 dependencies = [
     "alembic>=1.16.1,<2",
+    "async-lru>=2.3.0",
     "asyncpg>=0.30.0,<0.31",
     "azure-identity>=1.21.0,<2",
     "azure-servicebus>=7.14.2,<8",
@@ -57,7 +58,7 @@ dependencies = [
     "fastapi[standard]>=0.128,<0.129",
     "frozenlist==1.6.0",
     "greenlet>=3.1.1,<4",
-    "joserfc>=1.0.0",
+    "joserfc>=1.6.3",
     "minio>=7.2.15,<8",
     "opentelemetry-distro>=0.60b1,<0.61",
     "opentelemetry-exporter-otlp>=1.39.1,<2",
@@ -88,6 +89,7 @@ version = "2.0.0"
 
 [tool.mypy]
 explicit_package_bases = true
+mypy_path = "libs/sdk/src"
 namespace_packages = true
 plugins = ["pydantic.mypy"]
 
@@ -103,7 +105,7 @@ filterwarnings = [
 ]
 norecursedirs = ["tests/e2e"]
 pythonpath = "."
-testpaths = ["libs/ad_hoc/tests", "libs/sdk/tests", "tests"]
+testpaths = ["libs/ad_hoc/tests", "libs/eppi_importer/tests", "libs/sdk/tests", "tests"]
 
 [tool.ruff]
 extend-exclude = ["app/migrations/versions/*.py", "docs/*.py"]

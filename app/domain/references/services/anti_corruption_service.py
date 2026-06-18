@@ -1,5 +1,6 @@
 """Anti-corruption service for references domain."""
 
+from collections.abc import Sequence
 from uuid import UUID
 
 import destiny_sdk
@@ -8,10 +9,17 @@ from pydantic import ValidationError
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
     AnnotationFilter,
+    CrossFacetCell,
     Enhancement,
     EnhancementRequest,
+    EnhancementType,
     ExternalIdentifierAdapter,
+    FacetType,
+    FullTextEnhancement,
     IdentifierLookup,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     LinkedExternalIdentifier,
     PublicationYearRange,
     Reference,
@@ -19,19 +27,30 @@ from app.domain.references.models.models import (
     RobotAutomation,
     RobotEnhancementBatch,
     RobotResultValidationEntry,
+    SearchExport,
 )
+from app.domain.references.services.access_control_service import RedactedReference
 from app.domain.service import GenericAntiCorruptionService
-from app.persistence.blob.models import BlobSignedUrlType
-from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESSearchResult
+from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
+from app.persistence.blob.repository import URLSigner
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESSearchResult,
+    ESSearchTotal,
+)
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     """Anti-corruption service for translating between Reference domain and SDK."""
 
-    def __init__(self, blob_repository: BlobRepository) -> None:
-        """Initialize the anti-corruption service."""
-        self._blob_repository = blob_repository
+    def __init__(self, sign_url: URLSigner) -> None:
+        """
+        Initialize the anti-corruption service.
+
+        :param sign_url: Callable that signs a blob storage file into a URL.
+            Typically ``BlobRepository.get_signed_url``.
+        """
+        self._sign_url = sign_url
         super().__init__()
 
     def reference_from_sdk_file_input(
@@ -53,9 +72,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 for identifier in reference_in.identifiers or []
             ]
             reference.enhancements = [
-                Enhancement.model_validate(
-                    enhancement.model_dump() | {"reference_id": reference.id}
-                )
+                self.enhancement_from_sdk(enhancement, reference_id=reference.id)
                 for enhancement in reference_in.enhancements or []
             ]
             reference.check_serializability()
@@ -64,11 +81,15 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return reference
 
-    def reference_to_sdk(
-        self, reference: Reference
+    async def reference_to_sdk(
+        self, reference: RedactedReference
     ) -> destiny_sdk.references.Reference:
         """Convert the reference to a Reference SDK model."""
         try:
+            enhancements = [
+                await self.enhancement_to_sdk(enhancement)
+                for enhancement in reference.enhancements or []
+            ]
             return destiny_sdk.references.Reference(
                 id=reference.id,
                 visibility=reference.visibility,
@@ -76,10 +97,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     self.external_identifier_to_sdk(identifier).identifier
                     for identifier in reference.identifiers or []
                 ],
-                enhancements=[
-                    self.enhancement_to_sdk(enhancement)
-                    for enhancement in reference.enhancements or []
-                ],
+                enhancements=enhancements,
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
@@ -112,25 +130,70 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return identifier
 
-    def enhancement_to_sdk(
+    async def full_text_enhancement_content_to_sdk(
+        self,
+        full_text: FullTextEnhancement,
+    ) -> destiny_sdk.enhancements.FullTextEnhancement:
+        """Convert to the SDK shape, signing the blob into a download URL."""
+        try:
+            return destiny_sdk.enhancements.FullTextEnhancement(
+                enhancement_type=full_text.enhancement_type,
+                file_url=await self._sign_url(
+                    full_text.blob,
+                    BlobSignedUrlType.DOWNLOAD,
+                ),
+                **full_text.model_dump(exclude={"enhancement_type", "blob"}),
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def full_text_enhancement_content_from_sdk(
+        self,
+        full_text_in: destiny_sdk.enhancements.FullTextEnhancement,
+    ) -> FullTextEnhancement:
+        """Create a FullTextEnhancement from the SDK model, hydrating blob from URL."""
+        try:
+            full_text = FullTextEnhancement.model_validate(
+                full_text_in.model_dump(exclude={"file_url"})
+                | {"blob": BlobStorageFile.from_uri(str(full_text_in.file_url))}
+            )
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return full_text
+
+    async def enhancement_to_sdk(
         self, enhancement: Enhancement
     ) -> destiny_sdk.references.Enhancement:
         """Convert the enhancement to an Enhancement SDK model."""
         try:
-            return destiny_sdk.references.Enhancement.model_validate(
-                enhancement.model_dump()
-            )
+            dumped = enhancement.model_dump()
+            if enhancement.content.enhancement_type == EnhancementType.FULL_TEXT:
+                dumped["content"] = (
+                    await self.full_text_enhancement_content_to_sdk(enhancement.content)
+                ).model_dump()
+            return destiny_sdk.references.Enhancement.model_validate(dumped)
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
     def enhancement_from_sdk(
         self,
-        enhancement_in: destiny_sdk.references.Enhancement,
+        enhancement_in: (
+            destiny_sdk.references.Enhancement
+            | destiny_sdk.enhancements.EnhancementFileInput
+        ),
         reference_id: UUID | None = None,
     ) -> Enhancement:
         """Create an Enhancement from the SDK model with optional ID grafting."""
         try:
             enhancement_model = enhancement_in.model_dump()
+
+            if enhancement_in.content.enhancement_type == EnhancementType.FULL_TEXT:
+                enhancement_model["content"] = (
+                    self.full_text_enhancement_content_from_sdk(
+                        enhancement_in.content
+                    ).model_dump()
+                )
 
             ## The SDK isn't allowed to pass in ids or created_ats, so ignore these.
             enhancement_model.pop("id", None)
@@ -170,22 +233,42 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.robots.EnhancementRequestRead.model_validate(
                 enhancement_request.model_dump()
                 | {
-                    "reference_data_url": await self._blob_repository.get_signed_url(
+                    "reference_data_url": await self._sign_url(
                         enhancement_request.reference_data_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if enhancement_request.reference_data_file
                     else None,
-                    "result_storage_url": await self._blob_repository.get_signed_url(
+                    "result_storage_url": await self._sign_url(
                         enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                     )
                     if enhancement_request.result_file
                     else None,
-                    "validation_result_url": await self._blob_repository.get_signed_url(
+                    "validation_result_url": await self._sign_url(
                         enhancement_request.validation_result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if enhancement_request.validation_result_file
+                    else None,
+                },
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def search_export_to_sdk(
+        self,
+        search_export: SearchExport,
+    ) -> destiny_sdk.references.SearchExportRead:
+        """Convert the reference export to the SDK model."""
+        try:
+            return destiny_sdk.references.SearchExportRead.model_validate(
+                search_export.model_dump()
+                | {
+                    "result_url": await self._sign_url(
+                        search_export.result_file,
+                        BlobSignedUrlType.DOWNLOAD,
+                    )
+                    if search_export.result_file
                     else None,
                 },
             )
@@ -200,12 +283,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.robots.RobotRequest(
                 id=enhancement_request.id,
-                reference_storage_url=await self._blob_repository.get_signed_url(
+                reference_storage_url=await self._sign_url(
                     enhancement_request.reference_data_file, BlobSignedUrlType.DOWNLOAD
                 )
                 if enhancement_request.reference_data_file
                 else None,
-                result_storage_url=await self._blob_repository.get_signed_url(
+                result_storage_url=await self._sign_url(
                     enhancement_request.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if enhancement_request.result_file
@@ -223,18 +306,18 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             return destiny_sdk.robots.RobotEnhancementBatchRead.model_validate(
                 robot_enhancement_batch.model_dump()
                 | {
-                    "reference_data_url": await self._blob_repository.get_signed_url(
+                    "reference_data_url": await self._sign_url(
                         robot_enhancement_batch.reference_data_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
                     if robot_enhancement_batch.reference_data_file
                     else None,
-                    "result_storage_url": await self._blob_repository.get_signed_url(
+                    "result_storage_url": await self._sign_url(
                         robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
                     )
                     if robot_enhancement_batch.result_file
                     else None,
-                    "validation_result_url": await self._blob_repository.get_signed_url(
+                    "validation_result_url": await self._sign_url(
                         robot_enhancement_batch.validation_result_file,
                         BlobSignedUrlType.DOWNLOAD,
                     )
@@ -253,13 +336,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.robots.RobotEnhancementBatch(
                 id=robot_enhancement_batch.id,
-                reference_storage_url=await self._blob_repository.get_signed_url(
+                reference_storage_url=await self._sign_url(
                     robot_enhancement_batch.reference_data_file,
                     BlobSignedUrlType.DOWNLOAD,
                 )
                 if robot_enhancement_batch.reference_data_file
                 else None,
-                result_storage_url=await self._blob_repository.get_signed_url(
+                result_storage_url=await self._sign_url(
                     robot_enhancement_batch.result_file, BlobSignedUrlType.UPLOAD
                 )
                 if robot_enhancement_batch.result_file
@@ -321,14 +404,85 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         except ValidationError as exception:
             raise SDKToDomainError(errors=exception.errors()) from exception
 
-    def two_stage_reference_search_result_to_sdk(
+    def facet_types_from_sdk(
+        self,
+        facets: Sequence[destiny_sdk.references.FacetType],
+    ) -> list[FacetType]:
+        """Map SDK facet types to their domain equivalents."""
+        return [FacetType(facet.value) for facet in facets]
+
+    def facets_to_sdk(
+        self,
+        buckets_by_facet: dict[FacetType, list[ESFacetBucket]],
+    ) -> destiny_sdk.references.ReferenceFacetResult:
+        """Convert domain facet counts into the SDK response model."""
+        fields: dict[str, object] = {}
+        for facet, buckets in buckets_by_facet.items():
+            if facet is FacetType.CONCEPTS:
+                fields["concepts"] = [
+                    destiny_sdk.references.ConceptFacetCount(
+                        concept=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
+            elif facet is FacetType.COUNTRIES:
+                fields["countries"] = [
+                    destiny_sdk.references.CountryFacetCount(
+                        country=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
+            elif facet is FacetType.COUNTRY_WB_REGIONS:
+                fields["country_wb_regions"] = [
+                    destiny_sdk.references.CountryWBRegionFacetCount(
+                        country_wb_region=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
+            else:
+                msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
+                raise NotImplementedError(msg)
+        try:
+            return destiny_sdk.references.ReferenceFacetResult(**fields)
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def cross_facet_to_sdk(
+        self,
+        cells: Sequence[CrossFacetCell],
+        total: ESSearchTotal,
+    ) -> destiny_sdk.references.ReferenceCrossFacetResult:
+        """Convert a cross-facet result into the SDK response model."""
+        try:
+            return destiny_sdk.references.ReferenceCrossFacetResult(
+                total={
+                    "count": total.value,
+                    "is_lower_bound": total.relation == "gte",
+                },
+                cells=[
+                    destiny_sdk.references.CrossFacetCell(
+                        axes=cell.axes,
+                        count=cell.count,
+                    )
+                    for cell in cells
+                ],
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def two_stage_reference_search_result_to_sdk(
         self,
         search_result: ESSearchResult,
-        references: list[Reference],
+        references: list[RedactedReference],
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert a search result and retrieved references to the SDK model."""
         try:
             hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
+            sdk_references = [
+                await self.reference_to_sdk(reference)
+                # Sort references according to search order
+                for reference in sorted(references, key=lambda r: hit_order[r.id])
+            ]
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
                     "count": search_result.total.value,
@@ -338,11 +492,23 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "count": len(search_result.hits),
                     "number": search_result.page,
                 },
-                references=[
-                    self.reference_to_sdk(reference)
-                    # Sort references according to search order
-                    for reference in sorted(references, key=lambda r: hit_order[r.id])
-                ],
+                references=sdk_references,
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def reference_id_search_result_to_sdk(
+        self,
+        search_result: ESSearchResult,
+    ) -> destiny_sdk.references.ReferenceIDSearchResult:
+        """Convert a search result to the SDK ID-only search result model."""
+        try:
+            return destiny_sdk.references.ReferenceIDSearchResult(
+                total={
+                    "count": search_result.total.value,
+                    "is_lower_bound": search_result.total.relation == "gte",
+                },
+                reference_ids=[hit.id for hit in search_result.hits],
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
@@ -376,6 +542,41 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             label=label,
             score=score,
         )
+
+    def linked_data_concept_filter_from_query_parameter(
+        self,
+        concept_filter_string: str,
+    ) -> LinkedDataConceptFilter:
+        """
+        Parse a concept filter from a query parameter.
+
+        Values are comma-separated; each piece is stripped of surrounding
+        whitespace. Empty pieces raise ``ValueError``.
+        """
+        concept_uris = [uri.strip() for uri in concept_filter_string.split(",")]
+        if any(not uri for uri in concept_uris):
+            msg = (
+                "Empty concept URI in concept filter. "
+                f"Got: {concept_filter_string!r}."
+            )
+            raise ValueError(msg)
+        return LinkedDataConceptFilter(concept_uris=concept_uris)
+
+    def linked_data_country_filter_from_query_parameter(
+        self,
+        country_filter_string: str,
+    ) -> LinkedDataCountryFilter:
+        """Parse a country filter (comma-separated ISO 3166-1 alpha-2 codes)."""
+        codes = [code.strip().upper() for code in country_filter_string.split(",")]
+        return LinkedDataCountryFilter(country_codes=codes)
+
+    def linked_data_country_wb_region_filter_from_query_parameter(
+        self,
+        region_filter_string: str,
+    ) -> LinkedDataCountryWBRegionFilter:
+        """Parse a WB region filter (comma-separated region IDs)."""
+        ids = [rid.strip().upper() for rid in region_filter_string.split(",")]
+        return LinkedDataCountryWBRegionFilter(region_ids=ids)
 
     def duplicate_decision_from_sdk_make(
         self,

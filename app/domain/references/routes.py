@@ -24,7 +24,14 @@ from fastapi import (
     status,
 )
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel, Field, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    HttpUrl,
+    ValidationError,
+    field_validator,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
@@ -40,6 +47,7 @@ from app.api.auth import (
 from app.api.decorators import experimental
 from app.api.exception_handlers import APIExceptionContent, APIExceptionResponse
 from app.core.config import get_settings
+from app.core.entitlements import Entitlement
 from app.core.exceptions import (
     DeduplicationValueError,
     ParseError,
@@ -47,19 +55,29 @@ from app.core.exceptions import (
 )
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceIds,
+    SearchQuery,
 )
+from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.export_service import SearchExportService
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
+    run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
 from app.domain.robots.service import RobotService
@@ -100,7 +118,7 @@ def reference_anti_corruption_service(
     blob_repository: Annotated[BlobRepository, Depends(blob_repository)],
 ) -> ReferenceAntiCorruptionService:
     """Return the reference anti-corruption service."""
-    return ReferenceAntiCorruptionService(blob_repository=blob_repository)
+    return ReferenceAntiCorruptionService(sign_url=blob_repository.get_signed_url)
 
 
 def robot_anti_corruption_service() -> RobotAntiCorruptionService:
@@ -163,13 +181,13 @@ async def enhancement_request_hybrid_auth(
     request: Request,
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
     robot_service: Annotated[RobotService, Depends(robot_service)],
-) -> bool:
+) -> frozenset[Entitlement]:
     """Choose enhancement request writer scope auth strategy for our authorization."""
     return await choose_hybrid_auth_strategy(
         application_id=settings.azure_application_id,
         jwt_scope=AuthScope.ENHANCEMENT_REQUEST_WRITER,
         jwt_role=AuthRole.ENHANCEMENT_REQUEST_WRITER,
-        get_client_secret=robot_service.get_robot_secret_standalone,
+        get_client_auth_info=robot_service.get_robot_auth_info,
         hmac_client_type=HMACClientType.ROBOT,
         bypass_auth=settings.should_bypass_auth,
     )(request=request, credentials=credentials)
@@ -178,9 +196,49 @@ async def enhancement_request_hybrid_auth(
 reference_reader_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_reader,
 )
+
 reference_deduplication_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_reference_deduplicator,
 )
+
+
+def reference_reader_access_control_service(
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
+) -> ReferenceAccessControlService:
+    """Build the reference ACL for routes guarded by the reference-reader auth."""
+    return ReferenceAccessControlService(entitlements=entitlements)
+
+
+def search_export_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
+) -> SearchExportService:
+    """Return the search export service."""
+    return SearchExportService(
+        anti_corruption_service=reference_anti_corruption_service,
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        access_control_service=access_control_service,
+        get_jsonl_deduplicated_references=(
+            reference_service.get_jsonl_deduplicated_references
+        ),
+    )
+
+
+def reference_hybrid_access_control_service(
+    entitlements: Annotated[
+        frozenset[Entitlement], Depends(enhancement_request_hybrid_auth)
+    ],
+) -> ReferenceAccessControlService:
+    """Build the reference ACL for routes guarded by the hybrid (JWT/HMAC) auth."""
+    return ReferenceAccessControlService(entitlements=entitlements)
 
 
 reference_router = APIRouter(
@@ -191,6 +249,11 @@ reference_router = APIRouter(
 search_router = APIRouter(
     prefix="/search",
     tags=["search"],
+    dependencies=[Depends(reference_reader_auth)],
+)
+exports_router = APIRouter(
+    prefix="/exports",
+    tags=["exports"],
     dependencies=[Depends(reference_reader_auth)],
 )
 enhancement_request_router = APIRouter(
@@ -239,9 +302,12 @@ def parse_publication_year_range(
 ) -> PublicationYearRange | None:
     """Parse a publication year range from a query parameter."""
     if start_year or end_year:
-        return anti_corruption_service.publication_year_range_from_query_parameter(
-            start_year, end_year
-        )
+        try:
+            return anti_corruption_service.publication_year_range_from_query_parameter(
+                start_year, end_year
+            )
+        except (ValueError, ValidationError) as exc:
+            raise ParseError(detail=str(exc)) from exc
     return None
 
 
@@ -274,12 +340,179 @@ def parse_annotation_filters(
     """Parse annotation filters from query parameters."""
     if not annotation:
         return []
-    return [
-        anti_corruption_service.annotation_filter_from_query_parameter(
-            annotation_filter_string
-        )
-        for annotation_filter_string in annotation
-    ]
+    try:
+        return [
+            anti_corruption_service.annotation_filter_from_query_parameter(
+                annotation_filter_string
+            )
+            for annotation_filter_string in annotation
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def parse_linked_data_concept_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    concept: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of linked-data concept filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_concepts` "
+                "contain at least one of the listed URIs.\n"
+                "- Within a single value, separate multiple URIs with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `concept` parameters are combined with AND logic.\n\n"
+                "These must be fully-qualified URIs."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/scheme/C00001",
+                (
+                    "https://vocab.evidence-repository.org/scheme/C00001,"
+                    "https://vocab.evidence-repository.org/scheme/C00002"
+                ),
+            ],
+        ),
+    ] = None,
+) -> list[LinkedDataConceptFilter]:
+    """Parse linked-data concept filters from query parameters."""
+    if not concept:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_concept_filter_from_query_parameter(
+                concept_filter_string
+            )
+            for concept_filter_string in concept
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def parse_linked_data_country_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    country: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of country filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_countries` "
+                "contain at least one of the listed ISO 3166-1 alpha-2 codes.\n"
+                "- Within a single value, separate multiple codes with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `country` parameters are combined with AND logic."
+            ),
+            examples=["US", "US,GB,FR"],
+        ),
+    ] = None,
+) -> list[LinkedDataCountryFilter]:
+    """Parse country filters from query parameters."""
+    if not country:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_country_filter_from_query_parameter(
+                country_filter_string
+            )
+            for country_filter_string in country
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def parse_linked_data_country_wb_region_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    country_wb_region: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of World Bank region filters to apply to the search.\n\n"
+                "- Each value matches references whose `linked_data_country_wb_"
+                "regions` contain at least one of the listed region IDs.\n"
+                "- Within a single value, separate multiple IDs with commas "
+                "(`,`). These are combined with OR logic.\n"
+                "- Multiple `country_wb_region` parameters are combined with AND."
+            ),
+            examples=["EAS", "EAS,ECS"],
+        ),
+    ] = None,
+) -> list[LinkedDataCountryWBRegionFilter]:
+    """Parse World Bank region filters from query parameters."""
+    if not country_wb_region:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_country_wb_region_filter_from_query_parameter(
+                region_filter_string
+            )
+            for region_filter_string in country_wb_region
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def _validate_vocab_host(url: HttpUrl) -> HttpUrl:
+    """Restrict ``vocabulary=`` to a subdomain of ``settings.vocabulary_host``."""
+    suffix = "." + settings.vocabulary_host
+    if not url.host or not url.host.endswith(suffix):
+        msg = f"vocabulary host must be a subdomain of {settings.vocabulary_host}."
+        raise ValueError(msg)
+    return url
+
+
+def parse_search_query(
+    q: Annotated[
+        str,
+        Query(min_length=1, description="The query string."),
+    ],
+    annotation_filters: Annotated[
+        list[AnnotationFilter],
+        Depends(parse_annotation_filters),
+    ],
+    publication_year_range: Annotated[
+        PublicationYearRange | None,
+        Depends(parse_publication_year_range),
+    ],
+    linked_data_concept_filters: Annotated[
+        list[LinkedDataConceptFilter],
+        Depends(parse_linked_data_concept_filters),
+    ],
+    linked_data_country_filters: Annotated[
+        list[LinkedDataCountryFilter],
+        Depends(parse_linked_data_country_filters),
+    ],
+    linked_data_country_wb_region_filters: Annotated[
+        list[LinkedDataCountryWBRegionFilter],
+        Depends(parse_linked_data_country_wb_region_filters),
+    ],
+) -> SearchQuery:
+    """Bundle the shared search parameters into a domain SearchQuery."""
+    return SearchQuery(
+        query_string=q,
+        annotation_filters=annotation_filters,
+        publication_year_range=publication_year_range,
+        linked_data_concept_filters=linked_data_concept_filters,
+        linked_data_country_filters=linked_data_country_filters,
+        linked_data_country_wb_region_filters=linked_data_country_wb_region_filters,
+    )
+
+
+SortParam = Annotated[
+    list[str] | None,
+    Query(
+        description="A list of fields to sort the results by. "
+        "Prefix a field with `-` to sort in descending order. "
+        "If omitted, will sort by relevance score descending. "
+        "Multiple sort fields can be provided and will be applied "
+        "in the order given. Sort fields cannot be `text` fields.",
+    ),
+]
 
 
 @search_router.get(
@@ -294,7 +527,8 @@ def parse_annotation_filters(
     description="Search for references using a query string in "
     "[Lucene syntax](https://www.elastic.co/docs/reference/query-languages/query-dsl/query-dsl-query-string-query#query-string-syntax)"
     ". If the query string does not specify search fields, the search will query over "
-    f"[{', '.join(SearchService.default_search_fields)}]. The query string can only "
+    f"[{', '.join(ReferenceESRepository.default_search_fields)}]. The query string "
+    "can only "
     "search over fields on the root level of the Reference document.\n\n"
     "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
     "and if a query would return more than 10,000 results the total count is listed as "
@@ -305,46 +539,25 @@ async def search_references(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
-    q: Annotated[
-        str,
-        Query(
-            description="The query string.",
-        ),
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
     ],
-    annotations: Annotated[
-        list[AnnotationFilter] | None,
-        Depends(parse_annotation_filters),
-    ],
-    publication_year_range: Annotated[
-        PublicationYearRange | None,
-        Depends(parse_publication_year_range),
-    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    sort: SortParam = None,
     page: Annotated[
         int,
         Query(
             ge=1,
-            le=10_000 / 20,  # Elasticsearch max result window divided by page size
+            le=SearchService.MAX_RESULT_WINDOW / 20,
             description="The page number to retrieve, indexed from 1. "
             "Each page contains 20 results.",
         ),
     ] = 1,
-    sort: Annotated[
-        list[str],
-        Query(
-            description="A list of fields to sort the results by. "
-            "Prefix a field with `-` to sort in descending order. "
-            "If omitted, will sort by relevance score descending. "
-            "Multiple sort fields can be provided and will be applied "
-            "in the order given. Sort fields cannot be `text` fields.",
-        ),
-    ] = None,
 ) -> destiny_sdk.references.ReferenceSearchResult:
     """Search for references given a query string."""
     search_result = await reference_service.search_references(
-        q,
+        query,
         page=page,
-        annotations=annotations,
-        publication_year_range=publication_year_range,
         sort=sort,
     )
     references = (
@@ -354,13 +567,275 @@ async def search_references(
         if search_result.hits
         else []
     )
-    return anti_corruption_service.two_stage_reference_search_result_to_sdk(
-        search_result, references
+    return await anti_corruption_service.two_stage_reference_search_result_to_sdk(
+        search_result,
+        [
+            access_control_service.redact_reference(reference)
+            for reference in references
+        ],
     )
 
 
-# NB it's important this occurs before defining `/references/{reference_id}/` route
+@search_router.get(
+    "/ids/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+)
+@experimental
+async def search_reference_ids(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    sort: SortParam = None,
+) -> destiny_sdk.references.ReferenceIDSearchResult:
+    """
+    Search for references and return only the matching reference IDs.
+
+    Returns the matching reference IDs without the reference data. Accepts the
+    same query and filter parameters as `/references/search/` without
+    pagination. Returns the IDs in result order, capped at the first 10,000
+    matches. When more references match than are returned,
+    `total.is_lower_bound` is true.
+    """
+    search_result = await reference_service.search_references(
+        query,
+        page=1,
+        page_size=SearchService.MAX_RESULT_WINDOW,
+        sort=sort,
+    )
+    return anti_corruption_service.reference_id_search_result_to_sdk(search_result)
+
+
+@search_router.get(
+    "/facets/",
+    status_code=status.HTTP_200_OK,
+    response_model_exclude_none=True,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description=(
+        "Per-facet term counts over the references matching the search. "
+        "Accepts the same filters as `/references/search/`; add one or more "
+        "`?facet=` values (`concepts`, `countries`, `country_wb_regions`).\n\n"
+        "**Sibling-aware counts.** When you filter on a field *and* request its "
+        "facet, the counts show what you'd see if your selection were toggled — "
+        "not the co-occurrence under your filter.\n\n"
+        "For `concepts`, supply `?vocabulary=`. A concept's siblings are every "
+        "member of its scheme, regardless of hierarchical depth, so each `?concept=` "
+        "parameter is one scheme's selection; the server enforces (400 on "
+        "violation):\n\n"
+        "- URIs inside one `?concept=` must belong to the same scheme.\n"
+        "- Different `?concept=` filters must be in different schemes.\n"
+        "- Every URI must resolve in the vocabulary.\n\n"
+        "For all other facets, supply a single OR'd filter when requesting "
+        "the matching facet (multiple AND'd filters return 400).\n\n"
+        f"Each facet returns at most {settings.es_aggregation_max_buckets:,} buckets."
+    ),
+)
+async def count_facets_for_search(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    facet: Annotated[
+        list[destiny_sdk.references.FacetType],
+        Query(
+            min_length=1,
+            description="One or more facet types to count.",
+        ),
+    ],
+    vocabulary: Annotated[
+        HttpUrl,
+        AfterValidator(_validate_vocab_host),
+        Query(
+            description=(
+                "Vocabulary URI for sibling-aware facet counting. Required when "
+                "filtering on concepts and requesting the `concepts` facet. "
+                f"Host must be a subdomain of `{settings.vocabulary_host}`."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
+            ],
+        ),
+    ] = None,
+) -> destiny_sdk.references.ReferenceFacetResult:
+    """Return per-facet term counts for references matching the query."""
+    buckets_by_facet = await reference_service.aggregate_facets(
+        query,
+        anti_corruption_service.facet_types_from_sdk(facet),
+        vocabulary_uri=str(vocabulary) if vocabulary else None,
+    )
+    return anti_corruption_service.facets_to_sdk(buckets_by_facet)
+
+
+@search_router.get(
+    "/cross-facets/",
+    status_code=status.HTTP_200_OK,
+    responses={
+        status.HTTP_400_BAD_REQUEST: {
+            "description": "Bad Query String",
+            "model": APIExceptionContent,
+        }
+    },
+    description=(
+        "Cross-tabulate two axes over the references matching the search, for "
+        "evidence maps. Accepts the same filters as `/references/search/`, plus the "
+        "two `axes`.\n\n"
+        "When an axis is a concept-scheme URI, supply `?vocabulary=`.\n\n"
+        "**Counting.** Each returned cell is a strict intersection: references "
+        "matching both its axis values, all panel filters and the query string. "
+        "Only non-zero cells are returned, sorted by descending count.\n\n"
+        "Cells may sum to more than `total` because a reference can carry multiple "
+        "values on an axis (and to less, as a reference matching the filters need "
+        "not have a value on either axis). `total` is exact. A matrix whose bucket "
+        f"count would exceed {settings.es_cross_facet_max_cells:,} is rejected."
+    ),
+)
+async def cross_tabulate_facets(
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    axes: Annotated[
+        tuple[str, str],
+        Query(
+            description=(
+                "The two axes to cross-tabulate, in order. Each is one of:\n\n"
+                "- a concept-scheme URI\n"
+                "- the literal `countries`\n"
+                "- the literal `country_wb_regions`\n\n"
+                "Mixed types are allowed. Each cell reports its values in this same "
+                "axis order."
+            ),
+            examples=[
+                [
+                    "country_wb_regions",
+                    "https://vocab.evidence-repository.org/scheme/Themes",
+                ]
+            ],
+        ),
+    ],
+    vocabulary: Annotated[
+        HttpUrl,
+        AfterValidator(_validate_vocab_host),
+        Query(
+            description=(
+                "Vocabulary URI scoping concept-scheme axes to their members. "
+                "Required when an axis is a concept-scheme URI. "
+                f"Host must be a subdomain of `{settings.vocabulary_host}`."
+            ),
+            examples=[
+                "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
+            ],
+        ),
+    ] = None,
+) -> destiny_sdk.references.ReferenceCrossFacetResult:
+    """Cross-tabulate two axes for references matching the query."""
+    cells, total = await reference_service.aggregate_cross_facet(
+        query,
+        axes,
+        vocabulary_uri=str(vocabulary) if vocabulary else None,
+    )
+    return anti_corruption_service.cross_facet_to_sdk(cells, total)
+
+
+@exports_router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+    description=(
+        "Queue an export job that produces a JSONL file of references matching the "
+        "given search. Accepts the same filter parameters as `/references/search/` "
+        "without pagination. Returns the job id with `status: pending`; poll "
+        "`GET /references/search/exports/{id}/` until the job completes."
+    ),
+)
+async def request_search_export(
+    search_export_service: Annotated[
+        SearchExportService, Depends(search_export_service)
+    ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
+    query: Annotated[SearchQuery, Depends(parse_search_query)],
+    sort: SortParam = None,
+) -> destiny_sdk.references.SearchExportRead:
+    """Queue a search export job and return its id and pending status."""
+    search_export = await search_export_service.request_search_export(
+        query,
+        sort=sort,
+    )
+    try:
+        await queue_task_with_trace(
+            run_search_export_task,
+            long_running=True,
+            priority=TaskPriority.HIGH,
+            search_export_id=search_export.id,
+            entitlements=entitlements,
+            otel_enabled=settings.otel_enabled,
+        )
+    except Exception as exc:
+        # If the broker is unreachable the row would otherwise be stuck in
+        # `pending` forever, so flip it to `failed` and surface a retryable
+        # error to the caller.
+        logger.exception(
+            "Failed to enqueue search export task",
+            search_export_id=str(search_export.id),
+        )
+        search_export = await search_export_service.fail_search_export(
+            search_export.id,
+            f"Failed to enqueue export task: {exc}",
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not enqueue search export job; please retry.",
+        ) from exc
+    return await anti_corruption_service.search_export_to_sdk(search_export)
+
+
+@exports_router.get(
+    "/{search_export_id}/",
+    description=(
+        "Get the status of a search export job. Once `status` is "
+        "`completed`, the response includes a signed `result_url` for the "
+        "produced JSONL file, and `truncated: true` if the matching set "
+        f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
+        f"file contains only the first {SearchService.MAX_RESULT_WINDOW:,} "
+        "matches). The URL is re-signed on each call, so an expired URL can "
+        "be refreshed by polling again."
+    ),
+)
+async def get_search_export(
+    search_export_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the search export job.")
+    ],
+    search_export_service: Annotated[
+        SearchExportService, Depends(search_export_service)
+    ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> destiny_sdk.references.SearchExportRead:
+    """Get the status of a search export job, including its signed URL."""
+    search_export = await search_export_service.get_search_export(search_export_id)
+    return await anti_corruption_service.search_export_to_sdk(search_export)
+
+
+# NB it's important these occur before defining `/references/{reference_id}/` route
 # to avoid route conflicts. Order matters for FastAPI route matching.
+search_router.include_router(exports_router)
 reference_router.include_router(search_router)
 
 
@@ -373,10 +848,15 @@ async def get_reference(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
 ) -> destiny_sdk.references.Reference:
     """Get a reference by id."""
     reference = await reference_service.get_reference(reference_id)
-    return anti_corruption_service.reference_to_sdk(reference)
+    return await anti_corruption_service.reference_to_sdk(
+        access_control_service.redact_reference(reference)
+    )
 
 
 class IdentifierLookupQueryParams(BaseModel):
@@ -427,6 +907,9 @@ async def lookup_references(
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
     identifiers: Annotated[
         list[destiny_sdk.identifiers.IdentifierLookup], Depends(parse_identifiers)
     ],
@@ -436,7 +919,9 @@ async def lookup_references(
         identifiers
     )
     return [
-        anti_corruption_service.reference_to_sdk(reference)
+        await anti_corruption_service.reference_to_sdk(
+            access_control_service.redact_reference(reference)
+        )
         for reference in await reference_service.get_references_from_identifiers(
             identifier_lookups
         )
@@ -519,6 +1004,10 @@ async def request_robot_enhancement_batch(
         ReferenceAntiCorruptionService,
         Depends(reference_anti_corruption_service),
     ],
+    access_control_service: Annotated[
+        ReferenceAccessControlService,
+        Depends(reference_hybrid_access_control_service),
+    ],
     limit: Annotated[
         int,
         Query(
@@ -551,6 +1040,7 @@ async def request_robot_enhancement_batch(
             limit=limit,
             lease_duration=lease,
             blob_repository=blob_repository,
+            access_control_service=access_control_service,
         )
     )
 

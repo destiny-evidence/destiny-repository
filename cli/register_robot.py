@@ -62,6 +62,18 @@ def argument_parser() -> argparse.ArgumentParser:
     )
 
     parser.add_argument(
+        "--entitlement",
+        type=destiny_sdk.robots.RobotEntitlement,
+        choices=list(destiny_sdk.robots.RobotEntitlement),
+        action="append",
+        default=[],
+        help=(
+            "An entitlement to grant the robot. May be repeated. "
+            "Requires the robot.entitlement.writer role on the caller."
+        ),
+    )
+
+    parser.add_argument(
         "-e",
         "--env",
         type=Environment,
@@ -82,6 +94,7 @@ if __name__ == "__main__":
             name=args.name,
             description=args.description,
             owner=args.owner,
+            entitlements=set(args.entitlement),
         )
 
         registered_robot = register_robot(

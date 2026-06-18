@@ -107,28 +107,10 @@ variable "azure_tenant_id" {
   type        = string
 }
 
-variable "external_directory_enabled" {
-  description = "Enable authentication via the external directory (CIAM). When false, uses the application tenant for authentication."
-  type        = bool
-  default     = false
-}
-
-variable "external_directory_tenant_id" {
-  description = "ID of the external directory tenant for the Azure AD provider. Required when external_directory_enabled is true."
-  type        = string
-}
-
-variable "azure_login_url" {
-  description = "Azure login URL for JWT token validation. Required when external_directory_enabled is true. Examples: https://login.microsoftonline.com/tenantId, https://tenantName.ciamlogin.com/tenantId"
-  type        = string
-  default     = null
-}
-
 variable "budget_code" {
   description = "Budget code for tagging resource groups. Required tag for resource groups"
   type        = string
 }
-
 
 variable "container_app_cpu" {
   description = "CPU for the app container app"
@@ -172,6 +154,13 @@ variable "queue_active_jobs_scaling_threshold" {
   default     = 100
 }
 
+variable "priority_queue_active_jobs_scaling_threshold" {
+  description = "Active jobs threshold for scaling the tasks container app for high priority tasks."
+  type        = number
+  default     = 20
+}
+
+
 variable "created_by" {
   description = "Who created this infrastructure. Required tag for resource groups"
   type        = string
@@ -182,24 +171,9 @@ variable "developers_group_id" {
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
 }
 
-variable "external_directory_developers_group_id" {
-  type        = string
-  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs. Required when external_directory_enabled is true."
-}
-
-variable "external_directory_client_id" {
-  description = "Client ID of the external directory application. Required when external_directory_enabled is true."
-  type        = string
-}
-
 variable "ui_users_group_id" {
   type        = string
   description = "Id of a group to assign to UI-relevant API roles on destiny repository"
-}
-
-variable "external_directory_ui_users_group_id" {
-  type        = string
-  description = "Id of a group to assign to UI-relevant API roles on destiny repository. Required when external_directory_enabled is true."
 }
 
 variable "db_crud_group_id" {
@@ -259,15 +233,16 @@ variable "open_alex_incremental_updater_client_id" {
   type        = string
 }
 
-variable "open_alex_incremental_updater_external_client_id" {
-  description = "The client id of the open alex incremental updater application in the external tenant. Required when external_directory_enabled is true."
-  type        = string
-}
-
 variable "destiny_demonstrator_ui_app_name" {
   description = "The name of the destiny demonstrator ui application"
   type        = string
   default     = "demonstrator-ui"
+}
+
+variable "ai_evidence_summariser_app_name" {
+  description = "The name of the AI evidence summariser application. Set to null to disable its role assignments."
+  type        = string
+  default     = null
 }
 
 # elasticsearch is not available in all regions, see https://www.elastic.co/cloud/regions
@@ -396,10 +371,24 @@ variable "default_upload_file_chunk_size" {
   default     = 1
 }
 
+variable "upload_file_chunk_size_override" {
+  description = "Per-UploadFile override of the upload file chunk size. Keys must match the UploadFile StrEnum values (e.g. search_export)."
+  type        = map(number)
+  default = {
+    search_export = 1000
+  }
+}
+
 variable "max_reference_lookup_query_length" {
   description = "Maximum number of identifiers to allow in a single reference lookup query"
   type        = number
   default     = 100
+}
+
+variable "es_aggregation_max_buckets" {
+  description = "Maximum buckets returned per Elasticsearch terms aggregation."
+  type        = number
+  default     = 1000
 }
 
 variable "es_migrator_reindex_polling_interval" {

@@ -19,6 +19,7 @@ from app.api.exception_handlers import (
     not_found_exception_handler,
     parse_error_exception_handler,
     sdk_to_domain_exception_handler,
+    vocabulary_fetch_exception_handler,
 )
 from app.api.middleware import LoggerMiddleware
 from app.core.exceptions import (
@@ -29,6 +30,7 @@ from app.core.exceptions import (
     NotFoundError,
     ParseError,
     SDKToDomainError,
+    VocabularyFetchError,
 )
 from app.core.telemetry.fastapi import FastAPITracingMiddleware
 from app.core.telemetry.logger import get_logger
@@ -102,6 +104,7 @@ def register_api(
             ESMalformedDocumentError: es_exception_handler,
             ESQueryError: es_exception_handler,
             ParseError: parse_error_exception_handler,
+            VocabularyFetchError: vocabulary_fetch_exception_handler,
         },
         redoc_url=None,  # Custom definition of redoc below
         openapi_tags=[

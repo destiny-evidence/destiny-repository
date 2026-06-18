@@ -9,6 +9,7 @@ from app.core.config import Environment, get_settings
 from app.core.telemetry.logger import logger_configurer
 from app.core.telemetry.otel import configure_otel
 from app.core.telemetry.taskiq import TaskiqTracingMiddleware
+from app.persistence.blob.repository import close_blob_clients
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
 
@@ -21,6 +22,7 @@ logger_configurer.configure_console_logger(
 broker: AsyncBroker = AzureServiceBusBroker(
     namespace=settings.message_broker_namespace,
     queue_name=settings.message_broker_queue_name,
+    priority_queue_name=settings.message_broker_priority_queue_name,
     max_lock_renewal_duration=settings.message_lock_renewal_duration,
 )
 
@@ -28,7 +30,9 @@ if settings.env == Environment.LOCAL or settings.tests_use_rabbitmq:
     from opentelemetry.instrumentation.aio_pika import AioPikaInstrumentor
 
     AioPikaInstrumentor().instrument()
-    broker = AioPikaBroker(settings.message_broker_url)
+    # Declares the queue with x-max-priority so RabbitMQ honours
+    # the AMQP priority property set from the "priority" label.
+    broker = AioPikaBroker(settings.message_broker_url, max_priority=10)
 
 elif settings.env == "test":
     broker = InMemoryBroker()
@@ -58,6 +62,7 @@ async def shutdown(_state: TaskiqState) -> None:
     """Close DB connections when the worker is shutting down."""
     await db_manager.close()
     await es_manager.close()
+    await close_blob_clients()
 
 
 # Scheduler for development - only active in local environment

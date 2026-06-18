@@ -8,6 +8,7 @@ from opentelemetry import trace
 from structlog.contextvars import bound_contextvars
 
 from app.core.config import Environment, get_settings
+from app.core.entitlements import Entitlement
 from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import (
     Attributes,
@@ -23,9 +24,13 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.export_service import SearchExportService
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -98,7 +103,7 @@ async def validate_and_import_robot_enhancement_batch_result(
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -174,6 +179,45 @@ async def validate_and_import_robot_enhancement_batch_result(
 
 
 @broker.task
+async def run_search_export_task(
+    search_export_id: UUID, entitlements: list[str]
+) -> None:
+    """
+    Run a search export job and write its result to blob storage.
+
+    ``entitlements`` is the caller's entitlement snapshot, taken at enqueue
+    time, used to redact references before they're streamed to blob storage.
+    """
+    name_span("Run search export")
+    trace_attribute(Attributes.SEARCH_EXPORT_ID, str(search_export_id))
+    logger.info(
+        "Running search export",
+        search_export_id=str(search_export_id),
+    )
+    access_control_service = ReferenceAccessControlService(
+        entitlements=frozenset(Entitlement(e) for e in entitlements)
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        search_export_service = SearchExportService(
+            anti_corruption_service=reference_anti_corruption_service,
+            sql_uow=sql_uow,
+            es_uow=es_uow,
+            access_control_service=access_control_service,
+            get_jsonl_deduplicated_references=(
+                reference_service.get_jsonl_deduplicated_references
+            ),
+        )
+        await search_export_service.run_search_export(search_export_id, blob_repository)
+
+
+@broker.task
 async def repair_reference_index() -> None:
     """Async logic for repairing the reference index."""
     name_span("Repair index")
@@ -182,13 +226,13 @@ async def repair_reference_index() -> None:
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
         )
         partitions = await reference_service.get_reference_id_partition_boundaries(
-            partition_size=settings.es_reference_repair_chunk_size
+            partition_size=settings.es_reference_repair_max_batch_size
         )
         for index, (min_id, max_id) in enumerate(partitions, start=1):
             with new_linked_trace(
@@ -227,7 +271,7 @@ async def repair_reference_index_for_chunk(
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -240,6 +284,27 @@ async def repair_reference_index_for_chunk(
 
 
 @broker.task
+async def repair_reference_index_subset(reference_ids: list[UUID]) -> None:
+    """Re-index a caller-supplied subset of references."""
+    name_span("Repair index subset")
+    trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
+    trace_attribute(Attributes.DB_RECORD_COUNT, len(reference_ids))
+    logger.info(
+        "Repairing reference index subset",
+        n_references=len(reference_ids),
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        await reference_service.index_references(reference_ids)
+
+
+@broker.task
 async def repair_robot_automation_percolation_index() -> None:
     """Async logic for repairing the robot automation percolation index."""
     name_span("Repair index")
@@ -248,7 +313,7 @@ async def repair_robot_automation_percolation_index() -> None:
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -274,7 +339,7 @@ async def process_reference_duplicate_decision(
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow
@@ -362,7 +427,7 @@ async def expire_and_replace_stale_pending_enhancements() -> None:
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         blob_repository = await get_blob_repository()
         reference_anti_corruption_service = ReferenceAntiCorruptionService(
-            blob_repository
+            sign_url=blob_repository.get_signed_url
         )
         reference_service = await get_reference_service(
             reference_anti_corruption_service, sql_uow, es_uow

@@ -2,16 +2,20 @@
 resource "random_uuid" "administrator_role" {}
 resource "random_uuid" "importer_role" {}
 resource "random_uuid" "reference_reader_role" {}
+resource "random_uuid" "reference_full_text_reader_role" {}
 resource "random_uuid" "reference_deduplicator_role" {}
 resource "random_uuid" "robot_writer_role" {}
+resource "random_uuid" "robot_entitlement_writer_role" {}
 resource "random_uuid" "enhancement_request_writer_role" {}
 
 # Unique UUIDs for oauth2_permission_scope (delegated permissions)
 resource "random_uuid" "administrator_scope" {}
 resource "random_uuid" "importer_scope" {}
 resource "random_uuid" "reference_reader_scope" {}
+resource "random_uuid" "reference_full_text_reader_scope" {}
 resource "random_uuid" "reference_deduplicator_scope" {}
 resource "random_uuid" "robot_writer_scope" {}
+resource "random_uuid" "robot_entitlement_writer_scope" {}
 resource "random_uuid" "enhancement_request_writer_scope" {}
 
 # AD application for destiny repository
@@ -53,6 +57,15 @@ resource "azuread_application" "destiny_repository" {
       user_consent_display_name  = "Reference Reader"
     }
     oauth2_permission_scope {
+      admin_consent_description  = "Allow the app to view the full texts of references as the signed-in user"
+      admin_consent_display_name = "Reference Full Text Reader as user"
+      id                         = random_uuid.reference_full_text_reader_scope.result
+      type                       = "User"
+      value                      = "reference.full_text.reader.all"
+      user_consent_description   = "Allow you to view the full texts of references"
+      user_consent_display_name  = "Reference Full Text Reader"
+    }
+    oauth2_permission_scope {
       admin_consent_description  = "Allow the app to deduplicate references as the signed-in user"
       admin_consent_display_name = "Reference Deduplicator as user"
       id                         = random_uuid.reference_deduplicator_scope.result
@@ -80,6 +93,16 @@ resource "azuread_application" "destiny_repository" {
       value                      = "robot.writer.all"
       user_consent_description   = "Allow you to register robots and rotate robot client secrets"
       user_consent_display_name  = "Robot Writer"
+    }
+
+    oauth2_permission_scope {
+      admin_consent_description  = "Allow the app to write entitlements on robots as the signed-in user"
+      admin_consent_display_name = "Robot Entitlement Writer as user"
+      id                         = random_uuid.robot_entitlement_writer_scope.result
+      type                       = "User"
+      value                      = "robot.entitlement.writer.all"
+      user_consent_description   = "Allow you to write entitlements on robots"
+      user_consent_display_name  = "Robot Entitlement Writer"
     }
   }
 
@@ -119,6 +142,15 @@ resource "azuread_application_app_role" "reference_reader" {
   value                = "reference.reader"
 }
 
+resource "azuread_application_app_role" "reference_full_text_reader" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can view the full texts of references"
+  display_name         = "Reference Full Text Reader"
+  role_id              = random_uuid.reference_full_text_reader_role.result
+  value                = "reference.full_text.reader"
+}
+
 resource "azuread_application_app_role" "reference_deduplicator" {
   application_id       = azuread_application.destiny_repository.id
   allowed_member_types = ["Application"]
@@ -135,6 +167,15 @@ resource "azuread_application_app_role" "enhancement_request_writer" {
   display_name         = "Enhancement Request Writer"
   role_id              = random_uuid.enhancement_request_writer_role.result
   value                = "enhancement_request.writer"
+}
+
+resource "azuread_application_app_role" "robot_entitlement_writer" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can write entitlements on robots"
+  display_name         = "Robot Entitlement Writer"
+  role_id              = random_uuid.robot_entitlement_writer_role.result
+  value                = "robot.entitlement.writer"
 }
 
 resource "azuread_service_principal" "destiny_repository" {
@@ -284,5 +325,26 @@ resource "azuread_app_role_assignment" "destiny_demonstrator_ui_to_reference_rea
   count               = var.environment == "development" ? 0 : 1
   app_role_id         = azuread_application_app_role.reference_reader.role_id
   principal_object_id = data.azurerm_user_assigned_identity.destiny_demonstrator_ui[0].principal_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
+
+# AI Evidence Summariser role assignments
+data "azurerm_user_assigned_identity" "ai_evidence_summariser" {
+  count               = var.environment != "development" && var.ai_evidence_summariser_app_name != null ? 1 : 0
+  name                = "${var.ai_evidence_summariser_app_name}-${var.environment}"
+  resource_group_name = "rg-${var.ai_evidence_summariser_app_name}-${var.environment}"
+}
+
+resource "azuread_app_role_assignment" "ai_evidence_summariser_to_reference_reader" {
+  count               = length(data.azurerm_user_assigned_identity.ai_evidence_summariser)
+  app_role_id         = azuread_application_app_role.reference_reader.role_id
+  principal_object_id = data.azurerm_user_assigned_identity.ai_evidence_summariser[0].principal_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
+
+resource "azuread_app_role_assignment" "ai_evidence_summariser_to_reference_full_text_reader" {
+  count               = length(data.azurerm_user_assigned_identity.ai_evidence_summariser)
+  app_role_id         = azuread_application_app_role.reference_full_text_reader.role_id
+  principal_object_id = data.azurerm_user_assigned_identity.ai_evidence_summariser[0].principal_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }

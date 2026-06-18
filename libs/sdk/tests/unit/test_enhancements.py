@@ -381,6 +381,74 @@ def test_linked_data_enhancement_non_string_context():
         )
 
 
+def test_full_text_enhancement_valid():
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="https://example.com/full.pdf",
+        byte_size=12345,
+        sha256_checksum="abc123",
+        version=destiny_sdk.enhancements.DriverVersion.PUBLISHED_VERSION,
+        is_oa=True,
+        license="cc-by",
+        source="openalex",
+        source_url="https://example.com/source",
+        retrieved_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+    assert (
+        full_text.enhancement_type == destiny_sdk.enhancements.EnhancementType.FULL_TEXT
+    )
+    assert full_text.mime_type == "application/pdf"
+
+
+def test_full_text_enhancement_minimal_defaults():
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="https://example.com/full.pdf",
+    )
+    assert full_text.mime_type == "application/pdf"
+    assert full_text.byte_size is None
+    assert full_text.sha256_checksum is None
+    assert full_text.version is None
+
+
+def test_full_text_enhancement_requires_file_url():
+    with pytest.raises(ValidationError):
+        destiny_sdk.enhancements.FullTextEnhancement()
+
+
+def test_full_text_enhancement_invalid_file_url():
+    with pytest.raises(ValidationError):
+        destiny_sdk.enhancements.FullTextEnhancement(file_url="not-a-url")
+
+
+def test_full_text_enhancement_accepts_http_file_url():
+    """file_url accepts http or https; restriction (if any) lives on the app side."""
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="http://example.com/full.pdf",
+    )
+    assert str(full_text.file_url) == "http://example.com/full.pdf"
+
+
+def test_full_text_enhancement_discriminator_resolution():
+    """Enhancement.content resolves to FullTextEnhancement via discriminator."""
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="https://example.com/full.pdf",
+        mime_type="application/pdf",
+    )
+    enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid7(),
+        source="test_source",
+        visibility="public",
+        content=full_text,
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+    assert isinstance(enhancement.content, destiny_sdk.enhancements.FullTextEnhancement)
+
+    dumped = enhancement.to_jsonl()
+    restored = destiny_sdk.enhancements.Enhancement.model_validate_json(dumped)
+    assert isinstance(restored.content, destiny_sdk.enhancements.FullTextEnhancement)
+    assert str(restored.content.file_url) == "https://example.com/full.pdf"
+
+
 def test_pagination_empty_string_to_none():
     """Test that empty pagination strings are converted to None."""
     pagination = destiny_sdk.enhancements.Pagination(

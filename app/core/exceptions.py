@@ -471,6 +471,116 @@ class MinioBlobStorageError(BlobStorageError):
         super().__init__(detail, *args)
 
 
+class RemoteBlobStorageError(BlobStorageError):
+    """Exception for remote blob storage errors."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the RemoteBlobStorageError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class BlobSizeExceededError(BlobStorageError):
+    """A blob operation exceeded the caller-supplied maximum byte size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the BlobSizeExceededError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextIngestionError(DestinyRepositoryError):
+    """Base exception for failures storing a full-text enhancement."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextIngestionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextDownloadError(FullTextIngestionError):
+    """The source URL could not be fetched (timeout, 4xx/5xx, connection error)."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextDownloadError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextIntegrityError(FullTextIngestionError):
+    """Downloaded bytes don't match declared sha256 or byte_size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextIntegrityError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextSizeExceededError(FullTextIngestionError):
+    """Remote full-text source exceeded the configured maximum byte size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextSizeExceededError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class UnstoredFullTextError(FullTextIngestionError):
+    """
+    A full-text enhancement reached the persistence boundary unstored.
+
+    Raised when the storage step was skipped or failed to swap a
+    remote blob for an owned one before SQL/ES write.
+    """
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the UnstoredFullTextError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class AuthError(destiny_sdk.auth.AuthException):
     """An exception thrown by the authentication system."""
 
@@ -564,6 +674,10 @@ class ParseError(DestinyRepositoryError):
 
         """
         super().__init__(detail)
+
+
+class SiblingGroupingError(ParseError):
+    """An exception for when concept filters cannot be resolved into sibling groups."""
 
 
 class DuplicateEnhancementError(DestinyRepositoryError):

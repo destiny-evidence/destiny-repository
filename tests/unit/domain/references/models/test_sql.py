@@ -3,6 +3,7 @@ from uuid import uuid7
 import destiny_sdk
 import pytest
 
+from app.core.exceptions import UnstoredFullTextError
 from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierType,
@@ -12,6 +13,12 @@ from app.domain.references.models.sql import (
     Enhancement,
     ExternalIdentifier,
     Reference,
+)
+from app.persistence.blob.models import BlobStorageLocation
+from tests.factories import (
+    BlobStorageFileFactory,
+    EnhancementFactory,
+    FullTextEnhancementFactory,
 )
 
 # Dummy domain objects for testing conversion
@@ -208,6 +215,21 @@ async def test_enhancement_from_and_to_domain():
     # Verify that the preloaded reference was converted
     assert domain_enh.reference.id == dummy_sql_ref.id
     assert domain_enh.reference.visibility == dummy_sql_ref.visibility
+
+
+def test_enhancement_from_domain_rejects_unstored_full_text():
+    """Persisting an FT enhancement with a remote blob is refused."""
+    remote_blob = BlobStorageFileFactory.build(
+        location=BlobStorageLocation.HTTPS,
+        container="example.com",
+        path="papers",
+        filename="foo.pdf",
+    )
+    full_text = FullTextEnhancementFactory.build(blob=remote_blob)
+    enhancement = EnhancementFactory.build(content=full_text)
+
+    with pytest.raises(UnstoredFullTextError):
+        Enhancement.from_domain(enhancement)
 
 
 @pytest.mark.asyncio

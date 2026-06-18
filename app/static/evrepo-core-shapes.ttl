@@ -1,5 +1,6 @@
 @prefix evrepo: <https://vocab.evidence-repository.org/> .
 @prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
 
 # =============================================================================
 # SHACL Shapes for Evidence Repository Core Vocabulary
@@ -18,14 +19,17 @@ evrepo:LinkedDataEnhancementShape a sh:NodeShape ;
         sh:minCount 1 ;
     ] .
 
-# --- Investigation must have at least one Finding ---
+# --- Investigation may contain Findings (each must be a Finding) ---
 
 evrepo:InvestigationShape a sh:NodeShape ;
     sh:targetClass evrepo:Investigation ;
     sh:property [
         sh:path evrepo:hasFinding ;
         sh:class evrepo:Finding ;
-        sh:minCount 1 ;
+    ] , [
+        sh:path evrepo:hasAppliedConcept ;
+        sh:nodeKind sh:IRI ;
+        sh:class skos:Concept ;
     ] .
 
 # --- Finding must be non-empty (at least one of the structural links present) ---

@@ -4,10 +4,12 @@ from functools import lru_cache
 
 import httpx
 import tenacity
+from async_lru import alru_cache
 from cachetools import LRUCache
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
-from rdflib import Graph
+from rdflib import Graph, URIRef
+from rdflib.namespace import RDF, SKOS
 
 from app.core.exceptions import ContextNotPreFetchedError, VocabularyFetchError
 from app.core.telemetry.logger import get_logger
@@ -122,6 +124,26 @@ class VocabularyArtifactClient:
             "document": self._context_cache[url],
         }
 
+    @alru_cache(maxsize=128)
+    async def get_concept_labels(self, uri: str) -> dict[str, str]:
+        """Concept URI -> skos:prefLabel for the vocabulary."""
+        return _build_concept_labels(await self.get_vocabulary(uri))
+
+    @alru_cache(maxsize=128)
+    async def get_concept_schemes(self, uri: str) -> dict[str, str]:
+        """Concept URI -> skos:inScheme target for the vocabulary."""
+        return _build_concept_schemes(await self.get_vocabulary(uri))
+
+    @alru_cache(maxsize=128)
+    async def get_scheme_members(self, uri: str) -> dict[str, frozenset[str]]:
+        """Concept-scheme URI -> member concept URIs (all depths) for the vocabulary."""
+        return _build_scheme_members(await self.get_vocabulary(uri))
+
+    @alru_cache(maxsize=128)
+    async def get_concept_scheme_members(self, uri: str) -> dict[str, frozenset[str]]:
+        """Concept URI -> the members of every scheme it belongs to (self-inclusive)."""
+        return _build_concept_scheme_members(await self.get_vocabulary(uri))
+
     @tenacity.retry(
         retry=tenacity.retry_if_exception_type(httpx.TransportError),
         wait=tenacity.wait_exponential(multiplier=1, max=30),
@@ -158,3 +180,72 @@ class VocabularyArtifactClient:
 def get_vocabulary_artifact_client() -> VocabularyArtifactClient:
     """Return a singleton VocabularyArtifactClient instance."""
     return VocabularyArtifactClient()
+
+
+def _build_concept_labels(graph: Graph) -> dict[str, str]:
+    labels: dict[str, str] = {}
+    for concept, _, label in graph.triples((None, SKOS.prefLabel, None)):
+        if (concept, RDF.type, SKOS.Concept) in graph:
+            labels[str(concept)] = str(label)
+    return labels
+
+
+def _build_concept_schemes(graph: Graph) -> dict[str, str]:
+    return {
+        str(concept): str(scheme)
+        for concept, _, scheme in graph.triples((None, SKOS.inScheme, None))
+    }
+
+
+def _build_concept_scheme_members(graph: Graph) -> dict[str, frozenset[str]]:
+    """Map each concept URI to the members of every scheme it belongs to."""
+    members_by_scheme = _build_scheme_members(graph)
+    siblings: dict[str, set[str]] = {}
+    for members in members_by_scheme.values():
+        for concept in members:
+            siblings.setdefault(concept, set()).update(members)
+    return {concept: frozenset(peers) for concept, peers in siblings.items()}
+
+
+def _build_scheme_members(graph: Graph) -> dict[str, frozenset[str]]:
+    """
+    Map each concept-scheme URI to the full set of concept URIs that belong to it.
+
+    A concept belongs to a scheme if it says so directly, via ``skos:inScheme``,
+    ``skos:topConceptOf``, or ``skos:hasTopConcept``. A concept that makes no such
+    declaration falls back to the scheme(s) of its ``skos:broader`` ancestors.
+    """
+    explicit_schemes: dict[URIRef, set[URIRef]] = {}
+
+    def _assert(concept: object, scheme: object) -> None:
+        if isinstance(concept, URIRef) and isinstance(scheme, URIRef):
+            explicit_schemes.setdefault(concept, set()).add(scheme)
+
+    for concept, _, scheme in graph.triples((None, SKOS.inScheme, None)):
+        _assert(concept, scheme)
+    for concept, _, scheme in graph.triples((None, SKOS.topConceptOf, None)):
+        _assert(concept, scheme)
+    for scheme, _, concept in graph.triples((None, SKOS.hasTopConcept, None)):
+        _assert(concept, scheme)
+
+    parents_by_concept: dict[URIRef, set[URIRef]] = {}
+    for concept, _, parent in graph.triples((None, SKOS.broader, None)):
+        if isinstance(concept, URIRef) and isinstance(parent, URIRef):
+            parents_by_concept.setdefault(concept, set()).add(parent)
+
+    def schemes_for(concept: URIRef, seen: set[URIRef]) -> set[URIRef]:
+        if concept in explicit_schemes:
+            return explicit_schemes[concept]
+        if concept in seen:
+            return set()
+        seen.add(concept)
+        inherited: set[URIRef] = set()
+        for parent in parents_by_concept.get(concept, ()):
+            inherited |= schemes_for(parent, seen)
+        return inherited
+
+    members: dict[str, set[str]] = {}
+    for concept in set(explicit_schemes) | set(parents_by_concept):
+        for scheme in schemes_for(concept, set()):
+            members.setdefault(str(scheme), set()).add(str(concept))
+    return {scheme: frozenset(uris) for scheme, uris in members.items()}

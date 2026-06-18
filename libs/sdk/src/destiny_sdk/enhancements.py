@@ -41,7 +41,7 @@ class EnhancementType(StrEnum):
     RAW = auto()
     """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
-    """The full text of the reference. (To be implemented)"""
+    """The full text of the reference."""
 
 
 class AuthorPosition(StrEnum):
@@ -519,6 +519,85 @@ class LinkedDataEnhancement(BaseModel):
         )
 
 
+class FullTextEnhancement(BaseModel):
+    """
+    An enhancement for storing a link to the full text and its metadata.
+
+    Full texts are not for the sharing of copyrighted material without a license.
+    They are to maintain files for validation and to allow permitted text and data
+    mining activities.
+    """
+
+    enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
+    file_url: HttpUrl = Field(
+        description="URL to the full text file",
+    )
+    byte_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the file in bytes. "
+            "If provided on import, will be used to validate the file size. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    sha256_checksum: str | None = Field(
+        default=None,
+        description=(
+            "SHA256 checksum of the file. "
+            "If provided on import, will be used to verify the integrity of the file. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    mime_type: str = Field(
+        default="application/pdf",
+        description="The MIME type of the file.",
+    )
+    version: DriverVersion | None = Field(
+        default=None,
+        description=(
+            "The version (according to the DRIVER versioning scheme) of this full text."
+        ),
+    )
+    is_oa: bool | None = Field(
+        default=None,
+        description=(
+            "If this full text is Open Access. "
+            "May be left as null if this is unknown."
+        ),
+    )
+    license: str | None = Field(
+        default=None,
+        description="The publishing license for this full text.",
+        examples=[
+            "apache-2-0",
+            "cc-by",
+            "cc-by-nc",
+            "cc-by-nc-nd",
+            "cc-by-nc-sa",
+            "cc-by-nd",
+            "cc-by-sa",
+            "gpl-v2",
+            "gpl-v3",
+            "isc",
+            "mit",
+            "other-oa",
+            "public-domain",
+        ],
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source from which this full text was obtained.",
+    )
+    source_url: HttpUrl | None = Field(
+        default=None,
+        description="The URL of the source from which this full text was obtained.",
+    )
+    retrieved_at: datetime.datetime | None = Field(
+        default=None,
+        description="The timestamp when this full text was retrieved.",
+    )
+
+
 class RawEnhancement(BaseModel):
     """
     An enhancement for storing raw/arbitrary/unstructured data.
@@ -578,6 +657,7 @@ EnhancementContent = Annotated[
     | LocationEnhancement
     | ReferenceAssociationEnhancement
     | LinkedDataEnhancement
+    | FullTextEnhancement
     | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]

@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Coroutine
 from typing import Any
+from uuid import UUID
 
 import elasticsearch
 from elasticsearch import AsyncElasticsearch
@@ -33,13 +34,15 @@ class IndexManager:
     migrations by creating new indices and switching the alias atomically.
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         document_class: type[AsyncDocument],
         client: AsyncElasticsearch,
         *,
         otel_enabled: bool = False,
         repair_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
+        | None = None,
+        repair_subset_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         reindex_status_polling_interval: int = 5 * 60,  # default to 5min
     ) -> None:
@@ -50,6 +53,9 @@ class IndexManager:
             document_class: The AsyncDocument subclass defining the mapping
             client: AsyncElasticsearch client
             repair_task: Asynchronous task used to repair an index (defaults None)
+            repair_subset_task: Asynchronous task used to repair a specific subset
+                of documents. Receives a list of document IDs. Defaults to None,
+                in which case subset repair is unsupported for this index.
             version_prefix: Prefix for version numbers in index names
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
 
@@ -57,6 +63,7 @@ class IndexManager:
         self.document_class = document_class
         self.client = client
         self.repair_task = repair_task
+        self.repair_subset_task = repair_subset_task
         self.reindex_status_polling_interval = reindex_status_polling_interval
 
         self.alias_name = document_class.Index.name
@@ -146,11 +153,33 @@ class IndexManager:
         await self.repair_index()
 
     @tracer.start_as_current_span("Repair index")
-    async def repair_index(self) -> None:
-        """Repair the current index."""
+    async def repair_index(self, document_ids: list[UUID] | None = None) -> None:
+        """
+        Repair the current index.
+
+        If ``document_ids`` is provided, only those documents are re-indexed.
+        Indices without a configured subset repair task reject this form.
+        """
         trace_attribute(
             attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
         )
+
+        if document_ids is not None:
+            trace_attribute(
+                attribute=Attributes.DB_RECORD_COUNT, value=len(document_ids)
+            )
+            if not self.repair_subset_task:
+                msg = f"No subset repair task configured for index {self.alias_name}"
+                set_span_status(status=trace.StatusCode.ERROR, detail=msg)
+                raise NotFoundError(msg)
+            await queue_task_with_trace(
+                self.repair_subset_task,
+                document_ids,
+                long_running=True,
+                otel_enabled=self.otel_enabled,
+            )
+            return
+
         if not self.repair_task:
             msg = f"No index repair task found for {self.alias_name}"
             set_span_status(status=trace.StatusCode.ERROR, detail=msg)

@@ -1,15 +1,29 @@
 """Integration tests for search service."""
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.domain.references.models.models import AnnotationFilter, PublicationYearRange
+from app.core.exceptions import ParseError, SiblingGroupingError
+from app.domain.references.models.models import (
+    AnnotationFilter,
+    CrossFacetAxis,
+    FacetType,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    PublicationYearRange,
+    SearchQuery,
+    SiblingGroup,
+)
 from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.search_service import SearchService
+from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
+from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -42,16 +56,19 @@ async def search_service(
 ) -> SearchService:
     """Fixture to create a search service with ES and SQL unit of work."""
     blob_repo = BlobRepository()
-    anti_corruption_service = ReferenceAntiCorruptionService(blob_repo)
+    anti_corruption_service = ReferenceAntiCorruptionService(blob_repo.get_signed_url)
     es_uow = AsyncESUnitOfWork(es_client)
     es_uow._is_active = True  # noqa: SLF001
     es_uow.references = es_reference_repository
     sql_uow = AsyncSqlUnitOfWork(session)
 
+    vocab_client = MagicMock(spec=VocabularyArtifactClient)
+
     return SearchService(
         anti_corruption_service=anti_corruption_service,
         sql_uow=sql_uow,
         es_uow=es_uow,
+        vocab_client=vocab_client,
     )
 
 
@@ -115,37 +132,47 @@ async def test_search_with_query_string_publication_year_filter(
     )
 
     # Test various scenarios
-    results = await search_service.search_with_query_string(
-        query_string="Test Paper",
-        publication_year_range=PublicationYearRange(start=2022, end=2022),
+    results = await search_service.search(
+        SearchQuery(
+            query_string="Test Paper",
+            publication_year_range=PublicationYearRange(start=2022, end=2022),
+        ),
     )
     assert len(results.hits) == 1
     assert results.hits[0].id == ref_2022.id
 
-    results = await search_service.search_with_query_string(
-        query_string="Test Paper",
-        publication_year_range=PublicationYearRange(start=2020, end=2023),
+    results = await search_service.search(
+        SearchQuery(
+            query_string="Test Paper",
+            publication_year_range=PublicationYearRange(start=2020, end=2023),
+        ),
     )
     assert len(results.hits) == 2
     assert {hit.id for hit in results.hits} == {ref_2020.id, ref_2022.id}
 
-    results = await search_service.search_with_query_string(
-        query_string="Dugong",
-        publication_year_range=PublicationYearRange(start=2020, end=2023),
+    results = await search_service.search(
+        SearchQuery(
+            query_string="Dugong",
+            publication_year_range=PublicationYearRange(start=2020, end=2023),
+        ),
     )
     assert len(results.hits) == 1
     assert {hit.id for hit in results.hits} == {ref_2022.id}
 
-    results = await search_service.search_with_query_string(
-        query_string="Test Paper",
-        publication_year_range=PublicationYearRange(start=2021),
+    results = await search_service.search(
+        SearchQuery(
+            query_string="Test Paper",
+            publication_year_range=PublicationYearRange(start=2021),
+        ),
     )
     assert len(results.hits) == 2
     assert {hit.id for hit in results.hits} == {ref_2022.id, ref_2024.id}
 
-    results = await search_service.search_with_query_string(
-        query_string="Test Paper",
-        publication_year_range=PublicationYearRange(end=2021),
+    results = await search_service.search(
+        SearchQuery(
+            query_string="Test Paper",
+            publication_year_range=PublicationYearRange(end=2021),
+        ),
     )
     assert len(results.hits) == 1
     assert results.hits[0].id == ref_2020.id
@@ -216,8 +243,323 @@ async def test_search_with_query_string_taxonomy_annotation_filter(
         index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
     )
 
-    results = await search_service.search_with_query_string(
-        query_string="Test",
-        annotations=[annotation_filter],
+    results = await search_service.search(
+        SearchQuery(
+            query_string="Test",
+            annotation_filters=[annotation_filter],
+        ),
     )
     assert (len(results.hits) == 1) == hit
+
+
+# ---- _resolve_sibling_grouping --------------------------------------------------
+
+VOCAB_URI = "https://vocab.example.org/vocabulary/v1"
+
+BOTANY = "https://vocab.example.org/Botany"
+ZOOLOGY = "https://vocab.example.org/Zoology"
+MICROBIOLOGY = "https://vocab.example.org/Microbiology"
+AFRICA = "https://vocab.example.org/Africa"
+ASIA = "https://vocab.example.org/Asia"
+EUROPE = "https://vocab.example.org/Europe"
+
+_TOPICS = frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY})
+_REGIONS = frozenset({AFRICA, ASIA, EUROPE})
+SIBLINGS_FIXTURE: dict[str, frozenset[str]] = {
+    **{uri: _TOPICS for uri in _TOPICS},
+    **{uri: _REGIONS for uri in _REGIONS},
+}
+
+
+@pytest.fixture
+def vocab_client_with_siblings() -> MagicMock:
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_concept_scheme_members = AsyncMock(return_value=SIBLINGS_FIXTURE)
+    return client
+
+
+def _service(vocab_client: MagicMock) -> SearchService:
+    return SearchService(
+        anti_corruption_service=MagicMock(spec=ReferenceAntiCorruptionService),
+        sql_uow=MagicMock(spec=AsyncSqlUnitOfWork),
+        es_uow=MagicMock(spec=AsyncESUnitOfWork),
+        vocab_client=vocab_client,
+    )
+
+
+async def test_resolve_concept_sibling_groups_happy_path(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Each filter becomes a group carrying its resolved scheme membership."""
+    service = _service(vocab_client_with_siblings)
+    groups = await service._resolve_concept_sibling_groups(  # noqa: SLF001
+        VOCAB_URI,
+        [
+            LinkedDataConceptFilter(concept_uris=[BOTANY, ZOOLOGY]),
+            LinkedDataConceptFilter(concept_uris=[AFRICA]),
+        ],
+    )
+    assert [list(g.selected) for g in groups] == [
+        [BOTANY, ZOOLOGY],
+        [AFRICA],
+    ]
+    assert groups[0].siblings_including_selected == _TOPICS
+    assert groups[1].siblings_including_selected == _REGIONS
+
+
+async def test_resolve_concept_sibling_groups_raises_sibling_grouping_error(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Rule (a) violation: URIs from different schemes in one filter."""
+    with pytest.raises(SiblingGroupingError, match="different schemes"):
+        await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
+            VOCAB_URI,
+            [LinkedDataConceptFilter(concept_uris=[BOTANY, AFRICA])],
+        )
+
+
+async def test_resolve_concept_sibling_groups_rejects_overlapping_filters(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Rule (b) violation: two filters resolving to the same scheme."""
+    with pytest.raises(SiblingGroupingError, match="same scheme"):
+        await _service(vocab_client_with_siblings)._resolve_concept_sibling_groups(  # noqa: SLF001
+            VOCAB_URI,
+            [
+                LinkedDataConceptFilter(concept_uris=[BOTANY]),
+                LinkedDataConceptFilter(concept_uris=[ZOOLOGY]),
+            ],
+        )
+
+
+async def test_aggregate_facets_naive_when_concepts_not_requested(
+    vocab_client_with_siblings: MagicMock,
+):
+    """No concepts facet → repo called with empty mapping; vocab untouched."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    await service.aggregate_facets(
+        SearchQuery(
+            query_string="*",
+            linked_data_concept_filters=[
+                LinkedDataConceptFilter(concept_uris=[BOTANY])
+            ],
+        ),
+        facets=(),
+        vocabulary_uri=None,
+    )
+    vocab_client_with_siblings.get_concept_scheme_members.assert_not_called()
+    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert kwargs["sibling_groups_by_facet"] == {}
+
+
+async def test_aggregate_facets_raises_when_vocab_missing_but_required(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Concepts facet + concept filter + no vocab → SiblingGroupingError."""
+    service = _service(vocab_client_with_siblings)
+    with pytest.raises(SiblingGroupingError, match="`vocabulary=` is required"):
+        await service.aggregate_facets(
+            SearchQuery(
+                query_string="*",
+                linked_data_concept_filters=[
+                    LinkedDataConceptFilter(concept_uris=[BOTANY])
+                ],
+            ),
+            facets=(FacetType.CONCEPTS,),
+            vocabulary_uri=None,
+        )
+
+
+def test_validate_groups_against_max_buckets():
+    """Groups within the limit pass; over the limit raises SiblingGroupingError."""
+    groups = (
+        SiblingGroup(
+            selected=(BOTANY, ZOOLOGY),
+            siblings_including_selected=frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY}),
+        ),
+    )
+    SearchService._validate_groups_against_max_buckets(groups, max_buckets=3)  # noqa: SLF001
+    with pytest.raises(SiblingGroupingError, match="exceeding max_buckets"):
+        SearchService._validate_groups_against_max_buckets(groups, max_buckets=2)  # noqa: SLF001
+
+
+def test_validate_groups_against_max_buckets_skips_universal_groups():
+    """Universal-mode groups have no enumerated cardinality; validator skips them."""
+    groups = (SiblingGroup(selected=("US", "GB"), siblings_including_selected=None),)
+    SearchService._validate_groups_against_max_buckets(groups, max_buckets=1)  # noqa: SLF001
+
+
+def test_universal_sibling_groups_happy_path():
+    """One filter → one universal-mode group carrying the selected values."""
+    groups = SearchService._universal_sibling_groups(  # noqa: SLF001
+        [("US", "GB", "FR")],
+    )
+    assert len(groups) == 1
+    assert groups[0].selected == ("US", "GB", "FR")
+    assert groups[0].siblings_including_selected is None
+
+
+def test_universal_sibling_groups_rejects_multiple_filters():
+    """AND'd universal filters always overlap; reject with a clear message."""
+    with pytest.raises(SiblingGroupingError, match="single OR'd filter"):
+        SearchService._universal_sibling_groups([("US",), ("GB",)])  # noqa: SLF001
+
+
+async def test_aggregate_facets_builds_universal_groups_for_countries(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Country filter + countries facet → universal sibling group on the repo call."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    await service.aggregate_facets(
+        SearchQuery(
+            query_string="*",
+            linked_data_country_filters=[
+                LinkedDataCountryFilter(country_codes=["US", "GB"]),
+            ],
+        ),
+        facets=(FacetType.COUNTRIES,),
+        vocabulary_uri=None,
+    )
+    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    groups = kwargs["sibling_groups_by_facet"][FacetType.COUNTRIES]
+    assert len(groups) == 1
+    assert groups[0].selected == ("US", "GB")
+    assert groups[0].siblings_including_selected is None
+
+
+async def test_aggregate_facets_skips_country_groups_when_facet_not_requested(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Country filter without the countries facet → no sibling groups built."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    await service.aggregate_facets(
+        SearchQuery(
+            query_string="*",
+            linked_data_country_filters=[
+                LinkedDataCountryFilter(country_codes=["US"]),
+            ],
+        ),
+        facets=(),
+        vocabulary_uri=None,
+    )
+    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert kwargs["sibling_groups_by_facet"] == {}
+
+
+async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Two AND'd country filters with the countries facet → SiblingGroupingError."""
+    service = _service(vocab_client_with_siblings)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    with pytest.raises(SiblingGroupingError, match="single OR'd filter"):
+        await service.aggregate_facets(
+            SearchQuery(
+                query_string="*",
+                linked_data_country_filters=[
+                    LinkedDataCountryFilter(country_codes=["US"]),
+                    LinkedDataCountryFilter(country_codes=["GB"]),
+                ],
+            ),
+            facets=(FacetType.COUNTRIES,),
+            vocabulary_uri=None,
+        )
+
+
+# ---- aggregate_cross_facet ------------------------------------------------------
+
+TOPICS_SCHEME = "https://vocab.example.org/Topics"
+REGION_SCHEME = "https://vocab.example.org/Region"
+MEMBERS_FIXTURE: dict[str, frozenset[str]] = {
+    TOPICS_SCHEME: _TOPICS,
+    REGION_SCHEME: _REGIONS,
+}
+
+
+@pytest.fixture
+def vocab_client_with_members() -> MagicMock:
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_scheme_members = AsyncMock(return_value=MEMBERS_FIXTURE)
+    return client
+
+
+def test_resolve_cross_facet_axis():
+    """Literal axes carry a fixed size; a scheme axis is scoped to its members."""
+    countries = SearchService._resolve_cross_facet_axis("countries", None, None)  # noqa: SLF001
+    regions = SearchService._resolve_cross_facet_axis("country_wb_regions", None, None)  # noqa: SLF001
+    scheme = SearchService._resolve_cross_facet_axis(  # noqa: SLF001
+        TOPICS_SCHEME, VOCAB_URI, MEMBERS_FIXTURE
+    )
+    assert (countries.facet_type, countries.include, countries.size) == (
+        FacetType.COUNTRIES,
+        None,
+        256,
+    )
+    assert regions.size == len(WORLD_BANK_REGIONS)
+    assert (scheme.facet_type, scheme.include, scheme.size) == (
+        FacetType.CONCEPTS,
+        _TOPICS,
+        len(_TOPICS),
+    )
+
+
+@pytest.mark.parametrize(
+    ("token", "vocab", "members", "match"),
+    [
+        (TOPICS_SCHEME, None, None, "`vocabulary=` is required"),
+        ("https://vocab.example.org/Missing", VOCAB_URI, MEMBERS_FIXTURE, "no members"),
+    ],
+)
+def test_resolve_cross_facet_axis_rejects(token, vocab, members, match):
+    """A scheme axis without a vocabulary, or absent from it, raises ParseError."""
+    with pytest.raises(ParseError, match=match):
+        SearchService._resolve_cross_facet_axis(token, vocab, members)  # noqa: SLF001
+
+
+def test_validate_cross_facet_cell_count():
+    """The guard counts parent buckets too: axes (100, 100) -> 100 + 100*100 buckets."""
+    axis = CrossFacetAxis(
+        token="countries", facet_type=FacetType.COUNTRIES, include=None, size=100
+    )
+    SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=10_100)  # noqa: SLF001
+    with pytest.raises(ParseError, match="exceeding the limit"):
+        SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=10_099)  # noqa: SLF001
+
+
+async def test_aggregate_cross_facet_literal_axes_skip_vocab_fetch(
+    vocab_client_with_members: MagicMock,
+):
+    """Two literal axes need no vocabulary lookup and pass resolved axes to the repo."""
+    service = _service(vocab_client_with_members)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
+    await service.aggregate_cross_facet(
+        SearchQuery(query_string="*"), ("countries", "country_wb_regions"), None
+    )
+    vocab_client_with_members.get_scheme_members.assert_not_called()
+    (_query, axes), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
+    assert axes[0].facet_type is FacetType.COUNTRIES
+    assert axes[1].facet_type is FacetType.COUNTRY_WB_REGIONS
+
+
+async def test_aggregate_cross_facet_scheme_axis_fetches_members_once(
+    vocab_client_with_members: MagicMock,
+):
+    """A scheme axis triggers a single vocabulary fetch shared across both axes."""
+    service = _service(vocab_client_with_members)
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
+    await service.aggregate_cross_facet(
+        SearchQuery(query_string="*"), (TOPICS_SCHEME, REGION_SCHEME), VOCAB_URI
+    )
+    vocab_client_with_members.get_scheme_members.assert_awaited_once_with(VOCAB_URI)
+    (_query, axes), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
+    assert axes[0].include == _TOPICS
+    assert axes[1].include == _REGIONS
