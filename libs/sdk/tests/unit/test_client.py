@@ -784,7 +784,7 @@ def _build_keycloak_middleware(_monkeypatch) -> KeycloakOAuthMiddleware:
     )
 
 
-def _build_azure_middleware(monkeypatch) -> OAuthMiddleware:
+def _build_azure_middleware(monkeypatch) -> AzureOAuthMiddleware:
     class _NoOpPublicClientApp(PublicClientApplication):
         def __init__(self, *_args, **_kwargs) -> None:
             pass
@@ -792,11 +792,13 @@ def _build_azure_middleware(monkeypatch) -> OAuthMiddleware:
     monkeypatch.setattr(
         "destiny_sdk.client.PublicClientApplication", _NoOpPublicClientApp
     )
-    return OAuthMiddleware(
+    # Return the routed inner middleware: the test patches ``_get_token`` on the
+    # returned object, and it is the inner middleware whose ``auth_flow`` runs.
+    return OAuthMiddleware(  # noqa: SLF001
         azure_login_url="test-url",
         azure_client_id="test-client",
         azure_application_id="test-app",
-    )
+    )._inner
 
 
 @pytest.mark.parametrize(
