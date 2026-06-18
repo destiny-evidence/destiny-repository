@@ -1,53 +1,37 @@
 """A utility to invoke deduplication on a csv file of reference_ids."""
 
 # ruff: noqa: T201
-import argparse
 from pathlib import Path
 
 import httpx
 from fastapi import status
 
-from app.core.config import Environment
-from cli.auth import CLIAuth
-
-from .config import get_settings
+from cli.client import ApiArgumentParser
 
 
-def invoke_reference_deduplication(env: Environment, reference_ids: list[str]) -> int:
+def invoke_reference_deduplication(
+    client: httpx.Client, reference_ids: list[str]
+) -> int:
     """Invoke deduplication on a list of reference ids."""
-    settings = get_settings(env)
+    response = client.post(
+        "/references/duplicate-decisions/invoke/",
+        json={"reference_ids": reference_ids},
+    )
 
-    with httpx.Client() as client:
-        auth = CLIAuth(env=env)
-        base_url = str(settings.destiny_repository_url).rstrip("/")
-        response = client.post(
-            url=f"{base_url}/v1/references/duplicate-decisions/invoke/",
-            json={"reference_ids": reference_ids},
-            auth=auth,
-        )
+    if response.status_code >= status.HTTP_400_BAD_REQUEST:
+        msg = response.json()["detail"]
+        raise httpx.HTTPError(msg)
 
-        if response.status_code >= status.HTTP_400_BAD_REQUEST:
-            msg = response.json()["detail"]
-            raise httpx.HTTPError(msg)
-
-        return response.status_code
+    return response.status_code
 
 
-def argument_parser() -> argparse.ArgumentParser:
+def argument_parser() -> ApiArgumentParser:
     """Parse the environment and the reference id file path."""
-    parser = argparse.ArgumentParser()
+    parser = ApiArgumentParser()
 
     parser.add_argument(
         "--reference-id-file",
         type=str,
-        required=True,
-    )
-
-    parser.add_argument(
-        "-e",
-        "--env",
-        type=Environment,
-        default=Environment.LOCAL,
         required=True,
     )
 
@@ -62,9 +46,8 @@ if __name__ == "__main__":
         with Path.open(args.reference_id_file) as ref_id_file:
             reference_ids = ref_id_file.read().splitlines()
 
-        invoke_status = invoke_reference_deduplication(
-            reference_ids=reference_ids, env=args.env
-        )
+        with args.client as client:
+            invoke_reference_deduplication(client=client, reference_ids=reference_ids)
 
         print(f"Scheduled {len(reference_ids)} deduplication tasks.")
 

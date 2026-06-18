@@ -1,45 +1,33 @@
 """A utility to register a robot in the Destiny Repository."""
 
 # ruff: noqa: T201
-import argparse
-
 import destiny_sdk
 import httpx
 from fastapi import status
 from pydantic import ValidationError
 
-from app.core.config import Environment
-from cli.auth import CLIAuth
-
-from .config import get_settings
+from cli.client import ApiArgumentParser
 
 
 def register_robot(
-    env: Environment, robot_to_register: destiny_sdk.robots.RobotIn
+    client: httpx.Client, robot_to_register: destiny_sdk.robots.RobotIn
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Register a robot to destiny repository."""
-    settings = get_settings(env)
-
-    with httpx.Client() as client:
-        auth = CLIAuth(env=env)
-        response = client.post(
-            url=str(settings.destiny_repository_url).rstrip("/") + "/v1/robots/",
-            json=robot_to_register.model_dump(mode="json"),
-            auth=auth,
-        )
-
-        if response.status_code >= status.HTTP_400_BAD_REQUEST:
-            msg = response.json()["detail"]
-            raise httpx.HTTPError(msg)
-
-        return destiny_sdk.robots.ProvisionedRobot.model_validate(response.json())
-
-
-def argument_parser() -> argparse.ArgumentParser:
-    """Create argument parser for robot registration."""
-    parser = argparse.ArgumentParser(
-        description="Register a robot to destiny respository"
+    response = client.post(
+        "/robots/",
+        json=robot_to_register.model_dump(mode="json"),
     )
+
+    if response.status_code >= status.HTTP_400_BAD_REQUEST:
+        msg = response.json()["detail"]
+        raise httpx.HTTPError(msg)
+
+    return destiny_sdk.robots.ProvisionedRobot.model_validate(response.json())
+
+
+def argument_parser() -> ApiArgumentParser:
+    """Create argument parser for robot registration."""
+    parser = ApiArgumentParser(description="Register a robot to destiny respository")
 
     parser.add_argument(
         "-n",
@@ -73,15 +61,6 @@ def argument_parser() -> argparse.ArgumentParser:
         ),
     )
 
-    parser.add_argument(
-        "-e",
-        "--env",
-        type=Environment,
-        default=Environment.LOCAL,
-        help="The environment to create the robot in",
-        required=True,
-    )
-
     return parser
 
 
@@ -97,9 +76,10 @@ if __name__ == "__main__":
             entitlements=set(args.entitlement),
         )
 
-        registered_robot = register_robot(
-            env=args.env, robot_to_register=robot_to_register
-        )
+        with args.client as client:
+            registered_robot = register_robot(
+                client=client, robot_to_register=robot_to_register
+            )
 
         print("New Robot Registered")
         print(f"Environment: {args.env}")

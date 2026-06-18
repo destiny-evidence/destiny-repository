@@ -778,17 +778,15 @@ class OAuthClient:
 
     def __init__(
         self,
-        env: _ENV_TYPE | None = None,
         base_url: HttpUrl | str | None = None,
         auth: httpx.Auth | None = None,
         timeout: int = 10,
+        *,
+        env: _ENV_TYPE | None = None,
     ) -> None:
         """
         Initialize the client.
 
-        :param env: The Destiny environment. When set, fills in defaults for
-            ``base_url`` and ``auth`` if either is omitted.
-        :type env: _ENV_TYPE | None
         :param base_url: The base URL for the Destiny Repository API. Required
             unless ``env`` is provided, in which case it defaults to the API URL
             for that environment.
@@ -799,6 +797,9 @@ class OAuthClient:
         :type auth: httpx.Auth | None
         :param timeout: The timeout for requests, in seconds. Defaults to 10 seconds.
         :type timeout: int
+        :param env: The Destiny environment. When set, fills in
+            defaults for ``base_url`` and ``auth`` if either is omitted.
+        :type env: _ENV_TYPE | None
         :raises ValueError: If neither ``base_url`` nor ``env`` is provided.
         """
         if env is not None:

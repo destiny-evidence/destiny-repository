@@ -1,21 +1,19 @@
 """A utility to invoke subset repair on a file of reference_ids."""
 
 # ruff: noqa: T201
-import argparse
 from pathlib import Path
 
 import httpx
 from fastapi import status
 
-from app.core.config import Environment
 from app.utils.lists import list_chunker
-from cli.auth import CLIAuth
+from cli.client import ApiArgumentParser
 
-from .config import get_settings
+_REPAIR_PATH = "/system/indices/reference/repair/"
 
 
 def invoke_reference_repair(
-    env: Environment,
+    client: httpx.Client,
     reference_ids: list[str],
     batch_size: int = 1000,
     start_batch: int = 1,
@@ -23,13 +21,10 @@ def invoke_reference_repair(
     dry_run: bool = False,
 ) -> int:
     """Invoke subset repair on a list of reference ids in batches."""
-    settings = get_settings(env)
     batches = list(list_chunker(reference_ids, batch_size))
-    base_url = str(settings.destiny_repository_url).rstrip("/")
-    url = f"{base_url}/v1/system/indices/reference/repair/"
 
     if dry_run:
-        print(f"DRY-RUN: would POST {len(batches)} batches to {url}")
+        print(f"DRY-RUN: would POST {len(batches)} batches to {_REPAIR_PATH}")
         for i, batch in enumerate(batches, start=1):
             if i < start_batch:
                 continue
@@ -39,45 +34,34 @@ def invoke_reference_repair(
             )
         return len(reference_ids)
 
-    with httpx.Client(timeout=60) as client:
-        auth = CLIAuth(env=env)
-
-        for i, batch in enumerate(batches, start=1):
-            if i < start_batch:
-                continue
-            print(
-                f"POST batch {i}/{len(batches)} ({len(batch)} ids)...",
-                end=" ",
-                flush=True,
-            )
-            response = client.post(
-                url,
-                json={"document_ids": batch},
-                auth=auth,
-            )
-            print(f"{response.status_code}")
-            if response.status_code >= status.HTTP_400_BAD_REQUEST:
-                msg = response.json().get("detail", response.text)
-                raise httpx.HTTPError(msg)
+    for i, batch in enumerate(batches, start=1):
+        if i < start_batch:
+            continue
+        print(
+            f"POST batch {i}/{len(batches)} ({len(batch)} ids)...",
+            end=" ",
+            flush=True,
+        )
+        response = client.post(
+            _REPAIR_PATH,
+            json={"document_ids": batch},
+            timeout=60,
+        )
+        print(f"{response.status_code}")
+        if response.status_code >= status.HTTP_400_BAD_REQUEST:
+            msg = response.json().get("detail", response.text)
+            raise httpx.HTTPError(msg)
 
     return len(reference_ids)
 
 
-def argument_parser() -> argparse.ArgumentParser:
+def argument_parser() -> ApiArgumentParser:
     """Parse the environment, ID file path, and batching options."""
-    parser = argparse.ArgumentParser()
+    parser = ApiArgumentParser()
 
     parser.add_argument(
         "--reference-id-file",
         type=str,
-        required=True,
-    )
-
-    parser.add_argument(
-        "-e",
-        "--env",
-        type=Environment,
-        default=Environment.LOCAL,
         required=True,
     )
 
@@ -112,13 +96,14 @@ if __name__ == "__main__":
         with Path.open(args.reference_id_file) as ref_id_file:
             reference_ids = ref_id_file.read().splitlines()
 
-        invoke_reference_repair(
-            env=args.env,
-            reference_ids=reference_ids,
-            batch_size=args.batch_size,
-            start_batch=args.start_batch,
-            dry_run=args.dry_run,
-        )
+        with args.client as client:
+            invoke_reference_repair(
+                client=client,
+                reference_ids=reference_ids,
+                batch_size=args.batch_size,
+                start_batch=args.start_batch,
+                dry_run=args.dry_run,
+            )
 
         verb = "Would queue" if args.dry_run else "Queued"
         print(f"{verb} repair for {len(reference_ids)} reference ids.")
