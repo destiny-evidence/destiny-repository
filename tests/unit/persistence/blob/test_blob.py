@@ -352,6 +352,31 @@ async def test_copy_rejects_destination_on_other_backend():
         await repo.copy(source, destination)
 
 
+_STREAM_FILE = BlobStorageFile(
+    location=BlobStorageLocation.MINIO,
+    container="c",
+    path="p",
+    filename="f.txt",
+)
+
+
+@pytest.mark.asyncio
+async def test_stream_file_reassembles_multibyte_char_split_across_chunks():
+    """A UTF-8 char split across chunk boundaries must not raise or corrupt."""
+    # "café" -> b"caf\xc3\xa9"; split mid-way through the two-byte é.
+    client = _RecordingClient(chunks=[b"caf\xc3", b"\xa9\n"])
+    lines = [line async for line in client.stream_file(_STREAM_FILE)]
+    assert lines == ["café"]
+
+
+@pytest.mark.asyncio
+async def test_stream_file_splits_lines_across_chunks():
+    """Lines spanning chunk boundaries are reassembled; trailing line emitted."""
+    client = _RecordingClient(chunks=[b"one\ntw", b"o\nthree"])
+    lines = [line async for line in client.stream_file(_STREAM_FILE)]
+    assert lines == ["one", "two", "three"]
+
+
 class DummyClient(GenericBlobStorageClient):
     async def upload_file(self, content, file, content_type=None):
         self.uploaded = (content, file, content_type)
