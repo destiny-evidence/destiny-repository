@@ -1,5 +1,6 @@
 """Generic class for a blob storage client."""
 
+import codecs
 from abc import ABC, abstractmethod
 from collections.abc import AsyncGenerator, AsyncIterator
 from io import BytesIO
@@ -78,12 +79,14 @@ class GenericBlobStorageClient(ABC):
         :return: An async generator that yields lines from the file.
         :rtype: AsyncGenerator[str, None]
         """
+        decoder = codecs.getincrementaldecoder("utf-8")()
         buffer = ""
         async for chunk in self.stream_chunks(file):
-            buffer += chunk.decode("utf-8")
+            buffer += decoder.decode(chunk)  # carries partial char across chunks
             while "\n" in buffer:
                 line, buffer = buffer.split("\n", 1)
                 yield line
+        buffer += decoder.decode(b"", final=True)
         if buffer:
             yield buffer
 
