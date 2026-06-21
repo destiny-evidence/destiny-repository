@@ -7,5 +7,4 @@ This section documents command line interface (CLI) for interacting with destiny
     :maxdepth: 1
     :caption: Contents:
 
-    config
     robot-registration
