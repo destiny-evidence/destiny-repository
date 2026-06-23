@@ -16,7 +16,7 @@ For Python users, the quickest way to get started is with the :doc:`SDK <../sdk/
 
 .. code-block:: python
 
-    # Requires destiny-sdk>=0.12.0
+    # Requires destiny-sdk>=0.13.0
     from destiny_sdk.client import OAuthClient
     client = OAuthClient(env="staging")
     response = client.search(query="example")
