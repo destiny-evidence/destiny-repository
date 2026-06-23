@@ -14,7 +14,7 @@ Search Procedures
 API Query String Search
 ^^^^^^^^^^^^^^^^^^^^^^^
 
-The simplest API interface for searching references is the `query string search <https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc#tag/search/operation/search_references_v1_references_search__get>`_ at `/v1/references/search/`. This endpoint requires :doc:`authentication <oauth>`.
+The simplest API interface for searching references is the `query string search <https://api.evidence-repository.org/redoc#tag/search/operation/search_references_v1_references_search__get>`_ at `/v1/references/search/`. This endpoint requires :doc:`authentication <oauth>`.
 
 Parameters
 """"""""""
@@ -295,7 +295,7 @@ Restrictions (400 on violation):
 API Lookup
 ^^^^^^^^^^
 
-Though not strictly a `search`, the `lookup endpoint <https://destiny-repository-prod-app.politesea-556f2857.swedencentral.azurecontainerapps.io/redoc#tag/v1/operation/lookup_references_v1_references__get>`_ at `/v1/references/` can be used to retrieve references by their identifiers. This endpoint requires :doc:`authentication <oauth>`.
+Though not strictly a `search`, the `lookup endpoint <https://api.evidence-repository.org/redoc#tag/v1/operation/lookup_references_v1_references__get>`_ at `/v1/references/` can be used to retrieve references by their identifiers. This endpoint requires :doc:`authentication <oauth>`.
 
 Parameters
 """"""""""

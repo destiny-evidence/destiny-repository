@@ -2,7 +2,7 @@
 
 Robot Registration
 ==================
-Use the following command to register a robot, passing the environment you wish to register the robot in. This will load the required environment file.
+Use the following command to register a robot, passing the environment you wish to register the robot in.
 
 You will need to be assigned the :code:`robot.writer` role for destiny repository to be able to run this command.
 

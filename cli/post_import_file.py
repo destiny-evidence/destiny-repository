@@ -9,7 +9,6 @@ Actions:
 """
 
 # ruff: noqa: T201
-import argparse
 import sys
 import time
 from uuid import UUID
@@ -23,11 +22,8 @@ from destiny_sdk.imports import (
     ImportRecordRead,
 )
 
-from app.core.config import Environment
-from cli.auth import CLIAuth
+from cli.client import ApiArgumentParser
 from cli.get_import_batch_summary import check_import_batch_status
-
-from .config import get_settings
 
 
 def register_import_record(
@@ -40,7 +36,7 @@ def register_import_record(
     """Register a new import record."""
     print("Registering a new import record...")
     response = client.post(
-        "/v1/imports/records/",
+        "/imports/records/",
         json=ImportRecordIn(
             processor_name=processor_name,
             processor_version=processor_version,
@@ -60,7 +56,7 @@ def register_import_batch(
     """Register an import batch for the given file URL."""
     print(f"Registering import batch for file: {file_url}")
     response = client.post(
-        f"/v1/imports/records/{import_record_id}/batches/",
+        f"/imports/records/{import_record_id}/batches/",
         json=ImportBatchIn(
             storage_url=file_url,
         ).model_dump(mode="json"),
@@ -75,7 +71,7 @@ def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None
     """Finalise the import record."""
     print("Finalising import record...")
     response = client.patch(
-        f"/v1/imports/records/{import_record_id}/finalise/",
+        f"/imports/records/{import_record_id}/finalise/",
     )
     response.raise_for_status()
     print("Import record finalised.")
@@ -83,7 +79,6 @@ def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None
 
 def poll_and_summarise(
     client: httpx.Client,
-    env: Environment,
     import_record_id: UUID,
     import_batch_id: UUID,
     poll_interval: float = 5,
@@ -92,7 +87,7 @@ def poll_and_summarise(
     print(f"Polling import batch {import_batch_id} for completion...")
     for _ in range(10):
         response = client.get(
-            f"/v1/imports/records/{import_record_id}/batches/{import_batch_id}/"
+            f"/imports/records/{import_record_id}/batches/{import_batch_id}/"
         )
         response.raise_for_status()
         import_batch = ImportBatchRead.model_validate(response.json())
@@ -106,7 +101,7 @@ def poll_and_summarise(
         print("Import batch did not complete in time. Fetching current summary...")
 
     import_batch_summary = check_import_batch_status(
-        env=env,
+        client=client,
         import_record_id=import_record_id,
         import_batch_id=import_batch_id,
     )
@@ -115,7 +110,7 @@ def poll_and_summarise(
 
 
 def post_import_file(  # noqa: PLR0913
-    env: Environment,
+    client: httpx.Client,
     file_url: str,
     expected_reference_count: int,
     processor_name: str,
@@ -124,41 +119,29 @@ def post_import_file(  # noqa: PLR0913
     poll_interval: float = 5,
 ) -> None:
     """Post a file to the Destiny API for import."""
-    settings = get_settings(env)
-    base_url = str(settings.destiny_repository_url).rstrip("/")
-
-    with httpx.Client(base_url=base_url, auth=CLIAuth(env=env)) as client:
-        import_record = register_import_record(
-            client,
-            expected_reference_count,
-            processor_name,
-            processor_version,
-            source_name,
-        )
-        import_batch = register_import_batch(client, import_record.id, file_url)
-        finalise_import_record(client, import_record.id)
-        poll_and_summarise(
-            client,
-            env,
-            import_record.id,
-            import_batch.id,
-            poll_interval=poll_interval,
-        )
+    import_record = register_import_record(
+        client,
+        expected_reference_count,
+        processor_name,
+        processor_version,
+        source_name,
+    )
+    import_batch = register_import_batch(client, import_record.id, file_url)
+    finalise_import_record(client, import_record.id)
+    poll_and_summarise(
+        client,
+        import_record.id,
+        import_batch.id,
+        poll_interval=poll_interval,
+    )
 
     print("Import process complete.")
 
 
-def argument_parser() -> argparse.ArgumentParser:
+def argument_parser() -> ApiArgumentParser:
     """Parse the environment and import file details."""
-    parser = argparse.ArgumentParser(
+    parser = ApiArgumentParser(
         description="Posts a single file to the Destiny API for import."
-    )
-    parser.add_argument(
-        "-e",
-        "--env",
-        type=Environment,
-        default=Environment.LOCAL,
-        help="Environment to run the cli against.",
     )
     parser.add_argument("--file-url", required=True, help="URL of the file to import")
     parser.add_argument(
@@ -196,15 +179,16 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     try:
-        post_import_file(
-            env=args.env,
-            file_url=args.file_url,
-            expected_reference_count=args.expected_reference_count,
-            processor_name=args.processor_name,
-            processor_version=args.processor_version,
-            source_name=args.source_name,
-            poll_interval=args.poll_interval,
-        )
+        with args.client as client:
+            post_import_file(
+                client=client,
+                file_url=args.file_url,
+                expected_reference_count=args.expected_reference_count,
+                processor_name=args.processor_name,
+                processor_version=args.processor_version,
+                source_name=args.source_name,
+                poll_interval=args.poll_interval,
+            )
     except httpx.HTTPError as exc:
         print(f"Import failed: {exc}")
         sys.exit(1)
