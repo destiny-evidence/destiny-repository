@@ -19,6 +19,7 @@ from app.api.exception_handlers import (
     not_found_exception_handler,
     parse_error_exception_handler,
     sdk_to_domain_exception_handler,
+    vocabulary_fetch_exception_handler,
 )
 from app.api.middleware import LoggerMiddleware
 from app.core.exceptions import (
@@ -29,6 +30,7 @@ from app.core.exceptions import (
     NotFoundError,
     ParseError,
     SDKToDomainError,
+    VocabularyFetchError,
 )
 from app.core.telemetry.fastapi import FastAPITracingMiddleware
 from app.core.telemetry.logger import get_logger
@@ -85,7 +87,7 @@ def register_api(
         version="1.0.0",
         lifespan=lifespan,
         middleware=[
-            Middleware(LoggerMiddleware),
+            Middleware(LoggerMiddleware),  # type: ignore[arg-type]
             Middleware(
                 CORSMiddleware,
                 allow_origins=cors_allow_origins,
@@ -102,6 +104,7 @@ def register_api(
             ESMalformedDocumentError: es_exception_handler,
             ESQueryError: es_exception_handler,
             ParseError: parse_error_exception_handler,
+            VocabularyFetchError: vocabulary_fetch_exception_handler,
         },
         redoc_url=None,  # Custom definition of redoc below
         openapi_tags=[
@@ -173,6 +176,6 @@ def register_api(
 
     if otel_enabled:
         FastAPIInstrumentor().instrument_app(app)
-        app.add_middleware(FastAPITracingMiddleware)
+        app.add_middleware(FastAPITracingMiddleware)  # type: ignore[arg-type]
 
     return app

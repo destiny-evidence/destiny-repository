@@ -1,13 +1,10 @@
-# This workflow uses actions that are not certified by GitHub.
-# They are provided by a third-party and are governed by
-# separate terms of service, privacy policy, and support
-# documentation.
+name: Deploy to Development
 
-# GitHub recommends pinning actions to a commit SHA.
-# To get a newer version, you will need to update the SHA.
-# You can also reference a tag or branch, but the action may change without warning.
-
-name: Deploy to development
+concurrency:
+  # No parallel runs allowed
+  group: deploy-development
+  # Don't queue runs, just apply latest
+  cancel-in-progress: true
 
 on:
   workflow_dispatch:
@@ -15,8 +12,16 @@ on:
 permissions:
   id-token: write
   contents: read
+
 jobs:
-  deploy-to-development:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      environment: development
+
+  deploy:
+    needs: build
     uses: ./.github/workflows/deploy.yml
     with:
       environment: development
+      image_tag: ${{ needs.build.outputs.image_tag }}

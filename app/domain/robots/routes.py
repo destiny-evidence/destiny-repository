@@ -1,6 +1,5 @@
 """Router for handling management of robots."""
 
-import uuid
 from typing import Annotated
 
 import destiny_sdk
@@ -9,14 +8,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import (
     AuthMethod,
+    AuthRole,
     AuthScope,
     CachingStrategyAuth,
     choose_auth_strategy,
 )
 from app.core.config import get_settings
+from app.core.entitlements import Entitlement
 from app.core.telemetry.fastapi import PayloadAttributeTracer
 from app.core.telemetry.logger import get_logger
 from app.domain.robots.service import RobotService
+from app.domain.robots.services.access_control_service import (
+    RobotAccessControlService,
+)
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
 )
@@ -56,13 +60,22 @@ def choose_auth_strategy_robot_writer() -> AuthMethod:
     return choose_auth_strategy(
         application_id=settings.azure_application_id,
         auth_scope=AuthScope.ROBOT_WRITER,
-        bypass_auth=settings.running_locally,
+        auth_role=AuthRole.ROBOT_WRITER,
+        bypass_auth=settings.should_bypass_auth,
     )
 
 
 robot_writer_auth = CachingStrategyAuth(
     selector=choose_auth_strategy_robot_writer,
 )
+
+
+def robot_access_control_service(
+    entitlements: Annotated[frozenset[Entitlement], Depends(robot_writer_auth)],
+) -> RobotAccessControlService:
+    """Build the robot ACL from the caller's entitlements."""
+    return RobotAccessControlService(entitlements=entitlements)
+
 
 router = APIRouter(
     prefix="/robots",
@@ -76,16 +89,21 @@ router = APIRouter(
 
 @router.put(path="/{robot_id}/", status_code=status.HTTP_200_OK)
 async def update_robot(
-    robot_id: Annotated[uuid.UUID, Path(description="The id of the robot.")],
+    robot_id: Annotated[destiny_sdk.UUID, Path(description="The id of the robot.")],
     robot_update: destiny_sdk.robots.RobotIn,
     robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        RobotAccessControlService, Depends(robot_access_control_service)
+    ],
 ) -> destiny_sdk.robots.Robot:
     """Update an existing robot."""
     robot = anti_corruption_service.robot_from_sdk(robot_update, robot_id=robot_id)
-    updated_robot = await robot_service.update_robot(robot=robot)
+    updated_robot = await robot_service.update_robot(
+        robot=robot, access_control_service=access_control_service
+    )
     return anti_corruption_service.robot_to_sdk(updated_robot)
 
 
@@ -96,16 +114,21 @@ async def register_robot(
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
     ],
+    access_control_service: Annotated[
+        RobotAccessControlService, Depends(robot_access_control_service)
+    ],
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Register a new robot."""
     robot = anti_corruption_service.robot_from_sdk(robot_create)
-    provisioned_robot = await robot_service.add_robot(robot=robot)
+    provisioned_robot = await robot_service.add_robot(
+        robot=robot, access_control_service=access_control_service
+    )
     return anti_corruption_service.robot_to_sdk_provisioned(provisioned_robot)
 
 
 @router.get(path="/{robot_id}/", status_code=status.HTTP_200_OK)
 async def get_robot(
-    robot_id: Annotated[uuid.UUID, Path(description="The id of the robot.")],
+    robot_id: Annotated[destiny_sdk.UUID, Path(description="The id of the robot.")],
     robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)
@@ -130,7 +153,7 @@ async def get_all_robots(
 
 @router.post(path="/{robot_id}/secret/", status_code=status.HTTP_201_CREATED)
 async def cycle_robot_secret(
-    robot_id: Annotated[uuid.UUID, Path(description="The id of the robot.")],
+    robot_id: Annotated[destiny_sdk.UUID, Path(description="The id of the robot.")],
     robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
         RobotAntiCorruptionService, Depends(robot_anti_corruption_service)

@@ -5,9 +5,16 @@ import json
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 
-from pydantic import UUID4, BaseModel, Field, HttpUrl, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    JsonValue,
+    field_validator,
+    model_validator,
+)
 
-from destiny_sdk.core import _JsonlFileInputMixIn
+from destiny_sdk.core import UUID, _JsonlFileInputMixIn
 from destiny_sdk.identifiers import Identifier
 from destiny_sdk.visibility import Visibility
 
@@ -29,10 +36,12 @@ class EnhancementType(StrEnum):
     """Locations where the reference can be found."""
     REFERENCE_ASSOCIATION = auto()
     """Associations to other references."""
+    LINKED_DATA = auto()
+    """Structured data in a linked data format."""
     RAW = auto()
     """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
-    """The full text of the reference. (To be implemented)"""
+    """The full text of the reference."""
 
 
 class AuthorPosition(StrEnum):
@@ -48,6 +57,27 @@ class AuthorPosition(StrEnum):
     """Any middle author."""
     LAST = auto()
     """The last author."""
+
+
+class PublicationVenueType(StrEnum):
+    """
+    Type of publication venue.
+
+    Aligns with OpenAlex source types.
+    """
+
+    JOURNAL = auto()
+    """A journal publication."""
+    REPOSITORY = auto()
+    """A repository (includes preprint servers like arXiv, bioRxiv)."""
+    CONFERENCE = auto()
+    """A conference proceeding."""
+    EBOOK_PLATFORM = auto()
+    """An ebook platform."""
+    BOOK_SERIES = auto()
+    """A book series."""
+    OTHER = auto()
+    """Other venue type."""
 
 
 class Authorship(BaseModel):
@@ -106,6 +136,35 @@ class Pagination(BaseModel):
         return value
 
 
+class PublicationVenue(BaseModel):
+    """A publication venue (journal, repository, conference, etc.)."""
+
+    display_name: str | None = Field(
+        default=None,
+        description=(
+            "The display name of the venue (journal name, repository name, etc.)"
+        ),
+    )
+    venue_type: PublicationVenueType | None = Field(
+        default=None,
+        description="The type of venue: journal, repository, book, conference, etc.",
+    )
+    issn: list[str] | None = Field(
+        default=None,
+        description="List of ISSNs associated with this venue (print and electronic)",
+    )
+    issn_l: str | None = Field(
+        default=None,
+        description=(
+            "The linking ISSN - a canonical ISSN for the venue across format changes"
+        ),
+    )
+    host_organization_name: str | None = Field(
+        default=None,
+        description="Display name of the host organization (publisher)",
+    )
+
+
 class BibliographicMetadataEnhancement(BaseModel):
     """
     An enhancement which is made up of bibliographic metadata.
@@ -150,6 +209,10 @@ other works have cited this work
     pagination: Pagination | None = Field(
         default=None,
         description="Pagination info (volume, issue, pages).",
+    )
+    publication_venue: PublicationVenue | None = Field(
+        default=None,
+        description="Publication venue information (journal, repository, etc.).",
     )
 
     @property
@@ -404,6 +467,137 @@ class ReferenceAssociationEnhancement(BaseModel):
     )
 
 
+class LinkedDataEnhancement(BaseModel):
+    """
+    An enhancement for storing structured data in a linked data format.
+
+    The content is a JSON-LD document conforming to the vocabulary and
+    context specified. This enhancement type is produced by mapping robots
+    that transform RawEnhancement data into the shared vocabulary.
+    """
+
+    enhancement_type: Literal[EnhancementType.LINKED_DATA] = EnhancementType.LINKED_DATA
+
+    vocabulary_uri: HttpUrl = Field(
+        description=(
+            "The URI of the vocabulary against which this data was produced. "
+            "Used for compatibility checking."
+        ),
+        examples=["https://vocab.evrepo.org/vocabulary/v1"],
+    )
+
+    data: dict[str, JsonValue] = Field(
+        description=(
+            "The JSON-LD content. Must contain an '@context' key with a valid "
+            "URI string. When combined with the @context, this forms a complete "
+            "linked data graph."
+        ),
+    )
+
+    @model_validator(mode="after")
+    def validate_context(self) -> Self:
+        """Validate that data contains a @context with a valid URI."""
+        if "@context" not in self.data:
+            msg = "data must contain a '@context' key."
+            raise ValueError(msg)
+
+        context = self.data["@context"]
+        if not isinstance(context, str):
+            msg = "@context must be a string URI."
+            raise ValueError(msg)  # noqa: TRY004
+
+        # Validate it's a well-formed URL
+        HttpUrl(context)
+
+        return self
+
+    @property
+    def fingerprint(self) -> str:
+        """The unique fingerprint of this linked data enhancement."""
+        return json.dumps(
+            self.model_dump(mode="json", exclude_none=True), sort_keys=True
+        )
+
+
+class FullTextEnhancement(BaseModel):
+    """
+    An enhancement for storing a link to the full text and its metadata.
+
+    Full texts are not for the sharing of copyrighted material without a license.
+    They are to maintain files for validation and to allow permitted text and data
+    mining activities.
+    """
+
+    enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
+    file_url: HttpUrl = Field(
+        description="URL to the full text file",
+    )
+    byte_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the file in bytes. "
+            "If provided on import, will be used to validate the file size. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    sha256_checksum: str | None = Field(
+        default=None,
+        description=(
+            "SHA256 checksum of the file. "
+            "If provided on import, will be used to verify the integrity of the file. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    mime_type: str = Field(
+        default="application/pdf",
+        description="The MIME type of the file.",
+    )
+    version: DriverVersion | None = Field(
+        default=None,
+        description=(
+            "The version (according to the DRIVER versioning scheme) of this full text."
+        ),
+    )
+    is_oa: bool | None = Field(
+        default=None,
+        description=(
+            "If this full text is Open Access. "
+            "May be left as null if this is unknown."
+        ),
+    )
+    license: str | None = Field(
+        default=None,
+        description="The publishing license for this full text.",
+        examples=[
+            "apache-2-0",
+            "cc-by",
+            "cc-by-nc",
+            "cc-by-nc-nd",
+            "cc-by-nc-sa",
+            "cc-by-nd",
+            "cc-by-sa",
+            "gpl-v2",
+            "gpl-v3",
+            "isc",
+            "mit",
+            "other-oa",
+            "public-domain",
+        ],
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source from which this full text was obtained.",
+    )
+    source_url: HttpUrl | None = Field(
+        default=None,
+        description="The URL of the source from which this full text was obtained.",
+    )
+    retrieved_at: datetime.datetime | None = Field(
+        default=None,
+        description="The timestamp when this full text was retrieved.",
+    )
+
+
 class RawEnhancement(BaseModel):
     """
     An enhancement for storing raw/arbitrary/unstructured data.
@@ -462,6 +656,8 @@ EnhancementContent = Annotated[
     | AnnotationEnhancement
     | LocationEnhancement
     | ReferenceAssociationEnhancement
+    | LinkedDataEnhancement
+    | FullTextEnhancement
     | RawEnhancement,
     Field(discriminator="enhancement_type"),
 ]
@@ -470,7 +666,7 @@ EnhancementContent = Annotated[
 class Enhancement(_JsonlFileInputMixIn, BaseModel):
     """Core enhancement class."""
 
-    id: UUID4 | None = Field(
+    id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the enhancement. "
@@ -478,7 +674,7 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         ),
     )
 
-    reference_id: UUID4 = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this enhancement is associated with."
     )
     source: str = Field(
@@ -491,7 +687,7 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         default=None,
         description="The version of the robot that generated the content.",
     )
-    derived_from: list[UUID4] | None = Field(
+    derived_from: list[UUID] | None = Field(
         default=None,
         description="List of enhancement IDs that this enhancement was derived from.",
     )
@@ -502,6 +698,15 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
             description="The content of the enhancement.",
         ),
     ]
+    created_at: datetime.datetime | None = Field(
+        default=None,
+        frozen=True,
+        description=(
+            "The ISO8601 datetime when the enhancement was added to the repository. "
+            "This field is populated by the repository, if it is included on an "
+            "incoming enhancement it will be ignored."
+        ),
+    )
 
 
 class EnhancementFileInput(BaseModel):

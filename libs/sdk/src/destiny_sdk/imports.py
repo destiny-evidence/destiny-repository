@@ -4,12 +4,12 @@ import datetime
 from enum import StrEnum, auto
 
 from pydantic import (
-    UUID4,
     BaseModel,
     Field,
     HttpUrl,
-    PastDatetime,
 )
+
+from .core import UUID
 
 
 class ImportRecordStatus(StrEnum):
@@ -36,6 +36,15 @@ class ImportBatchStatus(StrEnum):
     """Some references succeeded while others failed."""
     COMPLETED = auto()
     """Processing has been completed."""
+
+    @classmethod
+    def get_terminal_statuses(cls) -> set["ImportBatchStatus"]:
+        """Return the set of terminal ImportBatchStatuses."""
+        return {
+            cls.FAILED,
+            cls.PARTIALLY_FAILED,
+            cls.COMPLETED,
+        }
 
 
 class ImportResultStatus(StrEnum):
@@ -68,7 +77,7 @@ class _ImportRecordBase(BaseModel):
         default=None,
         description="The search string used to produce this import",
     )
-    searched_at: PastDatetime = Field(
+    searched_at: datetime.datetime = Field(
         default_factory=lambda: datetime.datetime.now(tz=datetime.UTC),
         description="""
 The timestamp (including timezone) at which the search which produced
@@ -108,7 +117,7 @@ class ImportRecordIn(_ImportRecordBase):
 class ImportRecordRead(_ImportRecordBase):
     """Core import record class."""
 
-    id: UUID4 = Field(
+    id: UUID = Field(
         description="The ID of the import record",
     )
     status: ImportRecordStatus = Field(
@@ -140,13 +149,13 @@ class ImportBatchIn(_ImportBatchBase):
 class ImportBatchRead(_ImportBatchBase):
     """Core import batch class."""
 
-    id: UUID4 = Field(
+    id: UUID = Field(
         description="The ID of the import batch",
     )
     status: ImportBatchStatus = Field(
         default=ImportBatchStatus.CREATED, description="The status of the batch."
     )
-    import_record_id: UUID4 = Field(
+    import_record_id: UUID = Field(
         description="The ID of the import record this batch is associated with"
     )
     import_record: ImportRecordRead | None = Field(
@@ -160,13 +169,13 @@ class ImportBatchRead(_ImportBatchBase):
 class ImportBatchSummary(_ImportBatchBase):
     """A view for an import batch that includes a summary of its results."""
 
-    id: UUID4 = Field(
+    id: UUID = Field(
         description="""
 The identifier of the batch.
 """,
     )
 
-    import_batch_id: UUID4 = Field(description="The ID of the batch being summarised")
+    import_batch_id: UUID = Field(description="The ID of the batch being summarised")
 
     import_batch_status: ImportBatchStatus = Field(
         description="The status of the batch being summarised"
@@ -187,8 +196,8 @@ The identifier of the batch.
 class ImportResultRead(BaseModel):
     """Core import result class."""
 
-    id: UUID4 = Field(description="The ID of the import result.")
-    reference_id: UUID4 | None = Field(
+    id: UUID = Field(description="The ID of the import result.")
+    reference_id: UUID | None = Field(
         default=None,
         description="The ID of the reference created by this import result.",
     )

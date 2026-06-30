@@ -13,17 +13,17 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "4.57.0"
+      version = "4.69.0"
     }
 
     azuread = {
       source  = "hashicorp/azuread"
-      version = "3.1.0"
+      version = "3.8.0"
     }
 
     azapi = {
       source  = "Azure/azapi"
-      version = "2.7.0"
+      version = "2.9.0"
     }
 
     github = {
@@ -50,6 +50,11 @@ terraform {
       source  = "hashicorp/random"
       version = "3.7.1"
     }
+
+    dnsimple = {
+      source  = "dnsimple/dnsimple"
+      version = "2.0.1"
+    }
   }
 }
 
@@ -58,12 +63,6 @@ provider "azurerm" {
 }
 
 provider "azuread" {
-}
-
-provider "azuread" {
-  tenant_id = var.external_directory_tenant_id
-  client_id = var.external_directory_client_id
-  alias     = "external_directory"
 }
 
 provider "azapi" {
@@ -88,6 +87,11 @@ provider "elasticstack" {
     username  = ec_deployment.cluster.elasticsearch_username
     password  = ec_deployment.cluster.elasticsearch_password
   }
+}
+
+provider "dnsimple" {
+  account = var.dnsimple_account_id
+  token   = var.dnsimple_token
 }
 
 provider "honeycombio" {

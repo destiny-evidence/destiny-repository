@@ -3,7 +3,8 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import ESConfig
+from app.core.config import AzureBlobConfig, ESConfig, MinioConfig
+from app.persistence.blob.models import BlobContainer
 
 
 def test_es_config_api_key_auth():
@@ -44,4 +45,20 @@ def test_es_config_multiple_auth_methods_invalid():
             es_insecure_url="http://localhost:9200/",
             es_user="user",
             es_pass="pass",
+        )
+
+
+def test_blob_backend_config_requires_all_containers():
+    """Backend configs must include a container for every BlobContainer value."""
+    with pytest.raises(ValidationError, match="operations"):
+        AzureBlobConfig(
+            storage_account_name="acct",
+            containers={BlobContainer.FULL_TEXTS: "full-texts"},
+        )
+    with pytest.raises(ValidationError, match="full_texts"):
+        MinioConfig(
+            host="h",
+            access_key="a",
+            secret_key="s",
+            containers={BlobContainer.OPERATIONS: "ops"},
         )

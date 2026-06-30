@@ -2,6 +2,7 @@
 
 from typing import Generic, TypeVar
 
+from app.core.entitlements import Entitlement
 from app.domain.base import GenericDomainBaseModelType
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -14,6 +15,14 @@ class GenericAntiCorruptionService:
     This service acts as a boundary between the domain and external systems (like SDKs),
     ensuring that external concerns don't leak into the domain models.
     """
+
+
+class GenericAccessControlService:
+    """Base class for access control services."""
+
+    def __init__(self, entitlements: frozenset[Entitlement] = frozenset()) -> None:
+        """Initialise with the principal's entitlements."""
+        self._entitlements = entitlements
 
 
 GenericAntiCorruptionServiceType = TypeVar(

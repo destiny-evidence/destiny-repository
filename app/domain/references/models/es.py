@@ -24,21 +24,21 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
+    LinkedDataProjection,
     LinkedExternalIdentifier,
     Reference,
     ReferenceSearchFields,
+    ReferenceSearchProjection,
     ReferenceWithChangeset,
     RobotAutomation,
     Visibility,
-)
-from app.domain.references.models.projections import (
-    ReferenceSearchFieldsProjection,
 )
 from app.persistence.es.persistence import GenericESPersistence, GenericNestedDocument
 
 EXCLUDED_ENHANCEMENT_TYPES = {
     EnhancementType.RAW,
     EnhancementType.REFERENCE_ASSOCIATION,
+    EnhancementType.LINKED_DATA,
 }
 
 # Fields excluded from ES indexing. These are not useful for candidate generation
@@ -232,8 +232,8 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     """
     Mixin to project Reference fields relevant to various search strategies.
 
-    Currently this holds fields for identifing candidate canonicals during deduplication
-    and for searching references by query on title, authors, and abstracts.
+    Currently this holds fields for identifying candidate canonicals during
+    deduplication and for searching references by query.
     """
 
     abstract: str | None = mapped_field(Text(required=False), default=None)
@@ -252,6 +252,12 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     - Middle authors in alphabetical order
     - Last author
     """
+
+    publication_date: datetime.date | None = mapped_field(
+        Date(required=False),
+        default=None,
+    )
+    """The publication date of the reference."""
 
     publication_year: int | None = mapped_field(
         Integer(required=False),
@@ -310,53 +316,128 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     ``inclusion:destiny`` in ``annotations``.
     """
 
-    @classmethod
-    def from_projection(cls, projection: ReferenceSearchFields) -> Self:
-        """Create a ReferenceCandidateCanonicalMixin from the search projection."""
-        return cls(
-            abstract=projection.abstract,
-            title=projection.title,
-            authors=projection.authors,
-            publication_year=projection.publication_year,
-            annotations=projection.annotations,
-            evaluated_schemes=projection.evaluated_schemes,
-            inclusion_destiny=projection.destiny_inclusion_score,
-        )
+    linked_data_concepts: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """Full concept URIs from LinkedDataEnhancements."""
+
+    linked_data_labels: list[str] | None = mapped_field(
+        Text(required=False),
+        default=None,
+    )
+    """SKOS prefLabel values for linked data concepts, for text search."""
+
+    linked_data_evaluated_properties: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """Property URIs for all evaluated linked data dimensions."""
+
+    linked_data_countries: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """ISO country codes from LinkedDataEnhancements, for exact-match filtering."""
+
+    linked_data_country_wb_regions: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """World Bank regions derived from ``linked_data_countries``."""
 
     @classmethod
-    def from_domain(cls, reference: Reference) -> Self:
-        """Create the ES ReferenceDeduplicationMixin."""
-        return cls.from_projection(
-            ReferenceSearchFieldsProjection.get_from_reference(reference)
+    def from_projections(
+        cls,
+        search_fields: ReferenceSearchFields,
+        linked_data_projection: LinkedDataProjection | None = None,
+    ) -> Self:
+        """Create a ReferenceSearchFieldsMixin from pre-computed projections."""
+        return cls(
+            abstract=search_fields.abstract,
+            title=search_fields.title,
+            authors=search_fields.authors,
+            publication_date=search_fields.publication_date,
+            publication_year=search_fields.publication_year,
+            annotations=search_fields.annotations,
+            evaluated_schemes=search_fields.evaluated_schemes,
+            inclusion_destiny=search_fields.destiny_inclusion_score,
+            linked_data_concepts=list(linked_data_projection.concepts)
+            if linked_data_projection
+            else None,
+            linked_data_labels=list(linked_data_projection.labels)
+            if linked_data_projection
+            else None,
+            linked_data_evaluated_properties=list(
+                linked_data_projection.evaluated_properties
+            )
+            if linked_data_projection
+            else None,
+            linked_data_countries=list(linked_data_projection.countries)
+            if linked_data_projection
+            else None,
+            linked_data_country_wb_regions=list(
+                linked_data_projection.country_wb_regions
+            )
+            if linked_data_projection
+            else None,
         )
 
 
 class ReferenceDocument(
-    GenericESPersistence[Reference],
-    ReferenceDomainMixin,
+    GenericESPersistence[ReferenceSearchProjection],
     ReferenceSearchFieldsMixin,
 ):
-    """Persistence model for references in Elasticsearch."""
+    """
+    Lean persistence model for references in Elasticsearch.
+
+    This document stores only the fields needed for search operations:
+    - visibility and duplicate_determination for filtering
+    - search fields (title, abstract, authors, etc.) from ReferenceSearchFieldsMixin
+
+    Full reference data (including identifiers) is stored in PostgreSQL and hydrated
+    from there when needed. Identifier lookups are done via PostgreSQL, not ES.
+    Nested structures (identifiers, enhancements) are preserved only in the
+    RobotAutomationPercolationDocument for percolation queries.
+    """
 
     class Index:
         """Index metadata for the persistence model."""
 
         name = "reference"
 
+    visibility: Visibility = mapped_field(Keyword(required=True))
+    duplicate_determination: DuplicateDetermination | None = mapped_field(
+        Keyword(required=False),
+    )
+
     @classmethod
-    def from_domain(cls, domain_obj: Reference) -> Self:
-        """Create a persistence model from a domain model."""
+    def from_domain(cls, domain_obj: ReferenceSearchProjection) -> Self:
+        """Create a persistence model from an ReferenceSearchProjection."""
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
-            # Ignoring easier than chaining __init__ methods IMO.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
-            **ReferenceDomainMixin.from_domain(domain_obj).to_dict(),
-            **ReferenceSearchFieldsMixin.from_domain(domain_obj).to_dict(),
+            visibility=domain_obj.visibility,
+            duplicate_determination=domain_obj.duplicate_determination,
+            **ReferenceSearchFieldsMixin.from_projections(
+                domain_obj.search_fields,
+                domain_obj.linked_data_projection,
+            ).to_dict(),
         )
 
-    def to_domain(self) -> Reference:
-        """Create a domain model from this persistence model."""
-        return ReferenceDomainMixin.to_domain(self)
+    def to_domain(self) -> ReferenceSearchProjection:
+        """
+        Create a minimal domain model from this persistence model.
+
+        Since ES is now search-only, full hydration should be done from PostgreSQL.
+        This returns a minimal ReferenceSearchProjection with only the ID, visibility,
+        and empty search fields.
+        """
+        return ReferenceSearchProjection(
+            id=self.meta.id,  # Pydantic handles str -> UUID coercion
+            visibility=self.visibility,
+            search_fields=ReferenceSearchFields(),
+        )
 
 
 class RobotAutomationPercolationDocument(GenericESPersistence[RobotAutomation]):

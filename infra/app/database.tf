@@ -1,14 +1,5 @@
 locals {
   database_migrator_name = "db-migrator-${var.environment}"
-
-  prod_db_storage_mb = 131072
-  dev_db_storage_mb  = 32768
-
-  # IPOS tiers for postgresql flexible server
-  # We use the default for our storage size as defined at
-  # https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/postgresql_flexible_server#storage_tier-defaults-based-on-storage_mb
-  prod_db_storage_tier = "P10"
-  dev_db_storage_tier  = "P4"
 }
 
 data "azuread_group" "db_crud_group" {
@@ -42,20 +33,19 @@ resource "azurerm_postgresql_flexible_server" "this" {
   administrator_login           = var.admin_login
   administrator_password        = var.admin_password
   zone                          = "1"
-  backup_retention_days         = local.is_production ? 35 : 7
+  backup_retention_days         = local.env.db_backup_days
 
   dynamic "high_availability" {
-    for_each = local.is_production ? [1] : []
+    for_each = local.env.db_ha_enabled ? [1] : []
     content {
       mode = "ZoneRedundant"
     }
   }
 
+  storage_mb   = local.env.db_storage_mb
+  storage_tier = local.env.db_storage_tier
 
-  storage_mb   = local.is_development ? local.dev_db_storage_mb : local.prod_db_storage_mb
-  storage_tier = local.is_development ? local.dev_db_storage_tier : local.prod_db_storage_tier
-
-  sku_name = "GP_Standard_D2ds_v4"
+  sku_name = local.env.db_sku_name
 
   authentication {
     password_auth_enabled         = true # required for init container, see https://covidence.atlassian.net/wiki/spaces/Platforms/pages/624033793/DESTINY+DB+Authentication
@@ -198,5 +188,68 @@ resource "azurerm_container_app_job" "database_migrator" {
   # Allow us to update the image via github actions
   lifecycle {
     ignore_changes = [template[0].container[0].image]
+  }
+}
+
+resource "azurerm_log_analytics_workspace" "postgresql" {
+  name                = "${local.name}-psql-logs"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+  sku                 = "PerGB2018"
+  retention_in_days   = local.env.db_log_retention_days
+  tags                = local.minimum_resource_tags
+}
+
+locals {
+  postgresql_configurations = {
+    # https://learn.microsoft.com/en-us/azure/postgresql/server-parameters/param-intelligent-tuning
+    "logfiles.download_enable" = "ON"
+    "logfiles.retention_days"  = tostring(local.env.db_logfiles_retention_days)
+
+    # https://www.postgresql.org/docs/current/runtime-config-logging.html
+    "log_checkpoints"            = "ON" # logs when data is flushed to disk
+    "log_connections"            = "ON"
+    "log_disconnections"         = upper(local.env.db_log_disconnections)            # off in production due to volume
+    "log_statement"              = "ddl"                                             # log data definition statements, such as CREATE, ALTER, and DROP statements
+    "log_min_duration_statement" = tostring(local.env.db_log_min_duration_statement) # slow query threshold in ms
+    "log_lock_waits"             = "ON"
+    "log_temp_files"             = "0" # log all temp files (queries using disk for sorting)
+
+    # https://learn.microsoft.com/en-us/azure/postgresql/flexible-server/concepts-query-store
+    "pg_qs.query_capture_mode"              = "TOP" # top resource-consuming queries
+    "pgms_wait_sampling.query_capture_mode" = "all" # wait stats for queries tracked by pg_qs (options: all, none)
+  }
+}
+
+resource "azurerm_postgresql_flexible_server_configuration" "logging" {
+  for_each  = local.postgresql_configurations
+  name      = each.key
+  server_id = azurerm_postgresql_flexible_server.this.id
+  value     = each.value
+}
+
+resource "azurerm_monitor_diagnostic_setting" "postgresql" {
+  name                       = "${local.name}-psql-diagnostics"
+  target_resource_id         = azurerm_postgresql_flexible_server.this.id
+  log_analytics_workspace_id = azurerm_log_analytics_workspace.postgresql.id
+
+  enabled_log {
+    category = "PostgreSQLLogs"
+  }
+
+  enabled_log {
+    category = "PostgreSQLFlexSessions"
+  }
+
+  enabled_log {
+    category = "PostgreSQLFlexQueryStoreRuntime"
+  }
+
+  enabled_log {
+    category = "PostgreSQLFlexQueryStoreWaitStats"
+  }
+
+  enabled_metric {
+    category = "AllMetrics"
   }
 }

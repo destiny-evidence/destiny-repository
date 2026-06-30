@@ -1,11 +1,18 @@
 import json
-import uuid
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, Mock
+from uuid import UUID, uuid7
 
 import pytest
-from pydantic import UUID4
 
+from app.core.exceptions import (
+    BlobSizeExceededError,
+    FullTextDownloadError,
+    FullTextIngestionError,
+    FullTextIntegrityError,
+    FullTextSizeExceededError,
+    RemoteBlobStorageError,
+)
 from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -21,7 +28,16 @@ from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
 )
-from app.persistence.blob.models import BlobStorageFile
+from app.persistence.blob.models import (
+    BlobCopyResult,
+    BlobStorageFile,
+    BlobStorageLocation,
+)
+from tests.factories import (
+    BlobStorageFileFactory,
+    EnhancementFactory,
+    FullTextEnhancementFactory,
+)
 
 
 def create_fake_stream(entries):
@@ -68,9 +84,9 @@ def create_empty_stream():
 def create_enhancement_request(reference_ids, status=EnhancementRequestStatus.RECEIVED):
     """Helper to create an EnhancementRequest with result_file."""
     return EnhancementRequest(
-        id=uuid.uuid4(),
+        id=uuid7(),
         reference_ids=reference_ids,
-        robot_id=uuid.uuid4(),
+        robot_id=uuid7(),
         request_status=status,
         result_file=BlobStorageFile(
             location="minio",
@@ -84,11 +100,11 @@ def create_enhancement_request(reference_ids, status=EnhancementRequestStatus.RE
 def create_pending_enhancement(reference_id, status=PendingEnhancementStatus.PENDING):
     """Helper to create a PendingEnhancement."""
     return PendingEnhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         reference_id=reference_id,
-        robot_id=uuid.uuid4(),
-        enhancement_request_id=uuid.uuid4(),
-        robot_enhancement_batch_id=uuid.uuid4(),
+        robot_id=uuid7(),
+        enhancement_request_id=uuid7(),
+        robot_enhancement_batch_id=uuid7(),
         status=status,
     )
 
@@ -115,16 +131,15 @@ def create_processed_results():
 
 @pytest.mark.asyncio
 async def test_build_robot_request_happy_path(fake_uow, fake_repository):
-    references = [Reference(id=uuid.uuid4()) for _ in range(2)]
+    references = [Reference(id=uuid7()) for _ in range(2)]
     enhancement_request = EnhancementRequest(
-        id=uuid.uuid4(),
+        id=uuid7(),
         reference_ids=[r.id for r in references],
-        robot_id=uuid.uuid4(),
+        robot_id=uuid7(),
         request_status=EnhancementRequestStatus.RECEIVED,
     )
     uow = fake_uow(enhancement_requests=fake_repository([enhancement_request]))
     mock_blob_repo = MagicMock()
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
     mock_blob_repo.upload_file_to_blob_storage = AsyncMock(
         return_value=BlobStorageFile(
             location="minio",
@@ -134,6 +149,11 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
         )
     )
     mock_blob_repo.get_signed_url = AsyncMock(return_value="http://signed.url/")
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo.get_signed_url),
+        uow,
+        MagicMock(),
+    )
     result = await service.build_robot_request(
         mock_blob_repo, references, enhancement_request
     )
@@ -141,7 +161,7 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
     assert str(result.result_storage_url) == "http://signed.url/"
 
 
-def make_enhancement_result_entry(reference_id: UUID4, *, as_error: bool) -> str:
+def make_enhancement_result_entry(reference_id: UUID, *, as_error: bool) -> str:
     """
     Helper to create a EnhancementResultEntry jsonl line (Enhancement or
     LinkedRobotError) with correct annotation structure.
@@ -171,6 +191,7 @@ def make_enhancement_result_entry(reference_id: UUID4, *, as_error: bool) -> str
             },
             "source": "test_source",
             "visibility": "public",
+            "created_at": datetime.now(tz=UTC).isoformat(),
         }
     )
 
@@ -181,7 +202,7 @@ async def test_process_robot_enhancement_batch_result_happy_path():
     Test that process_robot_enhancement_batch_result yields expected messages and
     calls add_enhancement.
     """
-    reference_id = uuid.uuid4()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -190,7 +211,9 @@ async def test_process_robot_enhancement_batch_result_happy_path():
         [make_enhancement_result_entry(reference_id, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     # Fake add_enhancement always returns success
     async def fake_add_enhancement(enhancement):
@@ -205,6 +228,7 @@ async def test_process_robot_enhancement_batch_result_happy_path():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -227,8 +251,8 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
     Test process_robot_enhancement_batch_result yields correct messages for both
     Enhancement and LinkedRobotError entries.
     """
-    reference_id_1 = uuid.uuid4()
-    reference_id_2 = uuid.uuid4()
+    reference_id_1 = uuid7()
+    reference_id_2 = uuid7()
 
     pending_enhancement_1 = create_pending_enhancement(reference_id_1)
     pending_enhancement_2 = create_pending_enhancement(reference_id_2)
@@ -242,7 +266,9 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
@@ -256,6 +282,7 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement_1.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement_1, pending_enhancement_2],
@@ -277,8 +304,8 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
     Test that process_robot_enhancement_batch_result yields a message for missing
     reference ids in the result file.
     """
-    reference_id_1 = uuid.uuid4()
-    reference_id_2 = uuid.uuid4()  # This one will be missing from the result file
+    reference_id_1 = uuid7()
+    reference_id_2 = uuid7()  # This one will be missing from the result file
 
     pending_enhancement_1 = create_pending_enhancement(reference_id_1)
     pending_enhancement_2 = create_pending_enhancement(reference_id_2)
@@ -289,7 +316,9 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
         [make_enhancement_result_entry(reference_id_1, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     added_enhancements = []
 
@@ -305,6 +334,7 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement_1.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement_1, pending_enhancement_2],
@@ -328,8 +358,8 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
     Test that process_robot_enhancement_batch_result handles surplus reference ids in
     the result file by ignoring them.
     """
-    reference_id_1 = uuid.uuid4()
-    surplus_reference_id = uuid.uuid4()
+    reference_id_1 = uuid7()
+    surplus_reference_id = uuid7()
 
     pending_enhancement = create_pending_enhancement(reference_id_1)
     result_file = create_result_file()
@@ -343,7 +373,9 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     # Fake add_enhancement returns success for enhancement
     async def fake_add_enhancement(enhancement):
@@ -357,6 +389,7 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -382,7 +415,7 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
     Test that process_robot_enhancement_batch_result yields a parse failure for
     malformed JSON.
     """
-    reference_id = uuid.uuid4()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -390,7 +423,9 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
     mock_blob_repo = MagicMock()
     fake_stream = create_fake_stream(["not a json"])
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(_):
         msg = "How did we get here?"
@@ -401,6 +436,7 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -425,7 +461,7 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
     Test that process_robot_enhancement_batch_result returns a robot error
     if the enhancement type is a raw enhancement.
     """
-    reference_id = uuid.uuid4()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -445,12 +481,15 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
                     },
                     "source": "test_source",
                     "visibility": "public",
+                    "created_at": datetime.now(tz=UTC).isoformat(),
                 }
             )
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(_):
         msg = "How did we get here?"
@@ -461,6 +500,7 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -483,7 +523,7 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
     Test that process_robot_enhancement_batch_result yields error if add_enhancement
     returns False.
     """
-    reference_id = uuid.uuid4()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -493,7 +533,9 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
         [make_enhancement_result_entry(reference_id, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(_enhancement):
         return (
@@ -506,6 +548,7 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -527,13 +570,15 @@ async def test_process_robot_enhancement_batch_result_empty_result_file():
     Test that process_robot_enhancement_batch_result yields missing reference messages
     if result file is empty.
     """
-    reference_id = uuid.uuid4()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
     mock_blob_repo = MagicMock()
     mock_blob_repo.stream_file_from_blob_storage = create_empty_stream()
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     async def fake_add_enhancement(_):
         msg = "How did we get here?"
@@ -544,6 +589,7 @@ async def test_process_robot_enhancement_batch_result_empty_result_file():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -565,7 +611,7 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
     Test that process_robot_enhancement_batch_result processes duplicate reference ids
     in the result file.
     """
-    reference_id = uuid.uuid4()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -577,7 +623,9 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     enhancement_results = []
 
@@ -593,6 +641,7 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -620,9 +669,9 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
     Test that process_robot_enhancement_batch_result correctly categorizes
     multiple pending enhancements with mixed success/failure.
     """
-    reference_id_1 = uuid.uuid4()
-    reference_id_2 = uuid.uuid4()
-    reference_id_3 = uuid.uuid4()  # This one will fail
+    reference_id_1 = uuid7()
+    reference_id_2 = uuid7()
+    reference_id_3 = uuid7()  # This one will fail
 
     pending_enhancement_1 = create_pending_enhancement(reference_id_1)
     pending_enhancement_2 = create_pending_enhancement(reference_id_2)
@@ -639,7 +688,9 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
         ]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), uow)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
 
     async def fake_add_enhancement(enhancement):
         return (
@@ -652,6 +703,7 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement_1.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement_1, pending_enhancement_2, pending_enhancement_3],
@@ -678,7 +730,7 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
 @pytest.mark.asyncio
 async def test_process_robot_enhancement_batch_result_discarded_enhancements():
     "Test discarding of pending enhancements."
-    reference_id = uuid.uuid4()
+    reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
@@ -687,7 +739,9 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
         [make_enhancement_result_entry(reference_id, as_error=False)]
     )
     mock_blob_repo.stream_file_from_blob_storage = fake_stream
-    service = EnhancementService(ReferenceAntiCorruptionService(mock_blob_repo), None)
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
 
     # Fake add_enhancement always returns success
     async def fake_add_enhancement(enhancement):
@@ -702,6 +756,7 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
             [pending_enhancement],
@@ -716,3 +771,251 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
     assert {pending_enhancement.id} == results.discarded_pending_enhancement_ids
     assert len(results.failed_pending_enhancement_ids) == 0
     assert len(results.successful_pending_enhancement_ids) == 0
+
+
+def make_full_text_result_entry(reference_id: UUID) -> str:
+    """Helper to create an EnhancementResultEntry containing a FullTextEnhancement."""
+    return json.dumps(
+        {
+            "reference_id": str(reference_id),
+            "content": {
+                "enhancement_type": "full_text",
+                "file_url": "https://example.com/papers/foo.pdf",
+                "byte_size": 12345,
+                "sha256_checksum": "a" * 64,
+                "mime_type": "application/pdf",
+            },
+            "source": "test_source",
+            "visibility": "public",
+            "created_at": datetime.now(tz=UTC).isoformat(),
+        }
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_robot_result_stores_full_text_before_persistence():
+    """A remote full-text enhancement is copied to our blob before add_enhancement."""
+    reference_id = uuid7()
+    pending_enhancement = create_pending_enhancement(reference_id)
+    result_file = create_result_file()
+
+    owned_destination = BlobStorageFile(
+        location=BlobStorageLocation.MINIO,
+        container="full-texts",
+        path="some-path",
+        filename="some-file.pdf",
+    )
+    copy_result = BlobCopyResult(
+        source=BlobStorageFile.from_uri("https://example.com/papers/foo.pdf"),
+        destination=owned_destination,
+        byte_size=12345,
+        sha256_checksum="a" * 64,
+    )
+
+    mock_blob_repo = MagicMock()
+    mock_blob_repo.stream_file_from_blob_storage = create_fake_stream(
+        [make_full_text_result_entry(reference_id)]
+    )
+    mock_blob_repo.destination = Mock(return_value=owned_destination)
+    mock_blob_repo.copy = AsyncMock(return_value=copy_result)
+
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
+
+    added: list = []
+
+    async def fake_add_enhancement(enhancement):
+        added.append(enhancement)
+        return (
+            PendingEnhancementStatus.COMPLETED,
+            f"Reference {enhancement.reference_id}: Enhancement added.",
+        )
+
+    results = create_processed_results()
+
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
+            mock_blob_repo,
+            result_file,
+            [pending_enhancement],
+            fake_add_enhancement,
+            results,
+        )
+    ]
+
+    assert len(messages) == 1
+    assert messages[0].error is None
+    mock_blob_repo.copy.assert_awaited_once()
+    # The enhancement reaching add_enhancement has an owned blob, not remote.
+    assert len(added) == 1
+    assert added[0].content.blob.location == BlobStorageLocation.MINIO
+
+
+@pytest.mark.asyncio
+async def test_process_robot_result_full_text_download_failure_skips_add():
+    """A failed FT fetch surfaces as a validation error; add_enhancement is skipped."""
+    reference_id = uuid7()
+    pending_enhancement = create_pending_enhancement(reference_id)
+    result_file = create_result_file()
+
+    mock_blob_repo = MagicMock()
+    mock_blob_repo.stream_file_from_blob_storage = create_fake_stream(
+        [make_full_text_result_entry(reference_id)]
+    )
+    mock_blob_repo.destination = MagicMock()
+    mock_blob_repo.copy = AsyncMock(
+        side_effect=RemoteBlobStorageError("publisher unreachable")
+    )
+
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), None, MagicMock()
+    )
+
+    add_enhancement = AsyncMock()
+    results = create_processed_results()
+
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
+            mock_blob_repo,
+            result_file,
+            [pending_enhancement],
+            add_enhancement,
+            results,
+        )
+    ]
+
+    assert len(messages) == 1
+    assert messages[0].error is not None
+    assert "publisher unreachable" in messages[0].error
+    add_enhancement.assert_not_awaited()
+    assert results.imported_enhancement_ids == set()
+
+
+def _ft_enhancement(*, remote: bool, sha256_declared: bool, byte_size_declared: bool):
+    """Build an Enhancement carrying a FullTextEnhancement, remote or owned."""
+    blob = (
+        BlobStorageFile.from_uri("https://example.com/papers/foo.pdf")
+        if remote
+        else BlobStorageFileFactory.build(location=BlobStorageLocation.MINIO)
+    )
+    ft = FullTextEnhancementFactory.build(
+        blob=blob,
+        sha256_checksum="a" * 64 if sha256_declared else None,
+        byte_size=12345 if byte_size_declared else None,
+    )
+    return EnhancementFactory.build(content=ft)
+
+
+def _owned_destination():
+    return BlobStorageFileFactory.build(location=BlobStorageLocation.MINIO)
+
+
+def _service_with_blob_repo(blob_repo):
+    return EnhancementService(
+        ReferenceAntiCorruptionService(blob_repo), None, MagicMock()
+    )
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_copies_remote_ft_and_swaps_blob():
+    """Remote FT is copied; blob swapped, computed metadata populated."""
+    destination = _owned_destination()
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=destination)
+    blob_repo.copy = AsyncMock(
+        return_value=BlobCopyResult(
+            source=BlobStorageFile.from_uri("https://example.com/papers/foo.pdf"),
+            destination=destination,
+            byte_size=999,
+            sha256_checksum="b" * 64,
+        )
+    )
+
+    ft = _ft_enhancement(remote=True, sha256_declared=False, byte_size_declared=False)
+
+    await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+    blob_repo.copy.assert_awaited_once()
+    assert ft.content.blob.location == BlobStorageLocation.MINIO
+    assert ft.content.sha256_checksum == "b" * 64
+    assert ft.content.byte_size == 999
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_sha256_mismatch_raises_integrity_error():
+    """Declared sha256 mismatch raises FullTextIntegrityError."""
+    destination = _owned_destination()
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=destination)
+    blob_repo.copy = AsyncMock(
+        return_value=BlobCopyResult(
+            source=BlobStorageFile.from_uri("https://example.com/papers/foo.pdf"),
+            destination=destination,
+            byte_size=12345,
+            sha256_checksum="WRONG" + "a" * 59,
+        )
+    )
+
+    ft = _ft_enhancement(remote=True, sha256_declared=True, byte_size_declared=False)
+
+    with pytest.raises(FullTextIntegrityError, match="sha256 mismatch"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_remote_fetch_failure_raises_download_error():
+    """Remote fetch failure raises FullTextDownloadError."""
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=_owned_destination())
+    blob_repo.copy = AsyncMock(side_effect=RemoteBlobStorageError("publisher is down"))
+
+    ft = _ft_enhancement(remote=True, sha256_declared=False, byte_size_declared=False)
+
+    with pytest.raises(FullTextDownloadError, match="publisher is down"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_oversize_raises_size_exceeded():
+    """A BlobSizeExceededError from copy is re-raised as FullTextSizeExceededError."""
+    blob_repo = MagicMock()
+    blob_repo.destination = Mock(return_value=_owned_destination())
+    blob_repo.copy = AsyncMock(
+        side_effect=BlobSizeExceededError("source exceeds max_bytes")
+    )
+
+    ft = _ft_enhancement(remote=True, sha256_declared=False, byte_size_declared=False)
+
+    with pytest.raises(FullTextSizeExceededError, match="exceeds the configured"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_non_remote_raises_ingestion_error():
+    """Non-remote blob is an upstream invariant violation: raises and skips copy."""
+    blob_repo = MagicMock()
+    blob_repo.copy = AsyncMock()
+
+    ft = _ft_enhancement(remote=False, sha256_declared=False, byte_size_declared=False)
+
+    with pytest.raises(FullTextIngestionError, match="non-remote blob"):
+        await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
+    blob_repo.copy.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_store_full_text_non_ft_raises_value_error():
+    """Calling with a non-FT enhancement is a caller bug: raises ValueError."""
+    blob_repo = MagicMock()
+    blob_repo.copy = AsyncMock()
+
+    non_ft = EnhancementFactory.build()
+
+    with pytest.raises(ValueError, match="non-full-text"):
+        await _service_with_blob_repo(blob_repo).store_full_text(non_ft, blob_repo)
+    blob_repo.copy.assert_not_awaited()

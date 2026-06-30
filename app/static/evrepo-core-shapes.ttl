@@ -1,0 +1,92 @@
+@prefix evrepo: <https://vocab.evidence-repository.org/> .
+@prefix sh:     <http://www.w3.org/ns/shacl#> .
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
+
+# =============================================================================
+# SHACL Shapes for Evidence Repository Core Vocabulary
+#
+# Structural shapes only — validates the required graph relationships.
+# Datatype constraints are handled by the SDK/Pydantic layer.
+# =============================================================================
+
+# --- LinkedDataEnhancement must have at least one Investigation ---
+
+evrepo:LinkedDataEnhancementShape a sh:NodeShape ;
+    sh:targetClass evrepo:LinkedDataEnhancement ;
+    sh:property [
+        sh:path evrepo:hasInvestigation ;
+        sh:class evrepo:Investigation ;
+        sh:minCount 1 ;
+    ] .
+
+# --- Investigation may contain Findings (each must be a Finding) ---
+
+evrepo:InvestigationShape a sh:NodeShape ;
+    sh:targetClass evrepo:Investigation ;
+    sh:property [
+        sh:path evrepo:hasFinding ;
+        sh:class evrepo:Finding ;
+    ] , [
+        sh:path evrepo:hasAppliedConcept ;
+        sh:nodeKind sh:IRI ;
+        sh:class skos:Concept ;
+    ] .
+
+# --- Finding must be non-empty (at least one of the structural links present) ---
+
+evrepo:FindingShape a sh:NodeShape ;
+    sh:targetClass evrepo:Finding ;
+    sh:or (
+        [ sh:path evrepo:hasContext        ; sh:minCount 1 ]
+        [ sh:path evrepo:hasOutcome        ; sh:minCount 1 ]
+        [ sh:path evrepo:hasEffectEstimate ; sh:minCount 1 ]
+        [ sh:path evrepo:evaluates         ; sh:minCount 1 ]
+        [ sh:path evrepo:comparedTo        ; sh:minCount 1 ]
+        [ sh:path evrepo:hasArmData        ; sh:minCount 1 ]
+    ) ;
+    sh:property [
+        sh:path evrepo:hasContext ;
+        sh:class evrepo:Context ;
+    ] , [
+        sh:path evrepo:hasOutcome ;
+        sh:class evrepo:Outcome ;
+    ] , [
+        sh:path evrepo:evaluates ;
+        sh:class evrepo:Condition ;
+    ] , [
+        sh:path evrepo:comparedTo ;
+        sh:class evrepo:Condition ;
+    ] , [
+        sh:path evrepo:hasArmData ;
+        sh:class evrepo:ObservedResult ;
+    ] , [
+        sh:path evrepo:hasEffectEstimate ;
+        sh:class evrepo:EffectEstimate ;
+    ] .
+
+# --- ObservedResult must link to a Condition ---
+
+evrepo:ObservedResultShape a sh:NodeShape ;
+    sh:targetClass evrepo:ObservedResult ;
+    sh:property [
+        sh:path evrepo:forCondition ;
+        sh:class evrepo:Condition ;
+    ] .
+
+# --- EffectEstimate relationships ---
+
+evrepo:EffectEstimateShape a sh:NodeShape ;
+    sh:targetClass evrepo:EffectEstimate ;
+    sh:property [
+        sh:path evrepo:derivedFrom ;
+        sh:class evrepo:ObservedResult ;
+    ] , [
+        sh:path evrepo:forOutcome ;
+        sh:class evrepo:Outcome ;
+    ] , [
+        sh:path evrepo:effectSizeMetric ;
+        sh:class evrepo:EffectSizeMetricConcept ;
+    ] , [
+        sh:path evrepo:estimateSource ;
+        sh:class evrepo:EstimateSourceConcept ;
+    ] .

@@ -1,7 +1,7 @@
 """Projection functions for reference domain data."""
 
-import uuid
 from collections import defaultdict
+from uuid import UUID
 
 import destiny_sdk
 
@@ -43,7 +43,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         :rtype: ReferenceSearchFields
         """
         try:
-            title, publication_year = None, None
+            title, publication_year, publication_date = None, None, None
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
             annotations_by_scheme: dict[
@@ -52,6 +52,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             singly_projected_annotations: dict[
                 tuple[str, str | None], destiny_sdk.enhancements.Annotation
             ] = {}
+            linked_data_content = None
 
             for enhancement in cls.__priority_sorted_enhancements(
                 canonical_id=reference.id, enhancements=reference.enhancements
@@ -73,8 +74,17 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                         or publication_year
                     )
 
+                    publication_date = (
+                        enhancement.content.publication_date or publication_date
+                    )
+
                 elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
                     abstract = enhancement.content.abstract
+
+                elif (
+                    enhancement.content.enhancement_type == EnhancementType.LINKED_DATA
+                ):
+                    linked_data_content = enhancement.content
 
                 elif enhancement.content.enhancement_type == EnhancementType.ANNOTATION:
                     # Pre-work: collect annotations by scheme, preserving the
@@ -109,6 +119,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             return ReferenceSearchFields(
                 abstract=abstract,
                 authors=cls.__order_authorship_by_position(authorship),
+                publication_date=publication_date,
                 publication_year=publication_year,
                 title=title,
                 annotations=annotations,
@@ -116,6 +127,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 destiny_inclusion_score=cls.__positive_annotation_score(
                     destiny_inclusion_annotation
                 ),
+                linked_data_content=linked_data_content,
             )
 
         except Exception as exc:
@@ -143,12 +155,12 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
 
     @classmethod
     def __priority_sorted_enhancements(
-        cls, canonical_id: uuid.UUID, enhancements: list[Enhancement] | None
+        cls, canonical_id: UUID, enhancements: list[Enhancement] | None
     ) -> list[Enhancement]:
         """
         Order a references enhancements by priority for projecting in increasing order.
 
-        Prioritiy is defined as
+        Priority is defined as
         * Firstly, we prioritize enhancements on the canonical reference
         * Secondly, we prioritize most recent enhancements
 
@@ -164,7 +176,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             return []
 
         def __priority_sort_key(
-            canonical_id: uuid.UUID, enhancement: Enhancement
+            canonical_id: UUID, enhancement: Enhancement
         ) -> tuple[bool, float]:
             """Key for sorting enhancements."""
             if not enhancement.created_at:
@@ -260,26 +272,17 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
             },
         )
 
-        # Allows for reference chaining if MAX_REFERENCE_DUPLCIATE_DEPTH is
-        # updated to >2
-        duplicate_references = [
-            DeduplicatedReferenceProjection.get_from_reference(reference)
-            for reference in reference.duplicate_references
-        ]
-
-        # If None, we assume it was not preloaded. An empty reference with preloads
-        # would have an empty list here instead.
         if deduplicated_reference.enhancements is not None:
             deduplicated_reference.enhancements += [
                 enhancement
-                for reference in duplicate_references
-                for enhancement in reference.enhancements or []
+                for ref in reference.duplicate_references
+                for enhancement in ref.enhancements or []
             ]
         if deduplicated_reference.identifiers is not None:
             deduplicated_reference.identifiers += [
                 identifier
-                for reference in duplicate_references
-                for identifier in (reference.identifiers or [])
+                for ref in reference.duplicate_references
+                for identifier in (ref.identifiers or [])
             ]
 
         return deduplicated_reference

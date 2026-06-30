@@ -1,16 +1,16 @@
 """Repositories for references and associated models."""
 
 import datetime
-import math
 from abc import ABC
-from collections.abc import Sequence
-from typing import Literal
+from collections.abc import Mapping, Sequence
+from typing import ClassVar, Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
+from elasticsearch.dsl.query import Bool, MatchAll, Prefix, Query, Range, Term, Terms
+from elasticsearch.dsl.response import Response
 from opentelemetry import trace
-from pydantic import UUID4
 from sqlalchemy import (
     CompoundSelect,
     Select,
@@ -25,18 +25,30 @@ from sqlalchemy import (
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from app.core.config import DedupCandidateScoringConfig, get_settings
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
 )
 from app.domain.references.models.models import (
+    AnnotationFilter,
     CandidateCanonicalSearchFields,
+    CrossFacetAxis,
+    CrossFacetCell,
     DuplicateDetermination,
+    FacetType,
     GenericExternalIdentifier,
+    LinkedDataConceptFilter,
+    LinkedDataCountryFilter,
+    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
+    PublicationYearRange,
+    ReferenceSearchProjection,
     ReferenceWithChangeset,
     RobotAutomationPercolationResult,
+    SearchQuery,
+    SiblingGroup,
 )
 from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
@@ -62,6 +74,9 @@ from app.domain.references.models.models import (
 from app.domain.references.models.models import (
     RobotEnhancementBatch as DomainRobotEnhancementBatch,
 )
+from app.domain.references.models.models import (
+    SearchExport as DomainSearchExport,
+)
 from app.domain.references.models.projections import (
     EnhancementRequestStatusProjection,
 )
@@ -83,12 +98,21 @@ from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomati
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
-from app.persistence.es.persistence import ESScoreResult
+from app.domain.references.models.sql import SearchExport as SQLSearchExport
+from app.persistence.blob.models import BlobStorageFile
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESScoreResult,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
+from app.utils.regex import UNICODE_LETTER_PATTERN, is_meaningful_token
 
+settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
 
@@ -233,24 +257,421 @@ class ReferenceSQLRepository(
 
 
 class ReferenceESRepository(
-    GenericAsyncESRepository[DomainReference, ReferenceDocument],
+    GenericAsyncESRepository[ReferenceSearchProjection, ReferenceDocument],
     ReferenceRepositoryBase,
 ):
     """Concrete implementation of a repository for references using Elasticsearch."""
+
+    default_search_fields: ClassVar[tuple[str, ...]] = (
+        "title",
+        "abstract",
+    )
+    """Fields the user-supplied query string searches against by default."""
+
+    _FACET_FIELDS: ClassVar[dict[FacetType, str]] = {
+        FacetType.CONCEPTS: "linked_data_concepts",
+        FacetType.COUNTRIES: "linked_data_countries",
+        FacetType.COUNTRY_WB_REGIONS: "linked_data_country_wb_regions",
+    }
+    """Mapping from a facet type to the ES field its counts are aggregated on."""
 
     def __init__(self, client: AsyncElasticsearch) -> None:
         """Initialize the repository with the Elasticsearch client."""
         super().__init__(
             client,
-            DomainReference,
+            ReferenceSearchProjection,
             ReferenceDocument,
         )
+
+    def _build_publication_year_clause(
+        self,
+        publication_year_range: PublicationYearRange,
+    ) -> Query | None:
+        """Range clause on ``publication_year``; ``None`` if both bounds are unset."""
+        bounds: dict[str, int] = {}
+        if publication_year_range.start is not None:
+            bounds["gte"] = publication_year_range.start
+        if publication_year_range.end is not None:
+            bounds["lte"] = publication_year_range.end
+        if not bounds:
+            return None
+        return Range(publication_year=bounds)
+
+    def _build_linked_data_concept_clause(
+        self,
+        concept_filter: LinkedDataConceptFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed concept URIs (OR semantics)."""
+        return Terms(linked_data_concepts=concept_filter.concept_uris)
+
+    def _build_linked_data_country_clause(
+        self,
+        country_filter: LinkedDataCountryFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed ISO codes (OR semantics)."""
+        return Terms(linked_data_countries=country_filter.country_codes)
+
+    def _build_linked_data_country_wb_region_clause(
+        self,
+        region_filter: LinkedDataCountryWBRegionFilter,
+    ) -> Query:
+        """Terms clause matching any of the listed WB region IDs (OR semantics)."""
+        return Terms(linked_data_country_wb_regions=region_filter.region_ids)
+
+    def _build_annotation_clause(self, annotation: AnnotationFilter) -> Query:
+        """
+        Build a structured DSL clause for an annotation filter.
+
+        Three cases are handled:
+        - ``score`` set: range on the dynamic ``<scheme>[_<label>]`` numeric field,
+          with ``:`` in the scheme replaced by ``_`` (e.g. ``inclusion_destiny``).
+        - scheme only, no score: prefix match on the ``annotations`` keyword field,
+          matching any ``<scheme>/...`` annotation.
+        - scheme + label: exact term match on ``annotations``.
+        """
+        if annotation.score is not None:
+            field = annotation.scheme.replace(":", "_")
+            if annotation.label:
+                field += f"_{annotation.label}"
+            return Range(**{field: {"gte": annotation.score}})
+        if not annotation.label:
+            return Prefix(annotations=f"{annotation.scheme}/")
+        return Term(annotations=f"{annotation.scheme}/{annotation.label}")
+
+    def _build_filter_clauses(
+        self, query: SearchQuery, *, exclude_facet: FacetType | None = None
+    ) -> list[Query]:
+        """Translate a SearchQuery's structured filters into bool.filter clauses."""
+        clauses: list[Query] = []
+        if query.publication_year_range and (
+            clause := self._build_publication_year_clause(query.publication_year_range)
+        ):
+            clauses.append(clause)
+        clauses.extend(
+            self._build_annotation_clause(annotation)
+            for annotation in query.annotation_filters
+        )
+        if exclude_facet is not FacetType.CONCEPTS:
+            clauses.extend(
+                self._build_linked_data_concept_clause(concept_filter)
+                for concept_filter in query.linked_data_concept_filters
+            )
+        if exclude_facet is not FacetType.COUNTRIES:
+            clauses.extend(
+                self._build_linked_data_country_clause(country_filter)
+                for country_filter in query.linked_data_country_filters
+            )
+        if exclude_facet is not FacetType.COUNTRY_WB_REGIONS:
+            clauses.extend(
+                self._build_linked_data_country_wb_region_clause(region_filter)
+                for region_filter in query.linked_data_country_wb_region_filters
+            )
+        return clauses
+
+    @trace_repository_method(tracer)
+    async def search(
+        self,
+        query: SearchQuery,
+        page: int = 1,
+        page_size: int = 20,
+        sort: list[str] | None = None,
+    ) -> ESSearchResult:
+        """Search references matching ``query``; structured filters AND with q."""
+        return await self.search_with_query_string(
+            query.query_string,
+            fields=self.default_search_fields,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            filter_clauses=self._build_filter_clauses(query),
+            parse_document=False,
+        )
+
+    @trace_repository_method(tracer)
+    async def aggregate_facets(
+        self,
+        query: SearchQuery,
+        facets: Sequence[FacetType],
+        *,
+        sibling_groups_by_facet: Mapping[FacetType, Sequence[SiblingGroup]]
+        | None = None,
+        max_buckets: int,
+    ) -> dict[FacetType, list[ESFacetBucket]]:
+        """
+        Count occurrences per facet over references matching ``query``.
+
+        For simplicity, constructs and executes different queries per facet type. If
+        we're hunting down performance gains later, consider constructing a single
+        query - it won't be easy though.
+        """
+        sibling_groups_by_facet = sibling_groups_by_facet or {}
+        results: dict[FacetType, list[ESFacetBucket]] = {}
+
+        ungrouped_facets = [f for f in facets if not sibling_groups_by_facet.get(f)]
+        if ungrouped_facets:
+            # Simple aggregation for facets without sibling groups
+            facet_to_field = {f: self._FACET_FIELDS[f] for f in ungrouped_facets}
+            buckets_by_field = await self.aggregate_terms(
+                query.query_string,
+                aggregate_on=list(facet_to_field.values()),
+                query_fields=self.default_search_fields,
+                filter_clauses=self._build_filter_clauses(query),
+                max_buckets=max_buckets,
+            )
+            results.update(
+                {f: buckets_by_field[field] for f, field in facet_to_field.items()}
+            )
+
+        for facet in facets:
+            groups = sibling_groups_by_facet.get(facet)
+            if not groups:
+                continue
+            results[facet] = await self._aggregate_facet_sibling_aware(
+                query, facet, groups, max_buckets=max_buckets
+            )
+
+        return results
+
+    async def _aggregate_facet_sibling_aware(
+        self,
+        query: SearchQuery,
+        facet: FacetType,
+        groups: Sequence[SiblingGroup],
+        *,
+        max_buckets: int,
+    ) -> list[ESFacetBucket]:
+        """
+        Run sibling-aware aggregation for one facet.
+
+        Each group's selection becomes a Terms clause. Aggs are wrapped in
+        ``filter`` aggs that AND in the *other* groups' selections — OR within
+        a group (multi-URI Terms); AND between groups.
+        """
+        field = self._FACET_FIELDS[facet]
+        group_clauses = [Terms(**{field: list(g.selected)}) for g in groups]
+
+        # Build search query excluding the facet's own filter so its agg
+        # includes sibling counts
+        search = self._build_aggregation_search(
+            query.query_string,
+            self.default_search_fields,
+            self._build_filter_clauses(query, exclude_facet=facet),
+        )
+
+        # Attach aggregate groupings
+        agg_names = self._attach_per_group_aggs(
+            search, field, groups, group_clauses, max_buckets=max_buckets
+        )
+        # Universal-mode groups cover the whole field domain, so the "unselected"
+        # bucket is empty - skip the agg in that case.
+        if all(g.siblings_including_selected is not None for g in groups):
+            agg_names.append(
+                self._attach_unselected_agg(
+                    search, field, groups, group_clauses, max_buckets=max_buckets
+                )
+            )
+
+        response = await self._execute_search(search)
+
+        return self._parse_facet_buckets(response, agg_names)
+
+    @staticmethod
+    def _attach_per_group_aggs(
+        search: AsyncSearch,
+        field: str,
+        groups: Sequence[SiblingGroup],
+        group_clauses: Sequence[Query],
+        *,
+        max_buckets: int,
+    ) -> list[str]:
+        """Attach one filter+terms agg per group to count each group's sibling set."""
+        names: list[str] = []
+        for i, group in enumerate(groups):
+            other_clauses = [c for j, c in enumerate(group_clauses) if j != i]
+            siblings = group.siblings_including_selected
+            name = f"facet_group_{i}"
+            outer = search.aggs.bucket(
+                name,
+                "filter",
+                filter=Bool(filter=other_clauses) if other_clauses else MatchAll(),
+            )
+            if siblings is None:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=max_buckets,
+                )
+            else:
+                outer.bucket(
+                    "inner",
+                    "terms",
+                    field=field,
+                    min_doc_count=0,
+                    size=len(siblings),
+                    include=sorted(siblings),
+                )
+            names.append(name)
+        return names
+
+    @staticmethod
+    def _attach_unselected_agg(
+        search: AsyncSearch,
+        field: str,
+        groups: Sequence[SiblingGroup],
+        group_clauses: Sequence[Query],
+        *,
+        max_buckets: int,
+    ) -> str:
+        """Attach the ``unselected`` agg: field values outside any group's siblings."""
+        sibling_sets: list[frozenset[str]] = []
+        for g in groups:
+            if g.siblings_including_selected is None:
+                msg = "_attach_unselected_agg requires enumerated sibling groups."
+                raise ValueError(msg)
+            sibling_sets.append(g.siblings_including_selected)
+        all_grouped_uris: frozenset[str] = frozenset().union(*sibling_sets)
+        outer = search.aggs.bucket(
+            "unselected", "filter", filter=Bool(filter=list(group_clauses))
+        )
+        outer.bucket(
+            "inner",
+            "terms",
+            field=field,
+            exclude=sorted(all_grouped_uris),
+            min_doc_count=1,
+            size=max_buckets,
+        )
+        return "unselected"
+
+    @staticmethod
+    def _parse_facet_buckets(
+        response: Response, agg_names: Sequence[str]
+    ) -> list[ESFacetBucket]:
+        """Flatten ``filter > terms`` buckets across ``agg_names`` into one list."""
+        return [
+            ESFacetBucket(key=str(b.key), count=b.doc_count)
+            for name in agg_names
+            for b in response.aggregations[name].inner.buckets
+        ]
+
+    @trace_repository_method(tracer)
+    async def aggregate_cross_facet(
+        self,
+        query: SearchQuery,
+        axes: Sequence[CrossFacetAxis],
+    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+        """
+        Cross-tabulate two axes over references matching ``query``.
+
+        Returns the non-zero cells plus the exact grand total (``track_total_hits`` is
+        enabled so the count isn't capped at the result window).
+        """
+        axis_0, axis_1 = axes
+        search = self._build_aggregation_search(
+            query.query_string,
+            self.default_search_fields,
+            self._build_filter_clauses(query),
+        ).extra(track_total_hits=True)
+        outer = search.aggs.bucket("axis_0", "terms", **self._facet_agg_params(axis_0))
+        outer.bucket("axis_1", "terms", **self._facet_agg_params(axis_1))
+
+        response = await self._execute_search(search)
+        return (
+            self._parse_cross_facet_cells(response),
+            ESSearchTotal(
+                value=response.hits.total.value,  # type: ignore[attr-defined]
+                relation=response.hits.total.relation,  # type: ignore[attr-defined]
+            ),
+        )
+
+    def _facet_agg_params(self, axis: CrossFacetAxis) -> dict[str, object]:
+        """``terms`` agg params for an axis: field, size, and (for schemes) include."""
+        params: dict[str, object] = {
+            "field": self._FACET_FIELDS[axis.facet_type],
+            "size": axis.size,
+        }
+        if axis.include:
+            params["include"] = sorted(axis.include)
+        return params
+
+    @staticmethod
+    def _parse_cross_facet_cells(response: Response) -> list[CrossFacetCell]:
+        """Flatten nested ``axis_0 > axis_1`` buckets into deterministic cells."""
+        cells = [
+            CrossFacetCell(
+                axes=(str(bucket_0.key), str(bucket_1.key)),
+                count=bucket_1.doc_count,
+            )
+            for bucket_0 in response.aggregations.axis_0.buckets
+            for bucket_1 in bucket_0.axis_1.buckets
+        ]
+        cells.sort(key=lambda cell: (-cell.count, cell.axes))
+        return cells
+
+    @staticmethod
+    def _build_author_dis_max_query(
+        authors: list[str],
+        *,
+        max_clauses: int,
+        min_token_length: int,
+    ) -> Q | None:
+        """
+        Build a dis_max query for author matching with bounded score contribution.
+
+        Uses dis_max instead of bool.should to prevent author-count inflation.
+        bool.should sums all matching clauses, so papers with thousands of authors
+        (e.g. CERN collaborations) produce inflated scores that drown out title
+        relevance. dis_max takes the best clause score and discounts the rest, bounding
+        the author contribution regardless of author count.
+
+        Caps the clause count to avoid sending redundant clauses to ES (dis_max
+        discounts them anyway). Filters short tokens because single-letter
+        initials match too broadly and produce false positive score boosts.
+
+        Args:
+            authors: Author names to build match queries from.
+            max_clauses: Maximum number of match queries to emit.
+            min_token_length: Minimum token length; filters initials.
+
+        Returns:
+            A dis_max Q object, or None if no valid queries remain.
+
+        """
+        queries: list[Q] = []
+        seen_terms: set[str] = set()
+        for author in authors:
+            tokens = [
+                token
+                for token in UNICODE_LETTER_PATTERN.findall(author)
+                if is_meaningful_token(token, min_token_length)
+            ]
+            if not tokens:
+                continue
+
+            terms = " ".join(tokens)
+            if terms in seen_terms:
+                continue
+
+            seen_terms.add(terms)
+            queries.append(Q("match", authors=terms))
+            if len(queries) >= max_clauses:
+                break
+
+        if not queries:
+            return None
+
+        # 0.1 = best-matching author dominates, additional matches add 10% each.
+        # Enough to prefer multi-author overlap without summing to inflation.
+        return Q("dis_max", queries=queries, tie_breaker=0.1)
 
     @trace_repository_method(tracer)
     async def search_for_candidate_canonicals(
         self,
         search_fields: CandidateCanonicalSearchFields,
         reference_id: UUID,
+        scoring_config: DedupCandidateScoringConfig,
     ) -> list[ESScoreResult]:
         """
         Fuzzy match candidate fingerprints to existing references.
@@ -263,16 +684,26 @@ class ReferenceESRepository(
         The proof of concept does:
 
         - MUST: fuzzy match on title (requires 50% of terms to match)
-        - SHOULD: partial match on authors list (requires 50% of authors to match)
+        - SHOULD: author matching
         - FILTER: publication year within ±1 year range (non-scoring)
+        - FILTER: only canonical references (at rest)
 
         :param search_fields: The search fields of the potential duplicate.
         :type search_fields: CandidateCanonicalSearchFields
         :param reference_id: The ID of the potential duplicate.
         :type reference_id: UUID
+        :param scoring_config: Configuration for author scoring.
+        :type scoring_config: DedupCandidateScoringConfig
         :return: A list of search results with IDs and scores.
         :rtype: list[ESScoreResult]
         """
+        author_query = self._build_author_dis_max_query(
+            search_fields.authors,
+            max_clauses=scoring_config.max_author_clauses,
+            min_token_length=scoring_config.min_author_token_length,
+        )
+        should_clauses = [author_query] if author_query else []
+
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .query(
@@ -290,9 +721,7 @@ class ReferenceESRepository(
                             },
                         )
                     ],
-                    should=[
-                        Q("match", authors=author) for author in search_fields.authors
-                    ],
+                    should=should_clauses,
                     filter=[
                         Q(
                             "range",
@@ -301,15 +730,10 @@ class ReferenceESRepository(
                                 "lte": search_fields.publication_year + 1,
                             },
                         ),
-                        # This filter ensures we only match against references that are
-                        # "at rest". This avoids race conditions where reference B and C
-                        # are being deduplicated at the same time, perhaps creating
-                        # links B->A and C->B - in turn, creating a chain that we do
-                        # not control, which is a no-no.
-                        # Better handling will be needed in the future if/when we fully
-                        # implement chaining (which will require deliberate candidate
-                        # selection against duplicates as well as canonicals, probably
-                        # still "at rest" though).
+                        # Only match against canonical references that are "at rest".
+                        # Duplicates are never candidates. This also avoids race
+                        # conditions where two references being deduplicated
+                        # concurrently could create conflicting relationships.
                         Q(
                             "term",
                             duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -318,7 +742,6 @@ class ReferenceESRepository(
                     if search_fields.publication_year
                     else [],
                     must_not=[Q("ids", values=[reference_id])],
-                    minimum_should_match=math.floor(0.5 * len(search_fields.authors)),
                 )
             )
             .source(fields=False)
@@ -416,7 +839,7 @@ class EnhancementRequestSQLRepository(
         )
 
     async def get_pending_enhancement_status_set(
-        self, enhancement_request_id: UUID4
+        self, enhancement_request_id: UUID
     ) -> set[PendingEnhancementStatus]:
         """
         Get current underlying statuses for an enhancement request.
@@ -436,7 +859,7 @@ class EnhancementRequestSQLRepository(
 
     async def get_by_pk(
         self,
-        pk: UUID4,
+        pk: UUID,
         preload: list[EnhancementRequestSQLPreloadable] | None = None,
     ) -> DomainEnhancementRequest:
         """Override to include derived enhancement request status."""
@@ -447,6 +870,36 @@ class EnhancementRequestSQLRepository(
                 enhancement_request, status_set
             )
         return enhancement_request
+
+
+class SearchExportRepositoryBase(
+    GenericAsyncRepository[DomainSearchExport, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for search export jobs."""
+
+
+class SearchExportSQLRepository(
+    GenericAsyncSqlRepository[DomainSearchExport, SQLSearchExport, Literal["__none__"]],
+    SearchExportRepositoryBase,
+):
+    """Concrete implementation of a repository for search exports using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainSearchExport,
+            SQLSearchExport,
+        )
+
+    @trace_repository_method(tracer)
+    async def update_by_pk(self, pk: UUID, **kwargs: object) -> DomainSearchExport:
+        """Encode any BlobStorageFile field at the persistence boundary."""
+        result_file = kwargs.get("result_file")
+        if isinstance(result_file, BlobStorageFile):
+            kwargs["result_file"] = result_file.to_uri()
+        return await super().update_by_pk(pk, **kwargs)
 
 
 class RobotAutomationRepositoryBase(
@@ -500,6 +953,9 @@ class RobotAutomationESRepository(
         :return: The results of the percolation.
         :rtype: list[RobotAutomationPercolationResult]
         """
+        if not settings.feature_flags.enable_percolation:
+            return []
+
         documents = [
             (
                 self._persistence_cls.percolatable_document_from_domain(percolatable)
@@ -563,6 +1019,32 @@ class ReferenceDuplicateDecisionSQLRepository(
             SQLReferenceDuplicateDecision,
         )
 
+    async def get_active_decision_determinations(
+        self, reference_ids: set[UUID]
+    ) -> dict[UUID, DuplicateDetermination]:
+        """
+        Return active decision determinations for a set of references.
+
+        Uses a scalar query to bypass the ORM identity map, ensuring we see
+        the latest committed state from other transactions under READ COMMITTED.
+
+        Returns a dict mapping reference_id -> determination for references
+        that have an active decision. References without an active decision
+        are omitted from the result.
+        """
+        if not reference_ids:
+            return {}
+        result = await self._session.execute(
+            select(
+                SQLReferenceDuplicateDecision.reference_id,
+                SQLReferenceDuplicateDecision.duplicate_determination,
+            ).where(
+                SQLReferenceDuplicateDecision.reference_id.in_(reference_ids),
+                SQLReferenceDuplicateDecision.active_decision.is_(True),
+            )
+        )
+        return dict(result.all())
+
 
 class PendingEnhancementRepositoryBase(
     GenericAsyncRepository[DomainPendingEnhancement, GenericPersistenceType],
@@ -616,7 +1098,7 @@ class PendingEnhancementSQLRepository(
         return await super().update_by_pk(pk, **kwargs)
 
     @trace_repository_method(tracer)
-    async def bulk_update(self, pks: list[UUID4], **kwargs: object) -> int:
+    async def bulk_update(self, pks: list[UUID], **kwargs: object) -> int:
         """
         Bulk update pending enhancements with status transition validation.
 
@@ -681,6 +1163,33 @@ class PendingEnhancementSQLRepository(
                 entity.status.guard_transition(new_status, entity.id)
 
         return await super().bulk_update_by_filter(filter_conditions, **kwargs)
+
+    @trace_repository_method(tracer)
+    async def find_available_for_robot(
+        self,
+        robot_id: UUID,
+        limit: int,
+    ) -> list[DomainPendingEnhancement]:
+        """
+        Find pending enhancements available for a robot, locking rows.
+
+        Uses SELECT ... FOR UPDATE SKIP LOCKED to prevent concurrent robot
+        replicas from claiming the same pending enhancements.
+        """
+        query = (
+            select(SQLPendingEnhancement)
+            .where(
+                SQLPendingEnhancement.robot_id == robot_id,
+                SQLPendingEnhancement.robot_enhancement_batch_id.is_(None),
+                SQLPendingEnhancement.status == PendingEnhancementStatus.PENDING,
+            )
+            .order_by(SQLPendingEnhancement.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        )
+
+        result = await self._session.execute(query)
+        return [record.to_domain() for record in result.scalars().all()]
 
     @trace_repository_method(tracer)
     async def count_retry_depth(self, pending_enhancement_id: UUID) -> int:

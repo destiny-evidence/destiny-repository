@@ -4,8 +4,8 @@ import contextlib
 import json
 import os
 import pathlib
-import uuid
 from collections.abc import AsyncIterator
+from uuid import UUID
 
 import httpx
 import pytest
@@ -17,6 +17,7 @@ from minio import Minio
 from opentelemetry import context, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import set_span_in_context
+from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
@@ -33,7 +34,7 @@ from testcontainers.rabbitmq import RabbitMqContainer
 
 from app.core.config import DatabaseConfig, Environment, LogLevel, OTelConfig
 from app.core.telemetry.logger import get_logger, logger_configurer
-from app.core.telemetry.otel import configure_otel
+from app.core.telemetry.otel import configure_otel, new_linked_trace
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
 from app.persistence.sql.session import (
@@ -63,7 +64,8 @@ logger_configurer.configure_console_logger(
     log_level=LogLevel.INFO, rich_rendering=False
 )
 
-if otel_config := os.getenv("OTEL_CONFIG"):
+otel_enabled = TypeAdapter(bool).validate_python(os.getenv("OTEL_ENABLED", "false"))
+if otel_enabled and (otel_config := os.getenv("OTEL_CONFIG")):
     configure_otel(
         OTelConfig.model_validate_json(otel_config),
         "e2e-runner",
@@ -102,14 +104,9 @@ def trace_test_suite():
 
 @pytest.fixture(autouse=True)
 async def trace_test(request: pytest.FixtureRequest):
-    """Trace each test with OpenTelemetry."""
-    with tracer.start_as_current_span(f"Test: {request.node.name}") as span:
-        # Explicitly attach span to context for async execution
-        token = context.attach(set_span_in_context(span))
-        try:
-            yield
-        finally:
-            context.detach(token)
+    """Trace each test with OpenTelemetry using decoupled traces."""
+    with new_linked_trace(f"Test: {request.node.name}", create_parent=True):
+        yield
 
 
 ###########################
@@ -213,32 +210,47 @@ async def pg_lifecycle(pg_sessionmanager: AsyncDatabaseSessionManager):
         await clean_tables(conn)
 
 
+def get_elasticsearch_url(elasticsearch: ElasticSearchContainer) -> str:
+    """Get the Elasticsearch URL from the container."""
+    return (
+        "http://"
+        f"{elasticsearch.get_container_host_ip()}"
+        f":{elasticsearch.get_exposed_port(9200)}"
+    )
+
+
 @pytest.fixture(scope="session")
 async def elasticsearch():
     """Elasticsearch container with default credentials."""
     logger.info("Creating Elasticsearch container...")
-    with ElasticSearchContainer(
-        "elasticsearch:9.1.4",
+    with (
         # If elasticsearch is failing to start, check the container logs. Exit code 137
         # means out of memory. Annoyingly, this either means:
         # - Docker daemon doesn't have enough memory allocated (mem_limit is too high)
         # - Elasticsearch doesn't have enough memory allocated (mem_limit is too low)
         # Fun!
-        mem_limit="2g",
-    ).with_name(f"{container_prefix}-elasticsearch") as elasticsearch:
+        ElasticSearchContainer(
+            "elasticsearch:9.0.2",
+            port=9200,
+            mem_limit="2g",
+        )
+        .with_name(f"{container_prefix}-elasticsearch")
+        .waiting_for(HttpWaitStrategy(port=9200).for_status_code(200)) as elasticsearch
+    ):
+        url = get_elasticsearch_url(elasticsearch)
         logger.info("Creating Elasticsearch indices...")
-        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+        async with AsyncElasticsearch(url) as client:
             await create_test_indices(client)
         logger.info("Elasticsearch container ready.")
         yield elasticsearch
-        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+        async with AsyncElasticsearch(url) as client:
             await delete_test_indices(client)
 
 
 @pytest.fixture
 async def es_client(elasticsearch: ElasticSearchContainer):
     """Elasticsearch client for use in tests."""
-    async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+    async with AsyncElasticsearch(get_elasticsearch_url(elasticsearch)) as client:
         yield client
 
 
@@ -251,7 +263,7 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
     # Suppress the cleaning, it's very noisy
     token = context.attach(set_span_in_context(trace.INVALID_SPAN))
     try:
-        async with AsyncElasticsearch(elasticsearch.get_url()) as client:
+        async with AsyncElasticsearch(get_elasticsearch_url(elasticsearch)) as client:
             await clean_test_indices(client)
     finally:
         context.detach(token)
@@ -341,7 +353,10 @@ def _add_env(
                     "HOST": minio_config["endpoint"].replace("localhost", host_name),
                     "ACCESS_KEY": minio_config["access_key"],
                     "SECRET_KEY": minio_config["secret_key"],
-                    "BUCKET": bucket_name,
+                    "CONTAINERS": {
+                        "operations": bucket_name,
+                        "full_texts": bucket_name,
+                    },
                 }
             ),
         )
@@ -349,7 +364,7 @@ def _add_env(
             "ES_CONFIG",
             json.dumps(
                 {
-                    "ES_INSECURE_URL": elasticsearch.get_url().replace(
+                    "ES_INSECURE_URL": get_elasticsearch_url(elasticsearch).replace(
                         "localhost", host_name
                     )
                 }
@@ -360,11 +375,10 @@ def _add_env(
         .with_env("TESTS_USE_RABBITMQ", "true")
         .with_env("AZURE_APPLICATION_ID", "dummy")
         .with_env("AZURE_LOGIN_URL", "https://login.microsoftonline.com/dummy")
+        .with_env("OTEL_ENABLED", str(otel_enabled))
     )
-    if otel_config:
-        container = container.with_env("OTEL_CONFIG", otel_config).with_env(
-            "OTEL_ENABLED", os.getenv("OTEL_ENABLED", "true")
-        )
+    if otel_enabled and otel_config:
+        container = container.with_env("OTEL_CONFIG", otel_config)
     return container
 
 
@@ -549,7 +563,7 @@ async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
 async def add_references(pg_session: AsyncSession):
     """Create some references."""
 
-    async def _make(n: int) -> set[uuid.UUID]:
+    async def _make(n: int) -> set[UUID]:
         references = [ReferenceFactory.build() for _ in range(n)]
         for reference in references:
             sql_reference = SQLReference.from_domain(reference)

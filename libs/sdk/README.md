@@ -33,8 +33,10 @@ uv install
 
 ### Tests
 
+The SDK itself does not require python 3.14, but the tests themselves do as they make use of `uuid7`. Run them as following.
+
 ```sh
-uv run pytest
+uv run --python 3.14 pytest
 ```
 
 ### Installing as an editable package of another project

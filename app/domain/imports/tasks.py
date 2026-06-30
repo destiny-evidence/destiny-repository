@@ -2,9 +2,9 @@
 
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from uuid import UUID
 
 from opentelemetry import trace
-from pydantic import UUID4
 
 from app.core.config import get_settings
 from app.core.telemetry.attributes import (
@@ -69,15 +69,20 @@ async def get_reference_service(
     return ReferenceService(
         sql_uow=sql_uow,
         es_uow=es_uow,
-        anti_corruption_service=ReferenceAntiCorruptionService(BlobRepository()),
+        anti_corruption_service=ReferenceAntiCorruptionService(
+            sign_url=BlobRepository().get_signed_url
+        ),
     )
 
 
 @broker.task
-async def distribute_import_batch(import_batch_id: UUID4) -> None:
+async def distribute_import_batch(
+    import_record_id: UUID, import_batch_id: UUID
+) -> None:
     """Async logic for processing an import batch."""
-    name_span(f"Distribute import batch {import_batch_id}")
+    name_span("Distribute import batch")
     trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_batch_id))
+    trace_attribute(Attributes.IMPORT_RECORD_ID, str(import_record_id))
     async with get_sql_unit_of_work() as sql_uow:
         import_service = await get_import_service(sql_uow=sql_uow)
 
@@ -87,17 +92,21 @@ async def distribute_import_batch(import_batch_id: UUID4) -> None:
 
 @broker.task
 async def import_reference(
-    import_result_id: UUID4, content: str, line_number: int, remaining_retries: int
+    import_result_id: UUID, content: str, line_number: int, remaining_retries: int
 ) -> None:
     """Async logic for importing a reference."""
-    name_span(f"Import line {line_number}")
+    name_span("Import reference")
+    trace_attribute(Attributes.FILE_LINE_NO, line_number)
     trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result_id))
     trace_attribute(Attributes.MESSAGING_RETRIES_REMAINING, remaining_retries)
     async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
         import_service = await get_import_service(sql_uow=sql_uow)
         reference_service = await get_reference_service(sql_uow=sql_uow, es_uow=es_uow)
+        blob_repository = BlobRepository()
 
-        import_result = await import_service.get_import_result_with_batch(
+        # Rarely we can see a race condition where the task is picked up before the
+        # queuing process has committed the record.
+        import_result = await import_service.wait_for_import_result_with_batch(
             import_result_id
         )
         trace_attribute(Attributes.IMPORT_BATCH_ID, str(import_result.import_batch_id))
@@ -120,6 +129,7 @@ async def import_reference(
 
         import_result, duplicate_decision_id = await import_service.import_reference(
             reference_service,
+            blob_repository,
             import_result,
             content,
             line_number,

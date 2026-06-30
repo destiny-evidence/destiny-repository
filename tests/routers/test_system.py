@@ -44,6 +44,14 @@ async def client(app: FastAPI) -> AsyncGenerator[AsyncClient]:
         yield client
 
 
+async def test_ping(client: AsyncClient) -> None:
+    """Ping should return 200 without touching any dependencies."""
+    response = await client.get("/system/ping/")
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"status": "ok"}
+
+
 async def test_healthcheck_success(app: FastAPI, client: AsyncClient) -> None:
     """Test the happy path of the healthcheck."""
     mock_session = AsyncMock()

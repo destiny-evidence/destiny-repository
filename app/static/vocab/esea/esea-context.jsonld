@@ -1,0 +1,289 @@
+{
+  "@context": {
+    "@vocab": "https://vocab.evidence-repository.org/",
+
+    "evrepo": "https://vocab.evidence-repository.org/",
+    "esea": "https://vocab.esea.education/",
+
+    "skos": "http://www.w3.org/2004/02/skos/core#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+
+    "LinkedDataEnhancement": "evrepo:LinkedDataEnhancement",
+    "Investigation": "evrepo:Investigation",
+    "Finding": "evrepo:Finding",
+    "Context": "evrepo:Context",
+    "Condition": "evrepo:Condition",
+    "Intervention": "evrepo:Intervention",
+    "ControlCondition": "evrepo:ControlCondition",
+    "TemporalCondition": "evrepo:TemporalCondition",
+    "Outcome": "evrepo:Outcome",
+    "ObservedResult": "evrepo:ObservedResult",
+    "EffectEstimate": "evrepo:EffectEstimate",
+
+    "CodingAnnotation": "evrepo:CodingAnnotation",
+    "StringCodingAnnotation": "evrepo:StringCodingAnnotation",
+    "NumericCodingAnnotation": "evrepo:NumericCodingAnnotation",
+    "EducationLevelCodingAnnotation": "esea:EducationLevelCodingAnnotation",
+    "DocumentTypeCodingAnnotation": "esea:DocumentTypeCodingAnnotation",
+    "EducationThemeCodingAnnotation": "esea:EducationThemeCodingAnnotation",
+    "OutcomeCodingAnnotation": "esea:OutcomeCodingAnnotation",
+    "ImplementerTypeCodingAnnotation": "esea:ImplementerTypeCodingAnnotation",
+    "ImplementationDescriptionCodingAnnotation": "esea:ImplementationDescriptionCodingAnnotation",
+    "ImplementationFidelityCodingAnnotation": "esea:ImplementationFidelityCodingAnnotation",
+    "SettingCodingAnnotation": "esea:SettingCodingAnnotation",
+    "SampleFeaturesCodingAnnotation": "esea:SampleFeaturesCodingAnnotation",
+
+    "hasInvestigation": {
+      "@id": "evrepo:hasInvestigation",
+      "@type": "@id"
+    },
+    "hasFinding": {
+      "@id": "evrepo:hasFinding",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "hasContext": {
+      "@id": "evrepo:hasContext",
+      "@type": "@id"
+    },
+    "hasOutcome": {
+      "@id": "evrepo:hasOutcome",
+      "@type": "@id"
+    },
+    "evaluates": {
+      "@id": "evrepo:evaluates",
+      "@type": "@id"
+    },
+    "comparedTo": {
+      "@id": "evrepo:comparedTo",
+      "@type": "@id"
+    },
+    "hasArmData": {
+      "@id": "evrepo:hasArmData",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "hasEffectEstimate": {
+      "@id": "evrepo:hasEffectEstimate",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "derivedFrom": {
+      "@id": "evrepo:derivedFrom",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "forCondition": {
+      "@id": "evrepo:forCondition",
+      "@type": "@id"
+    },
+
+    "codedValue": "evrepo:codedValue",
+    "supportingText": {
+      "@id": "evrepo:supportingText",
+      "@type": "xsd:string"
+    },
+    "codedBy": "evrepo:codedBy",
+    "status": {
+      "@id": "evrepo:status",
+      "@type": "@id"
+    },
+    "coded": "evrepo:coded",
+    "notApplicable": "evrepo:notApplicable",
+    "notReported": "evrepo:notReported",
+    "sourceLocation": {
+      "@id": "evrepo:sourceLocation",
+      "@type": "xsd:string"
+    },
+
+    "n": {
+      "@id": "evrepo:n",
+      "@type": "xsd:integer"
+    },
+    "mean": {
+      "@id": "evrepo:mean",
+      "@type": "xsd:decimal"
+    },
+    "sd": {
+      "@id": "evrepo:sd",
+      "@type": "xsd:decimal"
+    },
+    "se": {
+      "@id": "evrepo:se",
+      "@type": "xsd:decimal"
+    },
+    "clusterCount": {
+      "@id": "evrepo:clusterCount",
+      "@type": "xsd:integer"
+    },
+    "icc": {
+      "@id": "evrepo:icc",
+      "@type": "xsd:decimal"
+    },
+    "preMean": {
+      "@id": "evrepo:preMean",
+      "@type": "xsd:decimal"
+    },
+    "preSd": {
+      "@id": "evrepo:preSd",
+      "@type": "xsd:decimal"
+    },
+    "events": {
+      "@id": "evrepo:events",
+      "@type": "xsd:integer"
+    },
+
+    "pointEstimate": {
+      "@id": "evrepo:pointEstimate",
+      "@type": "xsd:decimal"
+    },
+    "standardError": {
+      "@id": "evrepo:standardError",
+      "@type": "xsd:decimal"
+    },
+    "variance": {
+      "@id": "evrepo:variance",
+      "@type": "xsd:decimal"
+    },
+    "confidenceLevel": {
+      "@id": "evrepo:confidenceLevel",
+      "@type": "xsd:decimal"
+    },
+    "confidenceIntervalLower": {
+      "@id": "evrepo:confidenceIntervalLower",
+      "@type": "xsd:decimal"
+    },
+    "confidenceIntervalUpper": {
+      "@id": "evrepo:confidenceIntervalUpper",
+      "@type": "xsd:decimal"
+    },
+    "baselineAdjusted": {
+      "@id": "evrepo:baselineAdjusted",
+      "@type": "xsd:boolean"
+    },
+    "clusteringAdjusted": {
+      "@id": "evrepo:clusteringAdjusted",
+      "@type": "xsd:string"
+    },
+    "effectSizeMetric": {
+      "@id": "evrepo:effectSizeMetric",
+      "@type": "@id"
+    },
+    "estimateSource": {
+      "@id": "evrepo:estimateSource",
+      "@type": "@id"
+    },
+
+    "educationLevel": {
+      "@id": "esea:educationLevel",
+      "@type": "@id",
+      "@container": "@set"
+    },
+
+    "documentType": {
+      "@id": "esea:documentType",
+      "@type": "@id"
+    },
+
+    "educationTheme": {
+      "@id": "esea:educationTheme",
+      "@type": "@id",
+      "@container": "@set"
+    },
+
+    "outcome": {
+      "@id": "esea:outcome",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "implementerType": {
+      "@id": "esea:implementerType",
+      "@type": "@id"
+    },
+    "implementationDescription": {
+      "@id": "esea:implementationDescription",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "implementationFidelity": {
+      "@id": "esea:implementationFidelity",
+      "@type": "@id"
+    },
+    "setting": {
+      "@id": "esea:setting",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "sampleFeatures": {
+      "@id": "esea:sampleFeatures",
+      "@type": "@id",
+      "@container": "@set"
+    },
+
+    "participants": {
+      "@id": "esea:participants",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "implementationName": {
+      "@id": "esea:implementationName",
+      "@type": "@id"
+    },
+    "duration": {
+      "@id": "esea:duration",
+      "@type": "@id"
+    },
+    "sampleSize": {
+      "@id": "esea:sampleSize",
+      "@type": "@id"
+    },
+    "cost": {
+      "@id": "esea:cost",
+      "@type": "@id"
+    },
+    "attrition": {
+      "@id": "esea:attrition",
+      "@type": "@id"
+    },
+    "groupDifferences": {
+      "@id": "esea:groupDifferences",
+      "@type": "@id"
+    },
+    "country": {
+      "@id": "esea:country",
+      "@type": "@id",
+      "@container": "@set"
+    },
+    "funderIntervention": {
+      "@id": "esea:funderIntervention",
+      "@type": "@id"
+    },
+    "funderResearch": {
+      "@id": "esea:funderResearch",
+      "@type": "@id"
+    },
+    "countryLevel1": {
+      "@id": "esea:countryLevel1",
+      "@type": "@id",
+      "@container": "@set"
+    },
+
+    "isRetracted": {
+      "@id": "esea:isRetracted",
+      "@type": "xsd:boolean"
+    },
+    "dataSource": {
+      "@id": "esea:dataSource",
+      "@type": "xsd:string"
+    },
+
+    "name": {
+      "@id": "evrepo:name",
+      "@type": "xsd:string"
+    },
+    "description": {
+      "@id": "evrepo:description",
+      "@type": "xsd:string"
+    }
+  }
+}

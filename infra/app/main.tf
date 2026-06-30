@@ -1,7 +1,7 @@
 # Azure container registry will be defined in shared infrastructure repository
 data "azurerm_container_registry" "this" {
-  name                = var.container_registry_name
-  resource_group_name = var.container_registry_resource_group
+  name                = var.shared_container_registry_name
+  resource_group_name = var.shared_resource_group_name
 }
 
 resource "azurerm_resource_group" "this" {
@@ -48,8 +48,8 @@ resource "azuread_group_member" "container_app_tasks_to_crud" {
 locals {
   # When external directory is enabled, use the external directory app and tenant
   # Otherwise, use the application tenant
-  auth_application_id = var.external_directory_enabled ? azuread_application.external_directory_destiny_repository.client_id : azuread_application.destiny_repository.client_id
-  auth_login_url      = var.external_directory_enabled ? var.azure_login_url : "https://login.microsoftonline.com/${var.azure_tenant_id}"
+  auth_application_id = azuread_application.destiny_repository.client_id
+  auth_login_url      = "https://login.microsoftonline.com/${var.azure_tenant_id}"
 
   env_vars = [
     {
@@ -78,17 +78,24 @@ locals {
     },
     {
       name  = "MESSAGE_BROKER_NAMESPACE"
-      value = "${azurerm_servicebus_namespace.this.name}.servicebus.windows.net"
+      value = "${local.active_servicebus_ns.name}.servicebus.windows.net"
     },
     {
       name  = "MESSAGE_BROKER_QUEUE_NAME"
-      value = azurerm_servicebus_queue.taskiq.name
+      value = local.active_servicebus_queue.name
+    },
+    {
+      name  = "MESSAGE_BROKER_PRIORITY_QUEUE_NAME"
+      value = local.active_servicebus_priority_queue.name
     },
     {
       name = "AZURE_BLOB_CONFIG"
       value = jsonencode({
         storage_account_name = azurerm_storage_account.this.name
-        container            = azurerm_storage_container.operations.name
+        containers = {
+          operations = azurerm_storage_container.operations.name
+          full_texts = azurerm_storage_container.full_texts.name
+        }
       })
     },
     {
@@ -112,8 +119,16 @@ locals {
       value = tostring(var.default_upload_file_chunk_size)
     },
     {
+      name  = "UPLOAD_FILE_CHUNK_SIZE_OVERRIDE",
+      value = jsonencode(var.upload_file_chunk_size_override)
+    },
+    {
       name  = "MAX_REFERENCE_LOOKUP_QUERY_LENGTH",
       value = var.max_reference_lookup_query_length
+    },
+    {
+      name  = "ES_AGGREGATION_MAX_BUCKETS",
+      value = tostring(var.es_aggregation_max_buckets)
     },
     {
       name  = "MESSAGE_LOCK_RENEWAL_DURATION",
@@ -123,13 +138,33 @@ locals {
       name  = "TRUSTED_UNIQUE_IDENTIFIER_TYPES",
       value = jsonencode(var.trusted_unique_identifier_types)
     },
+    {
+      name  = "ALLOWED_IMPORT_DOMAINS",
+      value = jsonencode(var.allowed_import_domains)
+    },
+    {
+      name  = "AUTH_PROVIDER"
+      value = var.auth_provider
+    },
+    {
+      name  = "KEYCLOAK_URL"
+      value = var.auth_provider != "azure" ? var.shared_keycloak_url : ""
+    },
+    {
+      name  = "KEYCLOAK_CLIENT_ID"
+      value = var.auth_provider != "azure" ? "destiny-repository-client-${var.environment}" : ""
+    },
+    {
+      name  = "CORS_ALLOW_ORIGINS",
+      value = jsonencode(local.cors_allow_origins)
+    },
   ]
 
 
   secrets = [
     {
       name  = "servicebus-connection-string"
-      value = azurerm_servicebus_namespace.this.default_primary_connection_string
+      value = local.active_servicebus_ns.default_primary_connection_string
     },
     {
       name = "es-config"
@@ -141,32 +176,43 @@ locals {
     {
       name = "otel-config"
       value = jsonencode({
-        trace_endpoint = var.honeycombio_trace_endpoint
-        meter_endpoint = var.honeycombio_meter_endpoint
-        log_endpoint   = var.honeycombio_log_endpoint
-        api_key        = honeycombio_api_key.this.key
+        trace_endpoint           = var.honeycombio_trace_endpoint
+        meter_endpoint           = var.honeycombio_meter_endpoint
+        log_endpoint             = var.honeycombio_log_endpoint
+        api_key                  = honeycombio_api_key.this.key
+        instrument_sql           = var.otel_instrument_sql
+        instrument_elasticsearch = var.otel_instrument_elasticsearch
+        instrument_taskiq        = var.otel_instrument_taskiq
+        orphan_log_sample_config = {
+          notset_sample_rate   = var.otel_orphan_log_sample_rate_notset
+          debug_sample_rate    = var.otel_orphan_log_sample_rate_debug
+          info_sample_rate     = var.otel_orphan_log_sample_rate_info
+          warning_sample_rate  = var.otel_orphan_log_sample_rate_warning
+          error_sample_rate    = var.otel_orphan_log_sample_rate_error
+          critical_sample_rate = var.otel_orphan_log_sample_rate_critical
+        }
       })
     },
   ]
 }
 
 data "azurerm_container_app" "api" {
-  # This data source is used to get the latest revision FQDN for the container app
-  # so that we can use it in the eppi-import GitHub Action.
+  # Used as the Front Door origin host_name.
+  # No depends_on: the module.container_app.container_app_name reference
+  # is sufficient for ordering, and adding depends_on forces the data read
+  # to be deferred to apply, cascading "known after apply" into every consumer.
   name                = module.container_app.container_app_name
   resource_group_name = azurerm_resource_group.this.name
-  depends_on          = [module.container_app]
 }
 
 data "azurerm_container_app" "ui" {
   name                = module.container_app_ui.container_app_name
   resource_group_name = azurerm_resource_group.this.name
-  depends_on          = [module.container_app_ui]
 }
 
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.7.1"
+  version                         = "1.9.0"
   app_name                        = var.app_name
   cpu                             = var.container_app_cpu
   environment                     = var.environment
@@ -186,10 +232,7 @@ module "container_app" {
     client_id    = azurerm_user_assigned_identity.container_apps_identity.client_id
   }
 
-  env_vars = concat(local.env_vars, [{
-    name  = "CORS_ALLOW_ORIGINS",
-    value = jsonencode(["*"])
-  }])
+  env_vars = local.env_vars
 
   secrets = local.secrets
 
@@ -220,12 +263,13 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.7.1"
+  version                         = "1.9.0"
   app_name                        = "${var.app_name}-task"
   cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
   container_registry_login_server = data.azurerm_container_registry.this.login_server
+  container_app_environment_id    = module.container_app.container_app_env_id
   infrastructure_subnet_id        = azurerm_subnet.tasks.id
   memory                          = var.container_app_tasks_memory
   resource_group_name             = azurerm_resource_group.this.name
@@ -233,6 +277,7 @@ module "container_app_tasks" {
   min_replicas                    = var.tasks_min_replicas
   max_replicas                    = var.tasks_max_replicas
   tags                            = local.minimum_resource_tags
+
 
   identity = {
     id           = azurerm_user_assigned_identity.container_apps_tasks_identity.id
@@ -256,9 +301,22 @@ module "container_app_tasks" {
       name             = "queue-length-scale-rule"
       custom_rule_type = "azure-servicebus"
       metadata = {
-        namespace    = azurerm_servicebus_namespace.this.name
-        queueName    = azurerm_servicebus_queue.taskiq.name
+        namespace    = local.active_servicebus_ns.name
+        queueName    = local.active_servicebus_queue.name
         messageCount = var.queue_active_jobs_scaling_threshold
+      }
+      authentication = {
+        secret_name       = "servicebus-connection-string"
+        trigger_parameter = "connection"
+      }
+    },
+    {
+      name             = "priority-queue-length-scale-rule"
+      custom_rule_type = "azure-servicebus"
+      metadata = {
+        namespace    = local.active_servicebus_ns.name
+        queueName    = local.active_servicebus_priority_queue.name
+        messageCount = var.priority_queue_active_jobs_scaling_threshold
       }
       authentication = {
         secret_name       = "servicebus-connection-string"
@@ -270,11 +328,12 @@ module "container_app_tasks" {
 
 module "container_app_ui" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.7.1"
+  version                         = "1.9.0"
   app_name                        = "${var.app_name}-ui"
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id
   container_registry_login_server = data.azurerm_container_registry.this.login_server
+  container_app_environment_id    = module.container_app.container_app_env_id
   infrastructure_subnet_id        = azurerm_subnet.ui.id
   resource_group_name             = azurerm_resource_group.this.name
   region                          = azurerm_resource_group.this.location
@@ -289,7 +348,7 @@ module "container_app_ui" {
   env_vars = [
     {
       name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
-      value = var.external_directory_enabled ? azuread_application_registration.external_directory_destiny_repository_auth_ui.client_id : azuread_application_registration.destiny_repository_auth_ui.client_id
+      value = azuread_application_registration.destiny_repository_auth_ui.client_id
     },
     {
       name  = "NEXT_PUBLIC_AZURE_LOGIN_URL"
@@ -297,11 +356,24 @@ module "container_app_ui" {
     },
     {
       name  = "NEXT_PUBLIC_API_URL"
-      value = "https://${data.azurerm_container_app.api.ingress[0].fqdn}/v1/"
+      value = "https://${local.api_hostname}/v1/"
     },
     {
       name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
       value = local.auth_application_id
+    },
+    {
+      name = "AUTH_PROVIDER"
+      # UI drives a single login flow; map "both" to keycloak as the default.
+      value = var.auth_provider == "both" ? "keycloak" : var.auth_provider
+    },
+    {
+      name  = "KEYCLOAK_URL"
+      value = var.auth_provider != "azure" ? var.shared_keycloak_url : ""
+    },
+    {
+      name  = "KEYCLOAK_CLIENT_ID"
+      value = var.auth_provider != "azure" ? "destiny-auth-ui-client-${var.environment}" : ""
     },
   ]
 
@@ -315,6 +387,13 @@ module "container_app_ui" {
       percentage      = 100
     }
   }
+}
+
+locals {
+  servicebus_is_premium            = var.prod_servicebus_is_premium && var.environment == "production"
+  active_servicebus_ns             = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
+  active_servicebus_queue          = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
+  active_servicebus_priority_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_priority_premium[0] : azurerm_servicebus_queue.taskiq_priority
 }
 
 resource "azurerm_servicebus_namespace" "this" {
@@ -331,6 +410,46 @@ resource "azurerm_servicebus_queue" "taskiq" {
   namespace_id = azurerm_servicebus_namespace.this.id
 
   partitioning_enabled = true
+  lock_duration        = "PT5M"
+}
+
+resource "azurerm_servicebus_queue" "taskiq_priority" {
+  name         = "taskiq-priority"
+  namespace_id = azurerm_servicebus_namespace.this.id
+
+  partitioning_enabled = true
+}
+
+resource "azurerm_servicebus_namespace" "premium" {
+  count = local.servicebus_is_premium ? 1 : 0
+
+  name                         = "${local.name}-premium"
+  resource_group_name          = azurerm_resource_group.this.name
+  location                     = azurerm_resource_group.this.location
+  sku                          = "Premium"
+  capacity                     = var.servicebus_capacity
+  premium_messaging_partitions = var.servicebus_partitions
+
+  tags = local.minimum_resource_tags
+}
+
+resource "azurerm_servicebus_queue" "taskiq_premium" {
+  count = local.servicebus_is_premium ? 1 : 0
+
+  name         = "taskiq"
+  namespace_id = azurerm_servicebus_namespace.premium[0].id
+
+  partitioning_enabled = true
+  lock_duration        = "PT5M"
+}
+
+resource "azurerm_servicebus_queue" "taskiq_priority_premium" {
+  count = local.servicebus_is_premium ? 1 : 0
+
+  name         = "taskiq-priority"
+  namespace_id = azurerm_servicebus_namespace.premium[0].id
+
+  partitioning_enabled = true
 }
 
 resource "azurerm_storage_account" "this" {
@@ -342,6 +461,24 @@ resource "azurerm_storage_account" "this" {
   account_tier             = "Standard"
   account_replication_type = "LRS"
   tags                     = local.minimum_resource_tags
+
+  blob_properties {
+    delete_retention_policy {
+      days = 30
+    }
+    container_delete_retention_policy {
+      days = 30
+    }
+
+    cors_rule {
+      allowed_origins = local.cors_allow_origins
+      allowed_methods = ["GET", "HEAD"]
+      allowed_headers = ["*"]
+      exposed_headers = ["*"]
+      # Match chrome maximum of two hours
+      max_age_in_seconds = 7200
+    }
+  }
 
   # Avoid accidental blob storage deletion
   lifecycle {
@@ -369,6 +506,13 @@ resource "azurerm_storage_container" "file_uploads" {
 resource "azurerm_storage_container" "import_files" {
   # This is a container designed for storing pre-processed jsonl files to be imported into the DESTINY repository.
   name                  = "import-files"
+  storage_account_id    = azurerm_storage_account.this.id
+  container_access_type = "private"
+}
+
+resource "azurerm_storage_container" "full_texts" {
+  # This is a container designed for storing full-text files.
+  name                  = "full-texts"
   storage_account_id    = azurerm_storage_account.this.id
   container_access_type = "private"
 }
@@ -461,7 +605,7 @@ resource "ec_deployment" "cluster" {
     hot = {
       size = "2g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = local.env.es_hot_max_size_memory
         max_size_resource = "memory"
       }
     }
@@ -469,7 +613,7 @@ resource "ec_deployment" "cluster" {
     warm = {
       size = "0g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = "2g" # 400GB storage: https://cloud.elastic.co/pricing
         max_size_resource = "memory"
       }
     }
@@ -477,7 +621,7 @@ resource "ec_deployment" "cluster" {
     cold = {
       size = "0g"
       autoscaling = {
-        max_size          = "60g"
+        max_size          = "0g"
         max_size_resource = "memory"
       }
     }
@@ -485,7 +629,7 @@ resource "ec_deployment" "cluster" {
     frozen = {
       size = "0g"
       autoscaling = {
-        max_size          = "60g"
+        max_size          = "0g"
         max_size_resource = "memory"
       }
     }
@@ -493,7 +637,7 @@ resource "ec_deployment" "cluster" {
     ml = {
       size = "0g"
       autoscaling = {
-        max_size          = "30g"
+        max_size          = "0g"
         max_size_resource = "memory"
       }
     }
@@ -555,12 +699,11 @@ resource "elasticstack_elasticsearch_security_api_key" "read_only" {
 resource "elasticstack_elasticsearch_snapshot_lifecycle" "snapshots" {
   name = "snapshot-policy"
 
-  # Every 30 minutes for production, once a day at 01:30 AM otherwise
-  schedule   = local.is_production ? "0 */30 * * * ?" : "0 30 1 * * ?"
+  schedule   = local.env.es_snapshot_schedule
   repository = "found-snapshots" # Default Elastic Cloud repository
 
   expire_after = "30d"
-  min_count    = local.is_production ? 336 : 7 # 7 days worth
+  min_count    = local.env.es_snapshot_retention
 }
 
 resource "azurerm_role_assignment" "es_index_migrator_acr_access" {
@@ -627,10 +770,13 @@ resource "azurerm_container_app_job" "es_index_migrator" {
   secret {
     name = "otel-config"
     value = jsonencode({
-      trace_endpoint = var.honeycombio_trace_endpoint
-      meter_endpoint = var.honeycombio_meter_endpoint
-      log_endpoint   = var.honeycombio_log_endpoint
-      api_key        = honeycombio_api_key.this.key
+      trace_endpoint           = var.honeycombio_trace_endpoint
+      meter_endpoint           = var.honeycombio_meter_endpoint
+      log_endpoint             = var.honeycombio_log_endpoint
+      api_key                  = honeycombio_api_key.this.key
+      instrument_sql           = var.otel_instrument_sql
+      instrument_elasticsearch = var.otel_instrument_elasticsearch
+      instrument_taskiq        = var.otel_instrument_taskiq
     })
   }
 
@@ -670,6 +816,16 @@ resource "azurerm_container_app_job" "es_index_migrator" {
       env {
         name  = "REINDEX_STATUS_POLLING_INTERVAL"
         value = var.es_migrator_reindex_polling_interval
+      }
+
+      env {
+        name = "SLOWLOG_THRESHOLDS"
+        value = jsonencode({
+          warn  = var.es_slowlog_warn_threshold
+          info  = var.es_slowlog_info_threshold
+          debug = var.es_slowlog_debug_threshold
+          trace = var.es_slowlog_trace_threshold
+        })
       }
     }
   }

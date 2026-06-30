@@ -1,5 +1,6 @@
 """Service for managing batch enhancements."""
 
+import mimetypes
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import NamedTuple
 from uuid import UUID
@@ -8,12 +9,23 @@ import destiny_sdk
 from opentelemetry import trace
 
 from app.core.config import get_settings
+from app.core.exceptions import (
+    BlobSizeExceededError,
+    FullTextDownloadError,
+    FullTextIngestionError,
+    FullTextIntegrityError,
+    FullTextSizeExceededError,
+    RemoteBlobStorageError,
+    VocabularyFetchError,
+)
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.otel import new_linked_trace
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
+    EnhancementType,
     PendingEnhancement,
     PendingEnhancementStatus,
     RobotEnhancementBatch,
@@ -25,8 +37,12 @@ from app.domain.references.models.validators import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.linked_data_validation_service import (
+    LinkedDataValidationService,
+)
 from app.domain.service import GenericService
 from app.persistence.blob.models import (
+    BlobContainer,
     BlobStorageFile,
 )
 from app.persistence.blob.repository import BlobRepository
@@ -34,8 +50,8 @@ from app.persistence.blob.stream import FileStream
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 
 logger = get_logger(__name__)
-settings = get_settings()
 tracer = trace.get_tracer(__name__)
+settings = get_settings()
 
 
 class ProcessedResults(NamedTuple):
@@ -54,9 +70,107 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
         sql_uow: AsyncSqlUnitOfWork,
+        linked_data_validation_service: LinkedDataValidationService,
     ) -> None:
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow)
+        self._linked_data_validation_service = linked_data_validation_service
+
+    async def store_full_text(
+        self,
+        enhancement: Enhancement,
+        blob_repository: BlobRepository,
+    ) -> None:
+        """
+        Copy a full-text enhancement's remote content into our blob storage.
+
+        Mutates ``enhancement.content`` in place: ``blob`` is swapped to the
+        owned location and ``byte_size`` / ``sha256_checksum`` are populated
+        from the copy result if they were not declared.
+
+        :raises ValueError: if ``enhancement`` is not a full-text enhancement.
+            Callers are expected to filter by type before calling.
+        :raises FullTextIngestionError: if the blob is not remote, the remote
+            fetch fails, or declared sha256/byte_size disagrees with the
+            computed value.
+        """
+        content = enhancement.content
+        if content.enhancement_type != EnhancementType.FULL_TEXT:
+            msg = (
+                f"store_full_text called with non-full-text enhancement "
+                f"{enhancement.id} (type {content.enhancement_type})"
+            )
+            raise ValueError(msg)
+        if not content.blob.is_remote:
+            msg = (
+                f"store_full_text called with non-remote blob for enhancement "
+                f"{enhancement.id}: {content.blob.to_uri()}"
+            )
+            raise FullTextIngestionError(msg)
+
+        source = content.blob
+        extension = mimetypes.guess_extension(content.mime_type) or ".bin"
+        destination = blob_repository.destination(
+            path=str(enhancement.id),
+            filename=f"{enhancement.reference_id}{extension}",
+            container=BlobContainer.FULL_TEXTS,
+        )
+        logger.info(
+            "Storing full text enhancement.",
+            reference_id=str(enhancement.reference_id),
+            enhancement_id=str(enhancement.id),
+            source_uri=source.to_uri(),
+            destination_uri=destination.to_uri(),
+        )
+
+        try:
+            result = await blob_repository.copy(
+                source,
+                destination,
+                max_bytes=settings.full_text_max_byte_size,
+                content_type=content.mime_type,
+            )
+        except BlobSizeExceededError as exc:
+            msg = (
+                f"Full text from {source.to_uri()} exceeds the configured "
+                f"maximum of {settings.full_text_max_byte_size} bytes."
+            )
+            raise FullTextSizeExceededError(msg) from exc
+        except RemoteBlobStorageError as exc:
+            msg = f"Failed to fetch full text from {source.to_uri()}: {exc.detail}"
+            raise FullTextDownloadError(msg) from exc
+
+        if (
+            content.sha256_checksum is not None
+            and content.sha256_checksum != result.sha256_checksum
+        ):
+            msg = (
+                f"sha256 mismatch for full text from {source.to_uri()}: "
+                f"declared {content.sha256_checksum!r}, "
+                f"computed {result.sha256_checksum!r}"
+            )
+            raise FullTextIntegrityError(msg)
+
+        if content.byte_size is not None and content.byte_size != result.byte_size:
+            msg = (
+                f"byte_size mismatch for full text from {source.to_uri()}: "
+                f"declared {content.byte_size}, computed {result.byte_size}"
+            )
+            raise FullTextIntegrityError(msg)
+
+        content.blob = result.destination
+        if content.sha256_checksum is None:
+            content.sha256_checksum = result.sha256_checksum
+        if content.byte_size is None:
+            content.byte_size = result.byte_size
+
+        logger.info(
+            "Stored full text enhancement.",
+            reference_id=str(enhancement.reference_id),
+            enhancement_id=str(enhancement.id),
+            byte_size=result.byte_size,
+            sha256_checksum=result.sha256_checksum,
+        )
 
     async def mark_robot_enhancement_batch_failed(
         self, robot_enhancement_batch_id: UUID, error: str
@@ -156,6 +270,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
     async def build_robot_enhancement_batch(
         self,
+        blob_repository: BlobRepository,
         robot_enhancement_batch: RobotEnhancementBatch,
         reference_data_file: BlobStorageFile,
     ) -> RobotEnhancementBatch:
@@ -163,6 +278,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         Create a robot enhancement batch.
 
         Args:
+            blob_repository (BlobRepository)
             robot_enhancement_batch (RobotEnhancementBatch): The robot enhancement
                 object.
             reference_data_file (BlobStorageFile): The blob storage file object.
@@ -171,17 +287,15 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             RobotEnhancementBatch: The created robot enhancement batch.
 
         """
-        result_file = BlobStorageFile(
-            location=settings.default_blob_location,
-            container=settings.default_blob_container,
+        result_file = blob_repository.destination(
             path="robot_enhancement_batch_result_data",
             filename=f"{robot_enhancement_batch.id}_robot.jsonl",
         )
 
         return await self.sql_uow.robot_enhancement_batches.update_by_pk(
             pk=robot_enhancement_batch.id,
-            reference_data_file=reference_data_file.to_sql(),
-            result_file=result_file.to_sql(),
+            reference_data_file=reference_data_file.to_uri(),
+            result_file=result_file.to_uri(),
         )
 
     async def add_validation_result_file_to_enhancement_request(
@@ -192,7 +306,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """Add a validation result file to a enhancement request."""
         return await self.sql_uow.enhancement_requests.update_by_pk(
             pk=enhancement_request_id,
-            validation_result_file=validation_result_file.to_sql(),
+            validation_result_file=validation_result_file.to_uri(),
         )
 
     async def add_validation_result_file_to_robot_enhancement_batch(
@@ -203,7 +317,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """Add a validation result file to a robot enhancement batch."""
         return await self.sql_uow.robot_enhancement_batches.update_by_pk(
             pk=robot_enhancement_batch_id,
-            validation_result_file=validation_result_file.to_sql(),
+            validation_result_file=validation_result_file.to_uri(),
         )
 
     async def build_robot_request(
@@ -221,22 +335,56 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         )
 
         enhancement_request.reference_data_file = file
-        enhancement_request.result_file = BlobStorageFile(
-            location=settings.default_blob_location,
-            container=settings.default_blob_container,
+        enhancement_request.result_file = blob_repository.destination(
             path="enhancement_result",
             filename=f"{enhancement_request.id}_robot.jsonl",
         )
 
         enhancement_request = await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request.id,
-            reference_data_file=enhancement_request.reference_data_file.to_sql(),
-            result_file=enhancement_request.result_file.to_sql(),
+            reference_data_file=enhancement_request.reference_data_file.to_uri(),
+            result_file=enhancement_request.result_file.to_uri(),
         )
 
         return await self._anti_corruption_service.enhancement_request_to_sdk_robot(
             enhancement_request
         )
+
+    async def _validate_linked_data_enhancement(
+        self,
+        enhancement: destiny_sdk.enhancements.Enhancement,
+    ) -> destiny_sdk.robots.LinkedRobotError | None:
+        """Validate a LinkedDataEnhancement against the ontology, if applicable."""
+        if enhancement.content.enhancement_type != EnhancementType.LINKED_DATA:
+            msg = "Enhancement must be of type LINKED_DATA for LinkedData validation."
+            raise TypeError(msg)
+        try:
+            result = await self._linked_data_validation_service.validate(
+                data=enhancement.content.data,
+                vocabulary_uri=str(enhancement.content.vocabulary_uri),
+            )
+        except VocabularyFetchError as exc:
+            logger.warning(
+                "Vocabulary failed to fetch or parse.",
+                reference_id=str(enhancement.reference_id),
+                exc=repr(exc),
+            )
+            return destiny_sdk.robots.LinkedRobotError(
+                reference_id=enhancement.reference_id,
+                message=(
+                    "Could not fetch or parse the vocabulary needed to "
+                    "validate this enhancement. This may be transient. "
+                    f"Detail: {exc}"
+                ),
+            )
+        if not result.conforms:
+            return destiny_sdk.robots.LinkedRobotError(
+                reference_id=enhancement.reference_id,
+                message=(
+                    "LinkedData validation failed: " f"{'; '.join(result.errors)}"
+                ),
+            )
+        return None
 
     async def _process_robot_error_line(
         self,
@@ -281,6 +429,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         add_enhancement: Callable[
             [Enhancement], Awaitable[tuple[PendingEnhancementStatus, str]]
         ],
+        blob_repository: BlobRepository,
         line_no: int,
         attempted_reference_ids: set[UUID],
         results: ProcessedResults,
@@ -300,6 +449,27 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_to_add
         )
         trace_attribute(Attributes.ENHANCEMENT_ID, str(enhancement.id))
+
+        # Store remote FT blobs before they reach the persistence boundary.
+        if enhancement.content.enhancement_type == EnhancementType.FULL_TEXT:
+            try:
+                await self.store_full_text(enhancement, blob_repository)
+            except FullTextIngestionError as exc:
+                logger.warning(
+                    "Failed to store full text enhancement from robot result.",
+                    line_no=line_no,
+                    reference_id=str(enhancement.reference_id),
+                    enhancement_id=str(enhancement.id),
+                    exc=repr(exc),
+                )
+                return (
+                    self._anti_corruption_service.robot_result_validation_entry_to_sdk(
+                        RobotResultValidationEntry(
+                            reference_id=enhancement_to_add.reference_id,
+                            error=str(exc),
+                        )
+                    ).to_jsonl()
+                )
 
         status, message = await add_enhancement(enhancement)
 
@@ -349,8 +519,9 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             else:
                 results.failed_pending_enhancement_ids.add(pending_enhancement.id)
 
-    async def process_robot_enhancement_batch_result(
+    async def process_robot_enhancement_batch_result(  # noqa: PLR0913
         self,
+        robot_enhancement_batch_id: UUID,
         blob_repository: BlobRepository,
         result_file: BlobStorageFile,
         pending_enhancements: list[PendingEnhancement],
@@ -372,57 +543,83 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         # Track processed IDs for duplicate validation
         processed_reference_ids: set[UUID] = set()
 
-        async with blob_repository.stream_file_from_blob_storage(
-            result_file,
-        ) as file_stream:
-            # Read the file stream and validate the content
-            line_no = 1
-            async for line in file_stream:
-                with tracer.start_as_current_span(
-                    "Import enhancement",
-                    attributes={Attributes.FILE_LINE_NO: line_no},
-                ):
-                    if not line.strip():
-                        continue
+        with tracer.start_as_current_span("Ingest robot enhancement batch result file"):
+            async with blob_repository.stream_file_from_blob_storage(
+                result_file,
+            ) as file_stream:
+                # Read the file stream and validate the content
+                line_no = 1
+                async for line in file_stream:
+                    with new_linked_trace(
+                        "Import enhancement",
+                        attributes={
+                            Attributes.FILE_LINE_NO: line_no,
+                            Attributes.ROBOT_ENHANCEMENT_BATCH_ID: str(
+                                robot_enhancement_batch_id
+                            ),
+                        },
+                    ):
+                        if not line.strip():
+                            continue
 
-                    validated_result = EnhancementResultValidator.from_raw(
-                        line, line_no, expected_reference_ids, processed_reference_ids
-                    )
-                    line_no += 1
-
-                    # Process the validated result line
-                    result_entry = ""
-                    if validated_result.robot_error:
-                        # Track processed IDs here for clarity
-                        ref_id = validated_result.robot_error.reference_id
-                        if ref_id in expected_reference_ids:
-                            processed_reference_ids.add(ref_id)
-                        result_entry = await self._process_robot_error_line(
-                            validated_result.robot_error,
-                            attempted_reference_ids,
-                        )
-                    elif validated_result.parse_failure:
-                        result_entry = await self._process_parse_failure_line(
-                            validated_result.parse_failure,
+                        validated_result = EnhancementResultValidator.from_raw(
+                            line,
                             line_no,
+                            expected_reference_ids,
+                            processed_reference_ids,
                         )
-                    elif validated_result.enhancement_to_add:
-                        # Track processed IDs here for clarity
-                        processed_reference_ids.add(
-                            validated_result.enhancement_to_add.reference_id
-                        )
-                        result_entry = await self._process_enhancement_line(
-                            validated_result.enhancement_to_add,
-                            add_enhancement,
-                            line_no,
-                            attempted_reference_ids,
-                            results,
-                            successful_reference_ids,
-                            discarded_enhancement_reference_ids,
-                        )
+                        line_no += 1
 
-                    if result_entry:  # Only yield non-empty results
-                        yield result_entry
+                        # Process the validated result line
+                        result_entry = ""
+                        if validated_result.robot_error:
+                            # Track processed IDs here for clarity
+                            ref_id = validated_result.robot_error.reference_id
+                            if ref_id in expected_reference_ids:
+                                processed_reference_ids.add(ref_id)
+                            result_entry = await self._process_robot_error_line(
+                                validated_result.robot_error,
+                                attempted_reference_ids,
+                            )
+                        elif validated_result.parse_failure:
+                            result_entry = await self._process_parse_failure_line(
+                                validated_result.parse_failure,
+                                line_no,
+                            )
+                        elif validated_result.enhancement_to_add:
+                            # Track processed IDs here for clarity
+                            processed_reference_ids.add(
+                                validated_result.enhancement_to_add.reference_id
+                            )
+
+                            # Validate LinkedDataEnhancements against ontology
+                            if (
+                                validated_result.enhancement_to_add.content.enhancement_type
+                                == EnhancementType.LINKED_DATA
+                            ) and (
+                                ld_error
+                                := await self._validate_linked_data_enhancement(
+                                    validated_result.enhancement_to_add,
+                                )
+                            ):
+                                result_entry = await self._process_robot_error_line(
+                                    ld_error,
+                                    attempted_reference_ids,
+                                )
+                            else:
+                                result_entry = await self._process_enhancement_line(
+                                    validated_result.enhancement_to_add,
+                                    add_enhancement,
+                                    blob_repository,
+                                    line_no,
+                                    attempted_reference_ids,
+                                    results,
+                                    successful_reference_ids,
+                                    discarded_enhancement_reference_ids,
+                                )
+
+                        if result_entry:  # Only yield non-empty results
+                            yield result_entry
 
         # Generate entries for missing references
         if missing_reference_ids := (expected_reference_ids - attempted_reference_ids):

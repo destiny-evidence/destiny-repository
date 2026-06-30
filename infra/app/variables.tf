@@ -39,33 +39,78 @@ variable "tasks_max_replicas" {
   default     = 10
 }
 
+variable "auth_provider" {
+  description = "Authentication provider to use for JWT validation."
+  type        = string
+  default     = "azure"
+
+  validation {
+    condition     = contains(["azure", "keycloak", "both"], var.auth_provider)
+    error_message = "auth_provider must be one of: azure, keycloak, both."
+  }
+}
+
+variable "shared_container_registry_name" {
+  description = "Name of the shared container registry. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "shared_resource_group_name" {
+  description = "Resource group containing shared infrastructure (Keycloak, registry, etc). Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "shared_keycloak_url" {
+  description = "Public-facing Keycloak base URL. Used both as the iss claim expected by the server and as the authority for the UI. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "shared_frontdoor_profile_name" {
+  description = "Name of the shared Azure Front Door profile used to expose the API publicly. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "dnsimple_account_id" {
+  description = "DNSimple account ID used to manage DNS records for evidence-repository.org. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+}
+
+variable "dnsimple_token" {
+  description = "DNSimple API token used to manage DNS records. Sourced from the destiny-evidence-shared TFC variable set."
+  type        = string
+  sensitive   = true
+}
+
+variable "dnsimple_zone_name" {
+  description = "DNSimple zone (apex domain) that owns the API hostname."
+  type        = string
+  default     = "evidence-repository.org"
+}
+
+variable "api_subdomain" {
+  description = "Subdomain (relative to dnsimple_zone_name) for the API Front Door endpoint. For example: 'api' in production, 'api.stag' in staging."
+  type        = string
+}
+
+variable "ui_subdomain" {
+  description = "Subdomain (relative to dnsimple_zone_name) for the UI Front Door endpoint. For example: 'ui' in production, 'ui.stag' in staging."
+  type        = string
+}
+
+variable "cors_allow_origins" {
+  description = "Origins permitted by the API's CORS policy (e.g. https://data.evidence-repository.org)."
+  type        = list(string)
+}
+
 variable "azure_tenant_id" {
   description = "ID of the azure application "
   type        = string
-}
-
-variable "external_directory_enabled" {
-  description = "Enable authentication via the external directory (CIAM). When false, uses the application tenant for authentication."
-  type        = bool
-  default     = false
-}
-
-variable "external_directory_tenant_id" {
-  description = "ID of the external directory tenant for the Azure AD provider. Required when external_directory_enabled is true."
-  type        = string
-}
-
-variable "azure_login_url" {
-  description = "Azure login URL for JWT token validation. Required when external_directory_enabled is true. Examples: https://login.microsoftonline.com/tenantId, https://tenantName.ciamlogin.com/tenantId"
-  type        = string
-  default     = null
 }
 
 variable "budget_code" {
   description = "Budget code for tagging resource groups. Required tag for resource groups"
   type        = string
 }
-
 
 variable "container_app_cpu" {
   description = "CPU for the app container app"
@@ -97,16 +142,6 @@ variable "container_app_tasks_n_concurrent_jobs" {
   default     = 4
 }
 
-variable "container_registry_name" {
-  description = "The name of the container registry being used"
-  type        = string
-}
-
-variable "container_registry_resource_group" {
-  description = "The name of the resource group the container registry is in"
-  type        = string
-}
-
 variable "cpu_scaling_threshold" {
   description = "CPU threshold for scaling the app container app"
   type        = number
@@ -119,6 +154,13 @@ variable "queue_active_jobs_scaling_threshold" {
   default     = 100
 }
 
+variable "priority_queue_active_jobs_scaling_threshold" {
+  description = "Active jobs threshold for scaling the tasks container app for high priority tasks."
+  type        = number
+  default     = 20
+}
+
+
 variable "created_by" {
   description = "Who created this infrastructure. Required tag for resource groups"
   type        = string
@@ -129,24 +171,9 @@ variable "developers_group_id" {
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
 }
 
-variable "external_directory_developers_group_id" {
-  type        = string
-  description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs. Required when external_directory_enabled is true."
-}
-
-variable "external_directory_client_id" {
-  description = "Client ID of the external directory application. Required when external_directory_enabled is true."
-  type        = string
-}
-
 variable "ui_users_group_id" {
   type        = string
   description = "Id of a group to assign to UI-relevant API roles on destiny repository"
-}
-
-variable "external_directory_ui_users_group_id" {
-  type        = string
-  description = "Id of a group to assign to UI-relevant API roles on destiny repository. Required when external_directory_enabled is true."
 }
 
 variable "db_crud_group_id" {
@@ -206,15 +233,16 @@ variable "open_alex_incremental_updater_client_id" {
   type        = string
 }
 
-variable "open_alex_incremental_updater_external_client_id" {
-  description = "The client id of the open alex incremental updater application in the external tenant. Required when external_directory_enabled is true."
-  type        = string
-}
-
 variable "destiny_demonstrator_ui_app_name" {
   description = "The name of the destiny demonstrator ui application"
   type        = string
   default     = "demonstrator-ui"
+}
+
+variable "ai_evidence_summariser_app_name" {
+  description = "The name of the AI evidence summariser application. Set to null to disable its role assignments."
+  type        = string
+  default     = null
 }
 
 # elasticsearch is not available in all regions, see https://www.elastic.co/cloud/regions
@@ -289,6 +317,42 @@ variable "honeycombio_log_endpoint" {
   default     = "https://api.honeycomb.io/v1/logs"
 }
 
+variable "otel_orphan_log_sample_rate_notset" {
+  description = "OTel log sampling rate for NOTSET level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_debug" {
+  description = "OTel log sampling rate for DEBUG level (0.0 to 1.0)"
+  type        = number
+  default     = 0.0
+}
+
+variable "otel_orphan_log_sample_rate_info" {
+  description = "OTel log sampling rate for INFO level (0.0 to 1.0)"
+  type        = number
+  default     = 0.01
+}
+
+variable "otel_orphan_log_sample_rate_warning" {
+  description = "OTel log sampling rate for WARNING level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_error" {
+  description = "OTel log sampling rate for ERROR level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
+variable "otel_orphan_log_sample_rate_critical" {
+  description = "OTel log sampling rate for CRITICAL level (0.0 to 1.0)"
+  type        = number
+  default     = 1.0
+}
+
 variable "telemetry_enabled" {
   description = "Whether telemetry is enabled for the application"
   type        = bool
@@ -307,10 +371,24 @@ variable "default_upload_file_chunk_size" {
   default     = 1
 }
 
+variable "upload_file_chunk_size_override" {
+  description = "Per-UploadFile override of the upload file chunk size. Keys must match the UploadFile StrEnum values (e.g. search_export)."
+  type        = map(number)
+  default = {
+    search_export = 1000
+  }
+}
+
 variable "max_reference_lookup_query_length" {
   description = "Maximum number of identifiers to allow in a single reference lookup query"
   type        = number
   default     = 100
+}
+
+variable "es_aggregation_max_buckets" {
+  description = "Maximum buckets returned per Elasticsearch terms aggregation."
+  type        = number
+  default     = 1000
 }
 
 variable "es_migrator_reindex_polling_interval" {
@@ -318,6 +396,34 @@ variable "es_migrator_reindex_polling_interval" {
   type        = number
   default     = 5 * 60 # 5min
 
+}
+
+variable "prod_servicebus_is_premium" {
+  description = "Temporary flag to upgrade production Service Bus to Premium for OpenAlex ingestion."
+  type        = bool
+  default     = true
+}
+
+variable "servicebus_capacity" {
+  description = "Messaging units for Premium Service Bus. Must be 1, 2, 4, 8, or 16 and >= servicebus_partitions. Ignored for Standard."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = contains([1, 2, 4, 8, 16], var.servicebus_capacity)
+    error_message = "Capacity must be 1, 2, 4, 8, or 16 messaging units."
+  }
+}
+
+variable "servicebus_partitions" {
+  description = "Number of partitions for Premium Service Bus. Must be 1, 2, or 4 and <= servicebus_capacity. Ignored for Standard."
+  type        = number
+  default     = 2
+
+  validation {
+    condition     = contains([1, 2, 4], var.servicebus_partitions)
+    error_message = "Partitions must be 1, 2, or 4."
+  }
 }
 
 variable "message_lock_renewal_duration" {
@@ -330,4 +436,65 @@ variable "trusted_unique_identifier_types" {
   description = "External identifier types that are certain to be unique. Used for shortcutting deduplication."
   type        = list(string)
   default     = []
+}
+
+variable "allowed_import_domains" {
+  description = "Allowed domain suffixes for import storage URLs. Empty list disables the check."
+  type        = list(string)
+  default     = ["blob.core.windows.net"]
+}
+
+variable "otel_instrument_sql" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for SQL operations"
+  type        = bool
+  default     = false
+}
+
+variable "otel_instrument_elasticsearch" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for Elasticsearch operations"
+  type        = bool
+  default     = false
+}
+
+variable "otel_instrument_taskiq" {
+  description = "Whether to enable OpenTelemetry auto-instrumentation for TaskIQ operations"
+  type        = bool
+  default     = false
+}
+
+variable "es_slowlog_warn_threshold" {
+  description = "Elasticsearch slowlog warn threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_info_threshold" {
+  description = "Elasticsearch slowlog info threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_debug_threshold" {
+  description = "Elasticsearch slowlog debug threshold"
+  type        = string
+  default     = null
+}
+
+variable "es_slowlog_trace_threshold" {
+  description = "Elasticsearch slowlog trace threshold"
+  type        = string
+  default     = null
+}
+
+variable "alert_email_recipients" {
+  description = "List of email addresses to receive alerts"
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_slack_webhook_url" {
+  description = "Slack webhook URL for alerts (optional)"
+  type        = string
+  default     = ""
+  sensitive   = true
 }

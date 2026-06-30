@@ -2,7 +2,9 @@
 
 import sys
 import time
-from collections.abc import Generator
+import warnings
+from collections.abc import Collection, Generator
+from typing import Literal
 
 import httpx
 from msal import (
@@ -11,11 +13,16 @@ from msal import (
     PublicClientApplication,
     UserAssignedManagedIdentity,
 )
-from pydantic import UUID4, HttpUrl, TypeAdapter
+from pydantic import HttpUrl, SecretStr, TypeAdapter
 
-from destiny_sdk.auth import create_signature
-from destiny_sdk.core import sdk_version
+from destiny_sdk.auth import TOKEN_EXPIRED_MESSAGE, create_signature
+from destiny_sdk.core import UUID, sdk_version
 from destiny_sdk.identifiers import IdentifierLookup
+from destiny_sdk.keycloak_auth import (
+    KeycloakAuthCodeFlow,
+    KeycloakClientCredentialsFlow,
+    TokenResponse,
+)
 from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
     EnhancementRequestRead,
@@ -30,12 +37,20 @@ python_version = ".".join(map(str, sys.version_info[:3]))
 user_agent = f"python@{python_version}/destiny-sdk@{sdk_version}"
 
 
+_DEFAULT_API_URLS: dict[str, str] = {
+    "development": "https://api.dev.evidence-repository.org",
+    "staging": "https://api.staging.evidence-repository.org",
+    "production": "https://api.evidence-repository.org",
+}
+_ENV_TYPE = Literal["development", "staging", "production"]
+
+
 class HMACSigningAuth(httpx.Auth):
     """Client that adds an HMAC signature to a request."""
 
     requires_request_body = True
 
-    def __init__(self, secret_key: str, client_id: UUID4) -> None:
+    def __init__(self, secret_key: str, client_id: UUID) -> None:
         """
         Initialize the client.
 
@@ -73,14 +88,16 @@ class RobotClient:
     Current implementation only supports robot results.
     """
 
-    def __init__(self, base_url: HttpUrl, secret_key: str, client_id: UUID4) -> None:
+    def __init__(self, base_url: HttpUrl, secret_key: str, client_id: UUID) -> None:
         """
         Initialize the client.
 
         :param base_url: The base URL for the Destiny Repository API.
         :type base_url: HttpUrl
         :param secret_key: The secret key for signing requests
-        :type auth_method: str
+        :type secret_key: str
+        :param client_id: The client ID for signing requests
+        :type client_id: UUID
         """
         self.session = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
@@ -131,7 +148,7 @@ class RobotClient:
 
     def poll_robot_enhancement_batch(
         self,
-        robot_id: UUID4,
+        robot_id: UUID,
         limit: int = 10,
         lease: str | None = None,
         timeout: int = 60,
@@ -142,7 +159,7 @@ class RobotClient:
         Signs the request with the client's secret key.
 
         :param robot_id: The ID of the robot to poll for
-        :type robot_id: UUID4
+        :type robot_id: UUID
         :param limit: The maximum number of pending enhancements to return
         :type limit: int
         :param lease: The duration to lease the pending enhancements for,
@@ -169,7 +186,7 @@ class RobotClient:
         return RobotEnhancementBatch.model_validate(response.json())
 
     def renew_robot_enhancement_batch_lease(
-        self, robot_enhancement_batch_id: UUID4, lease_duration: str | None = None
+        self, robot_enhancement_batch_id: UUID, lease_duration: str | None = None
     ) -> None:
         """
         Renew the lease for a robot enhancement batch.
@@ -177,7 +194,7 @@ class RobotClient:
         Signs the request with the client's secret key.
 
         :param robot_enhancement_batch_id: The ID of the robot enhancement batch
-        :type robot_enhancement_batch_id: UUID4
+        :type robot_enhancement_batch_id: UUID
         :param lease_duration: The duration to lease the pending enhancements for,
             in ISO 8601 duration format eg PT10M. If not provided the repository will
             use a default lease duration.
@@ -194,16 +211,23 @@ class RobotClient:
 Client = RobotClient
 
 
-class OAuthMiddleware(httpx.Auth):
+class AzureOAuthMiddleware(httpx.Auth):
     """
-    Auth middleware that handles OAuth2 token retrieval and refresh.
+    Auth middleware that handles Azure AD OAuth2 token retrieval and refresh.
 
     This is generally used in conjunction with
     :class:`OAuthClient <libs.sdk.src.destiny_sdk.client.OAuthClient>`.
 
+    .. note::
+
+        The interactive (public client) and confidential-client flows below are
+        **deprecated** and will be removed in a future release; migrate to Keycloak
+        via :class:`OAuthMiddleware`. **Managed identity remains supported** for
+        Azure-hosted services.
+
     Supports three authentication flows:
 
-    **Public Client Application (human login)**
+    **Public Client Application (human login) — deprecated**
 
     Initial login will be interactive through a browser window. Subsequent token
     retrievals will use cached tokens and refreshes where possible, and only prompt
@@ -211,13 +235,13 @@ class OAuthMiddleware(httpx.Auth):
 
     .. code-block:: python
 
-        auth = OAuthMiddleware(
+        auth = AzureOAuthMiddleware(
             azure_client_id="client-id",
             azure_application_id="application-id",
             azure_login_url="login-url",
         )
 
-    **Confidential Client Application (client credentials)**
+    **Confidential Client Application (client credentials) — deprecated**
 
     Suitable for service-to-service authentication where no user interaction is
     possible or desired. Reach out if you need help setting up a confidential client
@@ -225,7 +249,7 @@ class OAuthMiddleware(httpx.Auth):
 
     .. code-block:: python
 
-        auth = OAuthMiddleware(
+        auth = AzureOAuthMiddleware(
             azure_client_id="client-id",
             azure_application_id="application-id",
             azure_login_url="login-url",
@@ -240,7 +264,7 @@ class OAuthMiddleware(httpx.Auth):
 
     .. code-block:: python
 
-        auth = OAuthMiddleware(
+        auth = AzureOAuthMiddleware(
             azure_client_id="your-managed-identity-client-id",
             azure_application_id="application-id",
             use_managed_identity=True,
@@ -253,7 +277,7 @@ class OAuthMiddleware(httpx.Auth):
         azure_client_id: str,
         azure_application_id: str,
         azure_login_url: HttpUrl | str | None = None,
-        azure_client_secret: str | None = None,
+        azure_client_secret: SecretStr | None = None,
         *,
         use_managed_identity: bool = False,
     ) -> None:
@@ -267,7 +291,7 @@ class OAuthMiddleware(httpx.Auth):
         :param azure_login_url: The Azure login URL.
         :type azure_login_url: str
         :param azure_client_secret: The Azure client secret.
-        :type azure_client_secret: str | None
+        :type azure_client_secret: SecretStr | None
         :param use_managed_identity: Whether to use managed identity for authentication
         :type use_managed_identity: bool
         """
@@ -298,10 +322,17 @@ class OAuthMiddleware(httpx.Auth):
                     "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
+            warnings.warn(
+                "Azure confidential-client (azure_client_secret) auth is deprecated "
+                "and will be removed in a future release. Migrate to Keycloak via "
+                "OAuthMiddleware. Azure managed identity remains supported.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self._oauth_app = ConfidentialClientApplication(
                 client_id=azure_client_id,
                 authority=str(azure_login_url),
-                client_credential=azure_client_secret,
+                client_credential=azure_client_secret.get_secret_value(),
             )
             self._get_token = self._get_token_from_confidential_client
         else:
@@ -311,6 +342,13 @@ class OAuthMiddleware(httpx.Auth):
                     "when not using managed identity authentication"
                 )
                 raise ValueError(msg)
+            warnings.warn(
+                "Azure interactive (public client) auth is deprecated and will be "
+                "removed in a future release. Migrate to Keycloak via "
+                "OAuthMiddleware. Azure managed identity remains supported.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
             self._oauth_app = PublicClientApplication(
                 azure_client_id,
                 authority=str(azure_login_url),
@@ -433,17 +471,280 @@ class OAuthMiddleware(httpx.Auth):
 
         # Check if token expired and retry once with fresh token
         if response.status_code == httpx.codes.UNAUTHORIZED:
+            response.read()
             try:
                 json_response: dict = response.json()
                 error_detail: str = json_response.get("detail", {})
             except ValueError:
                 error_detail = ""
 
-            if error_detail == "Token has expired.":
+            if error_detail == TOKEN_EXPIRED_MESSAGE:
                 # Force refresh token and retry
                 token = self._get_token(force_refresh=True)
                 request.headers["Authorization"] = f"Bearer {token}"
                 yield request
+
+
+class KeycloakOAuthMiddleware(httpx.Auth):
+    """
+    Auth middleware that handles Keycloak OAuth2 token retrieval and refresh.
+
+    This is the Keycloak equivalent of
+    :class:`OAuthMiddleware <libs.sdk.src.destiny_sdk.client.OAuthMiddleware>`.
+
+    **Public Client Application (human login)**
+
+    Initial login will be interactive through a browser window. Subsequent token
+    retrievals will use cached tokens and refreshes where possible.
+
+    .. code-block:: python
+
+        auth = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="destiny-auth-client",
+        )
+
+    **Confidential Client (machine-to-machine)**
+
+    Uses client credentials for service-to-service authentication with no user
+    interaction. Tokens are re-acquired on expiry (no refresh token).
+
+    .. code-block:: python
+
+        auth = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="my-service-client",
+            client_secret="my-secret",
+        )
+
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        keycloak_url: str,
+        realm: str,
+        client_id: str = "destiny-auth-client",
+        client_secret: SecretStr | None = None,
+        scopes: list[str] | None = None,
+        callback_port: int = 8400,
+    ) -> None:
+        """
+        Initialize the Keycloak auth middleware.
+
+        :param keycloak_url: The base URL of the Keycloak server.
+        :type keycloak_url: str
+        :param realm: The Keycloak realm name.
+        :type realm: str
+        :param client_id: The OAuth2 client ID.
+        :type client_id: str
+        :param client_secret: The OAuth2 client secret. When provided, uses
+            client credentials flow instead of authorization code flow.
+        :type client_secret: SecretStr | None
+        :param scopes: Optional list of scopes to request.
+        :type scopes: list[str] | None
+        :param callback_port: Port for local callback server during auth code flow.
+        :type callback_port: int
+        """
+        self._auth_flow: KeycloakClientCredentialsFlow | KeycloakAuthCodeFlow
+        if client_secret:
+            self._auth_flow = KeycloakClientCredentialsFlow(
+                keycloak_url=keycloak_url,
+                realm=realm,
+                client_id=client_id,
+                client_secret=client_secret.get_secret_value(),
+            )
+            self._get_token = self._get_token_from_client_credentials
+        else:
+            self._auth_flow = KeycloakAuthCodeFlow(
+                keycloak_url=keycloak_url,
+                realm=realm,
+                client_id=client_id,
+                callback_port=callback_port,
+            )
+            self._get_token = self._get_token_from_auth_code
+        self._scopes = scopes
+        self._token: TokenResponse | None = None
+
+    def _get_token_from_auth_code(self, *, force_refresh: bool = False) -> str:
+        """
+        Get an OAuth2 token using the authorization code flow.
+
+        :param force_refresh: Whether to force a token refresh.
+        :type force_refresh: bool
+        :return: The OAuth2 access token.
+        :rtype: str
+        """
+        # If we have a token and a refresh token, try to refresh
+        if self._token and self._token.refresh_token and force_refresh:
+            if not isinstance(self._auth_flow, KeycloakAuthCodeFlow):
+                msg = "Auth code flow required for token refresh"
+                raise TypeError(msg)
+            try:
+                self._token = self._auth_flow.refresh_token(self._token.refresh_token)
+            except httpx.HTTPStatusError:
+                # Refresh failed, will do full auth flow below
+                pass
+            else:
+                return self._token.access_token
+        elif self._token and not force_refresh:
+            return self._token.access_token
+
+        # Perform full authentication flow
+        self._token = self._auth_flow.authenticate(scopes=self._scopes)
+        return self._token.access_token
+
+    def _get_token_from_client_credentials(
+        self,
+        *,
+        force_refresh: bool = False,
+    ) -> str:
+        """
+        Get an OAuth2 token using client credentials.
+
+        Client credentials tokens have no refresh token, so on expiry
+        we simply re-acquire a new token.
+
+        :param force_refresh: Whether to force re-acquisition of the token.
+        :type force_refresh: bool
+        :return: The OAuth2 access token.
+        :rtype: str
+        """
+        if self._token and not force_refresh:
+            return self._token.access_token
+
+        self._token = self._auth_flow.authenticate(scopes=self._scopes)
+        return self._token.access_token
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response]:
+        """
+        Add OAuth2 token to request and handle token refresh on expiration.
+
+        :param request: The request to authenticate.
+        :type request: httpx.Request
+        :yield: Authenticated request with token refresh handling.
+        :rtype: Generator[httpx.Request, httpx.Response]
+        """
+        # Add initial token
+        token = self._get_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+
+        response = yield request
+
+        # Check if token expired and retry once with fresh token
+        if response.status_code == httpx.codes.UNAUTHORIZED:
+            response.read()
+            try:
+                json_response: dict = response.json()
+                error_detail: str = json_response.get("detail", {})
+            except ValueError:
+                error_detail = ""
+
+            if error_detail == TOKEN_EXPIRED_MESSAGE:
+                # Force refresh token and retry
+                token = self._get_token(force_refresh=True)
+                request.headers["Authorization"] = f"Bearer {token}"
+                yield request
+
+
+class OAuthMiddleware(httpx.Auth):
+    """
+    Auth middleware that routes to either Keycloak or Azure OAuth backends.
+
+    The backend is selected by which kwargs are provided:
+
+    - **Keycloak** (default): the routing target unless any Azure kwarg is given.
+      ``env`` (recommended) or ``client_id`` is required.
+    - **Azure AD**: pass any ``azure_*`` kwarg or ``use_managed_identity=True``.
+      Managed identity is supported. The interactive (public-client) and
+      confidential-client (``azure_client_secret``) flows are **deprecated** and
+      will be removed in a future release; migrate those callers to Keycloak.
+
+    .. code-block:: python
+
+        # Interactive login for user accounts
+        auth = OAuthMiddleware(env="production")
+
+        # Client credentials flow for service accounts
+        auth = OAuthMiddleware(
+            client_id="your-client-id",
+            client_secret="your-client-secret"
+        )
+
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        env: _ENV_TYPE | None = None,
+        auth_url: str = "https://auth.evidence-repository.org",
+        realm: str = "destiny",
+        client_id: str | None = None,
+        client_secret: SecretStr | None = None,
+        scopes: list[str] | None = None,
+        callback_port: int = 8400,
+        azure_client_id: str | None = None,
+        azure_application_id: str | None = None,
+        azure_login_url: HttpUrl | str | None = None,
+        azure_client_secret: SecretStr | None = None,
+        *,
+        use_managed_identity: bool = False,
+    ) -> None:
+        """Initialize the OAuth middleware."""
+        azure_args_present = any(
+            [
+                azure_client_id,
+                azure_application_id,
+                azure_login_url,
+                azure_client_secret,
+                use_managed_identity,
+            ]
+        )
+        self._inner: httpx.Auth
+        if azure_args_present:
+            if not azure_client_id or not azure_application_id:
+                msg = (
+                    "azure_client_id and azure_application_id are required for "
+                    "Azure AD authentication."
+                )
+                raise ValueError(msg)
+            self._inner = AzureOAuthMiddleware(
+                azure_client_id=azure_client_id,
+                azure_application_id=azure_application_id,
+                azure_login_url=azure_login_url,
+                azure_client_secret=azure_client_secret,
+                use_managed_identity=use_managed_identity,
+            )
+        else:
+            if client_secret and not client_id:
+                msg = (
+                    "client_secret requires an explicit client_id; the "
+                    "env-derived client_id is a public client and cannot use "
+                    "client credentials. Supply your own client_id, or omit "
+                    "client_secret for interactive login."
+                )
+                raise ValueError(msg)
+            if env and not client_id:
+                client_id = f"destiny-auth-client-{env}"
+            if not client_id:
+                msg = "client_id is required if env is not provided"
+                raise ValueError(msg)
+            self._inner = KeycloakOAuthMiddleware(
+                keycloak_url=auth_url,
+                realm=realm,
+                client_id=client_id,
+                client_secret=client_secret,
+                scopes=scopes,
+                callback_port=callback_port,
+            )
+
+    def auth_flow(
+        self, request: httpx.Request
+    ) -> Generator[httpx.Request, httpx.Response]:
+        """Delegate authentication to the routed inner middleware."""
+        return self._inner.auth_flow(request)
 
 
 class OAuthClient:
@@ -459,8 +760,10 @@ class OAuthClient:
 
     .. code-block:: python
 
-        from destiny_sdk.client import OAuthClient, OAuthMiddleware
+        from destiny_sdk.client import OAuthClient
 
+        # Either use env for defaults or provide explicit auth and base_url
+        client = OAuthClient(env="production")
         client = OAuthClient(
             base_url="https://destiny-repository.example.com",
             auth=OAuthMiddleware(...),
@@ -475,23 +778,42 @@ class OAuthClient:
 
     def __init__(
         self,
-        base_url: HttpUrl | str,
+        base_url: HttpUrl | str | None = None,
         auth: httpx.Auth | None = None,
         timeout: int = 10,
+        *,
+        env: _ENV_TYPE | None = None,
     ) -> None:
         """
         Initialize the client.
 
-        :param base_url: The base URL for the Destiny Repository API.
-        :type base_url: HttpUrl
-        :param auth: The middleware for authentication. If not provided, only
-            unauthenticated requests can be made. This should almost always be an
-            instance of ``OAuthMiddleware``, unless you need to create a custom auth
-            class.
+        :param base_url: The base URL for the Destiny Repository API. Required
+            unless ``env`` is provided, in which case it defaults to the API URL
+            for that environment.
+        :type base_url: HttpUrl | str | None
+        :param auth: The middleware for authentication. If not provided and
+            ``env`` is given, an :class:`OAuthMiddleware` configured for that
+            environment is used.
         :type auth: httpx.Auth | None
         :param timeout: The timeout for requests, in seconds. Defaults to 10 seconds.
         :type timeout: int
+        :param env: The Destiny environment. When set, fills in
+            defaults for ``base_url`` and ``auth`` if either is omitted.
+        :type env: _ENV_TYPE | None
+        :raises ValueError: If neither ``base_url`` nor ``env`` is provided.
         """
+        if env is not None:
+            base_url = base_url or _DEFAULT_API_URLS[env]
+            auth = auth or OAuthMiddleware(env=env)
+        elif auth is None or base_url is None:
+            missing = [
+                name
+                for name, value in (("auth", auth), ("base_url", base_url))
+                if value is None
+            ]
+            msg = f"{' and '.join(missing)} required when env is not provided"
+            raise ValueError(msg)
+
         self._client = httpx.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
             headers={
@@ -501,8 +823,7 @@ class OAuthClient:
             timeout=timeout,
         )
 
-        if auth:
-            self._client.auth = auth
+        self._client.auth = auth
 
     def _raise_for_status(self, response: httpx.Response) -> None:
         """
@@ -529,6 +850,7 @@ class OAuthClient:
         start_year: int | None = None,
         end_year: int | None = None,
         annotations: list[str | AnnotationFilter] | None = None,
+        concepts: list[str | Collection[str]] | None = None,
         sort: str | None = None,
         page: int = 1,
         timeout: int | None = None,
@@ -546,12 +868,16 @@ class OAuthClient:
         :type end_year: int | None
         :param annotations: A list of annotation filters to apply.
         :type annotations: list[str | libs.sdk.src.destiny_sdk.search.AnnotationFilter] | None
+        :param concepts: A list of linked-data concept filters. Each entry ANDs
+            with the others. Pass a single URI string for a single match, or a
+            collection of URIs to OR them within a single filter.
+        :type concepts: list[str | collections.abc.Collection[str]] | None
         :param sort: The sort order for the results.
         :type sort: str | None
         :param page: The page number of results to retrieve.
         :type page: int
-        :param timeout: The timeout for the request, in seconds. If provided, this will override
-        the client timeout.
+        :param timeout: The timeout for the request, in seconds. If provided, this
+            will override the client timeout.
         :type timeout: int | None
         :return: The response from the API.
         :rtype: libs.sdk.src.destiny_sdk.references.ReferenceSearchResult
@@ -563,6 +889,11 @@ class OAuthClient:
             params["end_year"] = end_year
         if annotations:
             params["annotation"] = [str(annotation) for annotation in annotations]
+        if concepts:
+            params["concept"] = [
+                concept if isinstance(concept, str) else ",".join(concept)
+                for concept in concepts
+            ]
         if sort:
             params["sort"] = sort
         response = self._client.get(
@@ -585,8 +916,8 @@ class OAuthClient:
 
         :param identifiers: The identifiers to look up.
         :type identifiers: list[str | libs.sdk.src.destiny_sdk.identifiers.IdentifierLookup]
-        :param timeout: The timeout for the request, in seconds. If provided, this will override
-        the client timeout.
+        :param timeout: The timeout for the request, in seconds. If provided, this
+            will override the client timeout.
         :type timeout: int | None
         :return: The list of references matching the identifiers.
         :rtype: list[libs.sdk.src.destiny_sdk.references.Reference]

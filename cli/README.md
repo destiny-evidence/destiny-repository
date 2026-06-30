@@ -6,23 +6,20 @@ Currently runs with the same set of installed dependencies as destiny repository
 
 ## Configuration
 
-set up `.env.<ENVIRONMENT>` files for each environment by copying the `.env.example` file in the `/cli` directory.
+Every command takes two shared options:
 
-## Development
+- `--env` (`-e`): one of `local`, `test`, `development`, `staging`, `production`. Defaults to `local`.
+- `--url`: base URL override. Defaults to `http://127.0.0.1:8000` for `local`/`test`, and to the SDK's per-environment URL for `development`/`staging`/`production`.
 
-Environments`local` and `test` environment will skip authentication, expecting to hit a destiny repository deployed at `http://127.0.0.0:8000`.
-
-You can override this by setting `DESTINY_REPOSITORY_URL` in the `.env.<ENVIRONMENT>` file.
-
-Use dummy values for `AZURE_LOGIN_URL`, `AZURE_APPLICATION_ID`, and `CLI_CLIENT_ID`
+The base URL and authentication for `development`, `staging`, and `production` are resolved by the SDK, so they need no further configuration. `local` and `test` skip authentication and target localhost (override with `--url`).
 
 ## Commands
 
-Run everything from the destiny-repository root directory
+Run everything from the destiny-repository root directory.
 
 ### Robot Registration
 
-Use the following command to register a robot, passing the environment you wish to register the robot in. This will load the required environment file.
+Use the following command to register a robot, passing the environment you wish to register the robot in.
 
 You will need to be assigned the `robot.writer` role for destiny repository to be able to run this command.
 

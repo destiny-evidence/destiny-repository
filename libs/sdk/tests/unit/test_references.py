@@ -1,4 +1,5 @@
-import uuid
+from datetime import UTC, datetime
+from uuid import UUID, uuid7
 
 import destiny_sdk
 
@@ -40,6 +41,7 @@ def test_es_parsing():
                         "publisher": "Research for Dummies",
                         "title": "Research!",
                     },
+                    "created_at": "2024-01-01T00:00:00Z",
                 },
                 {
                     "id": "df4de714-269e-4d1c-abeb-16e260b029ec",
@@ -51,6 +53,7 @@ def test_es_parsing():
                         "process": "other",
                         "abstract": "We did research.",
                     },
+                    "created_at": "2024-01-01T00:00:00Z",
                 },
                 {
                     "id": "d4c2d0a0-af3a-4985-bcf6-1a9d58ab06ee",
@@ -69,27 +72,26 @@ def test_es_parsing():
                             }
                         ],
                     },
+                    "created_at": "2024-01-01T00:00:00Z",
                 },
             ],
         },
     }
 
     reference = destiny_sdk.references.Reference.from_es(es_reference)
-    assert reference.id == uuid.UUID("7c54f72e-8833-484f-9000-4f403b13a243")
+    assert reference.id == UUID("7c54f72e-8833-484f-9000-4f403b13a243")
     assert reference.visibility == destiny_sdk.visibility.Visibility.PUBLIC
     assert len(reference.identifiers) == 3
     assert len(reference.enhancements) == 3
-    assert reference.enhancements[0].reference_id == uuid.UUID(
+    assert reference.enhancements[0].reference_id == UUID(
         "7c54f72e-8833-484f-9000-4f403b13a243"
     )
-    assert reference.enhancements[0].id == uuid.UUID(
-        "52f3fc92-db0b-4e65-a18c-31d091242c3a"
-    )
+    assert reference.enhancements[0].id == UUID("52f3fc92-db0b-4e65-a18c-31d091242c3a")
 
 
 def test_jsonl_serialization():
     reference = destiny_sdk.references.Reference(
-        id=(_id := uuid.uuid4()),
+        id=(_id := uuid7()),
         enhancements=[
             destiny_sdk.enhancements.Enhancement(
                 reference_id=_id,
@@ -99,6 +101,7 @@ def test_jsonl_serialization():
                     process=destiny_sdk.enhancements.AbstractProcessType.UNINVERTED,
                     abstract="This is a funky paragraph separator: \u2029.",
                 ),
+                created_at=datetime.now(tz=UTC),
             )
         ],
         identifiers=[

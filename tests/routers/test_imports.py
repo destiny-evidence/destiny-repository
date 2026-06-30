@@ -1,9 +1,9 @@
 """Defines tests for the example router."""
 
 import datetime
-import uuid
 from collections.abc import AsyncGenerator
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID, uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -120,6 +120,38 @@ def valid_import() -> SQLImportRecord:
     )
 
 
+async def test_list_imports(
+    session: AsyncSession, client: AsyncClient, valid_import: SQLImportRecord
+) -> None:
+    """Test that we can list all import records."""
+    session.add(valid_import)
+    import2 = SQLImportRecord(
+        search_string="another search",
+        searched_at=datetime.datetime.now(datetime.UTC),
+        processor_name="test processor 2",
+        processor_version="0.0.2",
+        notes=None,
+        source_name="EEF",
+        expected_reference_count=5,
+        status=ImportRecordStatus.CREATED,
+    )
+    session.add(import2)
+    await session.commit()
+
+    response = await client.get("/v1/imports/records/")
+    assert response.status_code == status.HTTP_200_OK
+    assert len(response.json()) == 2
+    returned_ids = {r["id"] for r in response.json()}
+    assert returned_ids == {str(valid_import.id), str(import2.id)}
+
+
+async def test_list_imports_empty(client: AsyncClient) -> None:
+    """Test that listing imports returns an empty list when none exist."""
+    response = await client.get("/v1/imports/records/")
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == []
+
+
 async def test_get_import(
     session: AsyncSession, client: AsyncClient, valid_import: SQLImportRecord
 ) -> None:
@@ -178,11 +210,34 @@ async def test_create_batch_for_import(
     mock_process.assert_awaited_once()
 
     assert mock_process.call_args[0][0] == ImportBatch(
-        id=uuid.UUID(response.json()["id"]),
+        id=UUID(response.json()["id"]),
         import_record_id=valid_import.id,
         status=ImportBatchStatus.CREATED,
         storage_url="https://example.com/batch_data.json",
     )
+
+
+async def test_enqueue_batch_rejects_disallowed_domain(
+    client: AsyncClient,
+    session: AsyncSession,
+    valid_import: SQLImportRecord,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Storage URL with a disallowed domain returns 422."""
+    session.add(valid_import)
+    await session.commit()
+
+    monkeypatch.setattr(
+        "app.domain.imports.routes.validate_storage_url",
+        MagicMock(side_effect=ValueError("storage_url hostname is not allowed.")),
+    )
+
+    batch_params = {"storage_url": "https://disallowed.example.com/data.jsonl"}
+    response = await client.post(
+        f"/v1/imports/records/{valid_import.id}/batches/", json=batch_params
+    )
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "not allowed" in response.json()["detail"]
 
 
 async def test_get_batches(
@@ -369,7 +424,7 @@ async def test_missing_import_record(
     session.add(valid_import)
     await session.commit()
 
-    response = await client.get(f"/v1/imports/records/{(_id:=uuid.uuid4())}/batches/")
+    response = await client.get(f"/v1/imports/records/{(_id:=uuid7())}/batches/")
     assert response.status_code == status.HTTP_404_NOT_FOUND
     assert response.json()["detail"] == f"ImportRecord with id {_id} does not exist."
 
@@ -392,9 +447,9 @@ async def test_deduplicate_references(
         "app.domain.references.service.queue_task_with_trace", mock_queue
     )
 
-    ref_ids = {uuid.uuid4(), uuid.uuid4(), uuid.uuid4()}
+    ref_ids = {uuid7(), uuid7(), uuid7()}
     response = await client.post(
-        "/v1/references/duplicate-decisions/",
+        "/v1/references/duplicate-decisions/invoke/",
         json={"reference_ids": [str(r) for r in ref_ids]},
     )
     assert response.status_code == status.HTTP_202_ACCEPTED

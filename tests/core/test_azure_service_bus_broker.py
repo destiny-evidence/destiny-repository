@@ -6,8 +6,9 @@ including initialization, message sending, and delayed message delivery.
 """
 
 import asyncio
-import uuid
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid7
 
 import pytest
 from azure.servicebus.aio import (
@@ -15,11 +16,15 @@ from azure.servicebus.aio import (
     ServiceBusClient,
 )
 from azure.servicebus.amqp import AmqpAnnotatedMessage
+from azure.servicebus.exceptions import MessageSizeExceededError
 from taskiq import BrokerMessage
 from taskiq.utils import maybe_awaitable
 
-from app.core.azure_service_bus_broker import AzureServiceBusBroker
-from app.core.exceptions import MessageBrokerError
+from app.core.azure_service_bus_broker import (
+    _COMPRESSION_THRESHOLD_BYTES,
+    AzureServiceBusBroker,
+)
+from app.core.exceptions import MessageBrokerError, MessageTooLargeError
 
 
 async def get_first_task(broker: AzureServiceBusBroker):
@@ -29,8 +34,9 @@ async def get_first_task(broker: AzureServiceBusBroker):
     :param broker: async message broker.
     :return: first message from listen method
     """
-    async for message in broker.listen():  # noqa: RET503
+    async for message in broker.listen():
         return message
+    return None
 
 
 @pytest.mark.asyncio
@@ -119,7 +125,9 @@ async def test_happy_startup(broker: AzureServiceBusBroker) -> None:
     """
     assert broker.service_bus_client is not None
     assert broker.sender is not None
+    assert broker.priority_sender is not None
     assert broker.receiver is not None
+    assert broker.priority_receiver is not None
 
 
 @pytest.mark.anyio
@@ -134,8 +142,8 @@ async def test_kick_success(
 
     :param broker: current broker.
     """
-    task_id = uuid.uuid4().hex
-    task_name = uuid.uuid4().hex
+    task_id = uuid7().hex
+    task_name = uuid7().hex
 
     sent = BrokerMessage(
         task_id=task_id,
@@ -148,7 +156,10 @@ async def test_kick_success(
 
     await broker.kick(sent)
 
-    message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
+    # listen() drains the priority queue first (max_wait_time default is 1s)
+    # before falling through to the default queue.
+    # So allow >1s for the message to land here even when nothing is in priority.
+    message = await asyncio.wait_for(get_first_task(broker), timeout=3.0)
 
     assert message.data == sent.message
     await maybe_awaitable(message.ack())
@@ -196,27 +207,25 @@ async def test_delayed_message(
 
 
 @pytest.mark.anyio
-async def test_priority_handling(
+async def test_priority_message_routes_to_priority_sender(
     broker: AzureServiceBusBroker,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """
-    Test that priority is correctly set in the message headers.
-
-    :param broker: current broker.
-    :param test_sender: test sender.
-    :param test_receiver: test receiver.
-    """
+    """Priority messages go to the priority queue, normal messages to default."""
     assert broker.sender is not None
-    original_send_messages = broker.sender.send_messages
-    sent_message = None
+    assert broker.priority_sender is not None
+    default_sends: list[AmqpAnnotatedMessage] = []
+    priority_sends: list[AmqpAnnotatedMessage] = []
 
-    async def mock_send_messages(message: AmqpAnnotatedMessage) -> None:
-        nonlocal sent_message
-        sent_message = message
-        await original_send_messages(message)
+    async def capture_default(message: AmqpAnnotatedMessage) -> None:
+        default_sends.append(message)
 
-    monkeypatch.setattr(broker.sender, "send_messages", mock_send_messages)
+    async def capture_priority(message: AmqpAnnotatedMessage) -> None:
+        priority_sends.append(message)
+
+    monkeypatch.setattr(broker.sender, "send_messages", capture_default)
+    monkeypatch.setattr(broker.priority_sender, "send_messages", capture_priority)
+
     await broker.kick(
         BrokerMessage(
             task_id="priority-task",
@@ -225,10 +234,259 @@ async def test_priority_handling(
             labels={"priority": "5"},
         )
     )
+    await broker.kick(
+        BrokerMessage(
+            task_id="normal-task",
+            task_name="normal-name",
+            message=b"normal-message",
+            labels={"priority": "0"},
+        )
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="no-label-task",
+            task_name="no-label-name",
+            message=b"no-label-message",
+            labels={},
+        )
+    )
+
+    assert len(priority_sends) == 1
+    assert len(default_sends) == 2
+
+
+@pytest.mark.anyio
+async def test_unknown_priority_warns_and_falls_back_to_default(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An unrecognised priority value logs a warning and routes to default."""
+    assert broker.sender is not None
+    assert broker.priority_sender is not None
+    default_sends: list[AmqpAnnotatedMessage] = []
+    priority_sends: list[AmqpAnnotatedMessage] = []
+
+    async def capture_default(message: AmqpAnnotatedMessage) -> None:
+        default_sends.append(message)
+
+    async def capture_priority(message: AmqpAnnotatedMessage) -> None:
+        priority_sends.append(message)
+
+    monkeypatch.setattr(broker.sender, "send_messages", capture_default)
+    monkeypatch.setattr(broker.priority_sender, "send_messages", capture_priority)
+
+    with caplog.at_level("WARNING"):
+        await broker.kick(
+            BrokerMessage(
+                task_id="unknown-priority",
+                task_name="unknown-priority",
+                message=b"oddball",
+                labels={"priority": "99"},
+            )
+        )
+
+        await broker.kick(
+            BrokerMessage(
+                task_id="unknown-priority-string",
+                task_name="unknown-priority-string",
+                message=b"oddball",
+                labels={"priority": "normal"},
+            )
+        )
+
+    assert len(default_sends) == 2
+    assert len(priority_sends) == 0
+    assert any("Unknown priority value" in record.message for record in caplog.records)
+
+
+@pytest.mark.anyio
+async def test_priority_scheduled_message_routes_to_priority_sender(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Delayed priority messages must also hit the priority sender."""
+    assert broker.sender is not None
+    assert broker.priority_sender is not None
+    default_schedules: list[AmqpAnnotatedMessage] = []
+    priority_schedules: list[AmqpAnnotatedMessage] = []
+
+    async def capture_default(
+        message: AmqpAnnotatedMessage,
+        scheduled_time: datetime | None = None,  # noqa: ARG001
+    ) -> None:
+        default_schedules.append(message)
+
+    async def capture_priority(
+        message: AmqpAnnotatedMessage,
+        scheduled_time: datetime | None = None,  # noqa: ARG001
+    ) -> None:
+        priority_schedules.append(message)
+
+    monkeypatch.setattr(broker.sender, "schedule_messages", capture_default)
+    monkeypatch.setattr(broker.priority_sender, "schedule_messages", capture_priority)
+
+    await broker.kick(
+        BrokerMessage(
+            task_id="delayed-priority",
+            task_name="delayed-priority",
+            message=b"hi",
+            labels={"priority": "5", "delay": "2"},
+        )
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="delayed-normal",
+            task_name="delayed-normal",
+            message=b"hi",
+            labels={"delay": "2"},
+        )
+    )
+
+    assert len(priority_schedules) == 1
+    assert len(default_schedules) == 1
+
+
+@pytest.mark.anyio
+async def test_listen_drains_priority_before_default(
+    broker: AzureServiceBusBroker,
+) -> None:
+    """Priority messages must yield before any default-queue work."""
+    await broker.kick(
+        BrokerMessage(
+            task_id="normal-1",
+            task_name="normal",
+            message=b"normal-1",
+            labels={},
+        )
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="normal-2",
+            task_name="normal",
+            message=b"normal-2",
+            labels={},
+        )
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="priority-1",
+            task_name="priority",
+            message=b"priority-1",
+            labels={"priority": "5"},
+        )
+    )
+
+    yielded: list[bytes] = []
+    async for ackable in broker.listen():
+        yielded.append(ackable.data)
+        await maybe_awaitable(ackable.ack())
+        if len(yielded) == 3:
+            break
+
+    assert yielded[0] == b"priority-1"
+    assert set(yielded[1:]) == {b"normal-1", b"normal-2"}
+
+
+@pytest.mark.anyio
+async def test_raise_custom_exception_on_oversized_message(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that messages that are too large raise a MessageTooLargeError."""
+
+    async def mock_send_messages(message: AmqpAnnotatedMessage) -> None:  # noqa: ARG001
+        raise MessageSizeExceededError(message="message size limit exceeded")
+
+    monkeypatch.setattr(broker.sender, "send_messages", mock_send_messages)
+
+    with pytest.raises(MessageTooLargeError, match="size limit exceeded"):
+        await broker.kick(
+            BrokerMessage(
+                task_id=uuid7().hex,
+                task_name=uuid7().hex,
+                message=b"A big message we definitely cannot possibly process this",
+                labels={
+                    "label1": "val1",
+                },
+            )
+        )
+
+
+@pytest.mark.anyio
+async def test_large_message_is_compressed_and_decompressed(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that messages over 200KB are compressed and decompressed."""
+    assert broker.sender is not None
+    sent_message = None
+
+    original_send_messages = broker.sender.send_messages
+
+    async def capture_send_messages(message: AmqpAnnotatedMessage) -> None:
+        nonlocal sent_message
+        sent_message = message
+        await original_send_messages(message)
+
+    monkeypatch.setattr(broker.sender, "send_messages", capture_send_messages)
+
+    original_body = b"x" * (_COMPRESSION_THRESHOLD_BYTES + 1)
+
+    await broker.kick(
+        BrokerMessage(
+            task_id="large-task",
+            task_name="large-name",
+            message=original_body,
+            labels={},
+        )
+    )
+
+    # Confirm the wire body is compressed (smaller than original) and flagged
+    assert isinstance(sent_message, AmqpAnnotatedMessage)
+    assert sent_message.application_properties.get("compressed") is True
+    wire_body = b"".join(sent_message.body)
+    assert len(wire_body) < len(original_body)
+
+    # Confirm the received data is transparently decompressed back to the original
+    message = await asyncio.wait_for(get_first_task(broker), timeout=3.0)
+    assert message.data == original_body
+    await maybe_awaitable(message.ack())
+
+
+@pytest.mark.anyio
+async def test_small_message_is_not_compressed(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that messages at or below 200KB are sent without compression."""
+    assert broker.sender is not None
+    sent_message = None
+
+    original_send_messages = broker.sender.send_messages
+
+    async def capture_send_messages(message: AmqpAnnotatedMessage) -> None:
+        nonlocal sent_message
+        sent_message = message
+        await original_send_messages(message)
+
+    monkeypatch.setattr(broker.sender, "send_messages", capture_send_messages)
+
+    small_body = b"small"
+    await broker.kick(
+        BrokerMessage(
+            task_id="small-task",
+            task_name="small-name",
+            message=small_body,
+            labels={},
+        )
+    )
 
     assert isinstance(sent_message, AmqpAnnotatedMessage)
-    assert sent_message.header is not None
-    assert sent_message.header.priority == 5
+    assert sent_message.application_properties.get("compressed") is False
+    message = await asyncio.wait_for(get_first_task(broker), timeout=3.0)
+    assert message.data == small_body
+    await maybe_awaitable(message.ack())
 
 
 @pytest.mark.anyio
@@ -260,7 +518,7 @@ async def test_only_renew_lock_when_specified(
         msg.labels["renew_lock"] = renew_lock
 
     await broker.kick(msg)
-    await asyncio.wait_for(get_first_task(broker), timeout=1.0)
+    await asyncio.wait_for(get_first_task(broker), timeout=3.0)
     if renew_lock:
         mock_lock_renewer.register.assert_called_once()
     else:

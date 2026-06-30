@@ -2,6 +2,7 @@
 """Factories for creating test domain models."""
 
 import random
+from uuid import UUID, uuid7
 
 import factory
 from destiny_sdk.enhancements import (
@@ -15,9 +16,12 @@ from destiny_sdk.enhancements import (
     BooleanAnnotation,
     DriverVersion,
     EnhancementType,
+    LinkedDataEnhancement,
     Location,
     LocationEnhancement,
     Pagination,
+    PublicationVenue,
+    PublicationVenueType,
     RawEnhancement,
     ReferenceAssociationEnhancement,
     ReferenceAssociationType,
@@ -36,13 +40,18 @@ from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
+    FullTextEnhancement,
+    LinkedDataProjection,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
+    ReferenceSearchProjection,
     Visibility,
 )
+from app.domain.references.models.projections import ReferenceSearchFieldsProjection
 from app.domain.robots.models.models import Robot
+from app.persistence.blob.models import BlobStorageFile, BlobStorageLocation
 from app.utils.time_and_date import utc_now
 
 
@@ -66,9 +75,30 @@ class ERICNumberProvider(BaseProvider):
         return f"{prefix}{suffix}"
 
 
+class ORCIDProvider(BaseProvider):
+    """Provider for ORCID objects."""
+
+    def orcid(self) -> str:
+        """Generate a valid ORCID."""
+        return "-".join(
+            str(self.generator.random.randint(0, 9999)).zfill(4) for _ in range(4)
+        )
+
+
+class UUID7Provider(BaseProvider):
+    """Provider for UUID7 objects."""
+
+    def uuid7(self) -> UUID:
+        """Generate a valid UUID7."""
+        return uuid7()
+
+
 fake = Faker()
 fake.add_provider(ERICNumberProvider)
+fake.add_provider(UUID7Provider)
+fake.add_provider(ORCIDProvider)
 max_list_length = 3
+uuid7_factory = factory.LazyFunction(fake.uuid7)
 
 
 class DOIIdentifierFactory(factory.Factory):
@@ -132,7 +162,7 @@ class AuthorshipFactory(factory.Factory):
 
     display_name = factory.Faker("name")
     position = factory.Faker("enum", enum_cls=AuthorPosition)
-    orcid = factory.Faker("uuid4")
+    orcid = factory.LazyFunction(fake.orcid)
 
 
 class PaginationFactory(factory.Factory):
@@ -145,6 +175,17 @@ class PaginationFactory(factory.Factory):
     last_page = factory.LazyAttribute(
         lambda o: str(int(o.first_page) + fake.pyint(min_value=1, max_value=30))
     )
+
+
+class PublicationVenueFactory(factory.Factory):
+    class Meta:
+        model = PublicationVenue
+
+    display_name = factory.Faker("company")
+    venue_type = factory.Faker("enum", enum_cls=PublicationVenueType)
+    issn = factory.LazyFunction(lambda: [fake.numerify(text="####-####")])
+    issn_l = factory.Faker("numerify", text="####-####")
+    host_organization_name = factory.Faker("company")
 
 
 class BibliographicMetadataEnhancementFactory(factory.Factory):
@@ -164,6 +205,7 @@ class BibliographicMetadataEnhancementFactory(factory.Factory):
     publisher = factory.Faker("company")
     title = factory.Faker("sentence", nb_words=6)
     pagination = factory.LazyFunction(lambda: PaginationFactory.build())
+    publication_venue = factory.LazyFunction(lambda: PublicationVenueFactory.build())
 
     @factory.post_generation
     def publication_year(self, create, extracted, **kwargs):  # noqa: ANN001, ANN003, ARG002
@@ -254,11 +296,50 @@ class ReferenceAssociationEnhancementFactory(factory.Factory):
     enhancement_type = EnhancementType.REFERENCE_ASSOCIATION
     associated_reference_ids = factory.LazyFunction(
         lambda: fake.random_elements(
-            [*ExternalIdentifierFactories, fake.uuid4()],
+            [*ExternalIdentifierFactories, fake.uuid7()],
             length=fake.pyint(1, max_list_length),
         )
     )
     association_type = factory.Faker("enum", enum_cls=ReferenceAssociationType)
+
+
+class LinkedDataEnhancementFactory(factory.Factory):
+    class Meta:
+        model = LinkedDataEnhancement
+
+    enhancement_type = EnhancementType.LINKED_DATA
+    vocabulary_uri = factory.Faker("uri")
+    data = factory.LazyFunction(
+        lambda: fake.pydict(value_types=[str, int, float, bool])
+        | {"@context": fake.uri()}
+    )
+
+
+class BlobStorageFileFactory(factory.Factory):
+    class Meta:
+        model = BlobStorageFile
+
+    location = BlobStorageLocation.MINIO
+    container = factory.Faker("word")
+    path = factory.LazyFunction(lambda: "/".join(fake.words(nb=2)))
+    filename = factory.LazyFunction(lambda: f"{fake.word()}.pdf")
+
+
+class FullTextEnhancementFactory(factory.Factory):
+    class Meta:
+        model = FullTextEnhancement
+
+    enhancement_type = EnhancementType.FULL_TEXT
+    blob = factory.LazyFunction(lambda: BlobStorageFileFactory.build())
+    byte_size = factory.Faker("pyint", min_value=1, max_value=10_000_000)
+    sha256_checksum = factory.Faker("sha256")
+    mime_type = "application/pdf"
+    version = factory.Faker("enum", enum_cls=DriverVersion)
+    is_oa = factory.Faker("pybool")
+    license = factory.Faker("license_plate")
+    source = factory.Faker("company")
+    source_url = factory.Faker("url")
+    retrieved_at = factory.Faker("date_time_this_month")
 
 
 class RawEnhancementFactory(factory.Factory):
@@ -276,18 +357,18 @@ class LinkedExternalIdentifierFactory(factory.Factory):
     class Meta:
         model = LinkedExternalIdentifier
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     identifier = factory.LazyFunction(
         lambda: fake.random_element(ExternalIdentifierFactories)
     )
-    reference_id = factory.Faker("uuid4")
+    reference_id = uuid7_factory
 
 
 class EnhancementFactory(factory.Factory):
     class Meta:
         model = Enhancement
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     source = factory.Faker("company")
     visibility = Visibility.PUBLIC
     robot_version = factory.Faker("numerify", text="%!!.%!!.%!!")
@@ -304,14 +385,14 @@ class EnhancementFactory(factory.Factory):
             ]
         )
     )
-    reference_id = factory.Faker("uuid4")
+    reference_id = uuid7_factory
 
 
 class ReferenceFactory(factory.Factory):
     class Meta:
         model = Reference
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     visibility = factory.Faker("enum", enum_cls=Visibility)
 
     @factory.post_generation
@@ -335,11 +416,42 @@ class ReferenceFactory(factory.Factory):
             self.enhancements = extracted
 
 
+def to_indexable(
+    reference: Reference,
+    linked_data_concepts: list[str] | None = None,
+) -> ReferenceSearchProjection:
+    """
+    Convert a Reference to an ReferenceSearchProjection for ES test indexing.
+
+    ``linked_data_concepts`` short-circuits the RDF projection pipeline and
+    attaches the given concept URIs directly. Useful when a test needs a
+    reference with known linked-data facets without setting up a full
+    LinkedDataEnhancement.
+    """
+    search_fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
+    linked_data_projection = (
+        LinkedDataProjection(concepts=set(linked_data_concepts))
+        if linked_data_concepts is not None
+        else None
+    )
+    return ReferenceSearchProjection(
+        id=reference.id,
+        visibility=reference.visibility,
+        duplicate_determination=(
+            reference.duplicate_decision.duplicate_determination
+            if reference.duplicate_decision
+            else None
+        ),
+        search_fields=search_fields,
+        linked_data_projection=linked_data_projection,
+    )
+
+
 class RobotFactory(factory.Factory):
     class Meta:
         model = Robot
 
-    id = factory.Faker("uuid4")
+    id = uuid7_factory
     description = factory.Faker("sentence")
     name = factory.Faker("name")
     owner = factory.Faker("company")
@@ -349,9 +461,9 @@ class PendingEnhancementFactory(factory.Factory):
     class Meta:
         model = PendingEnhancement
 
-    id = factory.Faker("uuid4")
-    reference_id = factory.Faker("uuid4")
-    robot_id = factory.Faker("uuid4")
+    id = uuid7_factory
+    reference_id = uuid7_factory
+    robot_id = uuid7_factory
     source = factory.Faker("word")
     status = PendingEnhancementStatus.PENDING
     expires_at = factory.LazyFunction(

@@ -1,11 +1,15 @@
 """Tests client authentication"""
 
+import json
 import time
-import uuid
+from uuid import UUID, uuid7
 
 import httpx
 import pytest
+from destiny_sdk.auth import TOKEN_EXPIRED_MESSAGE
 from destiny_sdk.client import (
+    AzureOAuthMiddleware,
+    KeycloakOAuthMiddleware,
     OAuthClient,
     OAuthMiddleware,
     RobotClient,
@@ -24,7 +28,7 @@ from msal import (
     ManagedIdentityClient,
     PublicClientApplication,
 )
-from pydantic import HttpUrl
+from pydantic import HttpUrl, SecretStr
 from pytest_httpx import HTTPXMock
 
 
@@ -43,7 +47,7 @@ def base_url():
 
 @pytest.fixture
 def test_reference_id():
-    return uuid.uuid4()
+    return uuid7()
 
 
 @pytest.fixture
@@ -66,19 +70,19 @@ class TestRobotClient:
     ) -> None:
         """Test that robot enhancement batch result request is authorized."""
         fake_secret_key = "asdfhjgji94523q0uflsjf349wjilsfjd9q23"
-        fake_robot_id = uuid.uuid4()
+        fake_robot_id = uuid7()
         fake_destiny_repository_url = (
             "https://www.destiny-repository-lives-here.co.au/v1"
         )
 
         fake_batch_result = RobotEnhancementBatchResult(
-            request_id=uuid.uuid4(),
+            request_id=uuid7(),
             error=RobotError(message="Cannot process this batch"),
         )
 
         expected_response_body = RobotEnhancementBatchRead(
-            id=uuid.uuid4(),
-            robot_id=uuid.uuid4(),
+            id=uuid7(),
+            robot_id=uuid7(),
             error="Cannot process this batch",
         )
 
@@ -115,21 +119,24 @@ class TestRobotClient:
 
 
 class TestOAuthClient:
-    """Tests for OAuthClient without authentication."""
+    """Tests for OAuthClient request handling."""
 
     @pytest.fixture
     def oauth_client(self, base_url):
-        return OAuthClient(base_url=base_url, auth=None)
+        # Auth is required; use a no-op stand-in so tests focus on request shape,
+        # not authentication. AzureOAuthMiddleware/KeycloakOAuthMiddleware are
+        # exercised separately below.
+        return OAuthClient(base_url=base_url, auth=httpx.BasicAuth("user", "pass"))
 
-    def test_search_unauthenticated(
+    def test_search(
         self,
         httpx_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
-        test_reference_id: uuid.UUID,
+        test_reference_id: UUID,
         mock_reference_response: dict,
     ) -> None:
-        """Test that search works without authentication."""
+        """Test that search builds the expected request and parses results."""
         httpx_mock.add_response(
             url=f"{base_url}/v1/references/search/?q=test+query&page=1",
             method="GET",
@@ -194,12 +201,45 @@ class TestOAuthClient:
         assert isinstance(result, ReferenceSearchResult)
         assert result.page.number == 2
 
+    def test_search_with_concept_filters(
+        self,
+        httpx_mock: HTTPXMock,
+        oauth_client: OAuthClient,
+        base_url: str,
+        mock_reference_response: dict,
+    ) -> None:
+        """Concepts: strings pass through, tuples join with comma for OR semantics."""
+        httpx_mock.add_response(
+            url=(
+                f"{base_url}/v1/references/search/?q=test&page=1"
+                "&concept=https://vocab.example.org/A"
+                "&concept=https://vocab.example.org/B,https://vocab.example.org/C"
+            ),
+            method="GET",
+            json={
+                "references": [mock_reference_response],
+                "total": {"count": 1, "is_lower_bound": False},
+                "page": {"count": 1, "number": 1},
+                "page_size": 10,
+            },
+        )
+
+        result = oauth_client.search(
+            query="test",
+            concepts=[
+                "https://vocab.example.org/A",
+                ["https://vocab.example.org/B", "https://vocab.example.org/C"],
+            ],
+        )
+
+        assert isinstance(result, ReferenceSearchResult)
+
     def test_lookup(
         self,
         httpx_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
-        test_reference_id: uuid.UUID,
+        test_reference_id: UUID,
     ) -> None:
         """Test lookup references by identifiers."""
         httpx_mock.add_response(
@@ -251,8 +291,57 @@ class TestOAuthClient:
         assert "Invalid query parameter" in str(exc_info.value)
 
 
-class TestOAuthMiddleware:
-    """Tests for OAuthMiddleware authentication."""
+class TestOAuthClientEnvShortcut:
+    """Tests for the OAuthClient ``env`` constructor shortcut."""
+
+    @pytest.mark.parametrize(
+        ("env", "expected_base_url"),
+        [
+            ("development", "https://api.dev.evidence-repository.org"),
+            ("staging", "https://api.staging.evidence-repository.org"),
+            ("production", "https://api.evidence-repository.org"),
+        ],
+    )
+    def test_env_derives_base_url_and_auth(
+        self, env: str, expected_base_url: str
+    ) -> None:
+        """env fills in base_url from DEFAULT_API_URLS and builds OAuthMiddleware."""
+        client = OAuthClient(env=env)  # type: ignore[arg-type]
+        assert str(client._client.base_url) == f"{expected_base_url}/v1/"  # noqa: SLF001
+        assert isinstance(client._client.auth, OAuthMiddleware)  # noqa: SLF001
+
+    def test_explicit_base_url_overrides_env_default(self) -> None:
+        """An explicit base_url is preserved when env is also provided."""
+        client = OAuthClient(env="production", base_url="https://override.example.com")
+        assert (
+            str(client._client.base_url)  # noqa: SLF001
+            == "https://override.example.com/v1/"
+        )
+
+    def test_explicit_auth_overrides_env_default(self, base_url: str) -> None:
+        """An explicit auth is preserved when env is also provided."""
+        custom_auth = httpx.BasicAuth("user", "pass")
+        client = OAuthClient(env="production", base_url=base_url, auth=custom_auth)
+        assert client._client.auth is custom_auth  # noqa: SLF001
+
+    def test_rejects_missing_auth_when_env_omitted(self) -> None:
+        """Without env, auth must be provided explicitly."""
+        with pytest.raises(ValueError, match=r"^auth required"):
+            OAuthClient(base_url="https://example.com")
+
+    def test_rejects_missing_base_url_when_env_omitted(self) -> None:
+        """Without env, base_url must be provided explicitly even if auth is."""
+        with pytest.raises(ValueError, match=r"^base_url required"):
+            OAuthClient(auth=httpx.BasicAuth("user", "pass"))
+
+    def test_rejects_missing_auth_and_base_url(self) -> None:
+        """When both are missing the error names both."""
+        with pytest.raises(ValueError, match=r"^auth and base_url required"):
+            OAuthClient()
+
+
+class TestAzureOAuthMiddleware:
+    """Tests for AzureOAuthMiddleware authentication."""
 
     @pytest.fixture
     def mock_public_client_app(self):
@@ -299,11 +388,12 @@ class TestOAuthMiddleware:
             mock_public_client_app,
         )
 
-        middleware = OAuthMiddleware(
-            azure_login_url="test-url",
-            azure_client_id="test-client",
-            azure_application_id="test-app",
-        )
+        with pytest.warns(DeprecationWarning, match="public client"):
+            middleware = AzureOAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
 
         # Create a test request
         request = httpx.Request("GET", "https://api.example.com/test")
@@ -327,12 +417,13 @@ class TestOAuthMiddleware:
             mock_confidential_client_app,
         )
 
-        middleware = OAuthMiddleware(
-            azure_login_url="test-url",
-            azure_client_id="test-client",
-            azure_application_id="test-app",
-            azure_client_secret="test-secret",
-        )
+        with pytest.warns(DeprecationWarning, match="confidential-client"):
+            middleware = AzureOAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+                azure_client_secret=SecretStr("test-secret"),
+            )
 
         # Create a test request
         request = httpx.Request("GET", "https://api.example.com/test")
@@ -344,8 +435,12 @@ class TestOAuthMiddleware:
         assert "Authorization" in authenticated_request.headers
         assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
 
-    def test_managed_identity_auth_flow(self, monkeypatch) -> None:
-        """Test OAuth middleware auth flow with managed identity."""
+    def test_managed_identity_auth_flow(self, monkeypatch, recwarn) -> None:
+        """Test OAuth middleware auth flow with managed identity.
+
+        Also asserts that managed identity is NOT covered by the Azure
+        deprecation warning — only the public/confidential flows are.
+        """
 
         mock_token = "managed_identity_token_789"
 
@@ -363,11 +458,16 @@ class TestOAuthMiddleware:
             MockManagedIdentityClient,
         )
 
-        middleware = OAuthMiddleware(
+        middleware = AzureOAuthMiddleware(
             use_managed_identity=True,
             azure_client_id="test-client",
             azure_application_id="test-app",
         )
+
+        deprecations = [
+            w for w in recwarn.list if issubclass(w.category, DeprecationWarning)
+        ]
+        assert not deprecations
 
         # Create a test request
         request = httpx.Request("GET", "https://api.example.com/test")
@@ -397,11 +497,12 @@ class TestOAuthMiddleware:
             MockPublicClientAppWithCount,
         )
 
-        middleware = OAuthMiddleware(
-            azure_login_url="test-url",
-            azure_client_id="test-client",
-            azure_application_id="test-app",
-        )
+        with pytest.warns(DeprecationWarning, match="public client"):
+            middleware = AzureOAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
 
         request = httpx.Request("GET", "https://api.example.com/test")
 
@@ -412,7 +513,7 @@ class TestOAuthMiddleware:
         # Simulate token expiry response
         expired_response = httpx.Response(
             status_code=401,
-            json={"detail": "Token has expired."},
+            json={"detail": TOKEN_EXPIRED_MESSAGE},
             request=authenticated_request,
         )
 
@@ -424,3 +525,337 @@ class TestOAuthMiddleware:
             retry_request.headers["Authorization"] == f"Bearer {mock_refreshed_token}"
         )
         assert call_count["count"] == 2  # Initial + refresh
+
+
+class TestKeycloakOAuthMiddleware:
+    """Tests for KeycloakOAuthMiddleware authentication."""
+
+    def test_client_credentials_auth_flow(self, httpx_mock: HTTPXMock) -> None:
+        """Test Keycloak middleware auth flow with client credentials."""
+        mock_token = "keycloak_cc_token_789"
+
+        # Mock the Keycloak token endpoint
+        httpx_mock.add_response(
+            url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
+            method="POST",
+            json={
+                "access_token": mock_token,
+                "expires_in": 300,
+                "token_type": "Bearer",
+                "scope": "openid import.writer.all",
+            },
+        )
+
+        middleware = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="test-service-client",
+            client_secret=SecretStr("test-secret"),
+            scopes=["import.writer.all"],
+        )
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+
+        assert "Authorization" in authenticated_request.headers
+        assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
+
+    @pytest.mark.httpx_mock(can_send_already_matched_responses=True)
+    def test_client_credentials_reacquires_on_expiry(
+        self, httpx_mock: HTTPXMock
+    ) -> None:
+        """Test that client credentials middleware re-acquires token on 401."""
+        initial_token = "keycloak_cc_token_initial"
+        refreshed_token = "keycloak_cc_token_refreshed"
+        call_count = {"count": 0}
+
+        def token_response(_request, **_kwargs):
+            call_count["count"] += 1
+            token = refreshed_token if call_count["count"] > 1 else initial_token
+            return httpx.Response(
+                200,
+                json={
+                    "access_token": token,
+                    "expires_in": 300,
+                    "token_type": "Bearer",
+                    "scope": "openid",
+                },
+            )
+
+        httpx_mock.add_callback(
+            token_response,
+            url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
+            method="POST",
+        )
+
+        middleware = KeycloakOAuthMiddleware(
+            keycloak_url="http://localhost:8080",
+            realm="destiny",
+            client_id="test-service-client",
+            client_secret=SecretStr("test-secret"),
+        )
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+
+        assert (
+            authenticated_request.headers["Authorization"] == f"Bearer {initial_token}"
+        )
+
+        # Simulate token expiry
+        expired_response = httpx.Response(
+            status_code=401,
+            json={"detail": TOKEN_EXPIRED_MESSAGE},
+            request=authenticated_request,
+        )
+
+        retry_request = flow.send(expired_response)
+
+        assert retry_request.headers["Authorization"] == f"Bearer {refreshed_token}"
+        assert call_count["count"] == 2
+
+
+class TestOAuthMiddleware:
+    """Tests for the OAuthMiddleware router."""
+
+    def test_routes_to_keycloak_on_auth_url(self, httpx_mock: HTTPXMock) -> None:
+        """Keycloak kwargs route through to KeycloakOAuthMiddleware."""
+        mock_token = "router_keycloak_token"
+        httpx_mock.add_response(
+            url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
+            method="POST",
+            json={
+                "access_token": mock_token,
+                "expires_in": 300,
+                "token_type": "Bearer",
+                "scope": "openid",
+            },
+        )
+
+        middleware = OAuthMiddleware(
+            auth_url="http://localhost:8080",
+            realm="destiny",
+            client_id="test-service-client",
+            client_secret=SecretStr("test-secret"),
+        )
+
+        assert isinstance(middleware._inner, KeycloakOAuthMiddleware)  # noqa: SLF001
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+        assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
+
+    def test_routes_to_azure_with_deprecation_warning(self, monkeypatch) -> None:
+        """Azure public-client kwargs route through with a deprecation warning."""
+
+        class MockPublicClientApp(PublicClientApplication):
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def acquire_token_silent(self, scopes, account, *, force_refresh=False):
+                return {"access_token": "azure_router_token"}
+
+            def get_accounts(self):
+                return []
+
+        monkeypatch.setattr(
+            "destiny_sdk.client.PublicClientApplication", MockPublicClientApp
+        )
+
+        with pytest.warns(DeprecationWarning, match="public client"):
+            middleware = OAuthMiddleware(
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
+
+        assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
+
+        request = httpx.Request("GET", "https://api.example.com/test")
+        flow = middleware.auth_flow(request)
+        authenticated_request = next(flow)
+        assert (
+            authenticated_request.headers["Authorization"]
+            == "Bearer azure_router_token"
+        )
+
+    def test_routes_to_managed_identity_without_warning(
+        self, monkeypatch, recwarn
+    ) -> None:
+        """Managed identity is not deprecated; routing to it must not warn."""
+
+        class MockManagedIdentityClient(ManagedIdentityClient):
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def acquire_token_for_client(self, resource):
+                return {"access_token": "mi_token"}
+
+        monkeypatch.setattr(
+            "destiny_sdk.client.ManagedIdentityClient", MockManagedIdentityClient
+        )
+
+        middleware = OAuthMiddleware(
+            use_managed_identity=True,
+            azure_client_id="test-client",
+            azure_application_id="test-app",
+        )
+
+        assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
+        deprecations = [
+            w for w in recwarn.list if issubclass(w.category, DeprecationWarning)
+        ]
+        assert not deprecations
+
+    def test_env_derives_client_id(self) -> None:
+        """env derives client_id as destiny-auth-client-{env}."""
+        middleware = OAuthMiddleware(env="staging")
+        inner = middleware._inner  # noqa: SLF001
+        assert isinstance(inner, KeycloakOAuthMiddleware)
+        assert inner._auth_flow.client_id == "destiny-auth-client-staging"  # noqa: SLF001
+
+    def test_explicit_client_id_overrides_env_derivation(self) -> None:
+        """An explicit client_id is preserved when env is also provided."""
+        middleware = OAuthMiddleware(env="production", client_id="my-explicit-client")
+        inner = middleware._inner  # noqa: SLF001
+        assert isinstance(inner, KeycloakOAuthMiddleware)
+        assert inner._auth_flow.client_id == "my-explicit-client"  # noqa: SLF001
+
+    def test_rejects_keycloak_without_env_or_client_id(self) -> None:
+        """Keycloak path requires either env or client_id."""
+        with pytest.raises(ValueError, match="client_id is required"):
+            OAuthMiddleware()
+
+    def test_rejects_client_secret_without_explicit_client_id(self) -> None:
+        """client_secret with no explicit client_id is rejected.
+
+        Without env, the existing client_id check would catch the missing
+        client_id, but the more specific message tells the user what they
+        actually got wrong (a secret on a public client).
+        """
+        with pytest.raises(ValueError, match="client_secret requires"):
+            OAuthMiddleware(client_secret=SecretStr("foo"))
+        with pytest.raises(ValueError, match="client_secret requires"):
+            OAuthMiddleware(env="production", client_secret=SecretStr("foo"))
+
+    def test_azure_takes_precedence_over_keycloak_kwargs(self, monkeypatch) -> None:
+        """When Azure kwargs are present, Keycloak kwargs are ignored.
+
+        The Azure deprecation warning makes it clear which backend was
+        selected, so we don't emit a separate "kwargs ignored" warning.
+        """
+
+        class MockPublicClientApp(PublicClientApplication):
+            def __init__(self, *args, **kwargs):
+                pass
+
+            def acquire_token_silent(self, scopes, account, *, force_refresh=False):
+                return {"access_token": "azure_precedence_token"}
+
+            def get_accounts(self):
+                return []
+
+        monkeypatch.setattr(
+            "destiny_sdk.client.PublicClientApplication", MockPublicClientApp
+        )
+
+        with pytest.warns(DeprecationWarning, match="public client"):
+            middleware = OAuthMiddleware(
+                env="production",
+                azure_login_url="test-url",
+                azure_client_id="test-client",
+                azure_application_id="test-app",
+            )
+
+        assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
+
+
+def _build_keycloak_middleware(_monkeypatch) -> KeycloakOAuthMiddleware:
+    return KeycloakOAuthMiddleware(
+        keycloak_url="http://localhost:8080",
+        realm="destiny",
+        client_id="test-service-client",
+        client_secret=SecretStr("test-secret"),
+    )
+
+
+def _build_azure_middleware(monkeypatch) -> AzureOAuthMiddleware:
+    class _NoOpPublicClientApp(PublicClientApplication):
+        def __init__(self, *_args, **_kwargs) -> None:
+            pass
+
+    monkeypatch.setattr(
+        "destiny_sdk.client.PublicClientApplication", _NoOpPublicClientApp
+    )
+    # Return the routed inner middleware: the test patches ``_get_token`` on the
+    # returned object, and it is the inner middleware whose ``auth_flow`` runs.
+    return OAuthMiddleware(  # noqa: SLF001
+        azure_login_url="test-url",
+        azure_client_id="test-client",
+        azure_application_id="test-app",
+    )._inner
+
+
+@pytest.mark.parametrize(
+    "build_middleware",
+    [_build_keycloak_middleware, _build_azure_middleware],
+    ids=["keycloak", "azure"],
+)
+def test_token_refresh_through_real_client(monkeypatch, build_middleware) -> None:
+    """
+    Renewal must work through httpx's full auth flow on a streamed response.
+
+    This drives a real ``httpx.Client`` with an unread, streamed response to
+    catch that regression, across both OAuth middlewares.
+    """
+
+    class _Stream(httpx.SyncByteStream):
+        def __init__(self, data: bytes) -> None:
+            self._data = data
+
+        def __iter__(self):
+            yield self._data
+
+        def close(self) -> None:
+            pass
+
+    def streamed(status_code: int, payload: dict) -> httpx.Response:
+        return httpx.Response(
+            status_code,
+            headers={"Content-Type": "application/json"},
+            stream=_Stream(json.dumps(payload).encode()),
+        )
+
+    server_requests = {"count": 0}
+
+    def handler(_request: httpx.Request) -> httpx.Response:
+        server_requests["count"] += 1
+        if server_requests["count"] == 1:
+            return streamed(401, {"detail": TOKEN_EXPIRED_MESSAGE})
+        return streamed(200, {"ok": True})
+
+    middleware = build_middleware(monkeypatch)
+
+    token_calls = {"count": 0, "force_refresh": 0}
+
+    def fake_get_token(*, force_refresh: bool = False) -> str:
+        token_calls["count"] += 1
+        if force_refresh:
+            token_calls["force_refresh"] += 1
+            return "refreshed-token"
+        return "initial-token"
+
+    # Bypass real token acquisition; only the auth_flow retry logic is under test.
+    middleware._get_token = fake_get_token  # noqa: SLF001
+
+    client = httpx.Client(transport=httpx.MockTransport(handler), auth=middleware)
+    response = client.get("https://api.example.com/test")
+
+    assert response.status_code == 200
+    assert server_requests["count"] == 2
+    assert token_calls["force_refresh"] == 1

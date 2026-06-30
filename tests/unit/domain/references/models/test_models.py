@@ -1,6 +1,8 @@
 """Unit tests for the models in the references module."""
 
-import uuid
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -8,11 +10,19 @@ import pytest
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    Enhancement,
+    FullTextEnhancement,
     GenericExternalIdentifier,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
+)
+from app.persistence.blob.models import BlobStorageFile
+from tests.factories import (
+    BlobStorageFileFactory,
+    EnhancementFactory,
+    FullTextEnhancementFactory,
 )
 
 
@@ -47,9 +57,62 @@ def test_reference_create_result_error_str_multiple():
     assert result.error_str == "first error\n\nsecond error"
 
 
+def test_full_text_enhancement_discriminator_resolves_to_domain():
+    """
+    A FULL_TEXT payload resolves to the domain FullTextEnhancement.
+
+    The SDK ships its own FullTextEnhancement with file_url: HttpUrl. The
+    domain variant uses BlobStorageFile. If someone reorders the union or
+    accidentally lists the SDK type in EnhancementContent, this round trip
+    would fail.
+    """
+    full_text = FullTextEnhancementFactory.build()
+    enhancement = EnhancementFactory.build(content=full_text)
+
+    restored = Enhancement.model_validate(enhancement.model_dump())
+    assert isinstance(restored.content, FullTextEnhancement)
+    assert isinstance(restored.content.blob, BlobStorageFile)
+    assert restored.content.blob == full_text.blob
+
+
+def test_full_text_enhancement_json_mode_round_trip():
+    """blob serializes to a URI string in JSON mode and re-parses on validate."""
+    full_text = FullTextEnhancementFactory.build()
+    enhancement = EnhancementFactory.build(content=full_text)
+
+    dumped = enhancement.model_dump(mode="json")
+    assert isinstance(dumped["content"]["blob"], str)
+
+    restored = Enhancement.model_validate(dumped)
+    assert isinstance(restored.content, FullTextEnhancement)
+    assert restored.content.blob == full_text.blob
+
+
+def test_full_text_enhancement_fingerprint_is_content_identity():
+    """Fingerprint excludes transient storage details and tracks content fields.
+
+    blob (where we stored it) and retrieved_at (when we fetched it) are
+    incidental; sha256_checksum is the canonical content-identity field.
+    """
+    a = FullTextEnhancementFactory.build()
+
+    # Same content, different storage/timing: fingerprint matches.
+    same_content = a.model_copy(
+        update={
+            "retrieved_at": datetime(2020, 1, 1, tzinfo=UTC),
+            "blob": BlobStorageFileFactory.build(),
+        }
+    )
+    assert a.fingerprint == same_content.fingerprint
+
+    # Different sha256: fingerprint diverges.
+    different_content = a.model_copy(update={"sha256_checksum": "different"})
+    assert a.fingerprint != different_content.fingerprint
+
+
 @pytest.fixture
-def anti_corruption_service(fake_repository) -> ReferenceAntiCorruptionService:
-    return ReferenceAntiCorruptionService(fake_repository)
+def anti_corruption_service() -> ReferenceAntiCorruptionService:
+    return ReferenceAntiCorruptionService(sign_url=AsyncMock())
 
 
 async def test_linked_external_identifier_roundtrip(
@@ -59,7 +122,7 @@ async def test_linked_external_identifier_roundtrip(
         identifier=1234, identifier_type="pm_id"
     )
     sdk_linked = destiny_sdk.identifiers.LinkedExternalIdentifier(
-        identifier=sdk_id, reference_id=(u := uuid.uuid4())
+        identifier=sdk_id, reference_id=(u := uuid7())
     )
     domain = anti_corruption_service.external_identifier_from_sdk(sdk_linked)
     assert domain.identifier == sdk_id
@@ -88,10 +151,11 @@ async def test_enhancement_unserializable_failure(
     with pytest.raises(SDKToDomainError):
         anti_corruption_service.enhancement_from_sdk(
             destiny_sdk.enhancements.Enhancement(
-                reference_id=uuid.uuid4(),
+                reference_id=uuid7(),
                 source="dummy",
                 visibility="public",
                 content=dodgy_enhancement,
+                created_at=datetime.now(tz=UTC),
             )
         )
 

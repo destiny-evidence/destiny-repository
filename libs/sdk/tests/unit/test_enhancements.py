@@ -1,6 +1,6 @@
 import datetime
-import uuid
 from datetime import date
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -28,13 +28,14 @@ def test_bibliographic_metadata_enhancement_valid():
         pagination=pagination,
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.BIBLIOGRAPHIC,
         content=bibliographic,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert (
         enhancement.content.enhancement_type
@@ -63,6 +64,27 @@ def test_bibliographic_metadata_enhancement_non_numeric_pagination_fields():
     assert bibliographic.pagination.last_page == "A15"
 
 
+def test_bibliographic_metadata_enhancement_with_publication_venue():
+    """Test BibliographicMetadataEnhancement with publication_venue field."""
+    venue = destiny_sdk.enhancements.PublicationVenue(
+        display_name="Science",
+        venue_type=destiny_sdk.enhancements.PublicationVenueType.JOURNAL,
+        issn=["0036-8075"],
+        issn_l="0036-8075",
+        host_organization_name="AAAS",
+    )
+    bibliographic = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+        title="Test Article",
+        publication_venue=venue,
+    )
+    assert bibliographic.publication_venue is not None
+    assert bibliographic.publication_venue.display_name == "Science"
+    assert (
+        bibliographic.publication_venue.venue_type
+        == destiny_sdk.enhancements.PublicationVenueType.JOURNAL
+    )
+
+
 def test_abstract_content_enhancement_valid():
     # Create valid abstract content
     abstract_content = destiny_sdk.enhancements.AbstractContentEnhancement(
@@ -71,13 +93,14 @@ def test_abstract_content_enhancement_valid():
         abstract="This is a test abstract.",
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="2.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ABSTRACT,
         content=abstract_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert enhancement.content.abstract == "This is a test abstract."
 
@@ -97,13 +120,14 @@ def test_annotation_enhancement_valid():
         annotations=[annotation1],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.5",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.ANNOTATION,
         content=annotations_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert enhancement.content.annotations[0].label == "Machine Learning"
 
@@ -123,13 +147,14 @@ def test_location_enhancement_valid():
         locations=[location],
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.2",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.LOCATION,
         content=location_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert enhancement.content.locations[0].license == "cc-by"
 
@@ -208,7 +233,7 @@ def test_association_enhancement_valid():
     association_content = destiny_sdk.enhancements.ReferenceAssociationEnhancement(
         enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
         associated_reference_ids=[
-            uuid.uuid4(),
+            uuid7(),
             destiny_sdk.identifiers.OpenAlexIdentifier(
                 identifier="https://openalex.org/W1234567890",
                 identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX,
@@ -217,13 +242,14 @@ def test_association_enhancement_valid():
         association_type=destiny_sdk.enhancements.ReferenceAssociationType.CITES,
     )
     enhancement = destiny_sdk.enhancements.Enhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         source="test_source",
         visibility="public",
         robot_version="1.0",
         enhancement_type=destiny_sdk.enhancements.EnhancementType.REFERENCE_ASSOCIATION,
         content=association_content,
-        reference_id=uuid.uuid4(),
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     assert (
         enhancement.content.association_type
@@ -252,6 +278,175 @@ def test_association_enhancement_invalid_identifier_type_errors():
             ],
             association_type=destiny_sdk.enhancements.ReferenceAssociationType.CITES,
         )
+
+
+def test_linked_data_enhancement_valid():
+    linked_data = destiny_sdk.enhancements.LinkedDataEnhancement(
+        vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+        data={
+            "@context": "https://vocab.evrepo.org/context/v1.jsonld",
+            "@type": "ScholarlyArticle",
+            "name": "Test",
+        },
+    )
+    assert (
+        linked_data.enhancement_type
+        == destiny_sdk.enhancements.EnhancementType.LINKED_DATA
+    )
+    assert linked_data.data["@type"] == "ScholarlyArticle"
+
+
+def test_linked_data_enhancement_discriminator_resolution():
+    """Enhancement.content resolves to LinkedDataEnhancement via discriminator."""
+    linked_data = destiny_sdk.enhancements.LinkedDataEnhancement(
+        vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+        data={
+            "@context": "https://vocab.evrepo.org/context/v1.jsonld",
+            "@type": "Dataset",
+            "key": "value",
+        },
+    )
+    enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid7(),
+        source="test_source",
+        visibility="public",
+        robot_version="1.0",
+        content=linked_data,
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+    assert isinstance(
+        enhancement.content, destiny_sdk.enhancements.LinkedDataEnhancement
+    )
+
+    dumped = enhancement.to_jsonl()
+    restored = destiny_sdk.enhancements.Enhancement.model_validate_json(dumped)
+    assert isinstance(restored.content, destiny_sdk.enhancements.LinkedDataEnhancement)
+    assert restored.content.data["key"] == "value"
+
+
+def test_linked_data_enhancement_fingerprint_deterministic():
+    kwargs = {
+        "vocabulary_uri": "https://vocab.evrepo.org/vocabulary/v1",
+        "data": {
+            "@context": "https://vocab.evrepo.org/context/v1.jsonld",
+            "b": 2,
+            "a": 1,
+        },
+    }
+    a = destiny_sdk.enhancements.LinkedDataEnhancement(**kwargs)
+    b = destiny_sdk.enhancements.LinkedDataEnhancement(**kwargs)
+    assert a.fingerprint == b.fingerprint
+
+
+def test_linked_data_enhancement_fingerprint_differs_with_different_data():
+    common = {
+        "vocabulary_uri": "https://vocab.evrepo.org/vocabulary/v1",
+    }
+    a = destiny_sdk.enhancements.LinkedDataEnhancement(
+        data={"@context": "https://vocab.evrepo.org/context/v1.jsonld", "x": 1},
+        **common,
+    )
+    b = destiny_sdk.enhancements.LinkedDataEnhancement(
+        data={"@context": "https://vocab.evrepo.org/context/v1.jsonld", "x": 2},
+        **common,
+    )
+    assert a.fingerprint != b.fingerprint
+
+
+def test_linked_data_enhancement_requires_valid_context_url():
+    with pytest.raises(ValidationError):
+        destiny_sdk.enhancements.LinkedDataEnhancement(
+            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+            data={"@context": "not-a-url"},
+        )
+
+
+def test_linked_data_enhancement_missing_context_key():
+    with pytest.raises(ValidationError, match="@context"):
+        destiny_sdk.enhancements.LinkedDataEnhancement(
+            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+            data={"@type": "ScholarlyArticle", "name": "Test"},
+        )
+
+
+def test_linked_data_enhancement_non_string_context():
+    with pytest.raises(ValidationError, match="@context must be a string URI"):
+        destiny_sdk.enhancements.LinkedDataEnhancement(
+            vocabulary_uri="https://vocab.evrepo.org/vocabulary/v1",
+            data={
+                "@context": ["https://vocab.evrepo.org/context/v1.jsonld"],
+                "@type": "ScholarlyArticle",
+            },
+        )
+
+
+def test_full_text_enhancement_valid():
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="https://example.com/full.pdf",
+        byte_size=12345,
+        sha256_checksum="abc123",
+        version=destiny_sdk.enhancements.DriverVersion.PUBLISHED_VERSION,
+        is_oa=True,
+        license="cc-by",
+        source="openalex",
+        source_url="https://example.com/source",
+        retrieved_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+    assert (
+        full_text.enhancement_type == destiny_sdk.enhancements.EnhancementType.FULL_TEXT
+    )
+    assert full_text.mime_type == "application/pdf"
+
+
+def test_full_text_enhancement_minimal_defaults():
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="https://example.com/full.pdf",
+    )
+    assert full_text.mime_type == "application/pdf"
+    assert full_text.byte_size is None
+    assert full_text.sha256_checksum is None
+    assert full_text.version is None
+
+
+def test_full_text_enhancement_requires_file_url():
+    with pytest.raises(ValidationError):
+        destiny_sdk.enhancements.FullTextEnhancement()
+
+
+def test_full_text_enhancement_invalid_file_url():
+    with pytest.raises(ValidationError):
+        destiny_sdk.enhancements.FullTextEnhancement(file_url="not-a-url")
+
+
+def test_full_text_enhancement_accepts_http_file_url():
+    """file_url accepts http or https; restriction (if any) lives on the app side."""
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="http://example.com/full.pdf",
+    )
+    assert str(full_text.file_url) == "http://example.com/full.pdf"
+
+
+def test_full_text_enhancement_discriminator_resolution():
+    """Enhancement.content resolves to FullTextEnhancement via discriminator."""
+    full_text = destiny_sdk.enhancements.FullTextEnhancement(
+        file_url="https://example.com/full.pdf",
+        mime_type="application/pdf",
+    )
+    enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid7(),
+        source="test_source",
+        visibility="public",
+        content=full_text,
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+    assert isinstance(enhancement.content, destiny_sdk.enhancements.FullTextEnhancement)
+
+    dumped = enhancement.to_jsonl()
+    restored = destiny_sdk.enhancements.Enhancement.model_validate_json(dumped)
+    assert isinstance(restored.content, destiny_sdk.enhancements.FullTextEnhancement)
+    assert str(restored.content.file_url) == "https://example.com/full.pdf"
 
 
 def test_pagination_empty_string_to_none():

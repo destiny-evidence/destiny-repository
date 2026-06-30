@@ -1,0 +1,1937 @@
+@prefix evrepo: <https://vocab.evidence-repository.org/> .
+@prefix esea:   <https://vocab.esea.education/> .
+@prefix rdf:    <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs:   <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix owl:    <http://www.w3.org/2002/07/owl#> .
+@prefix xsd:    <http://www.w3.org/2001/XMLSchema#> .
+@prefix skos:   <http://www.w3.org/2004/02/skos/core#> .
+
+# =============================================================================
+# ESEA — Education Sector Evidence Architecture Vocabulary
+# Namespace: https://vocab.esea.education/
+#
+# Extends the Evidence Repository Core with education-specific properties
+# and SKOS concept schemes covering all 24 taxonomy fields:
+#   1. Education Level (hierarchical, multi-select, on Context)
+#   2. Document Type (flat enumerated, single-select, on Investigation)
+#   3. Education Theme (2-level hierarchical, multi-select, on Intervention)
+#   4. Outcome (2-level hierarchical, multi-select, on Outcome)
+#   5. Implementer Type (flat enumerated, single-select, on Intervention)
+#   6. Implementation Description (flat enumerated, multi-select, on Intervention)
+#   7. Implementation Fidelity (flat enumerated, single-select, on Intervention)
+#   8. Setting (3-level hierarchical, multi-select, on Context)
+#   9. Participants (open text, multi-select, on Context)
+#   10. Sample Features (flat enumerated, multi-select, on Context)
+#   11. Implementation Name (open text, single-select, on Intervention)
+#   12. Duration (numeric, on Intervention) — NOTE: Wiki page does not exist; skipped
+#   13. Study Design (single-select, on Investigation) — NOTE: Wiki page does not exist; skipped
+#   14. Sample Size (numeric, on Finding)
+#   15. Cost (binary yes/no, on Finding)
+#   16. Effect Size (already handled by EffectEstimate class in evrepo-core)
+#   17. Attrition (numeric percentage, on Finding)
+#   18. Group Differences (binary yes/no, on Finding)
+#   19. Country (ISO 3166-1 alpha-2 codes, multi-select, on Context)
+#   20. Funder Intervention (open text, on Intervention)
+#   21. Funder Research (open text, on Investigation)
+#   22. Is Retracted (boolean, on Investigation)
+#   23. Data Source (system-generated string, on Investigation)
+#   24. Country Level 1 (open text sub-national region, on Context)
+#
+# Concept URIs are sequential identifiers (esea:C00001 etc.) with scheme
+# membership expressed via skos:inScheme; hierarchy via skos:broader/topConceptOf.
+#
+# Source: ESEA taxonomy wiki (https://convening.viaed.net/dokuwiki/)
+# Generated: 2026-02-25
+# =============================================================================
+
+esea: a owl:Ontology ;
+    owl:imports evrepo: ;
+    rdfs:label "ESEA Vocabulary"@en ;
+    rdfs:comment "Education Sector Evidence Architecture — education-specific properties and concept schemes extending the Evidence Repository Core."@en .
+
+# #############################################################################
+# FIELD 1: Education Level
+#
+# Property definition:
+#   identifier:    educationLevel
+#   label:         Education Level
+#   description:   Captures the main level of education that the primary target
+#                  population are participating in or associated with at the
+#                  time of the intervention or study.
+#   domain:        evrepo:Context
+#   range:         esea:EducationLevelCodingAnnotation
+#   valueScheme:   esea:EducationLevelScheme
+#   allowMultiple: true
+#   externalMapping: ISCED 2011, INEE framework (informal education)
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:EducationLevelConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Education Level Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:EducationLevelCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Education Level Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:EducationLevelConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:educationLevel a owl:ObjectProperty ;
+    rdfs:label "education level"@en ;
+    rdfs:comment "The ISCED-aligned level of education in which the target population is participating. Based on ISCED 2011, with additions from the INEE framework for informal education. Multiple values may be coded."@en ;
+    rdfs:domain evrepo:Context ;
+    rdfs:range esea:EducationLevelCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:EducationLevelScheme a skos:ConceptScheme ;
+    rdfs:label "Education Level Scheme"@en ;
+    rdfs:comment "Education levels based on ISCED 2011, with informal education items from the INEE framework."@en ;
+    skos:hasTopConcept esea:C00001 , esea:C00002 , esea:C00003 , esea:C00004 ,
+                       esea:C00005 , esea:C00006 , esea:C00007 .
+
+# --- Concepts ---
+
+esea:C00001 a esea:EducationLevelConcept , skos:Concept ;
+    skos:inScheme esea:EducationLevelScheme ;
+    skos:topConceptOf esea:EducationLevelScheme ;
+    skos:prefLabel "Early Childhood"@en ;
+    skos:notation "EC" ;
+    skos:definition "Early childhood education and care, including ECD centres, community-based playgroups, nursery, and pre-primary programmes."@en ;
+    skos:exactMatch <http://uis.unesco.org/isced/2011/0> .
+
+esea:C00002 a esea:EducationLevelConcept , skos:Concept ;
+    skos:inScheme esea:EducationLevelScheme ;
+    skos:topConceptOf esea:EducationLevelScheme ;
+    skos:prefLabel "Primary Education"@en ;
+    skos:notation "P" ;
+    skos:definition "Primary education, typically covering grades 1-6 depending on country context."@en ;
+    skos:exactMatch <http://uis.unesco.org/isced/2011/1> .
+
+esea:C00003 a esea:EducationLevelConcept , skos:Concept ;
+    skos:inScheme esea:EducationLevelScheme ;
+    skos:topConceptOf esea:EducationLevelScheme ;
+    skos:prefLabel "Lower Secondary"@en ;
+    skos:notation "LS" ;
+    skos:definition "Lower secondary education (junior secondary, middle school), typically covering grades 7-9."@en ;
+    skos:exactMatch <http://uis.unesco.org/isced/2011/2> .
+
+esea:C00004 a esea:EducationLevelConcept , skos:Concept ;
+    skos:inScheme esea:EducationLevelScheme ;
+    skos:topConceptOf esea:EducationLevelScheme ;
+    skos:prefLabel "Upper Secondary"@en ;
+    skos:notation "US" ;
+    skos:definition "Upper secondary education (senior secondary), typically covering grades 10-12."@en ;
+    skos:exactMatch <http://uis.unesco.org/isced/2011/3> .
+
+esea:C00005 a esea:EducationLevelConcept , skos:Concept ;
+    skos:inScheme esea:EducationLevelScheme ;
+    skos:topConceptOf esea:EducationLevelScheme ;
+    skos:prefLabel "Technical Vocational Education and Training"@en ;
+    skos:altLabel "TVET"@en ;
+    skos:notation "TVET" ;
+    skos:definition "Technical and vocational institutes, polytechnics, teacher training colleges (pre-Bachelor), health training institutes."@en ;
+    skos:exactMatch <http://uis.unesco.org/isced/2011/4> .
+
+esea:C00006 a esea:EducationLevelConcept , skos:Concept ;
+    skos:inScheme esea:EducationLevelScheme ;
+    skos:topConceptOf esea:EducationLevelScheme ;
+    skos:prefLabel "Alternative Education"@en ;
+    skos:notation "AE" ;
+    skos:definition "Accelerated education programmes, Alternative Basic Education, second chance programmes, youth livelihoods training, speed schools."@en .
+
+esea:C00007 a esea:EducationLevelConcept , skos:Concept ;
+    skos:inScheme esea:EducationLevelScheme ;
+    skos:topConceptOf esea:EducationLevelScheme ;
+    skos:prefLabel "Transitional Programs"@en ;
+    skos:notation "TP" ;
+    skos:definition "Learning readiness, catch-up programmes, bridging programmes (e.g. language)."@en .
+
+
+# #############################################################################
+# FIELD 2: Document Type
+#
+# Property definition:
+#   identifier:    documentType
+#   label:         Document Type
+#   description:   Captures the format and purpose of the document,
+#                  independent of its content area.
+#   domain:        evrepo:Investigation
+#   range:         esea:DocumentTypeCodingAnnotation
+#   valueScheme:   esea:DocumentTypeScheme
+#   allowMultiple: false
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:DocumentTypeConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Document Type Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:DocumentTypeCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Document Type Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:DocumentTypeConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:documentType a owl:ObjectProperty ;
+    rdfs:label "document type"@en ;
+    rdfs:comment "The format and purpose of the document — e.g. journal article, report, working paper. Placed on Investigation since it describes the type of study reported."@en ;
+    rdfs:domain evrepo:Investigation ;
+    rdfs:range esea:DocumentTypeCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:DocumentTypeScheme a skos:ConceptScheme ;
+    rdfs:label "Document Type Scheme"@en ;
+    rdfs:comment "Types of publications and documents in which evidence is reported."@en ;
+    skos:hasTopConcept esea:C00008 , esea:C00009 , esea:C00010 , esea:C00011 ,
+                       esea:C00012 , esea:C00013 , esea:C00014 .
+
+# --- Concepts ---
+
+esea:C00008 a esea:DocumentTypeConcept , skos:Concept ;
+    skos:inScheme esea:DocumentTypeScheme ;
+    skos:topConceptOf esea:DocumentTypeScheme ;
+    skos:prefLabel "Journal Article"@en ;
+    skos:notation "JA" ;
+    skos:definition "Peer-reviewed publication presenting original research or reviews."@en .
+
+esea:C00009 a esea:DocumentTypeConcept , skos:Concept ;
+    skos:inScheme esea:DocumentTypeScheme ;
+    skos:topConceptOf esea:DocumentTypeScheme ;
+    skos:prefLabel "Pre-print/Working Paper"@en ;
+    skos:notation "WP" ;
+    skos:definition "Preliminary findings, not yet peer-reviewed."@en .
+
+esea:C00010 a esea:DocumentTypeConcept , skos:Concept ;
+    skos:inScheme esea:DocumentTypeScheme ;
+    skos:topConceptOf esea:DocumentTypeScheme ;
+    skos:prefLabel "Book Chapter"@en ;
+    skos:notation "BC" ;
+    skos:definition "Contribution to an edited academic volume."@en .
+
+esea:C00011 a esea:DocumentTypeConcept , skos:Concept ;
+    skos:inScheme esea:DocumentTypeScheme ;
+    skos:topConceptOf esea:DocumentTypeScheme ;
+    skos:prefLabel "Conference Paper"@en ;
+    skos:notation "CP" ;
+    skos:definition "Research shared at academic or professional conferences."@en .
+
+esea:C00012 a esea:DocumentTypeConcept , skos:Concept ;
+    skos:inScheme esea:DocumentTypeScheme ;
+    skos:topConceptOf esea:DocumentTypeScheme ;
+    skos:prefLabel "Thesis/Dissertation"@en ;
+    skos:notation "TD" ;
+    skos:definition "Graduate-level academic research (e.g. MA, PhD)."@en .
+
+esea:C00013 a esea:DocumentTypeConcept , skos:Concept ;
+    skos:inScheme esea:DocumentTypeScheme ;
+    skos:topConceptOf esea:DocumentTypeScheme ;
+    skos:prefLabel "Government Report/Document"@en ;
+    skos:notation "GR" ;
+    skos:definition "Any kind of report published by a state or national government."@en .
+
+esea:C00014 a esea:DocumentTypeConcept , skos:Concept ;
+    skos:inScheme esea:DocumentTypeScheme ;
+    skos:topConceptOf esea:DocumentTypeScheme ;
+    skos:prefLabel "Other Report (Technical/Institutional)"@en ;
+    skos:notation "OR" ;
+    skos:definition "Any other report, e.g. a technical report, project report, or annual report from a non-governmental institution or organisation."@en .
+
+
+# #############################################################################
+# FIELD 3: Education Theme
+#
+# Property definition:
+#   identifier:    educationTheme
+#   label:         Education Theme
+#   description:   Strategic domains of focus within education systems.
+#   domain:        evrepo:Intervention
+#   range:         esea:EducationThemeCodingAnnotation
+#   valueScheme:   esea:EducationThemeScheme
+#   allowMultiple: true
+#   hierarchy:     2-level (category → specific theme)
+#
+# NOTE: The wiki source lists "Scholarships" twice under Education Finance.
+#       This appears to be a data entry error. Only one instance is included
+#       here (esea:C00024). Flagged for review with the working group.
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:EducationThemeConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Education Theme Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:EducationThemeCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Education Theme Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:EducationThemeConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:educationTheme a owl:ObjectProperty ;
+    rdfs:label "education theme"@en ;
+    rdfs:comment "Strategic domain of focus within education systems that the intervention or policy addresses. 2-level hierarchy: category and specific theme. Multiple values may be coded."@en ;
+    rdfs:domain evrepo:Intervention ;
+    rdfs:range esea:EducationThemeCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:EducationThemeScheme a skos:ConceptScheme ;
+    rdfs:label "Education Theme Scheme"@en ;
+    rdfs:comment "Strategic domains of focus within education systems. 2-level hierarchy with 9 top-level categories."@en ;
+    skos:hasTopConcept esea:C00015 , esea:C00016 , esea:C00017 , esea:C00018 ,
+                       esea:C00019 , esea:C00020 , esea:C00021 , esea:C00022 ,
+                       esea:C00023 .
+
+# =============================================================================
+# Top-Level Categories
+# =============================================================================
+
+esea:C00015 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "Access and Participation"@en ;
+    skos:notation "AP" .
+
+esea:C00016 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "Education Governance"@en ;
+    skos:notation "EG" .
+
+esea:C00017 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "School Organization"@en ;
+    skos:notation "SO" .
+
+esea:C00018 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "Household and Community Engagement"@en ;
+    skos:notation "HC" .
+
+esea:C00019 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "Student Assessments"@en ;
+    skos:notation "SA" .
+
+esea:C00020 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "School Workforce"@en ;
+    skos:notation "SW" .
+
+esea:C00021 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "Curriculum and Educational Resources"@en ;
+    skos:notation "CR" .
+
+esea:C00022 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "Teaching and Learning"@en ;
+    skos:notation "TL" .
+
+esea:C00023 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:topConceptOf esea:EducationThemeScheme ;
+    skos:prefLabel "Education Finance"@en ;
+    skos:notation "EF" .
+
+# =============================================================================
+# Access and Participation — narrower of C00015
+# =============================================================================
+
+esea:C00024 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Equity and Inclusion: Socio-economic Status"@en ;
+    skos:notation "AP-SES" .
+
+esea:C00025 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Equity and Inclusion: Special Education"@en ;
+    skos:notation "AP-SE" .
+
+esea:C00026 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Equity and Inclusion: Migrants and Refugees"@en ;
+    skos:notation "AP-MR" .
+
+esea:C00027 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Equity and Inclusion: Gender"@en ;
+    skos:notation "AP-GEN" .
+
+esea:C00028 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "School Attendance"@en ;
+    skos:notation "AP-ATT" .
+
+esea:C00029 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Drop-out Prevention"@en ;
+    skos:notation "AP-DO" .
+
+esea:C00030 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Health and Nutrition"@en ;
+    skos:notation "AP-HN" .
+
+esea:C00031 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "School Transportation"@en ;
+    skos:notation "AP-TR" .
+
+esea:C00032 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Student Mobility"@en ;
+    skos:notation "AP-MOB" .
+
+esea:C00033 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "Student Engagement and Participation"@en ;
+    skos:notation "AP-EP" .
+
+esea:C00034 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00015 ;
+    skos:prefLabel "School Admissions"@en ;
+    skos:notation "AP-ADM" .
+
+# =============================================================================
+# Education Governance — narrower of C00016
+# =============================================================================
+
+esea:C00035 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00016 ;
+    skos:prefLabel "Decentralization of System"@en ;
+    skos:notation "EG-DEC" .
+
+esea:C00036 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00016 ;
+    skos:prefLabel "Education Accountability"@en ;
+    skos:notation "EG-ACC" .
+
+esea:C00037 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00016 ;
+    skos:prefLabel "Education Regulation"@en ;
+    skos:notation "EG-REG" .
+
+esea:C00038 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00016 ;
+    skos:prefLabel "Evidence Use"@en ;
+    skos:notation "EG-EU" .
+
+# =============================================================================
+# School Organization — narrower of C00017
+# =============================================================================
+
+esea:C00039 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00017 ;
+    skos:prefLabel "Grade Retention"@en ;
+    skos:notation "SO-GR" .
+
+esea:C00040 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00017 ;
+    skos:prefLabel "Tracking of Students"@en ;
+    skos:notation "SO-TS" .
+
+esea:C00041 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00017 ;
+    skos:prefLabel "School Climate"@en ;
+    skos:notation "SO-SC" .
+
+esea:C00042 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00017 ;
+    skos:prefLabel "Class Sizes"@en ;
+    skos:notation "SO-CS" .
+
+esea:C00043 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00017 ;
+    skos:prefLabel "Management Information Systems/EMIS"@en ;
+    skos:notation "SO-MIS" .
+
+# =============================================================================
+# Household and Community Engagement — narrower of C00018
+# =============================================================================
+
+esea:C00044 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00018 ;
+    skos:prefLabel "Community-based"@en ;
+    skos:notation "HC-CB" .
+
+esea:C00045 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00018 ;
+    skos:prefLabel "Parental/Household Communication"@en ;
+    skos:notation "HC-PC" .
+
+esea:C00046 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00018 ;
+    skos:prefLabel "Parental/Household Engagement"@en ;
+    skos:notation "HC-PE" .
+
+esea:C00047 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00018 ;
+    skos:prefLabel "Homeschooling"@en ;
+    skos:notation "HC-HS" .
+
+esea:C00048 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00018 ;
+    skos:prefLabel "Distance Learning"@en ;
+    skos:notation "HC-DL" .
+
+esea:C00049 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00018 ;
+    skos:prefLabel "Private Tutoring"@en ;
+    skos:notation "HC-PT" .
+
+# =============================================================================
+# Student Assessments — narrower of C00019
+# =============================================================================
+
+esea:C00050 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00019 ;
+    skos:prefLabel "Classroom Assessments"@en ;
+    skos:notation "SA-CL" .
+
+esea:C00051 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00019 ;
+    skos:prefLabel "National Assessments"@en ;
+    skos:notation "SA-NA" .
+
+esea:C00052 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00019 ;
+    skos:prefLabel "International Assessments"@en ;
+    skos:notation "SA-IA" .
+
+esea:C00053 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00019 ;
+    skos:prefLabel "Completion Standards"@en ;
+    skos:notation "SA-CS" .
+
+# =============================================================================
+# School Workforce — narrower of C00020
+# =============================================================================
+
+esea:C00054 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "Pre-service Workforce Training"@en ;
+    skos:notation "SW-PST" .
+
+esea:C00055 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "Workforce Professional Development"@en ;
+    skos:notation "SW-PD" .
+
+esea:C00056 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "Workforce Retention"@en ;
+    skos:notation "SW-RET" .
+
+esea:C00057 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "Workforce Absenteeism"@en ;
+    skos:notation "SW-ABS" .
+
+esea:C00058 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "Workforce Recruitment"@en ;
+    skos:notation "SW-REC" .
+
+esea:C00059 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "Workforce Evaluation"@en ;
+    skos:notation "SW-EVA" .
+
+esea:C00060 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "Workforce Support Staff"@en ;
+    skos:notation "SW-SS" .
+
+esea:C00061 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "School Leadership Training"@en ;
+    skos:notation "SW-SLT" .
+
+esea:C00062 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "School Leadership Recruitment and Retention"@en ;
+    skos:notation "SW-SLR" .
+
+esea:C00063 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "School Leadership Practices"@en ;
+    skos:notation "SW-SLP" .
+
+esea:C00064 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00020 ;
+    skos:prefLabel "School Administrative Staff"@en ;
+    skos:notation "SW-SAS" .
+
+# =============================================================================
+# Curriculum and Educational Resources — narrower of C00021
+# =============================================================================
+
+esea:C00065 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00021 ;
+    skos:prefLabel "Time Spent in School"@en ;
+    skos:notation "CR-TSS" .
+
+esea:C00066 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00021 ;
+    skos:prefLabel "Learning Materials"@en ;
+    skos:notation "CR-LM" .
+
+esea:C00067 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00021 ;
+    skos:prefLabel "Language of Instruction"@en ;
+    skos:notation "CR-LOI" .
+
+esea:C00068 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00021 ;
+    skos:prefLabel "Education Facilities"@en ;
+    skos:notation "CR-FAC" .
+
+esea:C00069 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00021 ;
+    skos:prefLabel "Curriculum Reform"@en ;
+    skos:notation "CR-REF" .
+
+# =============================================================================
+# Teaching and Learning — narrower of C00022
+# =============================================================================
+
+esea:C00070 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Behavioural"@en ;
+    skos:notation "TL-BEH" .
+
+esea:C00071 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Classroom Management"@en ;
+    skos:notation "TL-CM" .
+
+esea:C00072 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Targeted Support"@en ;
+    skos:notation "TL-TS" .
+
+esea:C00073 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Feedback"@en ;
+    skos:notation "TL-FB" .
+
+esea:C00074 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Literacy and Reading Interventions"@en ;
+    skos:notation "TL-LIT" .
+
+esea:C00075 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Numeracy Interventions"@en ;
+    skos:notation "TL-NUM" .
+
+esea:C00076 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Other Subjects"@en ;
+    skos:notation "TL-OTH" .
+
+esea:C00077 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Socio-Emotional Learning"@en ;
+    skos:notation "TL-SEL" .
+
+esea:C00078 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Summer School"@en ;
+    skos:notation "TL-SS" .
+
+esea:C00079 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Digital Technology"@en ;
+    skos:notation "TL-DT" .
+
+esea:C00080 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Accelerated Learning"@en ;
+    skos:notation "TL-AL" .
+
+esea:C00081 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Arts Participation"@en ;
+    skos:notation "TL-ART" .
+
+esea:C00082 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Sports and Physical Activity"@en ;
+    skos:notation "TL-SPA" .
+
+esea:C00083 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Homework"@en ;
+    skos:notation "TL-HW" .
+
+esea:C00084 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Student Engagement"@en ;
+    skos:notation "TL-SE" .
+
+esea:C00085 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Project-based Learning"@en ;
+    skos:notation "TL-PBL" .
+
+esea:C00086 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00022 ;
+    skos:prefLabel "Pedagogical Innovation"@en ;
+    skos:notation "TL-PI" .
+
+# =============================================================================
+# Education Finance — narrower of C00023
+# NOTE: Wiki lists "Scholarships" twice. Included once as C00088.
+# =============================================================================
+
+esea:C00087 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "Conditional Cash Transfers (CCTs)"@en ;
+    skos:notation "EF-CCT" .
+
+esea:C00088 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "Scholarships"@en ;
+    skos:notation "EF-SCH" .
+
+esea:C00089 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "School Fees"@en ;
+    skos:notation "EF-FEE" .
+
+esea:C00090 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "School Vouchers"@en ;
+    skos:notation "EF-VOU" .
+
+esea:C00091 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "Results-based Financing (RbF)"@en ;
+    skos:notation "EF-RBF" .
+
+esea:C00092 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "Public-Private Partnerships (PPPs)"@en ;
+    skos:notation "EF-PPP" .
+
+esea:C00093 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "Public Expenditure"@en ;
+    skos:notation "EF-PEX" .
+
+esea:C00094 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "School Funding Schemes"@en ;
+    skos:notation "EF-SFS" .
+
+esea:C00095 a esea:EducationThemeConcept , skos:Concept ;
+    skos:inScheme esea:EducationThemeScheme ;
+    skos:broader esea:C00023 ;
+    skos:prefLabel "Blended Finance"@en ;
+    skos:notation "EF-BF" .
+
+
+# #############################################################################
+# FIELD 4: Outcome
+#
+# Property definition:
+#   identifier:    outcome
+#   label:         Outcome
+#   description:   The type of educational or other outcome measured in a finding.
+#   domain:        evrepo:Outcome
+#   range:         esea:OutcomeCodingAnnotation
+#   valueScheme:   esea:OutcomeScheme
+#   allowMultiple: true
+#   hierarchy:     2-level (top-level categories → specific outcomes)
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:OutcomeConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Outcome Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:OutcomeCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Outcome Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:OutcomeConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:outcome a owl:ObjectProperty ;
+    rdfs:label "outcome"@en ;
+    rdfs:comment "Type of educational or other outcome measured. 2-level hierarchy: access/education/externalities/learning/returns categories with specific outcome types. Multiple values may be coded."@en ;
+    rdfs:domain evrepo:Outcome ;
+    rdfs:range esea:OutcomeCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:OutcomeScheme a skos:ConceptScheme ;
+    rdfs:label "Outcome Scheme"@en ;
+    rdfs:comment "Types of educational and related outcomes measured in studies. 2-level hierarchy with 5 top-level categories."@en ;
+    skos:hasTopConcept esea:C00096 , esea:C00105 , esea:C00114 , esea:C00122 , esea:C00130 .
+
+# =============================================================================
+# Top-Level Categories for Outcome
+# =============================================================================
+
+esea:C00096 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:topConceptOf esea:OutcomeScheme ;
+    skos:prefLabel "Access to Education"@en ;
+    skos:notation "ATE" .
+
+esea:C00105 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:topConceptOf esea:OutcomeScheme ;
+    skos:prefLabel "Education Quality and Administration"@en ;
+    skos:notation "EQA" .
+
+esea:C00114 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:topConceptOf esea:OutcomeScheme ;
+    skos:prefLabel "Educational Externalities"@en ;
+    skos:notation "EEX" .
+
+esea:C00122 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:topConceptOf esea:OutcomeScheme ;
+    skos:prefLabel "Educational Outcomes and Learning"@en ;
+    skos:notation "EOL" .
+
+esea:C00130 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:topConceptOf esea:OutcomeScheme ;
+    skos:prefLabel "Returns to Education"@en ;
+    skos:notation "RTE" .
+
+# =============================================================================
+# Access to Education — narrower of C00096
+# =============================================================================
+
+esea:C00097 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00096 ;
+    skos:prefLabel "Education Finance"@en ;
+    skos:notation "ATE-FIN" .
+
+esea:C00098 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00096 ;
+    skos:prefLabel "Enrolment and Attendance"@en ;
+    skos:notation "ATE-ENR" .
+
+esea:C00099 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00096 ;
+    skos:prefLabel "Gender Disparities in Education"@en ;
+    skos:notation "ATE-GEN" .
+
+esea:C00100 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00096 ;
+    skos:prefLabel "Household Expenditure"@en ;
+    skos:notation "ATE-HEX" .
+
+# =============================================================================
+# Education Quality and Administration — narrower of C00105
+# =============================================================================
+
+esea:C00106 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00105 ;
+    skos:prefLabel "Education Facilities"@en ;
+    skos:notation "EQA-FAC" .
+
+esea:C00107 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00105 ;
+    skos:prefLabel "Parental Involvement"@en ;
+    skos:notation "EQA-PAR" .
+
+esea:C00108 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00105 ;
+    skos:prefLabel "Private Delivery of Education"@en ;
+    skos:notation "EQA-PRV" .
+
+esea:C00109 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00105 ;
+    skos:prefLabel "Quality of Education"@en ;
+    skos:notation "EQA-QUA" .
+
+esea:C00110 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00105 ;
+    skos:prefLabel "Teacher Wellbeing and Performance"@en ;
+    skos:notation "EQA-TCH" .
+
+# =============================================================================
+# Educational Externalities — narrower of C00114
+# =============================================================================
+
+esea:C00115 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00114 ;
+    skos:prefLabel "Family Externalities"@en ;
+    skos:notation "EEX-FAM" .
+
+esea:C00116 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00114 ;
+    skos:prefLabel "Health Outcomes"@en ;
+    skos:notation "EEX-HEA" .
+
+esea:C00117 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00114 ;
+    skos:prefLabel "Household Knowledge and Skills"@en ;
+    skos:notation "EEX-HKS" .
+
+esea:C00118 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00114 ;
+    skos:prefLabel "Student Behaviour, Attitudes and Well-being"@en ;
+    skos:notation "EEX-SBA" .
+
+esea:C00119 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00114 ;
+    skos:prefLabel "Time Allocation"@en ;
+    skos:notation "EEX-TIM" .
+
+# =============================================================================
+# Educational Outcomes and Learning — narrower of C00122
+# =============================================================================
+
+esea:C00123 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00122 ;
+    skos:prefLabel "Basic Skills and Literacy"@en ;
+    skos:notation "EOL-BSL" .
+
+esea:C00124 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00122 ;
+    skos:prefLabel "Cognitive Development"@en ;
+    skos:notation "EOL-COG" .
+
+esea:C00125 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00122 ;
+    skos:prefLabel "Early Childhood Outcomes"@en ;
+    skos:notation "EOL-ECD" .
+
+esea:C00126 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00122 ;
+    skos:prefLabel "Progression"@en ;
+    skos:notation "EOL-PRG" .
+
+# =============================================================================
+# Returns to Education — narrower of C00130
+# =============================================================================
+
+esea:C00131 a esea:OutcomeConcept , skos:Concept ;
+    skos:inScheme esea:OutcomeScheme ;
+    skos:broader esea:C00130 ;
+    skos:prefLabel "Social Returns"@en ;
+    skos:notation "RTE-SOC" .
+
+
+# #############################################################################
+# FIELD 5: Implementer Type
+#
+# Property definition:
+#   identifier:    implementerType
+#   label:         Implementer Type
+#   description:   The type of organization implementing the intervention.
+#   domain:        evrepo:Intervention
+#   range:         esea:ImplementerTypeCodingAnnotation
+#   valueScheme:   esea:ImplementerTypeScheme
+#   allowMultiple: false
+#   hierarchy:     flat enumerated
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:ImplementerTypeConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Implementer Type Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:ImplementerTypeCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Implementer Type Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:ImplementerTypeConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:implementerType a owl:ObjectProperty ;
+    rdfs:label "implementer type"@en ;
+    rdfs:comment "The type of organization implementing the intervention. Single-select enumerated type."@en ;
+    rdfs:domain evrepo:Intervention ;
+    rdfs:range esea:ImplementerTypeCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:ImplementerTypeScheme a skos:ConceptScheme ;
+    rdfs:label "Implementer Type Scheme"@en ;
+    rdfs:comment "Classification of organizations implementing interventions."@en ;
+    skos:hasTopConcept esea:C00132 , esea:C00133 , esea:C00134 , esea:C00135 ,
+                       esea:C00136 , esea:C00137 .
+
+# --- Concepts ---
+
+esea:C00132 a esea:ImplementerTypeConcept , skos:Concept ;
+    skos:inScheme esea:ImplementerTypeScheme ;
+    skos:topConceptOf esea:ImplementerTypeScheme ;
+    skos:prefLabel "School or Group of Schools"@en ;
+    skos:notation "IMPL-SCH" .
+
+esea:C00133 a esea:ImplementerTypeConcept , skos:Concept ;
+    skos:inScheme esea:ImplementerTypeScheme ;
+    skos:topConceptOf esea:ImplementerTypeScheme ;
+    skos:prefLabel "Charity/Voluntary Organisation/NGO"@en ;
+    skos:notation "IMPL-NGO" .
+
+esea:C00134 a esea:ImplementerTypeConcept , skos:Concept ;
+    skos:inScheme esea:ImplementerTypeScheme ;
+    skos:topConceptOf esea:ImplementerTypeScheme ;
+    skos:prefLabel "Academic (University/Researcher)"@en ;
+    skos:notation "IMPL-UNI" .
+
+esea:C00135 a esea:ImplementerTypeConcept , skos:Concept ;
+    skos:inScheme esea:ImplementerTypeScheme ;
+    skos:topConceptOf esea:ImplementerTypeScheme ;
+    skos:prefLabel "Local/Regional/District Education Authority"@en ;
+    skos:notation "IMPL-AUTH" .
+
+esea:C00136 a esea:ImplementerTypeConcept , skos:Concept ;
+    skos:inScheme esea:ImplementerTypeScheme ;
+    skos:topConceptOf esea:ImplementerTypeScheme ;
+    skos:prefLabel "Private or Commercial Company"@en ;
+    skos:notation "IMPL-PRI" .
+
+esea:C00137 a esea:ImplementerTypeConcept , skos:Concept ;
+    skos:inScheme esea:ImplementerTypeScheme ;
+    skos:topConceptOf esea:ImplementerTypeScheme ;
+    skos:prefLabel "National or State Government"@en ;
+    skos:notation "IMPL-GOV" .
+
+
+# #############################################################################
+# FIELD 6: Implementation Description
+#
+# Property definition:
+#   identifier:    implementationDescription
+#   label:         Implementation Description
+#   description:   Type of implementation activity or modality.
+#   domain:        evrepo:Intervention
+#   range:         esea:ImplementationDescriptionCodingAnnotation
+#   valueScheme:   esea:ImplementationDescriptionScheme
+#   allowMultiple: true
+#   hierarchy:     flat enumerated
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:ImplementationDescriptionConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Implementation Description Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:ImplementationDescriptionCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Implementation Description Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:ImplementationDescriptionConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:implementationDescription a owl:ObjectProperty ;
+    rdfs:label "implementation description"@en ;
+    rdfs:comment "Type of implementation activity or modality. Multiple values may be coded."@en ;
+    rdfs:domain evrepo:Intervention ;
+    rdfs:range esea:ImplementationDescriptionCodingAnnotation ;
+    rdfs:subPropertyOf evrepo:description .
+
+# --- Concept Scheme ---
+
+esea:ImplementationDescriptionScheme a skos:ConceptScheme ;
+    rdfs:label "Implementation Description Scheme"@en ;
+    rdfs:comment "Categorization of implementation activities and modalities."@en ;
+    skos:hasTopConcept esea:C00138 , esea:C00139 , esea:C00140 , esea:C00141 .
+
+# --- Concepts ---
+
+esea:C00138 a esea:ImplementationDescriptionConcept , skos:Concept ;
+    skos:inScheme esea:ImplementationDescriptionScheme ;
+    skos:topConceptOf esea:ImplementationDescriptionScheme ;
+    skos:prefLabel "Professional Development/Training"@en ;
+    skos:notation "IMPLDESC-PD" .
+
+esea:C00139 a esea:ImplementationDescriptionConcept , skos:Concept ;
+    skos:inScheme esea:ImplementationDescriptionScheme ;
+    skos:topConceptOf esea:ImplementationDescriptionScheme ;
+    skos:prefLabel "Digital Technology"@en ;
+    skos:notation "IMPLDESC-DT" .
+
+esea:C00140 a esea:ImplementationDescriptionConcept , skos:Concept ;
+    skos:inScheme esea:ImplementationDescriptionScheme ;
+    skos:topConceptOf esea:ImplementationDescriptionScheme ;
+    skos:prefLabel "Materials"@en ;
+    skos:notation "IMPLDESC-MAT" .
+
+esea:C00141 a esea:ImplementationDescriptionConcept , skos:Concept ;
+    skos:inScheme esea:ImplementationDescriptionScheme ;
+    skos:topConceptOf esea:ImplementationDescriptionScheme ;
+    skos:prefLabel "Government Reform"@en ;
+    skos:notation "IMPLDESC-GR" .
+
+
+# #############################################################################
+# FIELD 7: Implementation Fidelity
+#
+# Property definition:
+#   identifier:    implementationFidelity
+#   label:         Implementation Fidelity
+#   description:   Type of fidelity measurement reported.
+#   domain:        evrepo:Intervention
+#   range:         esea:ImplementationFidelityCodingAnnotation
+#   valueScheme:   esea:ImplementationFidelityScheme
+#   allowMultiple: false
+#   hierarchy:     flat enumerated
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:ImplementationFidelityConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Implementation Fidelity Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:ImplementationFidelityCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Implementation Fidelity Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:ImplementationFidelityConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:implementationFidelity a owl:ObjectProperty ;
+    rdfs:label "implementation fidelity"@en ;
+    rdfs:comment "Type of fidelity or adherence measurement reported in the study."@en ;
+    rdfs:domain evrepo:Intervention ;
+    rdfs:range esea:ImplementationFidelityCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:ImplementationFidelityScheme a skos:ConceptScheme ;
+    rdfs:label "Implementation Fidelity Scheme"@en ;
+    rdfs:comment "Types of implementation fidelity/adherence measurement."@en ;
+    skos:hasTopConcept esea:C00142 , esea:C00143 , esea:C00144 .
+
+# --- Concepts ---
+
+esea:C00142 a esea:ImplementationFidelityConcept , skos:Concept ;
+    skos:inScheme esea:ImplementationFidelityScheme ;
+    skos:topConceptOf esea:ImplementationFidelityScheme ;
+    skos:prefLabel "None"@en ;
+    skos:notation "FIDELITY-NONE" .
+
+esea:C00143 a esea:ImplementationFidelityConcept , skos:Concept ;
+    skos:inScheme esea:ImplementationFidelityScheme ;
+    skos:topConceptOf esea:ImplementationFidelityScheme ;
+    skos:prefLabel "Quantitative"@en ;
+    skos:notation "FIDELITY-QUANT" .
+
+esea:C00144 a esea:ImplementationFidelityConcept , skos:Concept ;
+    skos:inScheme esea:ImplementationFidelityScheme ;
+    skos:topConceptOf esea:ImplementationFidelityScheme ;
+    skos:prefLabel "Qualitative"@en ;
+    skos:notation "FIDELITY-QUAL" .
+
+
+# #############################################################################
+# FIELD 8: Setting
+#
+# Property definition:
+#   identifier:    setting
+#   label:         Setting
+#   description:   Physical or organizational setting of the education provision.
+#   domain:        evrepo:Context
+#   range:         esea:SettingCodingAnnotation
+#   valueScheme:   esea:SettingScheme
+#   allowMultiple: true
+#   hierarchy:     3-level (category → subcategory → specific setting)
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:SettingConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Setting Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:SettingCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Setting Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:SettingConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:setting a owl:ObjectProperty ;
+    rdfs:label "setting"@en ;
+    rdfs:comment "Physical or organizational setting where education provision occurs. 3-level hierarchy: Formal / Informal-NonFormal / Contextual, with specific setting types. Multiple values may be coded."@en ;
+    rdfs:domain evrepo:Context ;
+    rdfs:range esea:SettingCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:SettingScheme a skos:ConceptScheme ;
+    rdfs:label "Setting Scheme"@en ;
+    rdfs:comment "Classification of educational settings. 3-level hierarchy with 3 main categories."@en ;
+    skos:hasTopConcept esea:C00145 , esea:C00161 , esea:C00179 .
+
+# =============================================================================
+# Top-Level Categories for Setting
+# =============================================================================
+
+esea:C00145 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:topConceptOf esea:SettingScheme ;
+    skos:prefLabel "Formal"@en ;
+    skos:notation "SET-FRM" .
+
+esea:C00161 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:topConceptOf esea:SettingScheme ;
+    skos:prefLabel "Informal / Non-Formal"@en ;
+    skos:notation "SET-INF" .
+
+esea:C00179 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:topConceptOf esea:SettingScheme ;
+    skos:prefLabel "Contextual Tag"@en ;
+    skos:notation "SET-CTX" .
+
+# =============================================================================
+# Formal — narrower of C00145 (8 items)
+# =============================================================================
+
+esea:C00146 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Public School"@en ;
+    skos:notation "SET-FRM-PUB" .
+
+esea:C00147 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Private School"@en ;
+    skos:notation "SET-FRM-PRI" .
+
+esea:C00148 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Faith-Based School"@en ;
+    skos:notation "SET-FRM-FAITH" .
+
+esea:C00149 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Boarding School"@en ;
+    skos:notation "SET-FRM-BOARD" .
+
+esea:C00150 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Special Needs School"@en ;
+    skos:notation "SET-FRM-SPN" .
+
+esea:C00151 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Early Childhood Centre (Formal)"@en ;
+    skos:notation "SET-FRM-ECC" .
+
+esea:C00152 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Technical/Vocational School (TVET)"@en ;
+    skos:notation "SET-FRM-TVET" .
+
+esea:C00153 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Higher Education Institution"@en ;
+    skos:notation "SET-FRM-HE" .
+
+esea:C00154 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Open/Distance University"@en ;
+    skos:notation "SET-FRM-DIST" .
+
+esea:C00155 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00145 ;
+    skos:prefLabel "Alternative Basic Education (Formal)"@en ;
+    skos:notation "SET-FRM-ABE" .
+
+# =============================================================================
+# Informal / Non-Formal — narrower of C00161 (12 items)
+# =============================================================================
+
+esea:C00162 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Community Learning Centre"@en ;
+    skos:notation "SET-INF-CLC" .
+
+esea:C00163 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "NGO Program Space"@en ;
+    skos:notation "SET-INF-NGO" .
+
+esea:C00164 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Religious/Community Hall"@en ;
+    skos:notation "SET-INF-RELIG" .
+
+esea:C00165 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Home Learning / Homeschooling"@en ;
+    skos:notation "SET-INF-HOME" .
+
+esea:C00166 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Mobile Classroom / Outreach"@en ;
+    skos:notation "SET-INF-MOB" .
+
+esea:C00167 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Youth Club / After-School Program"@en ;
+    skos:notation "SET-INF-YOUTH" .
+
+esea:C00168 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Learning-on-the-job / Apprenticeship"@en ;
+    skos:notation "SET-INF-APPR" .
+
+esea:C00169 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Digital Learning Platform"@en ;
+    skos:notation "SET-INF-DLP" .
+
+esea:C00170 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Radio/TV Education Broadcast"@en ;
+    skos:notation "SET-INF-RADIO" .
+
+esea:C00171 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Makerspace / Innovation Lab"@en ;
+    skos:notation "SET-INF-MAKER" .
+
+esea:C00172 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Playgroup / Parent-Led Group"@en ;
+    skos:notation "SET-INF-PLAY" .
+
+esea:C00173 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00161 ;
+    skos:prefLabel "Correctional Facility / Juvenile Program"@en ;
+    skos:notation "SET-INF-CORR" .
+
+# =============================================================================
+# Contextual Tag — narrower of C00179 (7 items)
+# =============================================================================
+
+esea:C00180 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00179 ;
+    skos:prefLabel "Refugee Camp"@en ;
+    skos:notation "SET-CTX-REFUG" .
+
+esea:C00181 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00179 ;
+    skos:prefLabel "Informal Settlement"@en ;
+    skos:notation "SET-CTX-INFSETT" .
+
+esea:C00182 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00179 ;
+    skos:prefLabel "Pastoralist Community"@en ;
+    skos:notation "SET-CTX-PAST" .
+
+esea:C00183 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00179 ;
+    skos:prefLabel "Indigenous Community"@en ;
+    skos:notation "SET-CTX-INDIG" .
+
+esea:C00184 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00179 ;
+    skos:prefLabel "Emergency Response"@en ;
+    skos:notation "SET-CTX-EMERG" .
+
+esea:C00185 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00179 ;
+    skos:prefLabel "Urban"@en ;
+    skos:notation "SET-CTX-URB" .
+
+esea:C00186 a esea:SettingConcept , skos:Concept ;
+    skos:inScheme esea:SettingScheme ;
+    skos:broader esea:C00179 ;
+    skos:prefLabel "Rural"@en ;
+    skos:notation "SET-CTX-RUR" .
+
+
+# #############################################################################
+# FIELD 9: Participants
+#
+# Property definition:
+#   identifier:    participants
+#   label:         Participants
+#   description:   The stakeholder group for whom the outcomes apply.
+#   domain:        evrepo:Context
+#   range:         esea:ParticipantsCodingAnnotation
+#   valueScheme:   none (open text)
+#   allowMultiple: true
+#   type:          StringCodingAnnotation
+#
+# NOTE: Wiki page does not exist for this field. Open text field with
+# examples like "Students", "Teachers", "Parents", etc.
+# #############################################################################
+
+esea:participants a owl:ObjectProperty ;
+    rdfs:label "participants"@en ;
+    rdfs:comment "The stakeholder group for whom the outcomes apply (e.g., Students, Teachers, Parents, School Leaders). Open text field; multiple values may be coded."@en ;
+    rdfs:domain evrepo:Context ;
+    rdfs:range evrepo:StringCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 10: Sample Features
+#
+# Property definition:
+#   identifier:    sampleFeatures
+#   label:         Sample Features
+#   description:   Characteristics of the study sample.
+#   domain:        evrepo:Context
+#   range:         esea:SampleFeaturesCodingAnnotation
+#   valueScheme:   esea:SampleFeaturesScheme
+#   allowMultiple: true
+#   hierarchy:     flat enumerated
+# #############################################################################
+
+# --- Typed Concept Class ---
+
+esea:SampleFeaturesConcept a owl:Class ;
+    rdfs:subClassOf skos:Concept ;
+    rdfs:label "Sample Features Concept"@en .
+
+# --- CodingAnnotation Subclass ---
+
+esea:SampleFeaturesCodingAnnotation a owl:Class ;
+    rdfs:subClassOf evrepo:CodingAnnotation ;
+    rdfs:label "Sample Features Coding Annotation"@en ;
+    rdfs:subClassOf [
+        a owl:Restriction ;
+        owl:onProperty evrepo:codedValue ;
+        owl:allValuesFrom esea:SampleFeaturesConcept
+    ] .
+
+# --- Domain Property ---
+
+esea:sampleFeatures a owl:ObjectProperty ;
+    rdfs:label "sample features"@en ;
+    rdfs:comment "Characteristics of the study sample. Multiple values may be coded."@en ;
+    rdfs:domain evrepo:Context ;
+    rdfs:range esea:SampleFeaturesCodingAnnotation .
+
+# --- Concept Scheme ---
+
+esea:SampleFeaturesScheme a skos:ConceptScheme ;
+    rdfs:label "Sample Features Scheme"@en ;
+    rdfs:comment "Classification of participant characteristics and demographic features."@en ;
+    skos:hasTopConcept esea:C00187 , esea:C00188 , esea:C00189 , esea:C00190 , esea:C00191 .
+
+# --- Concepts ---
+
+esea:C00187 a esea:SampleFeaturesConcept , skos:Concept ;
+    skos:inScheme esea:SampleFeaturesScheme ;
+    skos:topConceptOf esea:SampleFeaturesScheme ;
+    skos:prefLabel "Female"@en ;
+    skos:notation "SAMP-FEM" .
+
+esea:C00188 a esea:SampleFeaturesConcept , skos:Concept ;
+    skos:inScheme esea:SampleFeaturesScheme ;
+    skos:topConceptOf esea:SampleFeaturesScheme ;
+    skos:prefLabel "Male"@en ;
+    skos:notation "SAMP-MALE" .
+
+esea:C00189 a esea:SampleFeaturesConcept , skos:Concept ;
+    skos:inScheme esea:SampleFeaturesScheme ;
+    skos:topConceptOf esea:SampleFeaturesScheme ;
+    skos:prefLabel "SES"@en ;
+    skos:notation "SAMP-SES" ;
+    skos:definition "Socio-economic status."@en .
+
+esea:C00190 a esea:SampleFeaturesConcept , skos:Concept ;
+    skos:inScheme esea:SampleFeaturesScheme ;
+    skos:topConceptOf esea:SampleFeaturesScheme ;
+    skos:prefLabel "Minority"@en ;
+    skos:notation "SAMP-MIN" .
+
+esea:C00191 a esea:SampleFeaturesConcept , skos:Concept ;
+    skos:inScheme esea:SampleFeaturesScheme ;
+    skos:topConceptOf esea:SampleFeaturesScheme ;
+    skos:prefLabel "Learning Differences"@en ;
+    skos:notation "SAMP-LD" .
+
+
+# #############################################################################
+# FIELD 11: Implementation Name
+#
+# Property definition:
+#   identifier:    implementationName
+#   label:         Implementation Name
+#   description:   Name or title of the intervention implementation.
+#   domain:        evrepo:Intervention
+#   range:         evrepo:StringCodingAnnotation
+#   valueScheme:   none (open text)
+#   allowMultiple: false
+#   type:          StringCodingAnnotation
+# #############################################################################
+
+esea:implementationName a owl:ObjectProperty ;
+    rdfs:label "implementation name"@en ;
+    rdfs:comment "Name or title of the intervention. Open text field."@en ;
+    rdfs:domain evrepo:Intervention ;
+    rdfs:range evrepo:StringCodingAnnotation ;
+    rdfs:subPropertyOf evrepo:name .
+
+
+# #############################################################################
+# FIELD 12: Duration
+#
+# Property definition:
+#   identifier:    duration
+#   label:         Duration
+#   description:   Length of the intervention or study.
+#   domain:        evrepo:Intervention
+#   range:         evrepo:NumericCodingAnnotation
+#   valueScheme:   none (numeric, number of weeks)
+#   allowMultiple: false
+#   type:          NumericCodingAnnotation
+#
+# NOTE: Wiki page does not exist for this field. From the fields table,
+# the measurement is "number of weeks". Placeholder retained but not
+# fully documented until wiki content is available.
+# #############################################################################
+
+esea:duration a owl:ObjectProperty ;
+    rdfs:label "duration"@en ;
+    rdfs:comment "Length of the intervention, typically measured in weeks. Numeric field."@en ;
+    rdfs:domain evrepo:Intervention ;
+    rdfs:range evrepo:NumericCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 13: Study Design
+#
+# Property definition:
+#   identifier:    studyDesign
+#   label:         Study Design
+#   description:   The research design methodology.
+#   domain:        evrepo:Investigation
+#   type:          (SKOS concept scheme — PLACEHOLDER)
+#
+# NOTE: Wiki page does not exist for this field. From the effect_size page,
+# analysis types mentioned include ITT, ATT, ETET, but the study design
+# field itself has no wiki documentation yet. This field is SKIPPED.
+# Placeholder retained for future implementation when wiki content is added.
+# #############################################################################
+
+# SKIPPED — wiki page not yet created. Placeholder for future addition.
+
+
+# #############################################################################
+# FIELD 14: Sample Size
+#
+# Property definition:
+#   identifier:    sampleSize
+#   label:         Sample Size
+#   description:   Number of participants in the study.
+#   domain:        evrepo:Finding
+#   range:         evrepo:NumericCodingAnnotation
+#   valueScheme:   none (numeric, integer)
+#   allowMultiple: false
+#   type:          NumericCodingAnnotation
+# #############################################################################
+
+esea:sampleSize a owl:ObjectProperty ;
+    rdfs:label "sample size"@en ;
+    rdfs:comment "Total number of participants in the study. Integer field."@en ;
+    rdfs:domain evrepo:Finding ;
+    rdfs:range evrepo:NumericCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 15: Cost
+#
+# Property definition:
+#   identifier:    cost
+#   label:         Cost
+#   description:   Whether the research contains quantitative costing data.
+#   domain:        evrepo:Finding
+#   range:         evrepo:StringCodingAnnotation
+#   valueScheme:   none (binary yes/no)
+#   allowMultiple: false
+#   type:          StringCodingAnnotation with values "yes" or "no"
+# #############################################################################
+
+esea:cost a owl:ObjectProperty ;
+    rdfs:label "cost"@en ;
+    rdfs:comment "Whether the research contains quantitative costing data. Binary yes/no field coded as StringCodingAnnotation."@en ;
+    rdfs:domain evrepo:Finding ;
+    rdfs:range evrepo:StringCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 16: Effect Size
+#
+# SKIPPED — already handled by evrepo:EffectEstimate class in the core
+# vocabulary. Properties like evrepo:pointEstimate, evrepo:effectSizeMetric,
+# etc. are defined in evrepo-core.ttl.
+# #############################################################################
+
+
+# #############################################################################
+# FIELD 17: Attrition
+#
+# Property definition:
+#   identifier:    attrition
+#   label:         Attrition
+#   description:   Percentage of participant attrition/dropout.
+#   domain:        evrepo:Finding
+#   range:         evrepo:NumericCodingAnnotation
+#   valueScheme:   none (numeric percentage, 0 to 100)
+#   allowMultiple: false
+#   type:          NumericCodingAnnotation
+# #############################################################################
+
+esea:attrition a owl:ObjectProperty ;
+    rdfs:label "attrition"@en ;
+    rdfs:comment "Reported attrition or dropout rate as a percentage (0 to 100)."@en ;
+    rdfs:domain evrepo:Finding ;
+    rdfs:range evrepo:NumericCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 18: Group Differences
+#
+# Property definition:
+#   identifier:    groupDifferences
+#   label:         Group Differences
+#   description:   Whether baseline group differences were reported.
+#   domain:        evrepo:Finding
+#   range:         evrepo:StringCodingAnnotation
+#   valueScheme:   none (binary yes/no)
+#   allowMultiple: false
+#   type:          StringCodingAnnotation with values "yes" or "no"
+# #############################################################################
+
+esea:groupDifferences a owl:ObjectProperty ;
+    rdfs:label "group differences"@en ;
+    rdfs:comment "Binary indicator of whether baseline group differences were reported. Coded as yes/no in StringCodingAnnotation."@en ;
+    rdfs:domain evrepo:Finding ;
+    rdfs:range evrepo:StringCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 19: Country
+#
+# Property definition:
+#   identifier:    country
+#   label:         Country
+#   description:   Country/countries where the study was conducted.
+#   domain:        evrepo:Context
+#   range:         evrepo:StringCodingAnnotation
+#   valueScheme:   ISO 3166-1 alpha-2 codes
+#   allowMultiple: true
+#   type:          StringCodingAnnotation (open text with ISO codes, not SKOS)
+#
+# NOTE: Uses ISO 3166-1 alpha-2 country codes. Too many countries to
+# enumerate in SKOS, so this is defined as StringCodingAnnotation
+# accepting ISO code values.
+# #############################################################################
+
+esea:country a owl:ObjectProperty ;
+    rdfs:label "country"@en ;
+    rdfs:comment "Country or countries where the study was conducted. Values are ISO 3166-1 alpha-2 codes (e.g., 'KE' for Kenya, 'GH' for Ghana). Multiple values may be coded."@en ;
+    rdfs:domain evrepo:Context ;
+    rdfs:range evrepo:StringCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 20: Funder Intervention
+#
+# Property definition:
+#   identifier:    funderIntervention
+#   label:         Funder Intervention
+#   description:   Organization that funded the intervention being evaluated.
+#   domain:        evrepo:Intervention
+#   range:         evrepo:StringCodingAnnotation
+#   valueScheme:   none (open text)
+#   allowMultiple: false
+#   type:          StringCodingAnnotation
+#
+# NOTE: Wiki page does not exist for this field.
+# #############################################################################
+
+esea:funderIntervention a owl:ObjectProperty ;
+    rdfs:label "funder intervention"@en ;
+    rdfs:comment "Organization or entity that funded the intervention being evaluated. Open text field."@en ;
+    rdfs:domain evrepo:Intervention ;
+    rdfs:range evrepo:StringCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 21: Funder Research
+#
+# Property definition:
+#   identifier:    funderResearch
+#   label:         Funder Research
+#   description:   Organization that funded the research or study.
+#   domain:        evrepo:Investigation
+#   range:         evrepo:StringCodingAnnotation
+#   valueScheme:   none (open text)
+#   allowMultiple: false
+#   type:          StringCodingAnnotation
+#
+# NOTE: Wiki page does not exist for this field.
+# #############################################################################
+
+esea:funderResearch a owl:ObjectProperty ;
+    rdfs:label "funder research"@en ;
+    rdfs:comment "Organization or entity that funded the research or study. Open text field."@en ;
+    rdfs:domain evrepo:Investigation ;
+    rdfs:range evrepo:StringCodingAnnotation .
+
+
+# #############################################################################
+# FIELD 22: Is Retracted
+#
+# Property definition:
+#   identifier:    isRetracted
+#   label:         Is Retracted
+#   description:   Whether the publication has been retracted.
+#   domain:        evrepo:Investigation
+#   range:         xsd:boolean
+#   valueScheme:   none (boolean)
+#   type:          Simple DatatypeProperty (not CodingAnnotation)
+#
+# NOTE: This is system metadata from OpenAlex, not a human-coded field,
+# so it is defined as a simple boolean DatatypeProperty rather than
+# being wrapped in CodingAnnotation.
+# #############################################################################
+
+esea:isRetracted a owl:DatatypeProperty ;
+    rdfs:label "is retracted"@en ;
+    rdfs:comment "Boolean flag indicating whether the publication has been retracted. Retrieved from OpenAlex or other metadata source."@en ;
+    rdfs:domain evrepo:Investigation ;
+    rdfs:range xsd:boolean .
+
+
+# #############################################################################
+# FIELD 23: Data Source
+#
+# Property definition:
+#   identifier:    dataSource
+#   label:         Data Source
+#   description:   System-generated field capturing the organization that entered the coding.
+#   domain:        evrepo:Investigation
+#   range:         xsd:string
+#   valueScheme:   none (system-generated)
+#   type:          Simple DatatypeProperty
+#
+# NOTE: System-generated metadata, not a human-coded field.
+# Defined as a simple string property.
+# #############################################################################
+
+esea:dataSource a rdf:Property ;
+    rdfs:label "data source"@en ;
+    rdfs:comment "System-generated field capturing the organization or system that entered the coding annotation."@en ;
+    rdfs:domain evrepo:Investigation ;
+    rdfs:range xsd:string .
+
+
+# #############################################################################
+# FIELD 24: Country Level 1
+#
+# Property definition:
+#   identifier:    countryLevel1
+#   label:         Country Level 1
+#   description:   Sub-national region or administrative level 1 division.
+#   domain:        evrepo:Context
+#   range:         evrepo:StringCodingAnnotation
+#   valueScheme:   none (open text)
+#   allowMultiple: true
+#   type:          StringCodingAnnotation
+#
+# NOTE: Wiki page does not exist for this field. Desirable field for
+# sub-national geographic coding. Open text allowing arbitrary strings.
+# #############################################################################
+
+esea:countryLevel1 a owl:ObjectProperty ;
+    rdfs:label "country level 1"@en ;
+    rdfs:comment "Sub-national region, province, state, or administrative division (country Level 1). Open text field allowing multiple values."@en ;
+    rdfs:domain evrepo:Context ;
+    rdfs:range evrepo:StringCodingAnnotation .

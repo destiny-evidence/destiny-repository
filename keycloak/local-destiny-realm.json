@@ -1,0 +1,223 @@
+{
+  "realm": "destiny",
+  "enabled": true,
+  "displayName": "DESTINY Repository",
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": true,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "accessTokenLifespanForImplicitFlow": 900,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "roles": {
+    "realm": [
+      {
+        "name": "administrator",
+        "description": "Can manage the repository itself"
+      },
+      {
+        "name": "import.writer",
+        "description": "Importers can import"
+      },
+      {
+        "name": "reference.reader",
+        "description": "Can view references"
+      },
+      {
+        "name": "reference.deduplicator",
+        "description": "Can deduplicate references"
+      },
+      {
+        "name": "enhancement_request.writer",
+        "description": "Can request enhancements"
+      },
+      {
+        "name": "robot.writer",
+        "description": "Can register robots and rotate robot client secrets"
+      }
+    ]
+  },
+  "groups": [
+    {
+      "name": "consumers",
+      "realmRoles": ["reference.reader"]
+    },
+    {
+      "name": "developers",
+      "realmRoles": [
+        "administrator",
+        "import.writer",
+        "reference.reader",
+        "reference.deduplicator",
+        "enhancement_request.writer",
+        "robot.writer"
+      ]
+    }
+  ],
+  "clientScopes": [
+    {
+      "name": "administrator.all",
+      "description": "Full administrative access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "import.writer.all",
+      "description": "Import data access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "reference.reader.all",
+      "description": "Reference read access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "reference.deduplicator.all",
+      "description": "Reference deduplication access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "enhancement_request.writer.all",
+      "description": "Enhancement request write access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    },
+    {
+      "name": "robot.writer.all",
+      "description": "Robot management access",
+      "protocol": "openid-connect",
+      "attributes": {
+        "include.in.token.scope": "true",
+        "display.on.consent.screen": "true"
+      }
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "destiny-auth-client",
+      "name": "DESTINY Repository Auth Client",
+      "description": "Public client for all user authentication (UI, CLI, Postman, API testing tools)",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": false,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "protocol": "openid-connect",
+      "rootUrl": "http://localhost:3000",
+      "baseUrl": "/",
+      "redirectUris": [
+        "http://localhost:3000/*",
+        "http://localhost:*",
+        "http://127.0.0.1:*",
+        "https://oauth.pstmn.io/v1/callback"
+      ],
+      "webOrigins": ["http://localhost:3000", "https://oauth.pstmn.io"],
+      "optionalClientScopes": [
+        "administrator.all",
+        "import.writer.all",
+        "reference.reader.all",
+        "reference.deduplicator.all",
+        "enhancement_request.writer.all",
+        "robot.writer.all"
+      ],
+      "attributes": {
+        "oauth2.device.authorization.grant.enabled": "true",
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:3000/*##http://localhost:*##http://127.0.0.1:*"
+      },
+      "protocolMappers": [
+        {
+          "name": "destiny-api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "consentRequired": false,
+          "config": {
+            "included.client.audience": "destiny-repository-client",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    },
+    {
+      "clientId": "destiny-repository-client",
+      "name": "DESTINY Repository API",
+      "description": "Backend API resource server",
+      "enabled": true,
+      "publicClient": false,
+      "bearerOnly": true,
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "testuser",
+      "email": "testuser@localhost",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Test",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ],
+      "groups": ["developers"]
+    }
+  ],
+  "scopeMappings": [
+    {
+      "clientScope": "administrator.all",
+      "roles": ["administrator"]
+    },
+    {
+      "clientScope": "import.writer.all",
+      "roles": ["import.writer"]
+    },
+    {
+      "clientScope": "reference.reader.all",
+      "roles": ["reference.reader"]
+    },
+    {
+      "clientScope": "reference.deduplicator.all",
+      "roles": ["reference.deduplicator"]
+    },
+    {
+      "clientScope": "enhancement_request.writer.all",
+      "roles": ["enhancement_request.writer"]
+    },
+    {
+      "clientScope": "robot.writer.all",
+      "roles": ["robot.writer"]
+    }
+  ]
+}

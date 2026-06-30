@@ -3,15 +3,17 @@
 from uuid import UUID
 
 import httpx
+import tenacity
 from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
-from app.core.exceptions import SQLIntegrityError
-from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.exceptions import MessageTooLargeError, SQLIntegrityError
+from app.core.telemetry.attributes import Attributes, sample_trace, trace_attribute
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.otel import new_linked_trace
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportBatch,
@@ -25,6 +27,7 @@ from app.domain.imports.services.anti_corruption_service import (
 )
 from app.domain.references.service import ReferenceService
 from app.domain.service import GenericService
+from app.persistence.blob.repository import BlobRepository
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 
@@ -54,6 +57,11 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         return await self._get_import_record(import_record_id)
 
     @sql_unit_of_work
+    async def get_import_records(self, limit: int) -> list[ImportRecord]:
+        """Get import records, up to the given limit."""
+        return await self.sql_uow.imports.get_some(limit)
+
+    @sql_unit_of_work
     async def get_import_record_with_batches(self, pk: UUID) -> ImportRecord:
         """Get a single import, eager loading its batches."""
         return await self.sql_uow.imports.get_by_pk(
@@ -76,13 +84,13 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         return await self.sql_uow.imports.batches.results.get_by_pk(import_result_id)
 
     @sql_unit_of_work
-    async def get_import_result_with_batch(
+    async def wait_for_import_result_with_batch(
         self,
         import_result_id: UUID,
     ) -> ImportResult:
-        """Get a single import result by id."""
-        return await self.sql_uow.imports.batches.results.get_by_pk(
-            import_result_id, preload=["import_batch"]
+        """Wait for a single import result by id."""
+        return await self.sql_uow.imports.batches.results.wait_for_pk(
+            import_result_id, preload=["import_batch"], timeout=2, interval=0.1
         )
 
     @sql_unit_of_work
@@ -121,13 +129,18 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             batch.id, preload=["status"]
         )
 
-    @sql_unit_of_work
     async def register_result(self, result: ImportResult) -> ImportResult:
         """Register an import result, persisting it to the database."""
         return await self.sql_uow.imports.batches.results.add(result)
 
     @sql_unit_of_work
     async def update_import_result(
+        self, import_result_id: UUID, **kwargs: object
+    ) -> ImportResult:
+        """Update the status of an import result."""
+        return await self._update_import_result(import_result_id, **kwargs)
+
+    async def _update_import_result(
         self, import_result_id: UUID, **kwargs: object
     ) -> ImportResult:
         """Update the status of an import result."""
@@ -138,6 +151,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     async def import_reference(
         self,
         reference_service: ReferenceService,
+        blob_repository: BlobRepository,
         import_result: ImportResult,
         content: str,
         line_number: int,
@@ -147,6 +161,9 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
         :param reference_service: The reference service to use for ingestion.
         :type reference_service: ReferenceService
+        :param blob_repository: Used to store full-text enhancements during
+            ingestion.
+        :type blob_repository: BlobRepository
         :param import_result: The import result to update.
         :type import_result: app.domain.imports.models.models.ImportResult
         :param content: The content of the reference to import.
@@ -164,7 +181,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
 
         try:
             reference_result = await reference_service.ingest_reference(
-                content, line_number
+                content, line_number, blob_repository
             )
         except SQLIntegrityError as exc:
             # This handles the case where files loaded in parallel cause a conflict at
@@ -220,33 +237,94 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             )
         return import_result, reference_result.duplicate_decision_id
 
+    @sql_unit_of_work
+    async def _queue_import_line(
+        self, import_batch_id: UUID, line: str, line_number: int
+    ) -> None:
+        """Queue a single line for import processing."""
+        import_result = await self.register_result(
+            ImportResult(
+                import_batch_id=import_batch_id,
+                status=ImportResultStatus.CREATED,
+            )
+        )
+        trace_attribute(Attributes.IMPORT_RESULT_ID, str(import_result.id))
+        try:
+            await queue_task_with_trace(
+                ("app.domain.imports.tasks", "import_reference"),
+                import_result.id,
+                line,
+                line_number,
+                settings.import_reference_retry_count,
+                otel_enabled=settings.otel_enabled,
+            )
+        except MessageTooLargeError as exc:
+            sample_trace()
+            await self._update_import_result(
+                import_result_id=import_result.id,
+                status=ImportResultStatus.FAILED,
+                failure_details=exc.detail,
+            )
+
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
-        """Distribute an import batch."""
-        async with (
-            httpx.AsyncClient() as client,
+        """Distribute an import batch, retrying on connection errors."""
+        last_processed_line = 0
+        async for attempt in tenacity.AsyncRetrying(
+            retry=tenacity.retry_if_exception_type(httpx.TransportError),
+            before_sleep=lambda rs: logger.warning(
+                "Retrying import batch stream",
+                extra={
+                    "import_batch_id": str(import_batch.id),
+                    "attempt": rs.attempt_number,
+                    "last_processed_line": last_processed_line,  # noqa: B023
+                    "exc": repr(rs.outcome.exception()),
+                },
+            ),
+            wait=tenacity.wait_exponential(multiplier=1, max=30),
+            stop=tenacity.stop_after_attempt(5),
+            reraise=True,
         ):
-            HTTPXClientInstrumentor().instrument_client(client)
-            async with client.stream("GET", str(import_batch.storage_url)) as response:
-                response.raise_for_status()
-                line_number = 1
-                async for line in response.aiter_lines():
-                    trace_attribute(Attributes.FILE_LINE_NO, line_number)
-                    if line := line.strip():
-                        import_result = await self.register_result(
-                            ImportResult(
-                                import_batch_id=import_batch.id,
-                                status=ImportResultStatus.CREATED,
+            with attempt:
+                async with httpx.AsyncClient(
+                    follow_redirects=False,
+                ) as client:
+                    HTTPXClientInstrumentor().instrument_client(client)
+                    async with client.stream(
+                        "GET", str(import_batch.storage_url)
+                    ) as response:
+                        # Reject non-2xx explicitly: follow_redirects is
+                        # disabled to prevent open-redirect, so 3xx must
+                        # be caught here rather than relying on
+                        # raise_for_status (4xx/5xx only).
+                        if not response.is_success:
+                            msg = (
+                                f"Unexpected status {response.status_code} "
+                                f"fetching storage_url"
                             )
-                        )
-                        await queue_task_with_trace(
-                            ("app.domain.imports.tasks", "import_reference"),
-                            import_result.id,
-                            line,
-                            line_number,
-                            settings.import_reference_retry_count,
-                            otel_enabled=settings.otel_enabled,
-                        )
-                        line_number += 1
+                            raise httpx.HTTPStatusError(
+                                msg,
+                                request=response.request,
+                                response=response,
+                            )
+                        line_number = 0
+                        async for line in response.aiter_lines():
+                            line_number += 1
+                            if line_number <= last_processed_line:
+                                continue
+                            if line := line.strip():
+                                with new_linked_trace(
+                                    "Queue import reference task",
+                                    attributes={
+                                        Attributes.FILE_LINE_NO: line_number,
+                                        Attributes.IMPORT_BATCH_ID: str(
+                                            import_batch.id
+                                        ),
+                                    },
+                                ):
+                                    await self._queue_import_line(
+                                        import_batch.id, line, line_number
+                                    )
+                            last_processed_line = line_number
 
     @sql_unit_of_work
     async def get_import_results(

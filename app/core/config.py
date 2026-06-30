@@ -13,12 +13,14 @@ from pydantic import (
     FilePath,
     HttpUrl,
     PostgresDsn,
+    field_validator,
     model_validator,
 )
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import ExternalIdentifierType
+from app.persistence.blob.models import BlobContainer, BlobStorageLocation
 from app.utils.time_and_date import iso8601_duration_adapter
 
 logger = get_logger(__name__)
@@ -157,23 +159,44 @@ class ESConfig(BaseModel):
         return self
 
 
-class MinioConfig(BaseModel):
+class BlobBackendConfig(BaseModel):
+    """Shared shape for blob storage backend configurations."""
+
+    containers: dict[BlobContainer, str]
+    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
+
+    @field_validator("containers")
+    @classmethod
+    def _all_containers_required(
+        cls, v: dict[BlobContainer, str]
+    ) -> dict[BlobContainer, str]:
+        missing = set(BlobContainer) - set(v)
+        if missing:
+            msg = (
+                f"Blob backend config is missing containers: "
+                f"{sorted(c.value for c in missing)}"
+            )
+            raise ValueError(msg)
+        return v
+
+
+class MinioConfig(BlobBackendConfig):
     """Minio configuration."""
+
+    location: Literal[BlobStorageLocation.MINIO] = BlobStorageLocation.MINIO
 
     host: str
     access_key: str
     secret_key: str
-    bucket: str = "destiny-repository"
-    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
 
 
-class AzureBlobConfig(BaseModel):
+class AzureBlobConfig(BlobBackendConfig):
     """Azure Blob Storage configuration."""
 
+    location: Literal[BlobStorageLocation.AZURE] = BlobStorageLocation.AZURE
+
     storage_account_name: str
-    container: str
     credential: str | None = None
-    presigned_url_expiry_seconds: int = 60 * 60  # 1 hour
     user_delegation_key_duration: int = 60 * 60 * 24  # 1 day
 
     @property
@@ -187,6 +210,53 @@ class AzureBlobConfig(BaseModel):
         return f"https://{self.storage_account_name}.blob.core.windows.net"
 
 
+class LogLevel(StrEnum):
+    """Log level enum."""
+
+    NOTSET = auto()
+    DEBUG = auto()
+    INFO = auto()
+    WARNING = auto()
+    ERROR = auto()
+    CRITICAL = auto()
+
+
+optimistic_fraction = Field(default=1.0, ge=0.0, le=1.0)
+pessimistic_fraction = Field(default=0.0, ge=0.0, le=1.0)
+
+
+class LogSamplingConfig(BaseModel):
+    """Log level sampling configuration."""
+
+    notset_sample_rate: float = pessimistic_fraction
+    debug_sample_rate: float = pessimistic_fraction
+    info_sample_rate: float = optimistic_fraction
+    warning_sample_rate: float = optimistic_fraction
+    error_sample_rate: float = optimistic_fraction
+    critical_sample_rate: float = optimistic_fraction
+
+    def get_rate(self, level: LogLevel | str) -> float:
+        """Get the sample rate for a given log level."""
+        if isinstance(level, str):
+            try:
+                level = LogLevel[level.upper()]
+            except KeyError:
+                return 1.0
+        return self.rates.get(level, 1.0)
+
+    @property
+    def rates(self) -> dict[LogLevel, float]:
+        """Get a mapping of log levels to their sample rates."""
+        return {
+            LogLevel.NOTSET: self.notset_sample_rate,
+            LogLevel.DEBUG: self.debug_sample_rate,
+            LogLevel.INFO: self.info_sample_rate,
+            LogLevel.WARNING: self.warning_sample_rate,
+            LogLevel.ERROR: self.error_sample_rate,
+            LogLevel.CRITICAL: self.critical_sample_rate,
+        }
+
+
 class OTelConfig(BaseModel):
     """OpenTelemetry configuration."""
 
@@ -198,7 +268,28 @@ class OTelConfig(BaseModel):
     timeout: int = 30
 
     # Flags to control low-level automatic instrumentation
-    instrument_sql: bool = False
+    instrument_sql: bool = Field(
+        default=False,
+        description="Whether to instrument SQL operations automatically.",
+    )
+    instrument_taskiq: bool = Field(
+        default=False,
+        description="Whether to instrument TaskIQ tasks automatically. "
+        "We have custom linking middleware in place already",
+    )
+    instrument_elasticsearch: bool = Field(
+        default=False,
+        description="Whether to instrument Elasticsearch operations automatically. ",
+    )
+
+    orphan_log_sample_config: LogSamplingConfig = Field(
+        default=LogSamplingConfig(),
+        description=(
+            "Log level sampling configuration. "
+            "This applies only to OpenTelemetry logs, and only to logs that are not "
+            "a member of a trace."
+        ),
+    )
 
 
 class Environment(StrEnum):
@@ -214,15 +305,6 @@ class Environment(StrEnum):
     def local_envs(cls) -> set["Environment"]:
         """Get environment values that are for local development."""
         return {cls.LOCAL, cls.TEST}
-
-
-class LogLevel(StrEnum):
-    """Log level enum."""
-
-    DEBUG = auto()
-    INFO = auto()
-    WARNING = auto()
-    ERROR = auto()
 
 
 class ESIndexingOperation(StrEnum):
@@ -242,6 +324,7 @@ class UploadFile(StrEnum):
 
     ENHANCEMENT_REQUEST_REFERENCE_DATA = auto()
     ROBOT_ENHANCEMENT_REFERENCE_DATA = auto()
+    SEARCH_EXPORT = auto()
 
 
 class TOML(BaseModel):
@@ -268,6 +351,26 @@ class TOML(BaseModel):
 class FeatureFlags(BaseModel):
     """Feature flags for the application."""
 
+    enable_percolation: bool = True
+    enable_canonical_candidate_search: bool = True
+
+
+class DedupCandidateScoringConfig(BaseModel):
+    """Configuration for deduplication candidate search scoring."""
+
+    max_author_clauses: int = Field(
+        default=25,
+        ge=1,
+        le=100,
+        description="Maximum author clauses in the ES dis_max query.",
+    )
+    min_author_token_length: int = Field(
+        default=2,
+        ge=1,
+        le=5,
+        description="Minimum token length for author name matching.",
+    )
+
 
 class Settings(BaseSettings):
     """Settings model for API."""
@@ -280,6 +383,7 @@ class Settings(BaseSettings):
     toml: TOML = TOML(toml_path=project_root)
 
     feature_flags: FeatureFlags = FeatureFlags()
+    dedup_scoring: DedupCandidateScoringConfig = DedupCandidateScoringConfig()
 
     db_config: DatabaseConfig
     es_config: ESConfig
@@ -288,11 +392,73 @@ class Settings(BaseSettings):
     otel_config: OTelConfig | None = None
     otel_enabled: bool = False
 
+    # Authentication provider selection
+    auth_provider: Literal["azure", "keycloak", "both"] = Field(
+        default="azure",
+        description=(
+            "The authentication provider to use: "
+            "'azure', 'keycloak', or 'both' for multi-issuer."
+        ),
+    )
+
+    # Azure AD settings
     azure_application_id: str
-    azure_login_url: str
+    azure_login_url: str = "https://login.microsoftonline.com"
+
+    # Keycloak settings (used when auth_provider is "keycloak" or "both")
+    keycloak_url: str | None = Field(
+        default=None,
+        description="The base URL of the Keycloak server (used for JWKS fetching).",
+    )
+    keycloak_issuer_url: str | None = Field(
+        default=None,
+        description=(
+            "The issuer URL for token validation. Defaults to keycloak_url if not set. "
+            "Useful when the token issuer differs from the internal Keycloak URL "
+            "(e.g., in Docker where tokens are issued with localhost but JWKS is "
+            "fetched via internal network)."
+        ),
+    )
+    keycloak_realm: str = Field(
+        default="destiny",
+        description="The Keycloak realm name.",
+    )
+    keycloak_client_id: str | None = Field(
+        default=None,
+        description="The Keycloak client ID for token validation.",
+    )
+
+    @model_validator(mode="after")
+    def _validate_keycloak_settings(self) -> Self:
+        if self.auth_provider in ("keycloak", "both") and (
+            not self.keycloak_url or not self.keycloak_client_id
+        ):
+            msg = (
+                f"auth_provider='{self.auth_provider}' requires "
+                "keycloak_url and keycloak_client_id to be set"
+            )
+            raise ValueError(msg)
+        return self
+
     message_broker_url: str | None = None
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
+    message_broker_priority_queue_name: str = "taskiq-priority"
+    message_broker_queue_max_wait: int = Field(
+        default=2,
+        description=(
+            "Max time to wait to receive messages on the normal priority task queue "
+            "(in seconds)."
+        ),
+    )
+    message_broker_priority_queue_max_wait: int = Field(
+        default=1,
+        description=(
+            "Max time to wait to receive messages on the high priority task queue "
+            "(in seconds)."
+        ),
+    )
+
     cli_client_id: str | None = None
     app_name: str
 
@@ -320,6 +486,18 @@ class Settings(BaseSettings):
     es_indexing_chunk_size_override: dict[ESIndexingOperation, int] = Field(
         default_factory=dict,
         description=("Override the default Elasticsearch indexing chunk size."),
+    )
+
+    es_reference_repair_max_batch_size: int = Field(
+        default=1000,
+        description=(
+            "Maximum number of reference records that may be repaired in a single "
+            "task. Caps both the partition size used when distributing a full "
+            "reference index repair and the size of a caller-supplied subset accepted "
+            "by the repair endpoint. Be wary that if increased too far, then the "
+            "`repair_reference_index_for_chunk` task will require `long_running=True` "
+            "and subsequent lock management."
+        ),
     )
 
     default_es_percolation_chunk_size: int = Field(
@@ -359,7 +537,7 @@ class Settings(BaseSettings):
         ),
     )
     upload_file_chunk_size_override: dict[UploadFile, int] = Field(
-        default_factory=dict,
+        default_factory=lambda: {UploadFile.SEARCH_EXPORT: 1000},
         description=("Override the default upload file chunk size."),
     )
 
@@ -375,6 +553,45 @@ class Settings(BaseSettings):
     presigned_url_expiry_seconds: int = Field(
         default=3600,
         description="The number of seconds a signed URL is valid for.",
+    )
+
+    es_aggregation_max_buckets: int = Field(
+        default=1000,
+        ge=1,
+        le=65_536,
+        description=(
+            "Maximum buckets returned per Elasticsearch terms aggregation. "
+            "Capped at the Elasticsearch cluster default for `search.max_buckets`."
+        ),
+    )
+
+    es_cross_facet_max_cells: int = Field(
+        default=50_000,
+        ge=1,
+        le=65_536,
+        description=(
+            "Maximum aggregation buckets a cross-facet matrix may materialise "
+            "(the nested terms agg counts parent buckets too, so for axes sized "
+            "(a, b) this is a + a*b). Kept below the Elasticsearch cluster default "
+            "for `search.max_buckets` so a large matrix is refused with a 400 rather "
+            "than aborting the query server-side."
+        ),
+    )
+
+    vocabulary_host: str = Field(
+        default="evidence-repository.org",
+        description=(
+            "Base host for vocabulary URIs accepted by vocabulary URI inputs. The "
+            "supplied URL must be a subdomain of this host."
+        ),
+    )
+
+    full_text_max_byte_size: int = Field(
+        default=1024**3,
+        description=(
+            "Maximum size in bytes accepted when fetching a remote full-text "
+            "source. Aborts the stream and rejects the enhancement if exceeded."
+        ),
     )
 
     default_pending_enhancement_lease_duration: datetime.timedelta = Field(
@@ -398,9 +615,28 @@ class Settings(BaseSettings):
         ),
     )
 
+    bypass_auth: bool | None = Field(
+        default=None,
+        description=(
+            "Override auth bypass behavior. When None (default), auth is bypassed "
+            "only when running locally (ENV=local/test). Set to False to enforce "
+            "auth even locally."
+        ),
+    )
+
     log_level: LogLevel = Field(
         default=LogLevel.INFO,
-        description="The log level for the application.",
+        description="The log level for the application. "
+        "This applies to both opentelemetry and standard logging.",
+    )
+
+    allowed_import_domains: list[str] = Field(
+        default=["blob.core.windows.net"],
+        description=(
+            "Allowed domain suffixes for import storage URLs. "
+            "URLs whose hostname does not match are rejected with 403. "
+            "Empty list disables the check."
+        ),
     )
 
     cors_allow_origins: list[str] = Field(
@@ -423,36 +659,17 @@ class Settings(BaseSettings):
         return self.env in Environment.local_envs()
 
     @property
-    def default_blob_location(self) -> str:
-        """Return the default blob location."""
-        if self.running_locally:
-            if self.minio_config:
-                return "minio"
-            if self.azure_blob_config:
-                return "azure"
-            if self.env == Environment.TEST:
-                # If we reach here, we are in a test environment and haven't
-                # specified a blob config, so assume it is mocked. Just return
-                # minio to keep pydantic happy.
-                return "minio"
-        return "azure"
+    def should_bypass_auth(self) -> bool:
+        """
+        Return True if auth should be bypassed.
 
-    @property
-    def default_blob_container(self) -> str:
-        """Return the default blob container."""
-        if self.running_locally:
-            if self.minio_config:
-                return self.minio_config.bucket
-            if self.azure_blob_config:
-                return self.azure_blob_config.container
-            if self.env == Environment.TEST:
-                # If we reach here, we are in a test environment and haven't
-                # specified a blob config, so assume it is mocked.
-                return "test"
-        if not self.azure_blob_config:
-            msg = "Azure Blob Storage configuration is not given."
-            raise ValueError(msg)
-        return self.azure_blob_config.container
+        Auth can only be bypassed when running locally (ENV=local/test).
+        """
+        if not self.running_locally:
+            return False
+        if self.bypass_auth is not None:
+            return self.bypass_auth
+        return True
 
     @property
     def trace_repr(self) -> str:

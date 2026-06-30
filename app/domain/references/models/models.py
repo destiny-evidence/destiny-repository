@@ -2,20 +2,24 @@
 
 import datetime
 import json
-import uuid
 from enum import StrEnum, auto
-from typing import Any, Literal, Self
+from typing import Annotated, Any, Literal, Self
+from uuid import UUID
 
 import destiny_sdk
 
-# Explicitly import these models for easy use in the rest of the codebase
-from destiny_sdk.enhancements import EnhancementContent, EnhancementType  # noqa: F401
+# Explicitly import these models for easy importing in the rest of the codebase
+# This allows us to abstract them later if we need (as has already happened with
+# EnhancementContent!)
+from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifier, ExternalIdentifierType
 from pydantic import (
-    UUID4,
     BaseModel,
+    ConfigDict,
     Field,
+    HttpUrl,
     PositiveInt,
+    StringConstraints,
     TypeAdapter,
     field_validator,
     model_validator,
@@ -29,6 +33,7 @@ from app.domain.base import (
     SQLTimestampMixin,
     StateMachineMixin,
 )
+from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
 from app.utils.time_and_date import apply_positive_timedelta
 
@@ -62,6 +67,19 @@ class EnhancementRequestStatus(StrEnum):
     """Enhancements have been imported but indexing failed."""
     COMPLETED = auto()
     """All enhancements have been created."""
+
+
+class SearchExportStatus(StrEnum):
+    """The status of a search export job."""
+
+    PENDING = auto()
+    """Export job has been queued."""
+    RUNNING = auto()
+    """Export job is being processed."""
+    COMPLETED = auto()
+    """Export job has completed and the file is available."""
+    FAILED = auto()
+    """Export job failed before producing a file."""
 
 
 class Visibility(StrEnum):
@@ -116,8 +134,8 @@ class DuplicateDetermination(StrEnum):
     DECOUPLED = auto()
     """
     A decision has been made, but needs further attention. This could
-    be due to a change in the canonical mapping, or a chain of duplicates longer
-    than allowed.
+    be due to a change in the canonical mapping, or a reference with existing
+    duplicates being marked as a duplicate.
     """
 
     @classmethod
@@ -198,20 +216,15 @@ class Reference(
         )
 
     @property
-    def canonical_chain_length(self) -> int:
+    def has_duplicates(self) -> bool | None:
         """
-        Get the length of the canonical chain for this reference.
+        Whether this reference has any duplicate references pointing to it.
 
-        This is the number of references in the chain from this reference to
-        the root canonical reference, including this reference.
-
-        Requires canonical_reference to be preloaded, will always return 1 if not.
+        Will return None if duplicate references are not preloaded.
         """
-        return 1 + (
-            self.canonical_reference.canonical_chain_length
-            if self.canonical_reference
-            else 0
-        )
+        if self.duplicate_references is None:
+            return None
+        return bool(self.duplicate_references)
 
     def is_superset(
         self,
@@ -254,7 +267,7 @@ class LinkedExternalIdentifier(DomainBaseModel, SQLAttributeMixin):
     identifier: destiny_sdk.identifiers.ExternalIdentifier = Field(
         description="The identifier itself.", discriminator="identifier_type"
     )
-    reference_id: uuid.UUID = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this identifier identifies."
     )
     reference: Reference | None = Field(
@@ -304,6 +317,114 @@ class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
 
 
+class FullTextEnhancement(DomainBaseModel):
+    """
+    An enhancement for storing a link to the full text and its metadata.
+
+    We separate this from the SDK model as it contains a file pointer, not
+    the URL to the file itself.
+    """
+
+    enhancement_type: Literal[EnhancementType.FULL_TEXT] = EnhancementType.FULL_TEXT
+    blob: BlobStorageFile = Field(
+        description="Blob storage pointer to the full text file.",
+    )
+    byte_size: int | None = Field(
+        default=None,
+        description=(
+            "Size of the file in bytes. "
+            "If provided on import, will be used to validate the file size. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    sha256_checksum: str | None = Field(
+        default=None,
+        description=(
+            "SHA256 checksum of the file. "
+            "If provided on import, will be used to verify the integrity of the file. "
+            "Will always be present on enhancements from the repository."
+        ),
+    )
+    mime_type: str = Field(
+        default="application/pdf",
+        description="The MIME type of the file.",
+    )
+    version: destiny_sdk.enhancements.DriverVersion | None = Field(
+        default=None,
+        description=(
+            "The version (according to the DRIVER versioning scheme) of this full text."
+        ),
+    )
+    is_oa: bool | None = Field(
+        default=None,
+        description=(
+            "If this full text is Open Access. "
+            "May be left as null if this is unknown."
+        ),
+    )
+    license: str | None = Field(
+        default=None,
+        description="The publishing license for this full text.",
+        examples=[
+            "apache-2-0",
+            "cc-by",
+            "cc-by-nc",
+            "cc-by-nc-nd",
+            "cc-by-nc-sa",
+            "cc-by-nd",
+            "cc-by-sa",
+            "gpl-v2",
+            "gpl-v3",
+            "isc",
+            "mit",
+            "other-oa",
+            "public-domain",
+        ],
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source from which this full text was obtained.",
+    )
+    source_url: HttpUrl | None = Field(
+        default=None,
+        description="The URL of the source from which this full text was obtained.",
+    )
+    retrieved_at: datetime.datetime | None = Field(
+        default=None,
+        description="The timestamp when this full text was retrieved.",
+    )
+
+    @property
+    def fingerprint(self) -> str:
+        """
+        The unique fingerprint of this full text enhancement.
+
+        Excludes retrieved_at and blob location.
+        """
+        return json.dumps(
+            self.model_dump(
+                mode="json",
+                exclude={"retrieved_at", "blob"},
+                exclude_none=True,
+            ),
+            sort_keys=True,
+        )
+
+
+EnhancementContent = Annotated[
+    destiny_sdk.enhancements.BibliographicMetadataEnhancement
+    | destiny_sdk.enhancements.AbstractContentEnhancement
+    | destiny_sdk.enhancements.AnnotationEnhancement
+    | destiny_sdk.enhancements.LocationEnhancement
+    | destiny_sdk.enhancements.ReferenceAssociationEnhancement
+    | destiny_sdk.enhancements.LinkedDataEnhancement
+    # Domain defines its own FullTextEnhancement
+    | FullTextEnhancement
+    | destiny_sdk.enhancements.RawEnhancement,
+    Field(discriminator="enhancement_type"),
+]
+
+
 class Enhancement(DomainBaseModel, SQLTimestampMixin):
     """Core enhancement model with database attributes included."""
 
@@ -317,7 +438,7 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
         default=None,
         description="The version of the robot that generated the content.",
     )
-    derived_from: list[uuid.UUID] | None = Field(
+    derived_from: list[UUID] | None = Field(
         default=None,
         description="List of enhancement IDs that this enhancement was derived from.",
     )
@@ -325,7 +446,7 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
         discriminator="enhancement_type",
         description="The content of the enhancement.",
     )
-    reference_id: uuid.UUID = Field(
+    reference_id: UUID = Field(
         description="The ID of the reference this enhancement is associated with."
     )
 
@@ -358,12 +479,10 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
 class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin):
     """Request to add enhancements to a list of references."""
 
-    reference_ids: list[uuid.UUID] = Field(
+    reference_ids: list[UUID] = Field(
         description="The IDs of the references these enhancements are associated with."
     )
-    robot_id: uuid.UUID = Field(
-        description="The robot to request the enhancement from."
-    )
+    robot_id: UUID = Field(description="The robot to request the enhancement from.")
     request_status: EnhancementRequestStatus = Field(
         default=EnhancementRequestStatus.RECEIVED,
         description="The status of the request to create an enhancement.",
@@ -406,10 +525,46 @@ Errors for individual references are provided <TBC>.
         return len(self.reference_ids)
 
 
+class SearchExport(DomainBaseModel, SQLAttributeMixin):
+    """A queued job that produces a JSONL file of references matching a search."""
+
+    query: "SearchQuery" = Field(
+        description="The search specification this export resolves.",
+    )
+    sort: list[str] | None = Field(
+        default=None,
+        description="Sort fields, in the same form `/references/search/` accepts.",
+    )
+    status: SearchExportStatus = Field(
+        default=SearchExportStatus.PENDING,
+        description="The current status of the export job.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The JSONL file produced by the job, once completed.",
+    )
+    n_references: int | None = Field(
+        default=None,
+        description="The number of references in the produced file.",
+    )
+    truncated: bool = Field(
+        default=False,
+        description=(
+            "Whether the matching result set was larger than the server's "
+            "result-window cap. When true, the JSONL contains only the first "
+            "window's worth of matches."
+        ),
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message, if the job failed.",
+    )
+
+
 class RobotResultValidationEntry(DomainBaseModel):
     """A single entry in the validation result file for a enhancement request."""
 
-    reference_id: uuid.UUID | None = Field(
+    reference_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the reference which was enhanced. "
@@ -434,7 +589,7 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
     is sent to the specified robot to perform the enhancement.
     """
 
-    robot_id: UUID4 = Field(
+    robot_id: UUID = Field(
         description="The ID of the robot that will be used to enhance the reference."
     )
     query: dict[str, Any] = Field(
@@ -445,8 +600,8 @@ class RobotAutomation(DomainBaseModel, SQLAttributeMixin):
 class RobotAutomationPercolationResult(BaseModel):
     """Result of a percolation query against RobotAutomations."""
 
-    robot_id: UUID4
-    reference_ids: set[UUID4]
+    robot_id: UUID
+    reference_ids: set[UUID]
 
 
 class CandidateCanonicalSearchFields(ProjectedBaseModel):
@@ -494,6 +649,11 @@ class ReferenceSearchFields(ProjectedBaseModel):
         default_factory=list, description="The authors of the reference."
     )
 
+    publication_date: datetime.date | None = Field(
+        default=None,
+        description="The publication date of the reference.",
+    )
+
     publication_year: int | None = Field(
         default=None,
         description="The publication year of the reference.",
@@ -527,6 +687,16 @@ class ReferenceSearchFields(ProjectedBaseModel):
         ),
     )
 
+    linked_data_content: destiny_sdk.enhancements.LinkedDataEnhancement | None = Field(
+        default=None,
+        exclude=True,
+        description=(
+            "The content of the highest-priority LINKED_DATA enhancement, if any. "
+            "This is the raw enhancement content before projection into searchable "
+            "concepts and labels."
+        ),
+    )
+
     def to_canonical_candidate_search_fields(self) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return CandidateCanonicalSearchFields(
@@ -548,11 +718,52 @@ class ReferenceSearchFields(ProjectedBaseModel):
             return value
         return cls._normalise_string(value)
 
-    @field_validator("authors", "annotations", "evaluated_schemes", mode="after")
+    @field_validator(
+        "authors",
+        "annotations",
+        "evaluated_schemes",
+        mode="after",
+    )
     @classmethod
     def normalise_string_list_validator(cls, value: list[str]) -> list[str]:
         """Normalise string list fields by stripping whitespace."""
         return [cls._normalise_string(v) for v in value if v]
+
+
+class LinkedDataProjection(ProjectedBaseModel):
+    """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
+
+    concepts: set[str] = Field(default_factory=set)
+    labels: set[str] = Field(default_factory=set)
+    evaluated_properties: set[str] = Field(default_factory=set)
+    countries: set[str] = Field(default_factory=set)
+    country_wb_regions: set[str] = Field(default_factory=set)
+
+
+class ReferenceSearchProjection(SQLAttributeMixin):
+    """
+    Pre-computed projection of a Reference for ES indexing.
+
+    Contains only the fields that ES indexes, constructed by the synchronizer
+    from a Reference and its projections. Inherits SQLAttributeMixin for the
+    id field and to satisfy the GenericDomainModelType bound required by the
+    ES persistence layer.
+    """
+
+    visibility: Visibility = Field(
+        description="The level of visibility of the reference.",
+    )
+    duplicate_determination: DuplicateDetermination | None = Field(
+        default=None,
+        description="The duplicate determination, if any.",
+    )
+    search_fields: ReferenceSearchFields = Field(
+        description="Pre-computed search fields for Elasticsearch indexing.",
+    )
+    linked_data_projection: LinkedDataProjection | None = Field(
+        default=None,
+        description="Pre-computed linked data projection, if any.",
+    )
 
 
 class ReferenceDuplicateDeterminationResult(BaseModel):
@@ -564,7 +775,7 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
         DuplicateDetermination.UNRESOLVED,
         DuplicateDetermination.UNSEARCHABLE,
     ]
-    canonical_reference_id: UUID4 | None = Field(
+    canonical_reference_id: UUID | None = Field(
         default=None,
         description="The ID of the determined canonical reference.",
     )
@@ -592,8 +803,8 @@ class ReferenceDuplicateDeterminationResult(BaseModel):
 class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
-    reference_id: UUID4 = Field(description="The ID of the reference being evaluated.")
-    enhancement_id: UUID4 | None = Field(
+    reference_id: UUID = Field(description="The ID of the reference being evaluated.")
+    enhancement_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the enhancement that triggered this duplicate decision, if any."
@@ -603,7 +814,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=False,
         description="Whether this is the active decision for the reference.",
     )
-    candidate_canonical_ids: list[UUID4] = Field(
+    candidate_canonical_ids: list[UUID] = Field(
         default_factory=list,
         description="A list of candidate canonical IDs for the reference.",
     )
@@ -611,7 +822,7 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=DuplicateDetermination.PENDING,
         description="The duplicate status of the reference.",
     )
-    canonical_reference_id: UUID4 | None = Field(
+    canonical_reference_id: UUID | None = Field(
         default=None,
         description="The ID of the canonical reference this reference duplicates.",
     )
@@ -735,22 +946,22 @@ class PendingEnhancementStatus(StateMachineMixin, StrEnum):
 class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
     """A pending enhancement."""
 
-    reference_id: UUID4 = Field(
+    reference_id: UUID = Field(
         ...,
         description="The ID of the reference to be enhanced.",
     )
-    robot_id: UUID4 = Field(
+    robot_id: UUID = Field(
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
-    enhancement_request_id: UUID4 | None = Field(
+    enhancement_request_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the batch enhancement request that this pending enhancement"
             " belongs to."
         ),
     )
-    robot_enhancement_batch_id: UUID4 | None = Field(
+    robot_enhancement_batch_id: UUID | None = Field(
         default=None,
         description=(
             "The ID of the robot enhancement batch that this pending enhancement"
@@ -775,7 +986,7 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
         default=datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC),
         description="The datetime at which the pending enhancement expires.",
     )
-    retry_of: UUID4 | None = Field(
+    retry_of: UUID | None = Field(
         default=None,
         description=(
             "The ID of the pending enhancement that this is a retry of, if any."
@@ -806,7 +1017,7 @@ class PendingEnhancement(DomainBaseModel, SQLAttributeMixin):
 class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
     """A batch of references to be enhanced by a robot."""
 
-    robot_id: UUID4 = Field(
+    robot_id: UUID = Field(
         ...,
         description="The ID of the robot that will perform the enhancement.",
     )
@@ -835,7 +1046,7 @@ class RobotEnhancementBatch(DomainBaseModel, SQLAttributeMixin):
 class ReferenceIds(BaseModel):
     """Model representing a list of reference IDs."""
 
-    reference_ids: list[UUID4] = Field(
+    reference_ids: list[UUID] = Field(
         ...,
         description="A list of reference IDs.",
     )
@@ -874,4 +1085,164 @@ class AnnotationFilter(BaseModel):
         description="Optional score threshold for the annotation filter.",
         ge=0.0,
         le=1.0,
+    )
+
+
+class LinkedDataConceptFilter(BaseModel):
+    """
+    A set of fully-qualified concept URIs to match on ``linked_data_concepts``.
+
+    Within a single filter, references must carry at least one of the listed URIs
+    (logical OR). Multiple filters on a query are ANDed together.
+    """
+
+    concept_uris: list[str] = Field(
+        min_length=1,
+        description="Concept URIs to match. At least one must appear on the reference.",
+    )
+
+
+class LinkedDataCountryFilter(BaseModel):
+    """
+    A set of ISO 3166-1 alpha-2 codes to match on ``linked_data_countries``.
+
+    OR within a filter; AND between filters.
+    """
+
+    country_codes: list[Annotated[str, StringConstraints(pattern=r"^[A-Z]{2}$")]] = (
+        Field(
+            min_length=1,
+            description=(
+                "ISO 3166-1 alpha-2 country codes. At least one must appear on the "
+                "reference."
+            ),
+        )
+    )
+
+
+class LinkedDataCountryWBRegionFilter(BaseModel):
+    """
+    A set of World Bank region IDs to match on ``linked_data_country_wb_regions``.
+
+    OR within a filter; AND between filters.
+    """
+
+    region_ids: list[WBRegionID] = Field(
+        min_length=1,
+        description=(
+            "World Bank region IDs. At least one must appear on the reference."
+        ),
+    )
+
+
+class FacetType(StrEnum):
+    """A facet supported by the reference search facets endpoint."""
+
+    CONCEPTS = auto()
+    """Counts of references per linked-data concept URI."""
+    COUNTRIES = auto()
+    """Counts of references per ISO 3166-1 alpha-2 country code."""
+    COUNTRY_WB_REGIONS = auto()
+    """Counts of references per World Bank region ID."""
+
+
+class SearchQuery(BaseModel):
+    """A specification for searching references."""
+
+    query_string: str = Field(description="The Lucene query string to search with.")
+    annotation_filters: list[AnnotationFilter] = Field(
+        default_factory=list,
+        description="Annotation filters to AND with the query string.",
+    )
+    publication_year_range: PublicationYearRange | None = Field(
+        default=None,
+        description="Publication year range to AND with the query string.",
+    )
+    linked_data_concept_filters: list[LinkedDataConceptFilter] = Field(
+        default_factory=list,
+        description=(
+            "Concept URI filters to AND with the query string. Each filter is an "
+            "OR-set of URIs."
+        ),
+    )
+    linked_data_country_filters: list[LinkedDataCountryFilter] = Field(
+        default_factory=list,
+        description=(
+            "Country code filters to AND with the query string. Each filter is an "
+            "OR-set of ISO 3166-1 alpha-2 codes."
+        ),
+    )
+    linked_data_country_wb_region_filters: list[LinkedDataCountryWBRegionFilter] = (
+        Field(
+            default_factory=list,
+            description=(
+                "World Bank region filters to AND with the query string. Each filter "
+                "is an OR-set of region IDs."
+            ),
+        )
+    )
+
+
+class SiblingGroup(BaseModel):
+    """A user-selected subset of a sibling set, for sibling-aware facet aggregation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    selected: tuple[str, ...] = Field(
+        description="Values the user selected from this sibling set.",
+    )
+    siblings_including_selected: frozenset[str] | None = Field(
+        description=(
+            "Union of the user's selection and their siblings, used as the "
+            "``include`` set for the group's facet aggregation. ``None`` signals "
+            "universal mode: every value of the field is treated as a sibling, so "
+            "the agg uses no ``include`` filter."
+        ),
+    )
+
+
+class CrossFacetAxis(BaseModel):
+    """One resolved axis of a cross-facet aggregation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    token: str = Field(
+        description="The original axis request string (literal or scheme URI).",
+    )
+    facet_type: FacetType = Field(
+        description="The facet whose field this axis aggregates on.",
+    )
+    include: frozenset[str] | None = Field(
+        description=(
+            "The concept URIs scoping a scheme axis (used as the terms ``include`` "
+            "set). ``None`` for other axes, whose field domain is bounded."
+        ),
+    )
+    size: int = Field(
+        description="The terms ``size`` to request for this axis's bucket count.",
+        gt=0,
+    )
+
+
+class CrossFacetCell(BaseModel):
+    """A single non-zero cell of a cross-facet matrix."""
+
+    axes: tuple[str, str] = Field(
+        description="The cell's value on each axis, in requested axis order.",
+    )
+    count: int = Field(description="References matching both axis values together.")
+
+
+class ReferenceSearchResult(BaseModel):
+    """Wrapping class for Elasticsearch search results."""
+
+    references: list[Reference] = Field(
+        default_factory=list,
+        description="The list of references returned from the search query.",
+    )
+    total: int = Field(
+        description="The total number of results matching the search query.",
+    )
+    page: int = Field(
+        description="The page number of the results.",
     )

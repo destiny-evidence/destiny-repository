@@ -14,16 +14,19 @@ from app.core.config import get_settings
 
 settings = get_settings()
 
-pending_tasks = []
-
 
 class FakeServiceBusSender:
     """
     Fake Service Bus sender for testing.
 
-    This class is used to mock the behavior of the actual
-    Azure Service Bus sender during unit tests.
+    Each instance is bound to a queue (via the FakeServiceBusClient that
+    created it) and writes into that queue's pending-task list, so tests
+    can assert which queue a message was routed to.
     """
+
+    def __init__(self, pending_tasks: list[asyncio.Task[AmqpAnnotatedMessage]]) -> None:
+        """Bind the sender to its queue's pending-task list."""
+        self._pending_tasks = pending_tasks
 
     async def schedule_messages(
         self, message: AmqpAnnotatedMessage, scheduled_time: datetime | None = None
@@ -44,7 +47,7 @@ class FakeServiceBusSender:
             return message
 
         task = asyncio.create_task(_delayed_append())
-        pending_tasks.append(task)
+        self._pending_tasks.append(task)
 
     async def send_messages(
         self,
@@ -66,9 +69,13 @@ class FakeServiceBusReceiver:
     """
     Fake Service Bus receiver for testing.
 
-    This class is used to mock the behavior of the actual
-    Azure Service Bus receiver during unit tests.
+    Reads from a per-queue pending-task list so the priority queue and the
+    default queue are observable independently.
     """
+
+    def __init__(self, pending_tasks: list[asyncio.Task[AmqpAnnotatedMessage]]) -> None:
+        """Bind the receiver to its queue's pending-task list."""
+        self._pending_tasks = pending_tasks
 
     async def receive_messages(
         self,
@@ -84,7 +91,7 @@ class FakeServiceBusReceiver:
         deadline = asyncio.get_event_loop().time() + (max_wait_time or 60)
 
         while True:
-            results = [t.result() for t in pending_tasks if t.done()]
+            results = [t.result() for t in self._pending_tasks if t.done()]
 
             if results:
                 return results
@@ -98,9 +105,9 @@ class FakeServiceBusReceiver:
 
     async def complete_message(self, message: AmqpAnnotatedMessage) -> None:
         """Simulate completing a message."""
-        for task in pending_tasks:
+        for task in self._pending_tasks:
             if task.done() and task.result() == message:
-                pending_tasks.remove(task)
+                self._pending_tasks.remove(task)
 
     async def close(self) -> None:
         """Simulate closing the receiver."""
@@ -110,24 +117,28 @@ class FakeServiceBusClient:
     """
     Fake Service Bus client for testing.
 
-    This class is used to mock the behavior of the actual
-    Azure Service Bus client during unit tests.
+    Keeps a separate pending-task list per queue so default/priority queue
+    routing can be verified.
     """
 
     def __init__(self) -> None:
-        """Get ServiceBusSender for the specific queue."""
+        """Create an empty registry of per-queue pending-task lists."""
+        self.queues: dict[str, list[asyncio.Task[AmqpAnnotatedMessage]]] = {}
 
-    def get_queue_sender(self, queue_name: str) -> FakeServiceBusSender:  # noqa: ARG002
+    def _get_queue(self, queue_name: str) -> list[asyncio.Task[AmqpAnnotatedMessage]]:
+        return self.queues.setdefault(queue_name, [])
+
+    def get_queue_sender(self, queue_name: str) -> FakeServiceBusSender:
         """Get ServiceBusSender for the specific queue."""
-        return FakeServiceBusSender()
+        return FakeServiceBusSender(self._get_queue(queue_name))
 
     def get_queue_receiver(
         self,
-        queue_name: str,  # noqa: ARG002
+        queue_name: str,
         receive_mode: ServiceBusReceiveMode,  # noqa: ARG002
     ) -> FakeServiceBusReceiver:
         """Get ServiceBusReceiver for the specific queue."""
-        return FakeServiceBusReceiver()
+        return FakeServiceBusReceiver(self._get_queue(queue_name))
 
     async def close(self) -> None:
         """Close the client."""
@@ -161,6 +172,16 @@ def queue_name() -> str:
 
 
 @pytest.fixture
+def priority_queue_name() -> str:
+    """
+    Get test priority queue name.
+
+    :return: test priority queue name.
+    """
+    return "taskiq-test-queue-priority"
+
+
+@pytest.fixture
 def connection_string() -> str | None:
     """
     Get custom Azure Service Bus connection string.
@@ -177,6 +198,7 @@ def connection_string() -> str | None:
 async def broker(
     connection_string: str,
     queue_name: str,
+    priority_queue_name: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncGenerator[AzureServiceBusBroker, None]:
     """
@@ -186,17 +208,14 @@ async def broker(
     run startup, and shutdown after test.
 
     :param connection_string: connection string for Azure Service Bus.
-    :param namespace: Azure Service Bus namespace.
     :param queue_name: test queue name.
+    :param priority_queue_name: test priority queue name.
     :yield: broker.
     """
-    # Clear global pending_tasks before each test for isolation
-    global pending_tasks  # noqa: PLW0602
-    pending_tasks.clear()
-
     broker = AzureServiceBusBroker(
         connection_string=connection_string,
         queue_name=queue_name,
+        priority_queue_name=priority_queue_name,
     )
     broker.auto_lock_renewer = FakeServiceBusAutoLockRenewer()
     broker.is_worker_process = True

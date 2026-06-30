@@ -51,6 +51,21 @@ class MessageBrokerError(DestinyRepositoryError):
         super().__init__(detail, *args)
 
 
+class MessageTooLargeError(MessageBrokerError):
+    """An exception thrown by a message broker if the message is too large to queue."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the MessageTooLargeError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class NotFoundError(DestinyRepositoryError):
     """Exception for when we can't find something we expect to find."""
 
@@ -456,6 +471,116 @@ class MinioBlobStorageError(BlobStorageError):
         super().__init__(detail, *args)
 
 
+class RemoteBlobStorageError(BlobStorageError):
+    """Exception for remote blob storage errors."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the RemoteBlobStorageError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class BlobSizeExceededError(BlobStorageError):
+    """A blob operation exceeded the caller-supplied maximum byte size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the BlobSizeExceededError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextIngestionError(DestinyRepositoryError):
+    """Base exception for failures storing a full-text enhancement."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextIngestionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextDownloadError(FullTextIngestionError):
+    """The source URL could not be fetched (timeout, 4xx/5xx, connection error)."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextDownloadError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextIntegrityError(FullTextIngestionError):
+    """Downloaded bytes don't match declared sha256 or byte_size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextIntegrityError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class FullTextSizeExceededError(FullTextIngestionError):
+    """Remote full-text source exceeded the configured maximum byte size."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the FullTextSizeExceededError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
+class UnstoredFullTextError(FullTextIngestionError):
+    """
+    A full-text enhancement reached the persistence boundary unstored.
+
+    Raised when the storage step was skipped or failed to swap a
+    remote blob for an owned one before SQL/ES write.
+    """
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the UnstoredFullTextError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class AuthError(destiny_sdk.auth.AuthException):
     """An exception thrown by the authentication system."""
 
@@ -551,6 +676,10 @@ class ParseError(DestinyRepositoryError):
         super().__init__(detail)
 
 
+class SiblingGroupingError(ParseError):
+    """An exception for when concept filters cannot be resolved into sibling groups."""
+
+
 class DuplicateEnhancementError(DestinyRepositoryError):
     """An exception for when an exact duplicate enhancement is detected."""
 
@@ -589,3 +718,24 @@ class StateTransitionError(DestinyRepositoryError):
         self.current_state = current_state
         self.attempted_state = attempted_state
         super().__init__(detail)
+
+
+class ContextNotPreFetchedError(DestinyRepositoryError):
+    """Raised when document_loader is called for a URI that hasn't been pre-fetched."""
+
+    def __init__(self, uri: str) -> None:
+        """Initialize the ContextNotPreFetchedError exception."""
+        super().__init__(
+            f"Context URI '{uri}' has not been pre-fetched. "
+            f"Call get_context('{uri}') before using document_loader."
+        )
+        self.uri = uri
+
+
+class VocabularyFetchError(DestinyRepositoryError):
+    """Raised when a vocabulary artifact cannot be fetched or parsed."""
+
+    def __init__(self, uri: str, detail: str) -> None:
+        """Initialize the VocabularyFetchError exception."""
+        super().__init__(f"Failed to fetch vocabulary artifact '{uri}': {detail}")
+        self.uri = uri

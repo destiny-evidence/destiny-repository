@@ -1,12 +1,11 @@
 """Service for managing reference duplicate detection."""
 
-import uuid
 from typing import Literal
+from uuid import UUID
 
 from opentelemetry import trace
 
 from app.core.config import Environment, get_settings
-from app.core.constants import MAX_REFERENCE_DUPLICATE_DEPTH
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -76,12 +75,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
             return None
 
-        # First, find candidates. These are the references with all identical
-        # identifiers to the given reference.
+        # Find candidates using only non-"other" identifiers. The "other" type
+        # index (ix_external_identifier_type_other) has poor selectivity at scale,
+        # causing multi-second scans. is_superset validates the full match. (#604)
         candidates = await self.sql_uow.references.find_with_identifiers(
             [
                 GenericExternalIdentifier.from_specific(identifier.identifier)
                 for identifier in reference.identifiers
+                if identifier.identifier.identifier_type != ExternalIdentifierType.OTHER
             ],
             preload=["identifiers", "enhancements", "duplicate_decision"],
         )
@@ -106,11 +107,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     async def register_duplicate_decision_for_reference(
         self,
-        reference_id: uuid.UUID,
-        enhancement_id: uuid.UUID | None = None,
+        reference_id: UUID,
+        enhancement_id: UUID | None = None,
         duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
         | None = None,
-        canonical_reference_id: uuid.UUID | None = None,
+        canonical_reference_id: UUID | None = None,
     ) -> ReferenceDuplicateDecision:
         """
         Register a duplicate decision for a reference.
@@ -119,14 +120,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :type reference: app.domain.references.models.models.Reference
         :param enhancement_id: The enhancement ID triggering with the duplicate
             decision, defaults to None
-        :type enhancement_id: uuid.UUID | None, optional
+        :type enhancement_id: UUID | None, optional
         :param duplicate_determination: Flag indicating if a reference was an exact
             duplicate and not imported, defaults to None
         :type duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
             | None, optional
         :param canonical_reference_id: The canonical reference ID this reference is an
             exact duplicate of, defaults to None
-        :type canonical_reference_id: uuid.UUID | None, optional
+        :type canonical_reference_id: UUID | None, optional
         :return: The registered duplicate decision
         :rtype: ReferenceDuplicateDecision
         """
@@ -170,6 +171,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         :return: The updated decision with candidate IDs and status.
         :rtype: ReferenceDuplicateDecision
         """
+        if not settings.feature_flags.enable_canonical_candidate_search:
+            return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
+                reference_duplicate_decision.id,
+                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+                detail="Canonical candidate search is disabled.",
+            )
+
         reference = await self.sql_uow.references.get_by_pk(
             reference_duplicate_decision.reference_id,
             preload=["enhancements", "identifiers"],
@@ -189,6 +197,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         search_result = await self.es_uow.references.search_for_candidate_canonicals(
             search_fields,
             reference_id=reference.id,
+            scoring_config=settings.dedup_scoring,
         )
 
         if not search_result:
@@ -276,8 +285,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def map_duplicate_decision(
-        self, new_decision: ReferenceDuplicateDecision
-    ) -> tuple[ReferenceDuplicateDecision, bool]:
+        self,
+        new_decision: ReferenceDuplicateDecision,
+        *,
+        allow_destructive_decision: bool = False,
+    ) -> tuple[ReferenceDuplicateDecision, bool, ReferenceDuplicateDecision | None]:
         """
         Apply the persistence changes from the new duplicate decision.
 
@@ -285,8 +297,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         :param new_decision: The new decision to apply.
         :type new_decision: ReferenceDuplicateDecision
-        :return: The applied decision and whether it changed.
-        :rtype: tuple[ReferenceDuplicateDecision, bool]
+        :param allow_destructive_decision: If True, bypass the conflict check that
+            would otherwise create a DECOUPLED decision. Used by the manual
+            endpoint.
+        :type allow_destructive_decision: bool
+        :return: The applied decision, whether it changed, and the previous active
+            decision (now deactivated) if one existed.
+        :rtype: tuple[ReferenceDuplicateDecision, bool,
+            ReferenceDuplicateDecision | None]
         """
         if (
             new_decision.duplicate_determination
@@ -295,63 +313,81 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             msg = "Only terminal duplicate determinations can be mapped."
             raise DeduplicationValueError(msg)
 
+        if new_decision.canonical_reference_id:
+            if new_decision.canonical_reference_id == new_decision.reference_id:
+                msg = "Cannot mark a reference as a duplicate of itself."
+                raise DeduplicationValueError(msg)
+
+            canonical_ref = await self.sql_uow.references.get_by_pk(
+                new_decision.canonical_reference_id,
+                preload=["duplicate_decision", "canonical_reference"],
+            )
+            if not canonical_ref.is_canonical:
+                non_canonical_determination = (
+                    canonical_ref.duplicate_decision.duplicate_determination
+                    if canonical_ref.duplicate_decision
+                    else "none"
+                )
+                msg = (
+                    "Cannot mark as duplicate of a non-canonical reference. "
+                    f"Reference {new_decision.canonical_reference_id} has "
+                    f"active determination: {non_canonical_determination}."
+                )
+                raise DeduplicationValueError(msg)
+
         reference = await self.sql_uow.references.get_by_pk(
             new_decision.reference_id,
-            preload=["duplicate_decision", "canonical_reference"],
+            preload=["duplicate_decision", "duplicate_references"],
         )
         active_decision = reference.duplicate_decision
 
         # Preset to True, will be flipped if not changed
         decision_changed = True
 
-        # Remap active decision if needed and handle other cases
-        if new_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE:
-            new_decision.active_decision = True
-            if active_decision:
-                active_decision.active_decision = False
-        elif active_decision and (
-            (
-                # Reference was duplicate but is now canonical
+        if (
+            active_decision
+            and active_decision.duplicate_determination
+            == DuplicateDetermination.DUPLICATE
+            and (
+                # Duplicate is becoming canonical
                 new_decision.duplicate_determination == DuplicateDetermination.CANONICAL
-                and active_decision.duplicate_determination
-                == DuplicateDetermination.DUPLICATE
+                or (
+                    # Duplicate changes canonical reference
+                    new_decision.duplicate_determination
+                    == DuplicateDetermination.DUPLICATE
+                    and active_decision.canonical_reference_id
+                    != new_decision.canonical_reference_id
+                )
             )
-            or (
-                # Reference was duplicate but is now duplicate of a different canonical
-                new_decision.duplicate_determination
-                == active_decision.duplicate_determination
-                == DuplicateDetermination.DUPLICATE
-                and active_decision.canonical_reference_id
-                != new_decision.canonical_reference_id
-            )
+            and not allow_destructive_decision
         ):
-            # Maintain existing decision and raise for manual review
+            # Destructive change to the old canonical reference which now loses
+            # a duplicate. Raise for manual review of the decision and the implications.
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
             new_decision.detail = (
                 "Decouple reason: Existing duplicate decision changed. "
                 + (new_decision.detail if new_decision.detail else "")
             )
         elif (
-            # Reference forms a chain longer than allowed
             new_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
-            and reference.canonical_chain_length == MAX_REFERENCE_DUPLICATE_DEPTH
+            and reference.has_duplicates
         ):
-            # Raise for manual review
+            # A canonical reference with duplicates has been flagged as a duplicate.
+            # A future implementation may merge duplicate trees here, for now let's flag
+            # for manual review.
             new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
             new_decision.detail = (
-                "Decouple reason: Max duplicate chain length reached. "
+                "Decouple reason: Reference has existing duplicates and cannot "
+                "become a duplicate itself. Remap existing duplicates before retrying. "
                 + (new_decision.detail if new_decision.detail else "")
             )
         else:
-            # Either:
-            # - No active decision
-            # - Decision is the same
-            # - Decision is moving from canonical to duplicate
-            # Just update the active decision to record the consistent state.
             if active_decision:
                 if (
                     active_decision.duplicate_determination
                     == new_decision.duplicate_determination
+                    and active_decision.canonical_reference_id
+                    == new_decision.canonical_reference_id
                 ):
                     decision_changed = False
                 active_decision.active_decision = False
@@ -364,9 +400,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             new_decision
         )
 
-        return new_decision, decision_changed
+        return new_decision, decision_changed, active_decision
 
-    async def shortcut_deduplication_using_identifiers(
+    async def shortcut_deduplication_using_identifiers(  # noqa: PLR0912
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
         trusted_unique_identifier_types: set[ExternalIdentifierType],
@@ -425,8 +461,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.reference_id,
             preload=["identifiers", "duplicate_decision"],
         )
-        if not reference.identifiers or reference.duplicate_decision:
-            # No identifiers or already deduplicated, skip shortcutting
+        if not reference.identifiers:
+            # No identifiers so we can't deduplicate
             return None
 
         trusted_identifiers = [
@@ -443,7 +479,22 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             candidate for candidate in candidates if candidate.id != reference.id
         ]
         if not candidates:
-            return None
+            if not trusted_identifiers:
+                # No trusted identifiers to shortcut with, fall through to ES
+                return None
+            # Has trusted identifiers but no existing matches - new unique reference
+            # Skip ES deduplication entirely since the trusted identifier guarantees
+            # uniqueness within its source (e.g., OpenAlex W-ID)
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.CANONICAL
+            )
+            reference_duplicate_decision.detail = (
+                "New reference with trusted identifier(s), no existing matches"
+            )
+            reference_duplicate_decision, _, _ = await self.map_duplicate_decision(
+                reference_duplicate_decision
+            )
+            return [reference_duplicate_decision]
 
         canonical_ids, undeduplicated_ids = set(), set()
         for candidate in candidates:
@@ -455,16 +506,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 undeduplicated_ids.add(candidate.id)
             elif candidate.is_canonical:
                 canonical_ids.add(candidate.id)
-            else:
-                # Duplicate of a canonical, find the canonical ID
-                # We get this fresh without the filters so we can traverse a chain if
-                # required
-                canonical_reference = await self.sql_uow.references.get_by_pk(
-                    candidate.id, preload=["canonical_reference"]
-                )
-                while canonical_reference.canonical_reference:
-                    canonical_reference = canonical_reference.canonical_reference
-                canonical_ids.add(canonical_reference.id)
+            elif candidate.duplicate_decision.canonical_reference_id:
+                # Duplicate — use the decision's direct canonical reference ID
+                canonical_ids.add(candidate.duplicate_decision.canonical_reference_id)
 
         if len(canonical_ids) > 1:
             return [
@@ -492,7 +536,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 "Shortcutted with trusted identifier(s)"
             )
 
-            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+            reference_duplicate_decision, _, _ = await self.map_duplicate_decision(
                 reference_duplicate_decision
             )
         else:
@@ -505,14 +549,37 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.detail = (
                 "Shortcutted with trusted identifier(s)"
             )
-            reference_duplicate_decision, _ = await self.map_duplicate_decision(
+            reference_duplicate_decision, _, _ = await self.map_duplicate_decision(
                 reference_duplicate_decision
             )
 
         # Map any undeduplicated candidates as duplicates of the canonical
+        # Guard: bulk-fetch active decisions to skip candidates another worker
+        # already decided. Uses a scalar SELECT to bypass the ORM identity map
+        # and see the latest committed state under READ COMMITTED.
+        # UNSEARCHABLE decisions are not skipped — they should be pulled into
+        # the duplicate graph.
+        dedup_repo = self.sql_uow.reference_duplicate_decisions
+        existing_decisions = await dedup_repo.get_active_decision_determinations(
+            undeduplicated_ids
+        )
+
         side_effect_decisions = []
         for candidate_id in undeduplicated_ids:
-            decision, _ = await self.map_duplicate_decision(
+            existing_determination = existing_decisions.get(candidate_id)
+            if (
+                existing_determination is not None
+                and existing_determination != DuplicateDetermination.UNSEARCHABLE
+            ):
+                logger.info(
+                    "Candidate already has active non-UNSEARCHABLE "
+                    "decision, skipping side-effect.",
+                    candidate_id=str(candidate_id),
+                    existing_determination=existing_determination,
+                )
+                continue
+
+            decision, _, _ = await self.map_duplicate_decision(
                 ReferenceDuplicateDecision(
                     reference_id=candidate_id,
                     duplicate_determination=DuplicateDetermination.DUPLICATE,

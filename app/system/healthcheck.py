@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
+from app.persistence.blob.models import BlobContainer
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -49,16 +50,25 @@ async def healthcheck(
             return "No Azure blob config provided."
 
         try:
-            async with BlobServiceClient(
-                account_url=settings.azure_blob_config.account_url,
-                credential=DefaultAzureCredential()
-                if settings.azure_blob_config.uses_managed_identity
-                else settings.azure_blob_config.credential,
-            ) as client:
-                container = client.get_container_client(
-                    settings.azure_blob_config.container
-                )
-                await container.get_container_properties()
+            if settings.azure_blob_config.uses_managed_identity:
+                async with (
+                    DefaultAzureCredential() as credential,
+                    BlobServiceClient(
+                        account_url=settings.azure_blob_config.account_url,
+                        credential=credential,
+                    ) as client,
+                ):
+                    await client.get_container_client(
+                        settings.azure_blob_config.containers[BlobContainer.OPERATIONS]
+                    ).get_container_properties()
+            else:
+                async with BlobServiceClient(
+                    account_url=settings.azure_blob_config.account_url,
+                    credential=settings.azure_blob_config.credential,
+                ) as client:
+                    await client.get_container_client(
+                        settings.azure_blob_config.containers[BlobContainer.OPERATIONS]
+                    ).get_container_properties()
 
         except Exception:
             logger.exception("Blob storage connection failed.")

@@ -48,14 +48,14 @@ resource "github_actions_environment_variable" "azure_directory_client_id" {
   environment   = github_repository_environment.environment.environment
   repository    = github_repository_environment.environment.repository
   variable_name = "AZURE_DIRECTORY_CLIENT_ID"
-  value         = var.external_directory_enabled ? azuread_application_registration.external_directory_github_actions.client_id : azuread_application_registration.github_actions.client_id
+  value         = azuread_application_registration.github_actions.client_id
 }
 
 resource "github_actions_environment_variable" "azure_directory_tenant_id" {
   environment   = github_repository_environment.environment.environment
   repository    = github_repository_environment.environment.repository
   variable_name = "AZURE_DIRECTORY_TENANT_ID"
-  value         = var.external_directory_enabled ? var.external_directory_tenant_id : var.azure_tenant_id
+  value         = var.azure_tenant_id
 }
 
 resource "github_actions_environment_variable" "azure_login_url" {
@@ -122,7 +122,7 @@ resource "github_actions_environment_variable" "destiny_api_identifier_uri" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
   variable_name = "DESTINY_API_IDENTIFIER_URI"
-  value         = var.external_directory_enabled ? azuread_application_identifier_uri.external_directory_identifier_uri.identifier_uri : azuread_application_identifier_uri.this.identifier_uri
+  value         = azuread_application_identifier_uri.this.identifier_uri
 }
 
 resource "github_actions_environment_variable" "pypi_repository" {
@@ -146,5 +146,5 @@ resource "github_actions_environment_secret" "destiny_api_endpoint" {
   repository      = github_repository_environment.environment.repository
   environment     = github_repository_environment.environment.environment
   secret_name     = "DESTINY_API_ENDPOINT"
-  plaintext_value = "https://${data.azurerm_container_app.api.ingress[0].fqdn}/v1/"
+  plaintext_value = "https://${local.api_hostname}/v1/"
 }

@@ -1,9 +1,9 @@
 """Unit tests for the projection functions in the references module."""
 
-import uuid
 from datetime import UTC, date, datetime, timedelta
 from math import isclose
 from random import shuffle
+from uuid import uuid7
 
 import destiny_sdk
 import pytest
@@ -30,6 +30,7 @@ from tests.factories import (
     DOIIdentifierFactory,
     EnhancementFactory,
     ERICIdentifierFactory,
+    LinkedDataEnhancementFactory,
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
     OtherIdentifierFactory,
@@ -158,7 +159,7 @@ def other_identifier():
 @pytest.fixture
 def reference_with_enhancements(bibliographic_enhancement, abstract_enhancement):
     """Create a reference with enhancements."""
-    ref_id = uuid.uuid4()
+    ref_id = uuid7()
 
     bibliographic_enhancement.reference_id = ref_id
     abstract_enhancement.reference_id = ref_id
@@ -176,7 +177,7 @@ def reference_with_annotations(
     taxonomy_annotation_enhancement,
 ):
     """Create a reference with annotation enhancements."""
-    ref_id = uuid.uuid4()
+    ref_id = uuid7()
 
     destiny_inclusion_annotation_enhancement.reference_id = ref_id
     taxonomy_annotation_enhancement.reference_id = ref_id
@@ -204,7 +205,7 @@ def complete_reference(
     taxonomy_annotation_enhancement,
 ):
     """Create a reference with both enhancements and identifiers."""
-    ref_id = uuid.uuid4()
+    ref_id = uuid7()
 
     # Update the identifier IDs to match
     doi_identifier.reference_id = ref_id
@@ -252,9 +253,9 @@ class TestReferenceSearchFieldsProjection:
         self, bibliographic_enhancement, sample_authorship
     ):
         """Test that we prioritise canonical enhancements"""
-        reference_id = uuid.uuid4()
+        reference_id = uuid7()
 
-        canonical_biblography = EnhancementFactory.build(
+        canonical_bibliography = EnhancementFactory.build(
             reference_id=reference_id,
             content=BibliographicMetadataEnhancementFactory.build(
                 title="We get this title, this enhancement is on canonical reference",
@@ -265,17 +266,25 @@ class TestReferenceSearchFieldsProjection:
 
         reference = ReferenceFactory.build(
             id=reference_id,
-            enhancements=[bibliographic_enhancement, canonical_biblography],
+            enhancements=[bibliographic_enhancement, canonical_bibliography],
         )
 
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
-        assert reference_proj.title == canonical_biblography.content.title
+        assert reference_proj.title == canonical_bibliography.content.title
+        assert (
+            reference_proj.publication_date
+            == canonical_bibliography.content.publication_date
+        )
+        assert (
+            reference_proj.publication_year
+            == canonical_bibliography.content.publication_year
+        )
 
     def test_reference_sorting_prioritises_created_date(
         self, bibliographic_enhancement, sample_authorship
     ):
-        """Test that we prioritise the created date of the enhancements"""
-        reference_id = uuid.uuid4()
+        """Test that we prioritize the created date of the enhancements"""
+        reference_id = uuid7()
 
         most_recent_bibliography = EnhancementFactory.build(
             # Created the day after the the other bibliographic enhancement
@@ -295,7 +304,7 @@ class TestReferenceSearchFieldsProjection:
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == most_recent_bibliography.content.title
 
-    def test_reference_sorting_priorises_canonical_over_most_recent(
+    def test_reference_sorting_prioritizes_canonical_over_most_recent(
         self, bibliographic_enhancement, sample_authorship
     ):
         """
@@ -305,7 +314,7 @@ class TestReferenceSearchFieldsProjection:
         enhancement on the canonical reference, we still use the enhancement
         on the canonical reference.
         """
-        reference_id = uuid.uuid4()
+        reference_id = uuid7()
         bibliographic_enhancement.reference_id = reference_id
 
         most_recent_bibliography = EnhancementFactory.build(
@@ -325,6 +334,10 @@ class TestReferenceSearchFieldsProjection:
 
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == bibliographic_enhancement.content.title
+        assert (
+            reference_proj.publication_date
+            == bibliographic_enhancement.content.publication_date
+        )
 
     def test_reference_sorting_the_uber_refrence(
         self,
@@ -350,7 +363,7 @@ class TestReferenceSearchFieldsProjection:
 
         This test also shuffles the enhancements before adding them to the reference.
         """
-        canonical_reference_id = uuid.uuid4()
+        canonical_reference_id = uuid7()
 
         # Make our two pre-generated enhancements canonical
         bibliographic_enhancement.reference_id = canonical_reference_id
@@ -455,6 +468,10 @@ class TestReferenceSearchFieldsProjection:
             most_recent_canonical_bibliography.content.publication_year
         )
 
+        assert result.publication_date == (
+            most_recent_canonical_bibliography.content.publication_date
+        )
+
         assert result.title == most_recent_canonical_bibliography.content.title
 
         assert result.annotations == ["taxonomy:science/label!"]
@@ -502,7 +519,7 @@ class TestReferenceSearchFieldsProjection:
         )
 
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[
                 enhancement_with_title,
@@ -525,7 +542,7 @@ class TestReferenceSearchFieldsProjection:
 
         Also test that authors are returned with correct positions
         """
-        canonical_reference_id = uuid.uuid4()
+        canonical_reference_id = uuid7()
 
         authorship_with_whitespace = [
             AuthorshipFactory.build(
@@ -588,7 +605,7 @@ class TestReferenceSearchFieldsProjection:
         """Test we get year from publication date if publication year not provided."""
         enhancement_without_publication_year = EnhancementFactory.build(
             source="fallback_source",
-            # Can't use factory here as we're explicity setting missing values
+            # Can't use factory here as we're explicitly setting missing values
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Date Fallback Paper",
@@ -607,7 +624,7 @@ class TestReferenceSearchFieldsProjection:
 
     def test_get_from_reference_prioritises_annotations_by_scheme(self):
         """Test that we prioritise annotations by scheme, not by label."""
-        reference_id = uuid.uuid4()
+        reference_id = uuid7()
 
         annotation_enhancement_1 = EnhancementFactory.build(
             reference_id=reference_id,
@@ -656,7 +673,7 @@ class TestReferenceSearchFieldsProjection:
         # Can't use factories here as we're explicity setting missing values
         # And the post generation will replace them.
         reference_empty = Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[],
             identifiers=[],
@@ -675,7 +692,7 @@ class TestReferenceSearchFieldsProjection:
         # Can't use factories here as we're explicity setting missing values
         # And the post generation will replace them.
         reference_none = Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=None,
             identifiers=[],
@@ -736,6 +753,109 @@ class TestReferenceSearchFieldsProjection:
         assert result == expected
 
 
+class TestLinkedDataProjection:
+    """Test linked data projection via ReferenceSearchFieldsProjection."""
+
+    @pytest.fixture
+    def linked_data_enhancement(self) -> Enhancement:
+        return EnhancementFactory.build(
+            content=LinkedDataEnhancementFactory.build(
+                data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
+                    "@type": "Investigation",
+                    "documentType": {
+                        "@type": "DocumentTypeCodingAnnotation",
+                        "codedValue": {"@id": "esea:C00008"},
+                        "status": "evrepo:coded",
+                    },
+                },
+            ),
+        )
+
+    def test_reference_with_linked_data_enhancement(self, linked_data_enhancement):
+        reference_id = uuid7()
+        linked_data_enhancement.reference_id = reference_id
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[linked_data_enhancement],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+
+        assert result.linked_data_content is not None
+        assert result.linked_data_content == linked_data_enhancement.content
+
+    def test_reference_without_linked_data(self):
+        reference = ReferenceFactory.build(
+            id=uuid7(),
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(),
+                ),
+            ],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+
+        assert result.linked_data_content is None
+
+    def test_highest_priority_linked_data_wins(self):
+        reference_id = uuid7()
+
+        older = EnhancementFactory.build(
+            reference_id=reference_id,
+            content=LinkedDataEnhancementFactory.build(
+                data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
+                    "@type": "Investigation",
+                    "documentType": {
+                        "@type": "DocumentTypeCodingAnnotation",
+                        "codedValue": {"@id": "esea:C00008"},
+                        "status": "evrepo:coded",
+                    },
+                },
+            ),
+        )
+
+        assert older.created_at
+        newer = EnhancementFactory.build(
+            reference_id=reference_id,
+            created_at=older.created_at + timedelta(days=1),
+            content=LinkedDataEnhancementFactory.build(
+                data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
+                    "@type": "Investigation",
+                    "hasFinding": [
+                        {
+                            "@type": "Finding",
+                            "hasContext": {
+                                "@type": "Context",
+                                "educationLevel": [
+                                    {
+                                        "@type": "EducationLevelCodingAnnotation",
+                                        "codedValue": {"@id": "esea:C00002"},
+                                        "status": "evrepo:coded",
+                                    }
+                                ],
+                            },
+                        }
+                    ],
+                },
+            ),
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[older, newer],
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+
+        # Newer wins — should have the newer enhancement's content
+        assert result.linked_data_content == newer.content
+
+
 class TestDeduplicatedReferenceProjection:
     """Test the DeduplicatedReferenceProjection class."""
 
@@ -756,27 +876,27 @@ class TestDeduplicatedReferenceProjection:
         """Test deduplication with duplicate references."""
         # Create duplicate reference
         duplicate_enhancement = Enhancement(
-            id=uuid.uuid4(),
+            id=uuid7(),
             source="duplicate_source",
             visibility=Visibility.PUBLIC,
             content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
                 enhancement_type=EnhancementType.BIBLIOGRAPHIC,
                 title="Duplicate Title",
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid7(),
         )
 
         duplicate_identifier = LinkedExternalIdentifier(
-            id=uuid.uuid4(),
+            id=uuid7(),
             identifier=destiny_sdk.identifiers.DOIIdentifier(
                 identifier="10.1000/duplicate",
                 identifier_type=ExternalIdentifierType.DOI,
             ),
-            reference_id=uuid.uuid4(),
+            reference_id=uuid7(),
         )
 
         duplicate_reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[duplicate_enhancement],
             identifiers=[duplicate_identifier],
@@ -813,7 +933,7 @@ class TestDeduplicatedReferenceProjection:
     def test_get_from_reference_none_enhancements_preserved(self):
         """Test that None enhancements are preserved (not preloaded)."""
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=None,  # Not preloaded
             identifiers=[],
@@ -827,7 +947,7 @@ class TestDeduplicatedReferenceProjection:
     def test_get_from_reference_none_identifiers_preserved(self):
         """Test that None identifiers are preserved (not preloaded)."""
         reference = Reference(
-            id=uuid.uuid4(),
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             enhancements=[],
             identifiers=None,  # Not preloaded
@@ -837,56 +957,3 @@ class TestDeduplicatedReferenceProjection:
         result = DeduplicatedReferenceProjection.get_from_reference(reference)
 
         assert result.identifiers is None
-
-    def test_get_from_reference_recursive_duplicates(self, complete_reference):
-        """Test deduplication with nested duplicate references."""
-        # Create a nested duplicate
-        nested_enhancement = Enhancement(
-            id=uuid.uuid4(),
-            source="nested_source",
-            visibility=Visibility.PUBLIC,
-            content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
-                enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-                title="Nested Title",
-            ),
-            reference_id=uuid.uuid4(),
-        )
-
-        nested_reference = Reference(
-            id=uuid.uuid4(),
-            visibility=Visibility.PUBLIC,
-            enhancements=[nested_enhancement],
-            identifiers=[],
-            duplicate_references=[],  # End of chain
-        )
-
-        # Create intermediate duplicate with nested duplicate
-        intermediate_enhancement = Enhancement(
-            id=uuid.uuid4(),
-            source="intermediate_source",
-            visibility=Visibility.PUBLIC,
-            content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
-                enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-                title="Intermediate Title",
-            ),
-            reference_id=uuid.uuid4(),
-        )
-
-        intermediate_reference = Reference(
-            id=uuid.uuid4(),
-            visibility=Visibility.PUBLIC,
-            enhancements=[intermediate_enhancement],
-            identifiers=[],
-            duplicate_references=[nested_reference],
-        )
-
-        complete_reference.duplicate_references = [intermediate_reference]
-
-        result = DeduplicatedReferenceProjection.get_from_reference(complete_reference)
-
-        # Should have all enhancements from the chain
-        enhancement_sources = [e.source for e in result.enhancements]
-        assert "test_source" in enhancement_sources  # Original
-        assert "intermediate_source" in enhancement_sources  # Intermediate
-        assert "nested_source" in enhancement_sources  # Nested
-        assert len(result.enhancements) == 7  # 5 original + 1 intermediate + 1 nested

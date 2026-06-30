@@ -1,5 +1,4 @@
-import uuid
-from uuid import UUID, uuid4
+from uuid import UUID, uuid7
 
 import pytest
 
@@ -186,6 +185,19 @@ class FakeRepository:
                 updated_count += 1
         return updated_count
 
+    async def get_active_decision_determinations(
+        self, reference_ids: set[UUID]
+    ) -> dict[UUID, object]:
+        """Return {reference_id: duplicate_determination} for active decisions."""
+        if not reference_ids:
+            return {}
+        return {
+            record.reference_id: record.duplicate_determination  # type: ignore[attr-defined]
+            for record in self.repository.values()
+            if getattr(record, "reference_id", None) in reference_ids
+            and getattr(record, "active_decision", False) is True
+        }
+
     async def bulk_update_by_filter(
         self, filter_conditions: dict, **kwargs: object
     ) -> int:
@@ -202,6 +214,44 @@ class FakeRepository:
                     setattr(record, key, value)
                 updated_count += 1
         return updated_count
+
+
+def link_fake_repos(
+    child_repo: "FakeRepository",
+    parent_repo: "FakeRepository",
+    *,
+    fk: str,
+    attr: str,
+    filter_field: str | None = None,
+    filter_value: object = None,
+) -> None:
+    """Simulate a SQLAlchemy viewonly relationship between FakeRepositories.
+
+    After every ``merge`` on *child_repo*, the matching record in
+    *parent_repo* (looked up via *fk* → parent PK) will have its
+    *attr* set to the merged record — mirroring how SQLAlchemy syncs
+    relationships within a session.
+
+    An optional filter (e.g. ``filter_field="active_decision",
+    filter_value=True``) restricts which merges trigger the sync.
+    """
+    _original = child_repo.merge
+
+    async def _synced_merge(record):
+        result = await _original(record)
+        parent_id = getattr(result, fk, None)
+        if (
+            parent_id
+            and parent_id in parent_repo.repository
+            and (
+                filter_field is None
+                or getattr(result, filter_field, None) == filter_value
+            )
+        ):
+            setattr(parent_repo.repository[parent_id], attr, result)
+        return result
+
+    child_repo.merge = _synced_merge  # type: ignore[method-assign]
 
 
 class FakeUnitOfWork:
@@ -274,7 +324,7 @@ def fake_import_batch():
     def _fake_import_batch(
         id: UUID, status: ImportBatchStatus, import_results: list[ImportResult]
     ) -> ImportBatch:
-        import_record_id = uuid4()
+        import_record_id = uuid7()
 
         return ImportBatch(
             id=id,
@@ -347,7 +397,7 @@ def pending_enhancement_factory(session, created_reference, created_robot):
         status: PendingEnhancementStatus = PendingEnhancementStatus.PENDING,
         expires_at=None,
         source: str = "test",
-        retry_of: uuid.UUID | None = None,
+        retry_of: UUID | None = None,
         **kwargs,
     ) -> PendingEnhancement:
         pending_enhancement = PendingEnhancementFactory.build(

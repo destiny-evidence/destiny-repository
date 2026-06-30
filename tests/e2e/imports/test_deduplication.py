@@ -2,9 +2,9 @@
 
 import asyncio
 import json
-import uuid
 from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
+from uuid import UUID, uuid7
 
 import httpx
 import pytest
@@ -17,7 +17,6 @@ from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import delete, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from tenacity import Retrying, stop_after_attempt, wait_fixed
 
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
@@ -40,7 +39,6 @@ from tests.e2e.utils import (
     import_references,
     poll_duplicate_process,
     poll_pending_enhancement,
-    refresh_reference_index,
     refresh_robot_automation_index,
 )
 from tests.factories import (
@@ -120,7 +118,7 @@ def duplicate_reference(
     automation_triggering_annotation_enhancement: Enhancement,
 ) -> Reference:
     """Get a slightly mutated canonical reference to be a duplicate."""
-    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid4()})
+    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid7()})
     assert duplicate.enhancements
     assert isinstance(
         duplicate.enhancements[0].content, BibliographicMetadataEnhancement
@@ -139,7 +137,7 @@ def non_duplicate_reference(
     canonical_reference: Reference,
 ) -> Reference:
     """Get a slightly mutated canonical reference to definitely not be a duplicate."""
-    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid.uuid4()})
+    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid7()})
     assert duplicate.enhancements
     assert isinstance(
         duplicate.enhancements[0].content, BibliographicMetadataEnhancement
@@ -153,7 +151,7 @@ def non_duplicate_reference(
 def exact_duplicate_reference(canonical_reference: Reference) -> Reference:
     """Get a reference that is a subset of the canonical."""
     exact_duplicate_reference = canonical_reference.model_copy(
-        deep=True, update={"id": uuid.uuid4()}
+        deep=True, update={"id": uuid7()}
     )
     assert exact_duplicate_reference.enhancements
 
@@ -176,7 +174,7 @@ async def robot_automation_on_specific_enhancement(
     es_client: AsyncElasticsearch,
     robot: Robot,
     automation_triggering_annotation: BooleanAnnotation,
-) -> uuid.UUID:
+) -> UUID:
     """Create a robot automation that runs on specific enhancements."""
     response = await destiny_client_v1.post(
         "/enhancement-requests/automations/",
@@ -269,7 +267,7 @@ async def test_import_duplicate(  # noqa: PLR0913
     ],
     canonical_reference: Reference,
     duplicate_reference: Reference,
-    robot_automation_on_specific_enhancement: uuid.UUID,
+    robot_automation_on_specific_enhancement: UUID,
 ):
     """Test importing a duplicate reference."""
     canonical_reference_id = (
@@ -317,17 +315,8 @@ async def test_import_duplicate(  # noqa: PLR0913
     es_source = es_result["hits"]["hits"][0]["_source"]
     assert es_source["duplicate_determination"] == "canonical"
 
-    authors, titles = set(), set()
-    for enhancement in es_source["enhancements"]:
-        if enhancement["content"]["enhancement_type"] == "bibliographic":
-            titles.add(enhancement["content"]["title"])
-            for author in enhancement["content"]["authorship"]:
-                authors.add(author["display_name"])
-    assert titles >= {
-        "A Study on the Effects of Testing",
-        "A Study on the Effects of Testing!",
-    }
-    assert authors >= {"Jayne Doe", "Jane Doe", "John Smith"}
+    # Note: Enhancements are stored in PostgreSQL, not ES (ES is flattened for search).
+    # Enhancement merging is verified by the robot automation trigger below.
 
     # Finally, check that the robot automation was triggered on the canonical reference
     # by the near duplicate's annotation enhancement.
@@ -347,7 +336,7 @@ async def test_import_non_duplicate(  # noqa: PLR0913
     get_import_file_signed_url: Callable[
         [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
     ],
-    robot_automation_on_specific_enhancement: uuid.UUID,
+    robot_automation_on_specific_enhancement: UUID,
     canonical_reference: Reference,
     non_duplicate_reference: Reference,
 ):
@@ -420,39 +409,24 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
         )
     ).pop()
 
-    # Manually insert the duplicate reference to avoid side effects
     pg_session.add(SQLReference.from_domain(duplicate_reference))
-    pg_session.add(
-        SQLReferenceDuplicateDecision(
-            id=(canonical_decision_id := uuid.uuid4()),
-            reference_id=duplicate_reference.id,
-            duplicate_determination=DuplicateDetermination.CANONICAL,
-            active_decision=True,
-            candidate_canonical_ids=[],
-        )
-    )
     await pg_session.commit()
 
-    # Index it to elasticsearch
-    await destiny_client_v1.post(
-        f"/system/indices/{ReferenceDocument.Index.name}/repair/"
-    )
-    for retry in Retrying(stop=stop_after_attempt(5), wait=wait_fixed(1)):
-        with retry:
-            await refresh_reference_index(es_client)
-            es_result = await es_client.search(
-                index=ReferenceDocument.Index.name,
-                query={"match_all": {}},
-            )
-            assert es_result["hits"]["total"]["value"] == 2
-            assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
-                str(canonical_reference_id),
-                str(duplicate_reference.id),
+    make_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_reference.id),
+                "duplicate_determination": "canonical",
             }
+        ],
+    )
+    assert make_response.status_code == 201
+    canonical_decision_id = UUID(make_response.json()[0]["id"])
 
     # Now deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
+        "/references/duplicate-decisions/invoke/",
         json={
             "reference_ids": [str(duplicate_reference.id)],
         },
@@ -515,23 +489,25 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
         )
     ).pop()
 
-    # Directly import the non-duplicate reference to avoid side effects
     pg_session.add(SQLReference.from_domain(non_duplicate_reference))
-    pg_session.add(
-        SQLReferenceDuplicateDecision(
-            id=(non_canonical_decision_id := uuid.uuid4()),
-            reference_id=non_duplicate_reference.id,
-            duplicate_determination=DuplicateDetermination.DUPLICATE,
-            canonical_reference_id=canonical_reference_id,
-            active_decision=True,
-            candidate_canonical_ids=[canonical_reference_id],
-        )
-    )
     await pg_session.commit()
+
+    make_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(non_duplicate_reference.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_reference_id),
+            }
+        ],
+    )
+    assert make_response.status_code == 201
+    non_canonical_decision_id = UUID(make_response.json()[0]["id"])
 
     # Now deduplicate the non-duplicate again and check downstream
     await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
+        "/references/duplicate-decisions/invoke/",
         json={
             "reference_ids": [str(non_duplicate_reference.id)],
         },
@@ -573,6 +549,7 @@ async def test_duplicate_change(  # noqa: PLR0913
     Verify behaviour when a duplicate-like reference becomes a different duplicate.
 
     We point duplicate->non_duplicate, then the process changes it to duplicate->canonical.
+    This creates a DECOUPLED decision. We then resolve it via the manual endpoint.
     """
     # First import the canonical and non-duplicate references. Both will register as canonical.
     canonical_reference_id, non_duplicate_reference_id = [
@@ -588,24 +565,25 @@ async def test_duplicate_change(  # noqa: PLR0913
         for reference in (canonical_reference, non_duplicate_reference)
     ]
 
-    # Now manually import the duplicate reference to avoid side effects
-    # Manually insert the duplicate reference to avoid side effects
     pg_session.add(SQLReference.from_domain(duplicate_reference))
-    pg_session.add(
-        SQLReferenceDuplicateDecision(
-            id=(duplicate_decision_id := uuid.uuid4()),
-            reference_id=duplicate_reference.id,
-            duplicate_determination=DuplicateDetermination.DUPLICATE,
-            active_decision=True,
-            candidate_canonical_ids=[],
-            canonical_reference_id=non_duplicate_reference_id,
-        )
-    )
     await pg_session.commit()
+
+    make_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_reference.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(non_duplicate_reference_id),
+            }
+        ],
+    )
+    assert make_response.status_code == 201
+    duplicate_decision_id = UUID(make_response.json()[0]["id"])
 
     # Deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
+        "/references/duplicate-decisions/invoke/",
         json={
             "reference_ids": [str(duplicate_reference.id)],
         },
@@ -628,6 +606,53 @@ async def test_duplicate_change(  # noqa: PLR0913
     assert old_decision
     assert old_decision.active_decision
 
+    # Now resolve the decouple via the manual endpoint: point to the real canonical.
+    resolve_response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_reference.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_reference_id),
+            }
+        ],
+    )
+    assert resolve_response.status_code == 201
+    result = resolve_response.json()[0]
+    assert result["outcome"] == "duplicate"
+    assert result["canonical_reference_id"] == str(
+        duplicate_decision.canonical_reference_id
+    )
+    assert result["active_decision"]
+
+    # The old DUPLICATE of non_duplicate should now be inactive.
+    pg_session.expire_all()
+    old_decision = await pg_session.get(
+        SQLReferenceDuplicateDecision, duplicate_decision_id
+    )
+    assert old_decision
+    assert not old_decision.active_decision
+
+    # ES: duplicate removed, canonical present with merged data,
+    # non_duplicate present as standalone.
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    es_result = await es_client.search(
+        index=ReferenceDocument.Index.name,
+        query={
+            "terms": {
+                "_id": [
+                    str(canonical_reference_id),
+                    str(duplicate_reference.id),
+                    str(non_duplicate_reference_id),
+                ]
+            }
+        },
+    )
+    es_ids = {hit["_id"] for hit in es_result["hits"]["hits"]}
+    assert str(duplicate_reference.id) not in es_ids
+    assert str(canonical_reference_id) in es_ids
+    assert str(non_duplicate_reference_id) in es_ids
+
 
 async def test_deduplication_shortcut(  # noqa: PLR0913
     configured_repository_factory: Callable[
@@ -640,7 +665,7 @@ async def test_deduplication_shortcut(  # noqa: PLR0913
     ],
     canonical_reference: Reference,
     duplicate_reference: Reference,
-    robot_automation_on_specific_enhancement: uuid.UUID,
+    robot_automation_on_specific_enhancement: UUID,
 ):
     """Test that deduplication shortcutting works as expected."""
     trusted_identifier = LinkedExternalIdentifierFactory.build(
@@ -731,17 +756,8 @@ async def test_deduplication_shortcut(  # noqa: PLR0913
         es_source = es_result["hits"]["hits"][0]["_source"]
         assert es_source["duplicate_determination"] == "canonical"
 
-        authors, titles = set(), set()
-        for enhancement in es_source["enhancements"]:
-            if enhancement["content"]["enhancement_type"] == "bibliographic":
-                titles.add(enhancement["content"]["title"])
-                for author in enhancement["content"]["authorship"]:
-                    authors.add(author["display_name"])
-        assert titles >= {
-            "A Study on the Effects of Testing",
-            "A Study on the Effects of Testing!",
-        }
-        assert authors >= {"Jayne Doe", "Jane Doe", "John Smith"}
+        # Note: Enhancements are stored in PostgreSQL, not ES (ES is flattened for search).
+        # Enhancement merging is verified by the robot automation trigger below.
 
         # Finally, check that the robot automation was triggered on the canonical reference
         # by the near duplicate's annotation enhancement.

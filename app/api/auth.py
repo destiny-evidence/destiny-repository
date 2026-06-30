@@ -12,9 +12,10 @@ This module is based on the following references :
 """
 
 import hmac
+from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from enum import StrEnum, auto
-from typing import Annotated, Any, Protocol
+from typing import Annotated, Any, NamedTuple, Protocol
 from uuid import UUID
 
 import destiny_sdk
@@ -23,9 +24,13 @@ from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
 from jose import exceptions, jwt
+from joserfc import errors as joserfc_errors
+from joserfc import jwt as joserfc_jwt
+from joserfc.jwk import KeySet
 from opentelemetry import trace
 
 from app.core.config import get_settings
+from app.core.entitlements import Entitlement
 from app.core.exceptions import AuthError, NotFoundError
 from app.core.telemetry.attributes import Attributes
 
@@ -47,8 +52,11 @@ class AuthRole(StrEnum):
     ADMINISTRATOR = "administrator"
     IMPORT_WRITER = "import.writer"
     REFERENCE_READER = "reference.reader"
+    REFERENCE_FULL_TEXT_READER = "reference.full_text.reader"
     REFERENCE_DEDUPLICATOR = "reference.deduplicator"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
+    ROBOT_WRITER = "robot.writer"
+    ROBOT_ENTITLEMENT_WRITER = "robot.entitlement.writer"
 
 
 class AuthScope(StrEnum):
@@ -57,9 +65,11 @@ class AuthScope(StrEnum):
     ADMINISTRATOR = "administrator.all"
     IMPORT_WRITER = "import.writer.all"
     REFERENCE_READER = "reference.reader.all"
+    REFERENCE_FULL_TEXT_READER = "reference.full_text.reader.all"
     REFERENCE_DEDUPLICATOR = "reference.deduplicator.all"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer.all"
     ROBOT_WRITER = "robot.writer.all"
+    ROBOT_ENTITLEMENT_WRITER = "robot.entitlement.writer.all"
 
 
 class HMACClientType(StrEnum):
@@ -70,6 +80,51 @@ class HMACClientType(StrEnum):
     """
 
     ROBOT = auto()
+
+
+class SubjectType(StrEnum):
+    """Enum describing the type of authenticated subject."""
+
+    USER = auto()
+    SERVICE = auto()
+    ROBOT = auto()
+    BYPASS = auto()
+
+
+_ENTITLEMENT_TO_GRANTS: dict[Entitlement, frozenset[str]] = {
+    Entitlement.FULL_TEXT: frozenset(
+        {
+            AuthScope.REFERENCE_FULL_TEXT_READER.value,
+            AuthRole.REFERENCE_FULL_TEXT_READER.value,
+        }
+    ),
+    Entitlement.ROBOT_ENTITLEMENT_WRITER: frozenset(
+        {
+            AuthScope.ROBOT_ENTITLEMENT_WRITER.value,
+            AuthRole.ROBOT_ENTITLEMENT_WRITER.value,
+        }
+    ),
+}
+
+
+def derive_entitlements(
+    subject_type: SubjectType,
+    granted: frozenset[str] = frozenset(),
+) -> frozenset[Entitlement]:
+    """
+    Compute the entitlements granted to a JWT principal.
+
+    ``granted`` is the union of scope and role strings carried in the token.
+    Robots authenticate via HMAC and source their entitlements from the
+    ``Robot`` record directly, bypassing this function.
+    """
+    if subject_type is SubjectType.BYPASS:
+        return frozenset(Entitlement)
+    return frozenset(
+        entitlement
+        for entitlement, grants in _ENTITLEMENT_TO_GRANTS.items()
+        if grants & granted
+    )
 
 
 class AuthMethod(Protocol):
@@ -96,17 +151,26 @@ class AuthMethod(Protocol):
         self,
         request: Request,
         credentials: HTTPAuthorizationCredentials | None,
-    ) -> bool:
+    ) -> frozenset[Entitlement]:
         """
         Callable interface to allow use as a dependency.
 
         :param credentials: The bearer token provided in the request (as a dependency)
         :type credentials: HTTPAuthorizationCredentials | None
         :raises NotImplementedError: __call__() method has not been implemented.
-        :return: True if authorization is successful.
-        :rtype: bool
+        :return: The entitlements granted to the authenticated principal.
+        :rtype: frozenset[Entitlement]
         """
         raise NotImplementedError
+
+
+class JwtAuth(AuthMethod, ABC):
+    """Abstract base for JWT-based authentication methods."""
+
+    @abstractmethod
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """Verify a JWT and return the decoded claims."""
+        ...
 
 
 class StrategyAuth(AuthMethod):
@@ -155,7 +219,7 @@ class StrategyAuth(AuthMethod):
         self,
         request: Request,
         credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(security)],
-    ) -> bool:
+    ) -> frozenset[Entitlement]:
         """Callable interface to allow use as a dependency."""
         return await self._get_strategy()(request=request, credentials=credentials)
 
@@ -206,7 +270,7 @@ class CachingStrategyAuth(StrategyAuth):
         self._cached_strategy = None
 
 
-class AzureJwtAuth(AuthMethod):
+class AzureJwtAuth(JwtAuth):
     """
     AuthMethod for authorizing requests using the JWT provided by Azure.
 
@@ -307,7 +371,8 @@ class AzureJwtAuth(AuthMethod):
                 )
             except exceptions.ExpiredSignatureError as exc:
                 raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED, detail="Token is expired."
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
                 ) from exc
             except exceptions.JWTClaimsError as exc:
                 unverified = jwt.get_unverified_claims(token)
@@ -341,12 +406,12 @@ class AzureJwtAuth(AuthMethod):
             response = await client.get(f"{self.login_url}/discovery/v2.0/keys")
             return response.json()
 
-    def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> bool:
+    def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> SubjectType:
         # Delegated (user) token: check scopes
         if self.scope and verified_claims.get("scp"):
             scopes = verified_claims["scp"].split()
             if self.scope.value in scopes:
-                return True
+                return SubjectType.USER
 
             raise AuthError(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -357,7 +422,7 @@ class AzureJwtAuth(AuthMethod):
         if self.role and verified_claims.get("roles"):
             roles = verified_claims["roles"]
             if self.role.value in roles:
-                return True
+                return SubjectType.SERVICE
 
             raise AuthError(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -373,7 +438,7 @@ class AzureJwtAuth(AuthMethod):
         self,
         request: Request,  # noqa: ARG002
         credentials: HTTPAuthorizationCredentials | None,
-    ) -> bool:
+    ) -> frozenset[Entitlement]:
         """Authenticate the request."""
         if not credentials:
             raise AuthError(
@@ -381,19 +446,304 @@ class AzureJwtAuth(AuthMethod):
                 detail="Authorization HTTPBearer header missing.",
             )
         verified_claims = await self.verify_token(credentials.credentials)
+        subject_type = self._require_scope_or_role(verified_claims)
+
+        scopes = set(verified_claims.get("scp", "").split())
+        roles = set(verified_claims.get("roles", []))
 
         span = trace.get_current_span()
         span.set_attribute(Attributes.USER_AUTH_METHOD, "azure-jwt")
+        span.set_attribute(Attributes.USER_SUBJECT_TYPE, subject_type.value)
         if oid := verified_claims.get("oid"):
             span.set_attribute(Attributes.USER_ID, oid)
-        if name := verified_claims.get("name"):
-            span.set_attribute(Attributes.USER_FULL_NAME, name)
-        if roles := verified_claims.get("roles"):
+        if roles:
             span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
-        if email := verified_claims.get("email"):
-            span.set_attribute(Attributes.USER_EMAIL, email)
 
-        return self._require_scope_or_role(verified_claims)
+        return derive_entitlements(subject_type, frozenset(scopes | roles))
+
+
+class KeycloakJwtAuth(JwtAuth):
+    """
+    AuthMethod for authorizing requests using JWTs issued by Keycloak.
+
+    Similar to AzureJwtAuth but configured for Keycloak's OIDC endpoints.
+    Uses joserfc for JWT verification and JWKS handling.
+
+    Example:
+        .. code-block:: python
+
+            def auth_strategy():
+                return KeycloakJwtAuth(
+                    keycloak_url="http://localhost:8080",
+                    realm="destiny",
+                    client_id="destiny-repository-client",
+                    scope=AuthScope.REFERENCE_READER,
+                )
+
+            caching_auth = CachingStrategyAuth(selector=auth_strategy)
+
+            router = APIRouter(
+                prefix="/references",
+                tags=["references"],
+                dependencies=[Depends(caching_auth)]
+            )
+
+    """
+
+    def __init__(  # noqa: PLR0913
+        self,
+        keycloak_url: str,
+        realm: str,
+        client_id: str,
+        scope: StrEnum | None = None,
+        role: StrEnum | None = None,
+        cache_ttl: int = CACHE_TTL,
+        issuer_url: str | None = None,
+    ) -> None:
+        """
+        Initialize the Keycloak JWT auth dependency.
+
+        Args:
+            keycloak_url: The base URL of the Keycloak server (used for JWKS fetching)
+            realm: The Keycloak realm name
+            client_id: The client ID (audience) for token validation
+            scope: The required scope in the token's `scope` claim
+            role: The required role in `realm_access.roles` or client roles
+            cache_ttl: Time to live for JWKS cache entries, defaults to 24 hours
+            issuer_url: Optional separate URL for token issuer validation. Defaults to
+                keycloak_url if not provided. Useful when tokens are issued with a
+                different URL than the internal JWKS endpoint (e.g., in Docker).
+
+        """
+        self.keycloak_url = keycloak_url.rstrip("/")
+        self.realm = realm
+        self.client_id = client_id
+        self.scope = scope
+        self.role = role
+        self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
+
+        issuer_base = (issuer_url or keycloak_url).rstrip("/")
+        self.issuer = f"{issuer_base}/realms/{self.realm}"
+        self.jwks_uri = (
+            f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs"
+        )
+
+        self._claims_registry = joserfc_jwt.JWTClaimsRegistry(
+            iss={"essential": True, "value": self.issuer},
+            aud={"essential": True, "value": self.client_id},
+        )
+
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """
+        Verify the token using JWKS fetched from Keycloak.
+
+        Uses joserfc for JWT decoding and JWKS key matching.
+
+        Args:
+            token: The JWT to be verified
+
+        Returns:
+            The decoded token payload
+
+        Raises:
+            AuthError: If token verification fails
+
+        """
+        jwks = self.cache.get("jwks")
+        cached_jwks = bool(jwks)
+
+        if not jwks:
+            try:
+                jwks = await self._get_keycloak_keys()
+            except Exception as exc:
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to fetch signing keys from identity provider.",
+                ) from exc
+            self.cache["jwks"] = jwks
+
+        try:
+            decoded = joserfc_jwt.decode(token, jwks, algorithms=["RS256"])
+            self._claims_registry.validate(decoded.claims)
+            return dict(decoded.claims)
+
+        except joserfc_errors.ExpiredTokenError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
+            ) from exc
+
+        except joserfc_errors.InvalidClaimError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token claims: {exc}",
+            ) from exc
+
+        except joserfc_errors.JoseError as exc:
+            # If we had cached JWKS and verification failed,
+            # try refreshing the keys (key rotation)
+            if cached_jwks:
+                self.cache.pop("jwks", None)
+                return await self.verify_token(token)
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
+    async def _get_keycloak_keys(self) -> KeySet:
+        """Fetch and import JWKS from Keycloak's OIDC endpoint."""
+        async with AsyncClient() as client:
+            response = await client.get(self.jwks_uri)
+            response.raise_for_status()
+            return KeySet.import_key_set(response.json())
+
+    def _extract_roles(self, verified_claims: dict[str, Any]) -> frozenset[str]:
+        """Collect all role strings from realm_access and resource_access."""
+        realm_roles = verified_claims.get("realm_access", {}).get("roles", [])
+        client_roles = (
+            verified_claims.get("resource_access", {})
+            .get(self.client_id, {})
+            .get("roles", [])
+        )
+        return frozenset(realm_roles) | frozenset(client_roles)
+
+    def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> SubjectType:
+        """
+        Check for required scope or role in the Keycloak token.
+
+        Keycloak tokens have:
+        - scope: space-separated string of scopes
+        - realm_access.roles: list of realm roles
+        - resource_access.{client_id}.roles: list of client roles
+
+        Keycloak tokens always contain a ``scope`` claim. We therefore check
+        scope first and fall back to roles, allowing service accounts that
+        have a realm/client role but no explicit scope.
+        """
+        if self.scope and verified_claims.get("scope"):
+            scopes = verified_claims["scope"].split()
+            if self.scope.value in scopes:
+                return SubjectType.USER
+
+        if self.role and self.role.value in self._extract_roles(verified_claims):
+            return SubjectType.SERVICE
+
+        raise AuthError(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="The token does not contain the required scope or role.",
+        )
+
+    async def __call__(
+        self,
+        request: Request,  # noqa: ARG002
+        credentials: HTTPAuthorizationCredentials | None,
+    ) -> frozenset[Entitlement]:
+        """Authenticate the request using Keycloak JWT."""
+        if not credentials:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization HTTPBearer header missing.",
+            )
+
+        verified_claims = await self.verify_token(credentials.credentials)
+        subject_type = self._require_scope_or_role(verified_claims)
+
+        scopes = set(verified_claims.get("scope", "").split())
+        roles = self._extract_roles(verified_claims)
+
+        span = trace.get_current_span()
+        span.set_attribute(Attributes.USER_AUTH_METHOD, "keycloak-jwt")
+        span.set_attribute(Attributes.USER_SUBJECT_TYPE, subject_type.value)
+        if sub := verified_claims.get("sub"):
+            span.set_attribute(Attributes.USER_ID, sub)
+        if roles:
+            span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
+
+        return derive_entitlements(subject_type, frozenset(scopes | roles))
+
+
+class MultiIssuerJwtAuth(JwtAuth):
+    """
+    Accepts JWTs from both Azure AD and Keycloak.
+
+    Routes tokens to the correct validator by peeking at the unverified
+    ``iss`` claim. The peeked claim is used ONLY for routing — each
+    delegated validator performs full cryptographic verification.
+    """
+
+    def __init__(
+        self,
+        azure_auth: AzureJwtAuth,
+        keycloak_auth: KeycloakJwtAuth,
+    ) -> None:
+        """
+        Initialize multi-issuer auth with both Azure AD and Keycloak validators.
+
+        Issuer patterns are derived from the auth instances themselves:
+        - Azure: ``{login_url}/v2.0`` (matching AzureJwtAuth.verify_token)
+        - Keycloak: ``keycloak_auth.issuer`` (set during KeycloakJwtAuth.__init__)
+
+        Args:
+            azure_auth: The Azure AD JWT validator
+            keycloak_auth: The Keycloak JWT validator
+
+        """
+        self._azure_auth = azure_auth
+        self._keycloak_auth = keycloak_auth
+        self._azure_issuer = f"{azure_auth.login_url}/v2.0"
+        self._keycloak_issuer = keycloak_auth.issuer
+
+    def _select_validator(self, token: str) -> JwtAuth:
+        """
+        Route to the correct validator based on the unverified issuer.
+
+        The ``iss`` claim is peeked without cryptographic verification
+        and is used solely for routing. The selected validator performs
+        full token verification independently.
+        """
+        try:
+            unverified = jwt.get_unverified_claims(token)
+        except Exception as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
+        issuer = unverified.get("iss")
+        if not issuer:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token does not contain an issuer claim.",
+            )
+
+        if issuer == self._azure_issuer:
+            return self._azure_auth
+        if issuer == self._keycloak_issuer:
+            return self._keycloak_auth
+
+        raise AuthError(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token issuer is not recognized.",
+        )
+
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """Route to the correct validator and verify the token."""
+        validator = self._select_validator(token)
+        return await validator.verify_token(token)
+
+    async def __call__(
+        self,
+        request: Request,
+        credentials: HTTPAuthorizationCredentials | None,
+    ) -> frozenset[Entitlement]:
+        """Authenticate by routing to the correct issuer-specific validator."""
+        if not credentials:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authorization HTTPBearer header missing.",
+            )
+        validator = self._select_validator(credentials.credentials)
+        return await validator(request=request, credentials=credentials)
 
 
 class SuccessAuth(AuthMethod):
@@ -417,12 +767,55 @@ class SuccessAuth(AuthMethod):
             HTTPAuthorizationCredentials | None,
             Depends(security),
         ],
-    ) -> bool:
-        """Return true."""
+    ) -> frozenset[Entitlement]:
+        """Grant the full set of entitlements without verifying credentials."""
         span = trace.get_current_span()
         span.set_attribute(Attributes.USER_AUTH_METHOD, "bypass")
+        span.set_attribute(Attributes.USER_SUBJECT_TYPE, SubjectType.BYPASS.value)
 
-        return True
+        return derive_entitlements(SubjectType.BYPASS)
+
+
+def _build_jwt_auth(
+    application_id: str,
+    scope: AuthScope | None,
+    role: AuthRole | None,
+) -> JwtAuth:
+    """Build the appropriate JWT auth based on the configured provider."""
+    if settings.auth_provider == "azure":
+        return AzureJwtAuth(
+            application_id=application_id,
+            scope=scope,
+            role=role,
+        )
+
+    if not settings.keycloak_url or not settings.keycloak_client_id:
+        msg = (
+            f"auth_provider='{settings.auth_provider}' requires "
+            "keycloak_url and keycloak_client_id"
+        )
+        raise ValueError(msg)
+
+    keycloak_auth = KeycloakJwtAuth(
+        keycloak_url=settings.keycloak_url,
+        realm=settings.keycloak_realm,
+        client_id=settings.keycloak_client_id,
+        scope=scope,
+        role=role,
+        issuer_url=settings.keycloak_issuer_url,
+    )
+
+    if settings.auth_provider == "keycloak":
+        return keycloak_auth
+
+    return MultiIssuerJwtAuth(
+        azure_auth=AzureJwtAuth(
+            application_id=application_id,
+            scope=scope,
+            role=role,
+        ),
+        keycloak_auth=keycloak_auth,
+    )
 
 
 def choose_auth_strategy(
@@ -432,47 +825,50 @@ def choose_auth_strategy(
     *,
     bypass_auth: bool,
 ) -> AuthMethod:
-    """Choose a strategy for our authorization."""
+    """Choose a strategy for our authorization based on configured provider."""
     if bypass_auth:
         return SuccessAuth()
 
-    return AzureJwtAuth(
-        application_id=application_id,
-        scope=auth_scope,
-        role=auth_role,
-    )
+    return _build_jwt_auth(application_id, auth_scope, auth_role)
+
+
+class ClientAuthInfo(NamedTuple):
+    """HMAC client credentials and entitlements as returned by the lookup callable."""
+
+    secret: str
+    entitlements: frozenset[Entitlement]
 
 
 class HMACMultiClientAuth(AuthMethod):
     """
     Adds HMAC auth that supports authenticating with multiple clients.
 
-    Uses a client secret lookup function provided at initialisation,
-    which is then called with the client_id provided in the request header.
+    Uses a client auth info lookup function provided at initialisation,
+    which is then called with the client_id provided in the request header
+    and returns the client's secret and entitlements.
     """
 
     def __init__(
         self,
-        get_client_secret: Callable[[UUID], Awaitable[str]],
+        get_client_auth_info: Callable[[UUID], Awaitable[ClientAuthInfo]],
         client_type: HMACClientType,
     ) -> None:
         """
-        Initialize with a client secret lookup callable.
+        Initialize with a client auth info lookup callable.
 
-        :param get_client_secret: Callable that will return the client secret an id.
-        :type get_client_secret: Callable[[UUID], Awaitable[str]]
+        :param get_client_auth_info: Callable returning ``(secret, entitlements)``
+            for a client id.
         :param client_type: The type of client this auth method is for.
             Only used for telemetry.
-        :type client_type: HMACClientType
         """
-        self.get_secret = get_client_secret
+        self.get_auth_info = get_client_auth_info
         self._type = client_type
 
     async def __call__(
         self,
         request: Request,
         credentials: HTTPAuthorizationCredentials | None = None,  # noqa: ARG002
-    ) -> bool:
+    ) -> frozenset[Entitlement]:
         """Perform Authorization check."""
         auth_headers = destiny_sdk.auth.HMACAuthorizationHeaders.from_request(request)
 
@@ -481,11 +877,12 @@ class HMACMultiClientAuth(AuthMethod):
             Attributes.USER_ID, f"{self._type.value}:{auth_headers.client_id}"
         )
         span.set_attribute(Attributes.USER_AUTH_METHOD, "hmac")
+        span.set_attribute(Attributes.USER_SUBJECT_TYPE, SubjectType.ROBOT.value)
 
         request_body = await request.body()
 
         try:
-            secret_key = await self.get_secret(auth_headers.client_id)
+            auth_info = await self.get_auth_info(auth_headers.client_id)
         except NotFoundError as exc:
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -495,7 +892,7 @@ class HMACMultiClientAuth(AuthMethod):
             ) from exc
 
         expected_signature = destiny_sdk.client.create_signature(
-            secret_key=secret_key,
+            secret_key=auth_info.secret,
             request_body=request_body,
             client_id=auth_headers.client_id,
             timestamp=auth_headers.timestamp,
@@ -506,11 +903,11 @@ class HMACMultiClientAuth(AuthMethod):
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Signature is invalid."
             )
 
-        return True
+        return auth_info.entitlements
 
 
 def choose_hmac_auth_strategy(
-    get_client_secret: Callable[[UUID], Awaitable[str]],
+    get_client_auth_info: Callable[[UUID], Awaitable[ClientAuthInfo]],
     client_type: HMACClientType,
 ) -> AuthMethod:
     """Choose an HMAC auth method."""
@@ -518,7 +915,7 @@ def choose_hmac_auth_strategy(
         return SuccessAuth()
 
     return HMACMultiClientAuth(
-        get_client_secret=get_client_secret, client_type=client_type
+        get_client_auth_info=get_client_auth_info, client_type=client_type
     )
 
 
@@ -546,7 +943,7 @@ class HybridAuth(AuthMethod):
                         scope=AuthScopes.READ,
                     ),
                     hmac_auth=HMACMultiClientAuth(
-                        get_client_secret=robot_service.get_robot_secret_standalone
+                        get_client_auth_info=robot_service.get_robot_auth_info
                     ),
                 )
                 return await hybrid_auth.authenticate(request, credentials)
@@ -559,7 +956,7 @@ class HybridAuth(AuthMethod):
 
     def __init__(
         self,
-        jwt_auth: AzureJwtAuth,
+        jwt_auth: JwtAuth,
         hmac_auth: HMACMultiClientAuth,
     ) -> None:
         """
@@ -578,7 +975,7 @@ class HybridAuth(AuthMethod):
         self,
         request: Request,
         credentials: HTTPAuthorizationCredentials | None,
-    ) -> bool:
+    ) -> frozenset[Entitlement]:
         """Authenticate using either JWT or HMAC."""
         if credentials and credentials.credentials:
             return await self._jwt_auth(request=request, credentials=credentials)
@@ -590,7 +987,7 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
     application_id: str,
     jwt_scope: AuthScope | None,
     jwt_role: AuthRole | None,
-    get_client_secret: Callable[[UUID], Awaitable[str]],
+    get_client_auth_info: Callable[[UUID], Awaitable[ClientAuthInfo]],
     hmac_client_type: HMACClientType,
     *,
     bypass_auth: bool,
@@ -600,7 +997,7 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
 
     :param application_id: Azure application ID for JWT validation
     :param jwt_scope: The required JWT scope/role
-    :param get_client_secret: Function to get HMAC client secrets
+    :param get_client_auth_info: Function to get HMAC client secret + entitlements
     :param bypass_auth: Whether to bypass auth (for local development)
     :return: FastAPI dependency function
     """
@@ -608,13 +1005,9 @@ def choose_hybrid_auth_strategy(  # noqa: PLR0913
         return SuccessAuth()
 
     return HybridAuth(
-        jwt_auth=AzureJwtAuth(
-            application_id=application_id,
-            scope=jwt_scope,
-            role=jwt_role,
-        ),
+        jwt_auth=_build_jwt_auth(application_id, jwt_scope, jwt_role),
         hmac_auth=HMACMultiClientAuth(
-            get_client_secret=get_client_secret,
+            get_client_auth_info=get_client_auth_info,
             client_type=hmac_client_type,
         ),
     )

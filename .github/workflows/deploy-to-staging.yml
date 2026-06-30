@@ -1,0 +1,29 @@
+name: Deploy to Staging
+
+concurrency:
+  # No parallel runs allowed
+  group: deploy-staging
+  # Queue runs behind each other so each change is applied independently.
+  cancel-in-progress: false
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      environment: staging
+
+  deploy:
+    needs: build
+    uses: ./.github/workflows/deploy.yml
+    with:
+      environment: staging
+      image_tag: ${{ needs.build.outputs.image_tag }}

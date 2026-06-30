@@ -1,9 +1,9 @@
 """Defines tests for the references router."""
 
 import datetime
-import uuid
 from collections.abc import AsyncGenerator
 from unittest.mock import ANY, AsyncMock, patch
+from uuid import UUID, uuid7
 
 import pytest
 from destiny_sdk.enhancements import EnhancementType
@@ -11,6 +11,7 @@ from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
 from pydantic import HttpUrl
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -32,11 +33,11 @@ from app.core.exceptions import (
 )
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
+    DuplicateDetermination,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
     Visibility,
 )
-from app.domain.references.models.models import Reference as DomainReference
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
 from app.domain.references.models.sql import EnhancementRequest as SQLEnhancementRequest
 from app.domain.references.models.sql import (
@@ -47,13 +48,26 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import (
+    ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
+)
+from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
+from app.domain.references.models.sql import (
+    SearchExport as SQLSearchExport,
+)
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.search_service import SearchService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
+from app.persistence.es.persistence import (
+    ESFacetBucket,
+    ESHit,
+    ESSearchResult,
+    ESSearchTotal,
+)
 from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
@@ -122,7 +136,9 @@ def mock_blob_repository(monkeypatch: pytest.MonkeyPatch) -> None:
             self,
             file: BlobStorageFile,
             interaction_type: BlobSignedUrlType,
+            content_disposition: str | None = "attachment",
         ) -> HttpUrl:
+            del content_disposition
             return HttpUrl(f"http://signed/{file.filename}/{interaction_type}")
 
     monkeypatch.setattr(
@@ -203,10 +219,10 @@ async def add_robot_enhancement_batch(
     return robot_enhancement_batch.to_domain()
 
 
-async def add_enhancement(session: AsyncSession, reference_id: uuid.UUID):
+async def add_enhancement(session: AsyncSession, reference_id: UUID):
     """Add a basic enhancement to a reference."""
     enhancement = SQLEnhancement(
-        id=uuid.uuid4(),
+        id=uuid7(),
         reference_id=reference_id,
         visibility=Visibility.PUBLIC,
         source="test_source",
@@ -240,8 +256,8 @@ async def test_get_reference_with_enhancements_happy_path(
 
     response_data = response.json()
 
-    assert uuid.UUID(response_data["id"]) == reference.id
-    assert uuid.UUID(response_data["enhancements"][0]["id"]) == enhancement.id
+    assert UUID(response_data["id"]) == reference.id
+    assert UUID(response_data["enhancements"][0]["id"]) == enhancement.id
 
 
 async def test_request_batch_enhancement_happy_path(
@@ -301,7 +317,7 @@ async def test_add_robot_automation_happy_path(
         assert found, "Expected 'robot_id' to be set in structlog contextvars"
         assert response.status_code == status.HTTP_201_CREATED
         response_data = response.json()
-    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_create["query"]
 
 
@@ -311,7 +327,7 @@ async def test_add_robot_automation_missing_robot(
 ) -> None:
     """Test adding a robot automation with a missing robot."""
     robot_automation_create = {
-        "robot_id": str(uuid.uuid4()),
+        "robot_id": str(uuid7()),
         "query": {"match": {"robot_id": "some-robot-id"}},
     }
 
@@ -319,7 +335,7 @@ async def test_add_robot_automation_missing_robot(
         "/v1/enhancement-requests/automations/", json=robot_automation_create
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -391,9 +407,9 @@ async def test_update_robot_automation_happy_path(
 
     assert response.status_code == status.HTTP_201_CREATED
     response_data = response.json()
-    assert uuid.UUID(response_data["robot_id"]) == robot.id
+    assert UUID(response_data["robot_id"]) == robot.id
     assert response_data["query"] == robot_automation_update["query"]
-    assert uuid.UUID(response_data["id"]) == uuid.UUID(automation_id)
+    assert UUID(response_data["id"]) == UUID(automation_id)
 
 
 async def test_update_robot_automation_nonexistent_automation(
@@ -403,7 +419,7 @@ async def test_update_robot_automation_nonexistent_automation(
 ) -> None:
     """Test updating a nonexistent robot automation."""
     robot = await add_robot(session)
-    fake_automation_id = uuid.uuid4()
+    fake_automation_id = uuid7()
 
     robot_automation_update = {
         "robot_id": str(robot.id),
@@ -440,7 +456,7 @@ async def test_update_robot_automation_missing_robot(
     automation_id = create_response.json()["id"]
 
     # Now try to update with a nonexistent robot
-    fake_robot_id = uuid.uuid4()
+    fake_robot_id = uuid7()
     robot_automation_update = {
         "robot_id": str(fake_robot_id),
         "query": {"match": {"name": "updated_query"}},
@@ -451,7 +467,7 @@ async def test_update_robot_automation_missing_robot(
         json=robot_automation_update,
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert "robot" in response.json()["detail"].casefold()
 
 
@@ -509,7 +525,7 @@ async def test_get_robot_automations_with_automations(
     assert automation_ids == expected_ids
 
     # Check robot IDs are correct
-    robot_ids = {uuid.UUID(automation["robot_id"]) for automation in response_data}
+    robot_ids = {UUID(automation["robot_id"]) for automation in response_data}
     expected_robot_ids = {robot.id, robot.id}
     assert robot_ids == expected_robot_ids
 
@@ -532,14 +548,9 @@ async def test_request_robot_enhancement_batch(
         session, pending_enhancement
     )
 
-    mock_get_pending = AsyncMock(return_value=[pending_enhancement])
-    mock_create_batch = AsyncMock(return_value=robot_enhancement_batch)
-
+    mock_claim = AsyncMock(return_value=robot_enhancement_batch)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
-    )
-    monkeypatch.setattr(
-        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post(
@@ -547,13 +558,12 @@ async def test_request_robot_enhancement_batch(
     )
 
     assert response.status_code == status.HTTP_200_OK
-    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
-
-    mock_create_batch.assert_awaited_once_with(
+    mock_claim.assert_awaited_once_with(
         robot_id=robot.id,
-        pending_enhancements=[pending_enhancement],
+        limit=10,
         lease_duration=datetime.timedelta(minutes=5),
         blob_repository=ANY,
+        access_control_service=ANY,
     )
 
 
@@ -565,13 +575,9 @@ async def test_request_robot_enhancement_batch_no_pending_enhancements(
     """Test requesting a batch when there are no pending enhancements."""
     robot = await add_robot(session)
 
-    mock_get_pending = AsyncMock(return_value=[])
-    mock_create_batch = AsyncMock()
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
-    )
-    monkeypatch.setattr(
-        ReferenceService, "create_robot_enhancement_batch", mock_create_batch
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post(
@@ -579,8 +585,7 @@ async def test_request_robot_enhancement_batch_no_pending_enhancements(
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
-    mock_get_pending.assert_awaited_once_with(robot_id=robot.id, limit=10)
-    mock_create_batch.assert_not_awaited()
+    mock_claim.assert_awaited_once()
 
 
 async def test_request_robot_enhancement_batch_limit_exceeded(
@@ -591,9 +596,9 @@ async def test_request_robot_enhancement_batch_limit_exceeded(
     """Test requesting a batch with limit exceeding maximum allowed."""
     robot = await add_robot(session)
 
-    mock_get_pending = AsyncMock(return_value=[])
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     # Request with a very high limit
@@ -602,9 +607,9 @@ async def test_request_robot_enhancement_batch_limit_exceeded(
     )
 
     assert response.status_code == status.HTTP_204_NO_CONTENT
-    # Should be called with the default max limit, not the requested limit
-    mock_get_pending.assert_awaited_once()
-    call_args = mock_get_pending.call_args
+    # Should be called with the capped limit, not the requested limit
+    mock_claim.assert_awaited_once()
+    call_args = mock_claim.call_args
     assert call_args.kwargs["limit"] == 10000  # Should be capped at max limit
 
 
@@ -613,17 +618,17 @@ async def test_request_robot_enhancement_batch_invalid_robot_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test requesting a batch with invalid robot ID format."""
-    mock_get_pending = AsyncMock(return_value=[])
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post(
         "/v1/robot-enhancement-batches/?robot_id=invalid-uuid&limit=10"
     )
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-    mock_get_pending.assert_not_awaited()
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    mock_claim.assert_not_awaited()
 
 
 async def test_request_robot_enhancement_batch_missing_robot_id(
@@ -631,15 +636,15 @@ async def test_request_robot_enhancement_batch_missing_robot_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test requesting a batch without robot_id parameter."""
-    mock_get_pending = AsyncMock(return_value=[])
+    mock_claim = AsyncMock(return_value=None)
     monkeypatch.setattr(
-        ReferenceService, "get_pending_enhancements_for_robot", mock_get_pending
+        ReferenceService, "claim_and_create_robot_enhancement_batch", mock_claim
     )
 
     response = await client.post("/v1/robot-enhancement-batches/?limit=10")
 
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
-    mock_get_pending.assert_not_awaited()
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    mock_claim.assert_not_awaited()
 
 
 async def test_get_robot_enhancement_batch_happy_path(
@@ -743,19 +748,19 @@ async def test_lookup_references_too_many_identifiers(
 ) -> None:
     """Test lookup_references with too many identifiers."""
     too_many_identifiers = [
-        str(uuid.uuid4())
+        str(uuid7())
         for _ in range(get_settings().max_lookup_reference_query_length + 1)
     ]
     response = await client.get(
         "/v1/references/",
         params={"identifier": too_many_identifiers},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     response = await client.get(
         "/v1/references/",
         params={"identifier": ",".join(too_many_identifiers)},
     )
-    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 async def test_lookup_references_invalid_identifier_format(
@@ -768,12 +773,12 @@ async def test_lookup_references_invalid_identifier_format(
         params={"identifier": invalid_identifier},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
-    assert "Must be UUIDv4" in response.text
+    assert "Must be UUID" in response.text
 
 
 async def test_get_robot_enhancement_batch_nonexistent_batch(client: AsyncClient):
     """Test getting a robot enhancement batch that does not exist."""
-    response = await client.get(f"/v1/robot-enhancement-batces/{uuid.uuid4()}/")
+    response = await client.get(f"/v1/robot-enhancement-batces/{uuid7()}/")
 
     assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -791,7 +796,7 @@ async def test_robot_enhancement_batch_renew_lease(
         ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
     )
 
-    _id = uuid.uuid4()
+    _id = uuid7()
     response = await client.patch(
         f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
     )
@@ -818,7 +823,7 @@ async def test_robot_enhancement_batch_renew_lease_empty_response(
         ReferenceService, "renew_robot_enhancement_batch_lease", mock_renew_lease
     )
 
-    _id = uuid.uuid4()
+    _id = uuid7()
     response = await client.patch(
         f"/v1/robot-enhancement-batches/{_id}/renew-lease/?lease={dt_iso}"
     )
@@ -835,6 +840,100 @@ async def test_robot_enhancement_batch_renew_lease_empty_response(
     )
 
 
+async def test_search_references_preserves_es_order(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Test that search results preserve the order from Elasticsearch."""
+    ref_a = ReferenceFactory.build()
+    ref_b = ReferenceFactory.build()
+    ref_c = ReferenceFactory.build()
+
+    # ES returns results in order: A, B, C (by score)
+    mock_search_result = ESSearchResult(
+        hits=[
+            ESHit(id=ref_a.id, score=3.0),
+            ESHit(id=ref_b.id, score=2.0),
+            ESHit(id=ref_c.id, score=1.0),
+        ],
+        total=ESSearchTotal(value=3, relation="eq"),
+        page=1,
+    )
+
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+
+    # SQL returns references in different order: C, A, B
+    mock_get_dedup = AsyncMock(return_value=[ref_c, ref_a, ref_b])
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
+
+    response = await client.get("/v1/references/search/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    returned_ids = [ref["id"] for ref in data["references"]]
+
+    # Order should match ES order (A, B, C), not SQL order (C, A, B)
+    assert returned_ids == [str(ref_a.id), str(ref_b.id), str(ref_c.id)]
+
+
+async def test_search_reference_ids_returns_ids_only(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ids endpoint returns matching IDs in order without fetching references."""
+    ref_a = ReferenceFactory.build()
+    ref_b = ReferenceFactory.build()
+
+    mock_search_result = ESSearchResult(
+        hits=[
+            ESHit(id=ref_a.id, score=2.0),
+            ESHit(id=ref_b.id, score=1.0),
+        ],
+        total=ESSearchTotal(value=2, relation="eq"),
+        page=1,
+    )
+    mock_search = AsyncMock(return_value=mock_search_result)
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+    mock_get_dedup = AsyncMock()
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
+
+    response = await client.get("/v1/references/search/ids/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    data = response.json()
+    assert data["reference_ids"] == [str(ref_a.id), str(ref_b.id)]
+    assert data["total"] == {"count": 2, "is_lower_bound": False}
+
+    # IDs are read straight off the search hits — references are never fetched.
+    mock_get_dedup.assert_not_awaited()
+    mock_search.assert_awaited_once()
+    assert mock_search.call_args.kwargs["page_size"] == SearchService.MAX_RESULT_WINDOW
+
+
+async def test_search_reference_ids_reports_lower_bound_when_truncated(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A `gte` total surfaces as `is_lower_bound: true`."""
+    reference = ReferenceFactory.build()
+    mock_search_result = ESSearchResult(
+        hits=[ESHit(id=reference.id, score=1.0)],
+        total=ESSearchTotal(value=10000, relation="gte"),
+        page=1,
+    )
+    monkeypatch.setattr(
+        ReferenceService,
+        "search_references",
+        AsyncMock(return_value=mock_search_result),
+    )
+
+    response = await client.get("/v1/references/search/ids/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["total"] == {"count": 10000, "is_lower_bound": True}
+
+
 async def test_search_references_with_annotation_filters(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -843,16 +942,17 @@ async def test_search_references_with_annotation_filters(
     reference = ReferenceFactory.build()
 
     # Create a mock search result
-    mock_search_result = ESSearchResult[DomainReference](
-        hits=[reference],
+    mock_search_result = ESSearchResult(
+        hits=[ESHit(id=reference.id, score=1.0)],
         total=ESSearchTotal(value=1, relation="eq"),
         page=1,
     )
 
-    # Mock the service method
-    # Temporary patch until ES itself includes annotations
+    # Mock the service methods
     mock_search = AsyncMock(return_value=mock_search_result)
     monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+    mock_get_dedup = AsyncMock(return_value=[reference])
+    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
 
     # Test with annotation filters
     response = await client.get(
@@ -874,26 +974,611 @@ async def test_search_references_with_annotation_filters(
 
     # Verify the service was called with the correct annotation filters
     mock_search.assert_awaited_once()
-    call_kwargs = mock_search.call_args.kwargs
-    assert call_kwargs["annotations"] is not None
-    assert len(call_kwargs["annotations"]) == 4
+    search_query = mock_search.call_args.args[0]
+    assert len(search_query.annotation_filters) == 4
 
     # Check first annotation filter
-    assert call_kwargs["annotations"][0].scheme == "test:scheme"
-    assert call_kwargs["annotations"][0].label == "test_label"
-    assert call_kwargs["annotations"][0].score is None
+    assert search_query.annotation_filters[0].scheme == "test:scheme"
+    assert search_query.annotation_filters[0].label == "test_label"
+    assert search_query.annotation_filters[0].score is None
 
     # Check second annotation filter with score
-    assert call_kwargs["annotations"][1].scheme == "another:scheme"
-    assert call_kwargs["annotations"][1].label == "another_label"
-    assert call_kwargs["annotations"][1].score == 0.8
+    assert search_query.annotation_filters[1].scheme == "another:scheme"
+    assert search_query.annotation_filters[1].label == "another_label"
+    assert search_query.annotation_filters[1].score == 0.8
 
     # Check third annotation filter without label is ignored
-    assert call_kwargs["annotations"][2].scheme == "just_a_scheme"
-    assert not call_kwargs["annotations"][2].label
-    assert call_kwargs["annotations"][2].score == 0.8
+    assert search_query.annotation_filters[2].scheme == "just_a_scheme"
+    assert not search_query.annotation_filters[2].label
+    assert search_query.annotation_filters[2].score == 0.8
 
     # Check fourth annotation filter with slashes in label
-    assert call_kwargs["annotations"][3].scheme == "test:scheme"
-    assert call_kwargs["annotations"][3].label == "label/with/lots/of/slashes"
-    assert call_kwargs["annotations"][3].score is None
+    assert search_query.annotation_filters[3].scheme == "test:scheme"
+    assert search_query.annotation_filters[3].label == "label/with/lots/of/slashes"
+    assert search_query.annotation_filters[3].score is None
+
+
+async def test_request_search_export_happy_path(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test queuing a reference export, then polling its completed status."""
+    fake_reference_id = uuid7()
+    fake_result_file = BlobStorageFile(
+        location="minio",
+        container="destiny-repository",
+        path="search_exports",
+        filename="fake.jsonl",
+    )
+
+    monkeypatch.setattr(
+        SearchExportService,
+        "_collect_search_export_ids",
+        AsyncMock(return_value=([fake_reference_id], False)),
+    )
+    monkeypatch.setattr(
+        SearchExportService,
+        "_stream_search_export_jsonl",
+        AsyncMock(return_value=(fake_result_file, 1)),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "climate", "start_year": 2020},
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    body = response.json()
+    export_id = body["id"]
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+    assert body["truncated"] is False
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/search/exports/{export_id}/")
+    assert status_response.status_code == status.HTTP_200_OK
+    status_body = status_response.json()
+    assert status_body["status"] == "completed"
+    assert status_body["n_references"] == 1
+    assert status_body["truncated"] is False
+    assert status_body["result_url"] is not None
+    assert status_body["error"] is None
+
+
+async def test_request_search_export_marks_failed_on_error(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test that a failure during the export job is reflected via the status API."""
+    monkeypatch.setattr(
+        SearchExportService,
+        "_collect_search_export_ids",
+        AsyncMock(side_effect=RuntimeError("kaboom")),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    export_id = response.json()["id"]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_response = await client.get(f"/v1/references/search/exports/{export_id}/")
+    status_body = status_response.json()
+    assert status_body["status"] == "failed"
+    assert status_body["result_url"] is None
+    assert "kaboom" in status_body["error"]
+
+
+async def test_request_search_export_rejects_empty_query(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Empty `q` returns 422 from FastAPI's min_length validation."""
+    response = await client.post("/v1/references/search/exports/", params={"q": ""})
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_references_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on malformed annotation — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_search_references_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+) -> None:
+    """Search returns 400 on end < start — was a 500 before parse hardening."""
+    response = await client.get(
+        "/v1/references/search/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_search_export_rejects_malformed_annotation(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A malformed annotation filter returns 400 at request time, not job failure."""
+    response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "climate", "annotation": "inclusion:destiny@notanumber"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_search_export_rejects_inverted_year_range(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """An inverted publication year range returns 400 at request time."""
+    response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "climate", "start_year": 2025, "end_year": 2020},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def test_request_search_export_marks_failed_when_enqueue_fails(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """If queueing the task fails, the row is flipped to failed and 503 returned."""
+    monkeypatch.setattr(
+        references,
+        "queue_task_with_trace",
+        AsyncMock(side_effect=RuntimeError("broker down")),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+
+    rows = (await session.execute(select(SQLSearchExport))).scalars().all()
+    assert len(rows) == 1
+    assert rows[0].status == "failed"
+    assert "broker down" in rows[0].error
+
+
+async def test_get_search_export_pending_has_no_url(
+    session: AsyncSession,
+    client: AsyncClient,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """A pending export exposes no signed URL until the file is ready."""
+    export = SQLSearchExport(
+        query="climate",
+        status="pending",
+    )
+    session.add(export)
+    await session.commit()
+
+    response = await client.get(f"/v1/references/search/exports/{export.id}/")
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["status"] == "pending"
+    assert body["result_url"] is None
+    assert body["n_references"] is None
+
+
+async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test marking one reference canonical, then another as its duplicate."""
+    canonical_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(canonical_ref.id),
+                "duplicate_determination": "canonical",
+            }
+        ],
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["reference_id"] == str(canonical_ref.id)
+    assert results[0]["outcome"] == "canonical"
+    assert results[0]["active_decision"] is True
+    assert results[0]["canonical_reference_id"] is None
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_ref.id),
+            }
+        ],
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["reference_id"] == str(duplicate_ref.id)
+    assert results[0]["outcome"] == "duplicate"
+    assert results[0]["active_decision"] is True
+    assert results[0]["canonical_reference_id"] == str(canonical_ref.id)
+
+
+async def test_make_duplicate_decisions_multiple_in_one_call(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """
+    Test that multiple decisions can be submitted in a single call.
+
+    Canonical must appear before the duplicate that references it.
+    """
+    canonical_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(canonical_ref.id),
+                "duplicate_determination": "canonical",
+            },
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_ref.id),
+            },
+        ],
+    )
+
+    assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 2
+    outcomes = {r["reference_id"]: r["outcome"] for r in results}
+    assert outcomes[str(canonical_ref.id)] == "canonical"
+    assert outcomes[str(duplicate_ref.id)] == "duplicate"
+
+
+async def test_make_duplicate_decisions_multiple_wrong_order(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Duplicate before its canonical in the same request should fail."""
+    canonical_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_ref.id),
+            },
+            {
+                "reference_id": str(canonical_ref.id),
+                "duplicate_determination": "canonical",
+            },
+        ],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "non-canonical" in response.json()["detail"]
+
+
+async def test_make_duplicate_decisions_not_a_canonical_reference(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Test making a duplicate decision pointing to a non-canonical reference."""
+    target_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(target_ref.id),
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert "non-canonical" in response.json()["detail"]
+
+
+async def test_make_duplicate_decisions_nonexistent_reference(
+    client: AsyncClient,
+) -> None:
+    """Test making a decision for a reference that doesn't exist."""
+    fake_id = uuid7()
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(fake_id),
+                "duplicate_determination": "canonical",
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+    assert str(fake_id) in response.json()["detail"]
+
+
+async def test_make_duplicate_decisions_duplicate_without_canonical_id(
+    client: AsyncClient,
+) -> None:
+    """Test duplicate without canonical_reference_id fails validation."""
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(uuid7()),
+                "duplicate_determination": "duplicate",
+            }
+        ],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_make_duplicate_decisions_empty_list(
+    client: AsyncClient,
+) -> None:
+    """Test that an empty list of decisions fails validation."""
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[],
+    )
+
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_make_duplicate_decisions_resolve_duplicate_to_canonical(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Manual endpoint can override a DUPLICATE decision to CANONICAL."""
+    canonical_ref = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    # Set up canonical_ref as CANONICAL
+    session.add(
+        SQLReferenceDuplicateDecision(
+            reference_id=canonical_ref.id,
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+            active_decision=True,
+            candidate_canonical_ids=[],
+        )
+    )
+    # Set up duplicate_ref as DUPLICATE of canonical_ref
+    session.add(
+        SQLReferenceDuplicateDecision(
+            reference_id=duplicate_ref.id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=canonical_ref.id,
+            active_decision=True,
+            candidate_canonical_ids=[],
+        )
+    )
+    await session.commit()
+
+    # Resolve: mark the duplicate as canonical
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "canonical",
+            }
+        ],
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["reference_id"] == str(duplicate_ref.id)
+    assert results[0]["outcome"] == "canonical"
+    assert results[0]["active_decision"] is True
+    assert results[0]["canonical_reference_id"] is None
+
+
+async def test_make_duplicate_decisions_resolve_duplicate_to_different_canonical(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """Manual endpoint can change which canonical a DUPLICATE points to."""
+    canonical_a = await add_reference(session)
+    canonical_b = await add_reference(session)
+    duplicate_ref = await add_reference(session)
+
+    # Set up both canonicals
+    session.add(
+        SQLReferenceDuplicateDecision(
+            reference_id=canonical_a.id,
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+            active_decision=True,
+            candidate_canonical_ids=[],
+        )
+    )
+    session.add(
+        SQLReferenceDuplicateDecision(
+            reference_id=canonical_b.id,
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+            active_decision=True,
+            candidate_canonical_ids=[],
+        )
+    )
+    # Set up duplicate_ref as DUPLICATE of canonical_a
+    session.add(
+        SQLReferenceDuplicateDecision(
+            reference_id=duplicate_ref.id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=canonical_a.id,
+            active_decision=True,
+            candidate_canonical_ids=[],
+        )
+    )
+    await session.commit()
+
+    # Resolve: change duplicate to point to canonical_b
+    response = await client.post(
+        "/v1/references/duplicate-decisions/",
+        json=[
+            {
+                "reference_id": str(duplicate_ref.id),
+                "duplicate_determination": "duplicate",
+                "canonical_reference_id": str(canonical_b.id),
+            }
+        ],
+    )
+    assert response.status_code == status.HTTP_201_CREATED
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["reference_id"] == str(duplicate_ref.id)
+    assert results[0]["outcome"] == "duplicate"
+    assert results[0]["active_decision"] is True
+    assert results[0]["canonical_reference_id"] == str(canonical_b.id)
+
+
+async def test_search_facets_concepts_happy_path(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concept facet counts are surfaced under `facets.concepts`."""
+    from app.domain.references.models.models import FacetType
+
+    buckets = [
+        ESFacetBucket(key="http://example.org/concept/a", count=5),
+        ESFacetBucket(key="http://example.org/concept/b", count=2),
+    ]
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: buckets})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body == {
+        "concepts": [
+            {"concept": "http://example.org/concept/a", "count": 5},
+            {"concept": "http://example.org/concept/b", "count": 2},
+        ],
+    }
+
+    # Service was called with the parsed SearchQuery and the requested facets.
+    mock_aggregate.assert_awaited_once()
+    search_query, facets = mock_aggregate.call_args.args
+    assert search_query.query_string == "climate"
+    assert list(facets) == [FacetType.CONCEPTS]
+
+
+async def test_search_facets_concepts_and_countries(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Concept and country facets are surfaced together under their own keys."""
+    from app.domain.references.models.models import FacetType
+
+    mock_aggregate = AsyncMock(
+        return_value={
+            FacetType.CONCEPTS: [ESFacetBucket(key="http://example.org/c/a", count=7)],
+            FacetType.COUNTRIES: [
+                ESFacetBucket(key="KE", count=3),
+                ESFacetBucket(key="UG", count=1),
+            ],
+        }
+    )
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "climate"),
+            ("facet", "concepts"),
+            ("facet", "countries"),
+        ],
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {
+        "concepts": [{"concept": "http://example.org/c/a", "count": 7}],
+        "countries": [
+            {"country": "KE", "count": 3},
+            {"country": "UG", "count": 1},
+        ],
+    }
+
+    _, facets = mock_aggregate.call_args.args
+    assert list(facets) == [FacetType.CONCEPTS, FacetType.COUNTRIES]
+
+
+async def test_search_facets_unrequested_keys_omitted(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Facet keys not asked for are stripped from the response (not set to null)."""
+    from app.domain.references.models.models import FacetType
+
+    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: []})
+    monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
+
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"concepts": []}
+
+
+async def test_search_facets_requires_facet_param(client: AsyncClient) -> None:
+    """Missing `facet=` is rejected by FastAPI validation."""
+    response = await client.get(
+        "/v1/references/search/facets/", params={"q": "climate"}
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_unknown_facet(client: AsyncClient) -> None:
+    """An unsupported `facet=` value is rejected at the enum boundary."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "climate", "facet": "bogus"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
+async def test_search_facets_rejects_empty_query(client: AsyncClient) -> None:
+    """The shared `q` validation (min_length=1) applies to the facets endpoint too."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
