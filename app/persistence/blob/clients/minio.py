@@ -49,6 +49,21 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
             secret_key=self.secret_key,
             secure=False,
         )
+        # Allow other users (eg evrepo UI) to access signed URLs from the
+        # docker-hosted minio. `region` keeps presigning offline: without it the SDK
+        # issues a GetBucketLocation call against `public_host`, which the app can't
+        # reach.
+        self.signing_client = (
+            Minio(
+                config.public_host,
+                access_key=self.access_key,
+                secret_key=self.secret_key,
+                secure=False,
+                region=config.region,
+            )
+            if config.public_host
+            else self.client
+        )
 
     @trace_blob_client_method(tracer)
     async def upload_file(
@@ -115,7 +130,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
                     if content_disposition is not None
                     else None
                 )
-                url = self.client.presigned_get_object(
+                url = self.signing_client.presigned_get_object(
                     bucket_name=file.container,
                     object_name=f"{file.path}/{file.filename}",
                     expires=datetime.timedelta(
@@ -124,7 +139,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
                     response_headers=response_headers,
                 )
             if interaction_type == BlobSignedUrlType.UPLOAD:
-                url = self.client.presigned_put_object(
+                url = self.signing_client.presigned_put_object(
                     bucket_name=file.container,
                     object_name=f"{file.path}/{file.filename}",
                     expires=datetime.timedelta(
