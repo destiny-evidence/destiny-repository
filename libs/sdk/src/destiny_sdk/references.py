@@ -184,6 +184,20 @@ class ReferenceCrossFacetResult(BaseModel):
     )
 
 
+class ExportFormat(StrEnum):
+    """The serialization format of a reference export."""
+
+    JSONL = auto()
+    """JSON Lines: one reference per line."""
+    RIS = auto()
+    """RIS: tagged citation format."""
+
+    @property
+    def extension(self) -> str:
+        """The file extension for this format."""
+        return self.value
+
+
 class SearchExportStatus(StrEnum):
     """The status of a search export job."""
 
@@ -204,14 +218,16 @@ class SearchExportRead(BaseModel):
     status: SearchExportStatus = Field(
         description="The current status of the export job.",
     )
+    export_format: ExportFormat = Field(
+        default=ExportFormat.JSONL,
+        description="The serialization format of the produced file.",
+    )
     result_url: HttpUrl | None = Field(
         default=None,
         description=(
-            "Signed download URL for the produced JSONL file. Each line is a "
-            ":class:`Reference <destiny_sdk.references.Reference>` "
-            "matching the `/references/search/` response shape. Populated once "
-            "``status`` is ``completed``; the URL is re-signed on every poll, so "
-            "an expired URL can be refreshed by polling again."
+            "Signed download URL for the produced file. Populated once ``status`` "
+            "is ``completed``; the URL is re-signed on every poll, so an expired "
+            "URL can be refreshed by polling again."
         ),
     )
     n_references: int | None = Field(

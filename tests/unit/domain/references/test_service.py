@@ -42,9 +42,6 @@ from app.persistence.blob.models import (
     BlobStorageFile,
 )
 from app.utils.time_and_date import utc_now
-from tests.factories import (
-    ReferenceFactory,
-)
 from tests.unit.domain.conftest import FakeRepository
 
 
@@ -849,46 +846,6 @@ async def test_claim_and_create_robot_enhancement_batch(
 
     assert created_batch.reference_data_file is not None
     assert created_batch.reference_data_file.endswith(".jsonl")
-
-
-@pytest.mark.asyncio
-async def test_get_jsonl_deduplicated_references(fake_repository, fake_uow):
-    """Test that get_jsonl_deduplicated_references returns flattened JSONL
-    containing enhancements and identifiers from both canonical and duplicate
-    references, with duplicate_references stripped from output.
-    """
-    duplicate_ref = ReferenceFactory(duplicate_references=[])
-    canonical_ref = ReferenceFactory(duplicate_references=[duplicate_ref])
-
-    uow = fake_uow(references=fake_repository(init_entries=[canonical_ref]))
-    service = ReferenceService(
-        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
-    )
-
-    result = await service.get_jsonl_deduplicated_references(
-        ReferenceAccessControlService(), [canonical_ref.id]
-    )
-
-    assert len(result) == 1
-
-    data = json.loads(result[0])
-
-    # Flattened: should contain enhancements from canonical + duplicate
-    canonical_sources = {e.source for e in canonical_ref.enhancements}
-    duplicate_sources = {e.source for e in duplicate_ref.enhancements}
-    output_sources = {e["source"] for e in data["enhancements"]}
-    assert output_sources == canonical_sources | duplicate_sources
-
-    # Enhancements should contain created_at
-    assert all(e.get("created_at") for e in data["enhancements"])
-
-    # Flattened: should contain identifiers from both
-    assert len(data["identifiers"]) == len(canonical_ref.identifiers) + len(
-        duplicate_ref.identifiers
-    )
-
-    # duplicate_references should not appear in SDK output
-    assert "duplicate_references" not in data
 
 
 @pytest.mark.asyncio

@@ -176,3 +176,103 @@ async def test_search_export_end_to_end(
         destiny_sdk.references.Reference.from_jsonl(line).id for line in lines
     }
     assert parsed_ids == {matching_one.id, matching_two.id}
+
+
+async def test_search_export_ris_end_to_end(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_reference_repository: ReferenceESRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """POST ?export_format=ris → task → GET produces an RIS file of the matches."""
+    matching_one = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    title="Climate review one",
+                )
+            )
+        ]
+    )
+    matching_two = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    title="Climate review two",
+                )
+            )
+        ]
+    )
+    unmatched = ReferenceFactory.build(
+        enhancements=[
+            EnhancementFactory.build(
+                content=BibliographicMetadataEnhancementFactory.build(
+                    title="Mosquito surveillance",
+                )
+            )
+        ]
+    )
+
+    session.add_all(
+        [SQLReference.from_domain(r) for r in (matching_one, matching_two, unmatched)]
+    )
+    await session.commit()
+
+    for reference in (matching_one, matching_two, unmatched):
+        await es_reference_repository.add(to_indexable(reference))
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
+    )
+
+    captured: bytearray = bytearray()
+
+    async def fake_upload(
+        self: BlobRepository,  # noqa: ARG001
+        content: FileStream,
+        path: str,
+        filename: str,
+        **_: object,
+    ) -> BlobStorageFile:
+        async for chunk in content.stream():
+            captured.extend(chunk)
+        return BlobStorageFile(
+            location="minio",
+            container="destiny-repository",
+            path=path,
+            filename=filename,
+        )
+
+    async def fake_signed_url(
+        self: BlobRepository,  # noqa: ARG001
+        file: BlobStorageFile,
+        interaction_type: BlobSignedUrlType,
+    ) -> HttpUrl:
+        return HttpUrl(f"http://signed/{file.filename}/{interaction_type}")
+
+    monkeypatch.setattr(BlobRepository, "upload_file_to_blob_storage", fake_upload)
+    monkeypatch.setattr(BlobRepository, "get_signed_url", fake_signed_url)
+
+    post_response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "Climate", "export_format": "ris"},
+    )
+    assert post_response.status_code == status.HTTP_202_ACCEPTED
+    assert post_response.json()["export_format"] == "ris"
+    export_id = post_response.json()["id"]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    get_response = await client.get(f"/v1/references/search/exports/{export_id}/")
+    assert get_response.status_code == status.HTTP_200_OK
+    body = get_response.json()
+    assert body["status"] == "completed"
+    assert body["export_format"] == "ris"
+    assert body["n_references"] == 2
+    assert ".ris" in body["result_url"]
+
+    text = captured.decode("utf-8")
+    assert text.count("TY  - ") == 2
+    assert text.count("ER  - ") == 2
+    assert "TI  - Climate review one" in text
+    assert "TI  - Climate review two" in text

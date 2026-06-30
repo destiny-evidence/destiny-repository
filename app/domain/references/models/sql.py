@@ -26,6 +26,7 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequestStatus,
     EnhancementType,
+    ExportFormat,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     LinkedDataConceptFilter,
@@ -469,6 +470,10 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
 
+    export_format: Mapped[ExportFormat] = mapped_column(
+        String, nullable=False, server_default=ExportFormat.JSONL.value
+    )
+
     status: Mapped[SearchExportStatus] = mapped_column(String, nullable=False)
 
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -504,6 +509,7 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
             end_year=year_range.end if year_range else None,
             sort=domain_obj.sort,
             status=domain_obj.status,
+            export_format=domain_obj.export_format,
             result_file=domain_obj.result_file.to_uri()
             if domain_obj.result_file
             else None,
@@ -546,6 +552,7 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
             ),
             sort=self.sort,
             status=self.status,
+            export_format=self.export_format,
             result_file=BlobStorageFile.from_uri(self.result_file)
             if self.result_file
             else None,

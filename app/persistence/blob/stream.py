@@ -44,6 +44,7 @@ class FileStream:
         fn: Callable[..., Awaitable[Streamable]] | None = None,
         fn_kwargs: Sequence[dict[str, Any]] | None = None,
         generator: AsyncGenerator[Streamable, None] | None = None,
+        record_separator: str = "\n",
     ) -> None:
         """
         Initialize the FileStream with a function and its arguments or a generator.
@@ -56,6 +57,9 @@ class FileStream:
         :type fn_kwargs: Sequence[dict[str, Any]]
         :param generator: An async generator yielding Streamable.
         :type generator: AsyncGenerator[Streamable, None] | None
+        :param record_separator: Appended after each record. Defaults to LF; RIS
+            uses CRLF.
+        :type record_separator: str
         """
         if (fn is None) == (generator is None):
             msg = "Either a function or a generator must be provided, but not both."
@@ -64,6 +68,7 @@ class FileStream:
         self.fn = fn
         self.fn_kwargs = fn_kwargs or []
         self.generator = generator
+        self.record_separator = record_separator
 
     async def _to_str(self, data: Streamable) -> str:
         """

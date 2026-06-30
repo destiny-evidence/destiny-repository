@@ -44,6 +44,7 @@ class BlobContainer(StrEnum):
 
 _CONTENT_TYPE_BY_EXTENSION: dict[str, str] = {
     "jsonl": "application/jsonl",
+    "ris": "application/x-research-info-systems",
     "json": "application/json",
     "csv": "text/csv",
     "txt": "text/plain",
