@@ -812,7 +812,7 @@ async def request_search_export(
     description=(
         "Get the status of a search export job. Once `status` is "
         "`completed`, the response includes a signed `result_url` for the "
-        "produced JSONL file, and `truncated: true` if the matching set "
+        "produced export file, and `truncated: true` if the matching set "
         f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
         f"file contains only the first {SearchService.MAX_RESULT_WINDOW:,} "
         "matches). The URL is re-signed on each call, so an expired URL can "

@@ -121,6 +121,7 @@ class MinioBlobStorageClient(GenericBlobStorageClient):
         content_disposition: str | None,
     ) -> str:
         """Get a signed URL for a file in MinIO."""
+        url: str | None = None
         try:
             if interaction_type == BlobSignedUrlType.DOWNLOAD:
                 # S3-style `response-content-disposition` override, signed into

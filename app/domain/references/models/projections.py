@@ -360,7 +360,7 @@ class ReferenceRisProjection(GenericProjection[RisRecord]):
                 accession=str(reference.id),
                 database=cls.DATABASE_NAME,
                 pdf_url=pdf_url,
-                urls=list(set(urls + cls._identifier_urls(reference))),
+                urls=list(dict.fromkeys(urls + cls._identifier_urls(reference))),
             )
         except Exception as exc:
             msg = "Failed to project RisRecord from Reference"
