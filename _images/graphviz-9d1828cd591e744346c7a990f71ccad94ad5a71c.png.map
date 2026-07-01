@@ -1,0 +1,28 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.enhancements.Authorship
+
+Represents a single author and their association with a reference.
+
+This is a simplification of the OpenAlex [Authorship
+object](https://docs.openalex.org/api&#45;entities/works/work&#45;object/authorship&#45;object)
+for our purposes.
+" alt="" coords="735,61,963,173"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.enhancements.BibliographicMetadataEnhancement
+
+An enhancement which is made up of bibliographic metadata.
+
+Generally this will be sourced from a database such as OpenAlex or similar.
+For directly contributed references, these may not be complete.
+" alt="" coords="5,5,499,341"/>
+<area shape="rect" id="node3" title="libs.sdk.src.destiny_sdk.enhancements.Pagination
+
+Pagination information for journal articles.
+
+Maps to OpenAlex&#39;s work.biblio object. All fields are strings to match
+OpenAlex&#39;s format, which may include non&#45;numeric values like &quot;Spring&quot; or &quot;A1&quot;.
+" alt="" coords="768,254,929,394"/>
+<area shape="rect" id="node4" title="libs.sdk.src.destiny_sdk.enhancements.PublicationVenue
+
+A publication venue (journal, repository, conference, etc.).
+" alt="" coords="643,443,1055,611"/>
+</map>

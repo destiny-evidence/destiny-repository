@@ -1,0 +1,12 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.auth.HMACAuthorizationHeaders
+
+The HTTP authorization headers required for HMAC authentication.
+
+Expects the following headers to be present in the request
+
+&#45; Authorization: Signature [request signature]
+&#45; X&#45;Client&#45;Id: [UUID]
+&#45; X&#45;Request&#45;Timestamp: [float]
+" alt="" coords="5,5,247,117"/>
+</map>

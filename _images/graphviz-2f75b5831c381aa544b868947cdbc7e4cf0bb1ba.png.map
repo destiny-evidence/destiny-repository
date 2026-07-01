@@ -1,0 +1,14 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.imports.ImportBatchRead
+
+Core import batch class.
+" alt="" coords="47,263,412,459"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.imports.ImportRecordRead
+
+Core import record class.
+" alt="" coords="556,5,979,313"/>
+<area shape="rect" id="node3" title="libs.sdk.src.destiny_sdk.imports.ImportResultRead
+
+Core import result class.
+" alt="" coords="616,408,919,548"/>
+</map>

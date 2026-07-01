@@ -1,0 +1,41 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.AnnotationFilter
+
+Model representing an annotation filter for searching references.
+" alt="" coords="1376,5,1535,117"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.LinkedDataConceptFilter
+
+A set of fully&#45;qualified concept URIs to match on ``linked_data_concepts``.
+
+Within a single filter, references must carry at least one of the listed URIs
+(logical OR). Multiple filters on a query are ANDed together.
+" alt="" coords="1351,299,1559,355"/>
+<area shape="rect" id="node3" title="app.domain.references.models.models.LinkedDataCountryFilter
+
+A set of ISO 3166&#45;1 alpha&#45;2 codes to match on ``linked_data_countries``.
+
+OR within a filter; AND between filters.
+" alt="" coords="1351,403,1560,459"/>
+<area shape="rect" id="node4" title="app.domain.references.models.models.LinkedDataCountryWBRegionFilter
+
+A set of World Bank region IDs to match on ``linked_data_country_wb_regions``.
+
+OR within a filter; AND between filters.
+" alt="" coords="1188,507,1723,563"/>
+<area shape="rect" id="node5" title="app.domain.references.models.models.PublicationYearRange
+
+A range of publication years for filtering search results.
+" alt="" coords="1365,166,1546,250"/>
+<area shape="rect" id="node6" title="app.domain.references.models.models.SearchExport
+
+A queued job that produces a file of references matching a search.
+" alt="" coords="5,195,299,475"/>
+<area shape="rect" id="node7" title="app.domain.references.models.models.SearchQuery
+
+A specification for searching references.
+" alt="" coords="443,185,1044,381"/>
+<area shape="rect" id="node8" title="app.persistence.blob.models.BlobStorageFile
+
+Model to represent Blob Storage files.
+" alt="" coords="624,429,863,569"/>
+</map>

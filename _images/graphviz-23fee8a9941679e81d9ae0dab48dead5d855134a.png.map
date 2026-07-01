@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.robots.RobotError
+
+A record of something going wrong with the robot.
+" alt="" coords="377,63,479,119"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.robots.RobotResult
+
+Used to indicate to the repository that the robot has finished processing.
+" alt="" coords="5,5,233,89"/>
+</map>
