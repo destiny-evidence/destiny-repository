@@ -210,9 +210,7 @@ async def run_search_export_task(
             sql_uow=sql_uow,
             es_uow=es_uow,
             access_control_service=access_control_service,
-            get_jsonl_deduplicated_references=(
-                reference_service.get_jsonl_deduplicated_references
-            ),
+            reference_service=reference_service,
         )
         await search_export_service.run_search_export(search_export_id, blob_repository)
 

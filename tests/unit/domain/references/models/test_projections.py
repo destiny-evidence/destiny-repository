@@ -7,6 +7,7 @@ from uuid import uuid7
 
 import destiny_sdk
 import pytest
+from destiny_sdk.enhancements import PublicationVenueType
 
 from app.core.exceptions import ProjectionError
 from app.domain.references.models.models import (
@@ -19,8 +20,10 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.projections import (
     DeduplicatedReferenceProjection,
+    ReferenceRisProjection,
     ReferenceSearchFieldsProjection,
 )
+from app.domain.references.models.ris import RisType
 from tests.factories import (
     AbstractContentEnhancementFactory,
     AnnotationEnhancementFactory,
@@ -32,8 +35,13 @@ from tests.factories import (
     ERICIdentifierFactory,
     LinkedDataEnhancementFactory,
     LinkedExternalIdentifierFactory,
+    LocationEnhancementFactory,
+    LocationFactory,
     OpenAlexIdentifierFactory,
     OtherIdentifierFactory,
+    PaginationFactory,
+    ProquestIdentifierFactory,
+    PublicationVenueFactory,
     PubMedIdentifierFactory,
     RawEnhancementFactory,
     ReferenceFactory,
@@ -957,3 +965,218 @@ class TestDeduplicatedReferenceProjection:
         result = DeduplicatedReferenceProjection.get_from_reference(reference)
 
         assert result.identifiers is None
+
+
+def _reference_with_bibliographic(**content_kwargs):
+    """A reference with a single bibliographic enhancement and no identifiers."""
+    ref_id = uuid7()
+    bibliographic = EnhancementFactory.build(
+        reference_id=ref_id,
+        created_at=datetime.now(tz=UTC),
+        content=BibliographicMetadataEnhancementFactory.build(**content_kwargs),
+    )
+    return ReferenceFactory.build(
+        id=ref_id, enhancements=[bibliographic], identifiers=[]
+    )
+
+
+class TestReferenceRisProjection:
+    """Test the ReferenceRisProjection class."""
+
+    def test_projects_bibliographic_and_identifier_fields(self):
+        """All RIS-relevant fields are projected from enhancements and identifiers."""
+        ref_id = uuid7()
+        bibliographic = EnhancementFactory.build(
+            reference_id=ref_id,
+            created_at=datetime.now(tz=UTC),
+            content=BibliographicMetadataEnhancementFactory.build(
+                title="A Title",
+                authorship=[
+                    AuthorshipFactory.build(
+                        display_name="Jit Mark",
+                        position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+                    ),
+                ],
+                publisher="A Publisher",
+                publication_date=datetime(2020, 4, 2, tzinfo=UTC),
+                pagination=PaginationFactory.build(
+                    volume="12", issue="3", first_page="100", last_page="110"
+                ),
+                publication_venue=PublicationVenueFactory.build(
+                    display_name="The Journal",
+                    venue_type=PublicationVenueType.JOURNAL,
+                    issn=["1234-5678"],
+                ),
+            ),
+        )
+        abstract = EnhancementFactory.build(
+            reference_id=ref_id,
+            created_at=datetime.now(tz=UTC),
+            content=AbstractContentEnhancementFactory.build(abstract="An abstract."),
+        )
+        location = EnhancementFactory.build(
+            reference_id=ref_id,
+            created_at=datetime.now(tz=UTC),
+            content=LocationEnhancementFactory.build(
+                locations=[
+                    LocationFactory.build(
+                        landing_page_url="https://example.org/x",
+                        pdf_url="https://example.org/x.pdf",
+                    )
+                ]
+            ),
+        )
+        reference = ReferenceFactory.build(
+            id=ref_id,
+            enhancements=[bibliographic, abstract, location],
+            identifiers=[
+                LinkedExternalIdentifierFactory.build(
+                    identifier=DOIIdentifierFactory.build(identifier="10.1000/abc")
+                ),
+                LinkedExternalIdentifierFactory.build(
+                    identifier=PubMedIdentifierFactory.build(identifier=12345678)
+                ),
+            ],
+        )
+
+        result = ReferenceRisProjection.get_from_reference(reference)
+
+        assert result.reference_type == RisType.JOURNAL
+        assert result.title == "A Title"
+        assert result.authors == ["Jit Mark"]
+        assert result.publisher == "A Publisher"
+        assert result.publication_year == 2020
+        assert result.journal == "The Journal"
+        assert result.volume == "12"
+        assert result.issue == "3"
+        assert result.start_page == "100"
+        assert result.end_page == "110"
+        assert result.issns == ["1234-5678"]
+        assert result.abstract == "An abstract."
+        assert result.doi == "10.1000/abc"
+        assert result.accession == str(reference.id)
+        assert result.database == ReferenceRisProjection.DATABASE_NAME
+        assert result.pdf_url == "https://example.org/x.pdf"
+        # Location landing page; identifier-derived URLs are covered separately.
+        assert "https://example.org/x" in result.urls
+
+    @pytest.mark.parametrize(
+        ("venue_type", "expected"),
+        [
+            (PublicationVenueType.JOURNAL, RisType.JOURNAL),
+            (PublicationVenueType.CONFERENCE, RisType.CONFERENCE),
+            (PublicationVenueType.REPOSITORY, RisType.GENERIC),
+            (PublicationVenueType.BOOK_SERIES, RisType.SERIAL),
+            (PublicationVenueType.EBOOK_PLATFORM, RisType.BOOK),
+            (PublicationVenueType.OTHER, RisType.GENERIC),
+        ],
+    )
+    def test_venue_type_maps_to_ris_type(self, venue_type, expected):
+        """Each publication venue type maps to its RIS type code."""
+        reference = _reference_with_bibliographic(
+            publication_venue=PublicationVenueFactory.build(venue_type=venue_type),
+        )
+
+        result = ReferenceRisProjection.get_from_reference(reference)
+        assert result.reference_type == expected
+
+    @pytest.mark.parametrize(
+        ("identifier", "expected_url"),
+        [
+            (
+                DOIIdentifierFactory.build(identifier="10.1000/abc"),
+                "https://doi.org/10.1000/abc",
+            ),
+            (
+                PubMedIdentifierFactory.build(identifier=12345678),
+                "https://pubmed.ncbi.nlm.nih.gov/12345678/",
+            ),
+            (
+                OpenAlexIdentifierFactory.build(identifier="W12345"),
+                "https://openalex.org/W12345",
+            ),
+            (
+                ERICIdentifierFactory.build(identifier="ED123456"),
+                "https://eric.ed.gov/?id=ED123456",
+            ),
+            (
+                ProquestIdentifierFactory.build(identifier="12345678"),
+                "https://www.proquest.com/docview/12345678",
+            ),
+        ],
+    )
+    def test_resolves_identifier_to_url(self, identifier, expected_url):
+        """Each external identifier type resolves to its public URL in UR."""
+        reference = ReferenceFactory.build(
+            enhancements=[],
+            identifiers=[LinkedExternalIdentifierFactory.build(identifier=identifier)],
+        )
+
+        result = ReferenceRisProjection.get_from_reference(reference)
+        assert expected_url in result.urls
+
+    def test_publisher_falls_back_to_venue_host_organization(self):
+        """With no explicit publisher, the venue's host organization fills PB."""
+        reference = _reference_with_bibliographic(
+            publisher=None,
+            publication_venue=PublicationVenueFactory.build(
+                host_organization_name="Venue Press"
+            ),
+        )
+
+        result = ReferenceRisProjection.get_from_reference(reference)
+        assert result.publisher == "Venue Press"
+
+    def test_defaults_to_generic_without_venue(self):
+        """A missing venue defaults the RIS type to generic, not a guessed journal."""
+        reference = _reference_with_bibliographic(publication_venue=None)
+
+        result = ReferenceRisProjection.get_from_reference(reference)
+        assert result.reference_type == RisType.GENERIC
+
+    def test_preserves_middle_author_order(self):
+        """Middle authors keep their stored order rather than being alphabetized."""
+        reference = _reference_with_bibliographic(
+            authorship=[
+                AuthorshipFactory.build(
+                    display_name="Zara First",
+                    position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+                ),
+                AuthorshipFactory.build(
+                    display_name="Yusuf Middle",
+                    position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                ),
+                AuthorshipFactory.build(
+                    display_name="Abel Middle",
+                    position=destiny_sdk.enhancements.AuthorPosition.MIDDLE,
+                ),
+                AuthorshipFactory.build(
+                    display_name="Mona Last",
+                    position=destiny_sdk.enhancements.AuthorPosition.LAST,
+                ),
+            ],
+        )
+
+        result = ReferenceRisProjection.get_from_reference(reference)
+        assert result.authors == [
+            "Zara First",
+            "Yusuf Middle",
+            "Abel Middle",
+            "Mona Last",
+        ]
+
+    def test_empty_reference_defaults(self):
+        """A reference with no enhancements or identifiers projects safe defaults."""
+        reference = Reference(
+            id=uuid7(),
+            visibility=Visibility.PUBLIC,
+            enhancements=[],
+            identifiers=[],
+        )
+
+        result = ReferenceRisProjection.get_from_reference(reference)
+        assert result.reference_type == RisType.GENERIC
+        assert result.title is None
+        assert result.authors == []
+        assert result.doi is None
+        assert result.urls == []

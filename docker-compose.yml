@@ -30,6 +30,16 @@ services:
       interval: 10s
       timeout: 10s
       retries: 5
+  createbuckets:
+    image: minio/mc
+    depends_on:
+      fs:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set fs http://fs:9000 localuser localpass &&
+      mc mb -p fs/destiny-repository;
+      "
   http:
     image: hashicorp/http-echo:latest
     ports:
@@ -94,10 +104,12 @@ services:
         condition: service_started
       es_index_setup:
         condition: service_completed_successfully
+      createbuckets:
+        condition: service_completed_successfully
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass", "CONTAINERS": {"operations": "destiny-repository", "full_texts": "destiny-repository"}}'
+      MINIO_CONFIG: '{"HOST":"fs:9000","PUBLIC_HOST":"localhost:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass", "CONTAINERS": {"operations": "destiny-repository", "full_texts": "destiny-repository"}}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
       APP_NAME: destiny-app
       CORS_ALLOW_ORIGINS: '["*"]'
@@ -116,6 +128,8 @@ services:
         condition: service_healthy
       fs:
         condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       elasticsearch:
@@ -147,6 +161,8 @@ services:
         condition: service_healthy
       fs:
         condition: service_healthy
+      createbuckets:
+        condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
       elasticsearch:

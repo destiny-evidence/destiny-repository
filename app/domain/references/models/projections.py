@@ -1,6 +1,7 @@
 """Projection functions for reference domain data."""
 
 from collections import defaultdict
+from typing import ClassVar
 from uuid import UUID
 
 import destiny_sdk
@@ -17,6 +18,66 @@ from app.domain.references.models.models import (
     Reference,
     ReferenceSearchFields,
 )
+from app.domain.references.models.ris import RisRecord, RisType
+
+
+def _priority_sorted_enhancements(
+    canonical_id: UUID, enhancements: list[Enhancement] | None
+) -> list[Enhancement]:
+    """
+    Order a references enhancements by priority for projecting in increasing order.
+
+    Priority is defined as
+    * Firstly, we prioritize enhancements on the canonical reference
+    * Secondly, we prioritize most recent enhancements
+
+    Concretely
+    * If there's an abstract on the canonical, use that
+    * If there's two abstracts on the canonical, use the most recent
+    * If there's no abstracts on the canonical, use the most recent
+    abstract from all duplicates.
+
+    So this function places the highest priority enhancement at the end of the list.
+    """
+    if not enhancements:
+        return []
+
+    def _sort_key(enhancement: Enhancement) -> tuple[bool, float]:
+        if not enhancement.created_at:
+            msg = "We should never try to project an enhancement without created_at"
+            raise RuntimeError(msg)
+        return (
+            enhancement.reference_id == canonical_id,
+            enhancement.created_at.timestamp(),
+        )
+
+    return sorted(enhancements, key=_sort_key)
+
+
+def _order_authorship_by_position(
+    authorship: list[destiny_sdk.enhancements.Authorship],
+    *,
+    alphabetize_within_position: bool = True,
+) -> list[str]:
+    """
+    Order authorship FIRST, then MIDDLE, then LAST.
+
+    ``position`` has no ordinal, so middle authors tie. The default breaks ties by
+    name (deterministic, for search); ``alphabetize_within_position=False`` keeps
+    their stored order, which is generally the true citation sequence.
+    """
+
+    def _sort_key(
+        author: destiny_sdk.enhancements.Authorship,
+    ) -> tuple[int, str]:
+        position_rank = {
+            destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
+            destiny_sdk.enhancements.AuthorPosition.LAST: 1,
+        }.get(author.position, 0)
+        tiebreak = author.display_name if alphabetize_within_position else ""
+        return (position_rank, tiebreak)
+
+    return [author.display_name for author in sorted(authorship, key=_sort_key)]
 
 
 class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
@@ -54,8 +115,8 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             ] = {}
             linked_data_content = None
 
-            for enhancement in cls.__priority_sorted_enhancements(
-                canonical_id=reference.id, enhancements=reference.enhancements
+            for enhancement in _priority_sorted_enhancements(
+                reference.id, reference.enhancements
             ):
                 if (
                     enhancement.content.enhancement_type
@@ -118,7 +179,7 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
 
             return ReferenceSearchFields(
                 abstract=abstract,
-                authors=cls.__order_authorship_by_position(authorship),
+                authors=_order_authorship_by_position(authorship),
                 publication_date=publication_date,
                 publication_year=publication_year,
                 title=title,
@@ -133,62 +194,6 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
         except Exception as exc:
             msg = "Failed to project ReferenceSearchFields from Reference"
             raise ProjectionError(msg) from exc
-
-    @classmethod
-    def __order_authorship_by_position(
-        cls, authorship: list[destiny_sdk.enhancements.Authorship]
-    ) -> list[str]:
-        """Order authorship by position: first, middle (alphabetical), last."""
-        return [
-            author.display_name
-            for author in sorted(
-                authorship,
-                key=lambda author: (
-                    {
-                        destiny_sdk.enhancements.AuthorPosition.FIRST: -1,
-                        destiny_sdk.enhancements.AuthorPosition.LAST: 1,
-                    }.get(author.position, 0),
-                    author.display_name,
-                ),
-            )
-        ]
-
-    @classmethod
-    def __priority_sorted_enhancements(
-        cls, canonical_id: UUID, enhancements: list[Enhancement] | None
-    ) -> list[Enhancement]:
-        """
-        Order a references enhancements by priority for projecting in increasing order.
-
-        Priority is defined as
-        * Firstly, we prioritize enhancements on the canonical reference
-        * Secondly, we prioritize most recent enhancements
-
-        Concretely
-        * If there's an abstract on the canonical, use that
-        * If there's two abstracts on the canonical, use the most recent
-        * If there's no abstracts on the canonical, use the most recent
-        abstract from all duplicates.
-
-        So this function places the highest priority enhancement at the end of the list.
-        """
-        if not enhancements:
-            return []
-
-        def __priority_sort_key(
-            canonical_id: UUID, enhancement: Enhancement
-        ) -> tuple[bool, float]:
-            """Key for sorting enhancements."""
-            if not enhancement.created_at:
-                msg = "We should never try to project an enhancement without created_at"
-                raise RuntimeError(msg)
-
-            return (
-                enhancement.reference_id == canonical_id,
-                enhancement.created_at.timestamp(),
-            )
-
-        return sorted(enhancements, key=lambda e: __priority_sort_key(canonical_id, e))
 
     @classmethod
     def __positive_boolean_annotations(
@@ -239,6 +244,159 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
     ) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return cls.get_from_reference(reference).to_canonical_candidate_search_fields()
+
+
+class ReferenceRisProjection(GenericProjection[RisRecord]):
+    """Projection from a reference to an ``RisRecord`` for RIS export."""
+
+    DATABASE_NAME: ClassVar[str] = "Evidence Repository"
+
+    IDENTIFIER_URL_TEMPLATES: ClassVar[
+        dict[destiny_sdk.identifiers.ExternalIdentifierType, str]
+    ] = {
+        destiny_sdk.identifiers.ExternalIdentifierType.DOI: "https://doi.org/{}",
+        destiny_sdk.identifiers.ExternalIdentifierType.PM_ID: (
+            "https://pubmed.ncbi.nlm.nih.gov/{}/"
+        ),
+        destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX: (
+            "https://openalex.org/{}"
+        ),
+        destiny_sdk.identifiers.ExternalIdentifierType.ERIC: "https://eric.ed.gov/?id={}",
+        destiny_sdk.identifiers.ExternalIdentifierType.PRO_QUEST: (
+            "https://www.proquest.com/docview/{}"
+        ),
+    }
+
+    VENUE_TYPE_TO_RIS_TYPE: ClassVar[
+        dict[destiny_sdk.enhancements.PublicationVenueType, RisType]
+    ] = {
+        destiny_sdk.enhancements.PublicationVenueType.JOURNAL: RisType.JOURNAL,
+        destiny_sdk.enhancements.PublicationVenueType.CONFERENCE: RisType.CONFERENCE,
+        destiny_sdk.enhancements.PublicationVenueType.REPOSITORY: RisType.GENERIC,
+        destiny_sdk.enhancements.PublicationVenueType.BOOK_SERIES: RisType.SERIAL,
+        destiny_sdk.enhancements.PublicationVenueType.EBOOK_PLATFORM: RisType.BOOK,
+        destiny_sdk.enhancements.PublicationVenueType.OTHER: RisType.GENERIC,
+    }
+
+    @classmethod
+    def get_from_reference(cls, reference: Reference) -> RisRecord:
+        """Project an ``RisRecord``, coalescing enhancement fields by priority."""
+        try:
+            (
+                title,
+                publication_year,
+                publication_date,
+                publisher,
+                abstract,
+                pagination,
+                venue,
+                pdf_url,
+            ) = None, None, None, None, None, None, None, None
+            authorship: list[destiny_sdk.enhancements.Authorship] = []
+            urls: list[str] = []
+
+            for enhancement in _priority_sorted_enhancements(
+                reference.id, reference.enhancements
+            ):
+                if (
+                    enhancement.content.enhancement_type
+                    == EnhancementType.BIBLIOGRAPHIC
+                ):
+                    title = enhancement.content.title or title
+                    authorship = enhancement.content.authorship or authorship
+                    publication_year = (
+                        enhancement.content.publication_year
+                        or (
+                            enhancement.content.publication_date.year
+                            if enhancement.content.publication_date
+                            else None
+                        )
+                        or publication_year
+                    )
+                    publication_date = (
+                        enhancement.content.publication_date or publication_date
+                    )
+                    publisher = enhancement.content.publisher or publisher
+                    pagination = enhancement.content.pagination or pagination
+                    venue = enhancement.content.publication_venue or venue
+                elif enhancement.content.enhancement_type == EnhancementType.ABSTRACT:
+                    abstract = enhancement.content.abstract
+                elif enhancement.content.enhancement_type == EnhancementType.LOCATION:
+                    locations = enhancement.content.locations
+                    urls = [
+                        str(location.landing_page_url)
+                        for location in locations
+                        if location.landing_page_url
+                    ] or urls
+                    pdf_url = next(
+                        (
+                            str(location.pdf_url)
+                            for location in locations
+                            if location.pdf_url
+                        ),
+                        pdf_url,
+                    )
+
+            return RisRecord(
+                reference_type=cls._ris_type(venue),
+                title=title,
+                authors=_order_authorship_by_position(
+                    authorship, alphabetize_within_position=False
+                ),
+                publication_year=publication_year,
+                publication_date=publication_date,
+                journal=venue.display_name if venue else None,
+                volume=pagination.volume if pagination else None,
+                issue=pagination.issue if pagination else None,
+                start_page=pagination.first_page if pagination else None,
+                end_page=pagination.last_page if pagination else None,
+                publisher=publisher
+                or (venue.host_organization_name if venue else None),
+                issns=venue.issn if venue and venue.issn else [],
+                abstract=abstract,
+                doi=cls._identifier_value(
+                    reference, destiny_sdk.identifiers.ExternalIdentifierType.DOI
+                ),
+                accession=str(reference.id),
+                database=cls.DATABASE_NAME,
+                pdf_url=pdf_url,
+                urls=list(dict.fromkeys(urls + cls._identifier_urls(reference))),
+            )
+        except Exception as exc:
+            msg = "Failed to project RisRecord from Reference"
+            raise ProjectionError(msg) from exc
+
+    @classmethod
+    def _ris_type(
+        cls, venue: destiny_sdk.enhancements.PublicationVenue | None
+    ) -> RisType:
+        """Map a publication venue to an RIS type, defaulting to generic."""
+        if venue and venue.venue_type:
+            return cls.VENUE_TYPE_TO_RIS_TYPE.get(venue.venue_type, RisType.GENERIC)
+        return RisType.GENERIC
+
+    @staticmethod
+    def _identifier_value(
+        reference: Reference,
+        identifier_type: destiny_sdk.identifiers.ExternalIdentifierType,
+    ) -> str | None:
+        """Return the first matching external identifier value, if present."""
+        for linked in reference.identifiers or []:
+            if linked.identifier.identifier_type == identifier_type:
+                return str(linked.identifier.identifier)
+        return None
+
+    @classmethod
+    def _identifier_urls(cls, reference: Reference) -> list[str]:
+        """Resolve external identifiers to public URLs for the `UR` tag."""
+        urls = []
+        for linked in reference.identifiers or []:
+            template = cls.IDENTIFIER_URL_TEMPLATES.get(
+                linked.identifier.identifier_type
+            )
+            if template:
+                urls.append(template.format(linked.identifier.identifier))
+        return urls
 
 
 class DeduplicatedReferenceProjection(GenericProjection[Reference]):

@@ -58,6 +58,7 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
+    ExportFormat,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
     LinkedDataCountryWBRegionFilter,
@@ -226,9 +227,7 @@ def search_export_service(
         sql_uow=sql_uow,
         es_uow=es_uow,
         access_control_service=access_control_service,
-        get_jsonl_deduplicated_references=(
-            reference_service.get_jsonl_deduplicated_references
-        ),
+        reference_service=reference_service,
     )
 
 
@@ -755,9 +754,10 @@ async def cross_tabulate_facets(
     "/",
     status_code=status.HTTP_202_ACCEPTED,
     description=(
-        "Queue an export job that produces a JSONL file of references matching the "
-        "given search. Accepts the same filter parameters as `/references/search/` "
-        "without pagination. Returns the job id with `status: pending`; poll "
+        "Queue an export job that produces a file of references matching the given "
+        "search, in JSONL (default) or RIS via the `export_format` parameter. "
+        "Accepts the same filter parameters as `/references/search/` without "
+        "pagination. Returns the job id with `status: pending`; poll "
         "`GET /references/search/exports/{id}/` until the job completes."
     ),
 )
@@ -771,11 +771,13 @@ async def request_search_export(
     entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
     query: Annotated[SearchQuery, Depends(parse_search_query)],
     sort: SortParam = None,
+    export_format: ExportFormat = ExportFormat.JSONL,
 ) -> destiny_sdk.references.SearchExportRead:
     """Queue a search export job and return its id and pending status."""
     search_export = await search_export_service.request_search_export(
         query,
         sort=sort,
+        export_format=export_format,
     )
     try:
         await queue_task_with_trace(
@@ -810,7 +812,7 @@ async def request_search_export(
     description=(
         "Get the status of a search export job. Once `status` is "
         "`completed`, the response includes a signed `result_url` for the "
-        "produced JSONL file, and `truncated: true` if the matching set "
+        "produced export file, and `truncated: true` if the matching set "
         f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
         f"file contains only the first {SearchService.MAX_RESULT_WINDOW:,} "
         "matches). The URL is re-signed on each call, so an expired URL can "

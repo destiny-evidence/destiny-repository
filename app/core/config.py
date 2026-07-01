@@ -188,6 +188,23 @@ class MinioConfig(BlobBackendConfig):
     host: str
     access_key: str
     secret_key: str
+    public_host: str | None = Field(
+        default=None,
+        description=(
+            "Host used when signing download/upload URLs, if different from `host`. "
+            "Presigning is offline, so this lets the app reach MinIO at an internal "
+            "host (e.g. `fs:9000` in Docker) while signing URLs for a host the "
+            "consumer can reach (e.g. `localhost:9000`). Defaults to `host`."
+        ),
+    )
+    region: str = Field(
+        default="us-east-1",
+        description=(
+            "Region for the signing client. Set explicitly so presigning against "
+            "`public_host` stays offline (no GetBucketLocation lookup). Matches "
+            "MinIO's default region."
+        ),
+    )
 
 
 class AzureBlobConfig(BlobBackendConfig):

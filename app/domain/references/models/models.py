@@ -82,6 +82,20 @@ class SearchExportStatus(StrEnum):
     """Export job failed before producing a file."""
 
 
+class ExportFormat(StrEnum):
+    """The serialization format of a reference export."""
+
+    JSONL = auto()
+    """JSON Lines: one reference per line."""
+    RIS = auto()
+    """RIS: tagged citation format consumed by reference managers."""
+
+    @property
+    def extension(self) -> str:
+        """The file extension for this format."""
+        return self.value
+
+
 class Visibility(StrEnum):
     """
     The visibility of a data element in the repository.
@@ -526,7 +540,7 @@ Errors for individual references are provided <TBC>.
 
 
 class SearchExport(DomainBaseModel, SQLAttributeMixin):
-    """A queued job that produces a JSONL file of references matching a search."""
+    """A queued job that produces a file of references matching a search."""
 
     query: "SearchQuery" = Field(
         description="The search specification this export resolves.",
@@ -534,6 +548,10 @@ class SearchExport(DomainBaseModel, SQLAttributeMixin):
     sort: list[str] | None = Field(
         default=None,
         description="Sort fields, in the same form `/references/search/` accepts.",
+    )
+    export_format: ExportFormat = Field(
+        default=ExportFormat.JSONL,
+        description="The serialization format of the produced file.",
     )
     status: SearchExportStatus = Field(
         default=SearchExportStatus.PENDING,

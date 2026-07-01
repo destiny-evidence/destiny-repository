@@ -29,6 +29,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
+    ExportFormat,
     ExternalIdentifier,
     FacetType,
     IdentifierLookup,
@@ -44,13 +45,17 @@ from app.domain.references.models.models import (
     RobotEnhancementBatch,
     SearchQuery,
 )
-from app.domain.references.models.projections import DeduplicatedReferenceProjection
+from app.domain.references.models.projections import (
+    DeduplicatedReferenceProjection,
+    ReferenceRisProjection,
+)
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.repository import (
     EnhancementRequestSQLPreloadable,
     RobotEnhancementBatchSQLPreloadable,
 )
 from app.domain.references.services.access_control_service import (
+    RedactedReference,
     ReferenceAccessControlService,
 )
 from app.domain.references.services.anti_corruption_service import (
@@ -71,6 +76,7 @@ from app.domain.references.services.synchronizer_service import (
 from app.domain.robots.service import RobotService
 from app.domain.service import GenericService
 from app.external.vocabulary.client import get_vocabulary_artifact_client
+from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import (
@@ -184,6 +190,74 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self._get_deduplicated_references(
             reference_ids=reference_ids, references=references
         )
+
+    async def stream_references_to_blob(  # noqa: PLR0913
+        self,
+        *,
+        reference_ids: list[UUID],
+        export_format: ExportFormat,
+        access_control_service: ReferenceAccessControlService,
+        blob_repository: BlobRepository,
+        path: str,
+        filename: str,
+        chunk_size: int,
+    ) -> tuple[BlobStorageFile, int]:
+        """
+        Stream deduplicated, redacted references to blob storage in the given format.
+
+        Rides the caller's active SQL unit of work (the per-chunk fetch is
+        undecorated), so the caller's ``@sql_unit_of_work`` method owns the
+        transaction spanning the whole stream.
+        """
+        file_stream = FileStream(
+            self._serialize_references,
+            [
+                {
+                    "reference_ids": chunk,
+                    "export_format": export_format,
+                    "access_control_service": access_control_service,
+                }
+                for chunk in list_chunker(reference_ids, chunk_size)
+            ],
+        )
+        result_file = await blob_repository.upload_file_to_blob_storage(
+            content=file_stream,
+            path=path,
+            filename=filename,
+        )
+        return result_file, len(reference_ids)
+
+    async def _serialize_references(
+        self,
+        reference_ids: list[UUID],
+        export_format: ExportFormat,
+        access_control_service: ReferenceAccessControlService,
+    ) -> list[str]:
+        """Fetch, redact and serialize one chunk of references."""
+        references = await self._get_deduplicated_references(
+            reference_ids=reference_ids
+        )
+        return [
+            await self._serialize_reference(
+                access_control_service.redact_reference(reference), export_format
+            )
+            for reference in references
+        ]
+
+    async def _serialize_reference(
+        self, reference: RedactedReference, export_format: ExportFormat
+    ) -> str:
+        """Serialize a single redacted reference into the requested format."""
+        match export_format:
+            case ExportFormat.RIS:
+                return ReferenceRisProjection.get_from_reference(reference).render()
+            case ExportFormat.JSONL:
+                return (
+                    await self._anti_corruption_service.reference_to_sdk(reference)
+                ).to_jsonl()
+            case _:
+                msg = f"Serializing export format {export_format!r} is not implemented."
+                raise NotImplementedError(msg)
 
     async def _get_deduplicated_reference(self, reference_id: UUID) -> Reference:
         """
@@ -388,24 +462,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def add_enhancement(self, enhancement: Enhancement) -> Reference:
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement)
-
-    async def get_jsonl_deduplicated_references(
-        self,
-        access_control_service: ReferenceAccessControlService,
-        reference_ids: list[UUID],
-    ) -> list[str]:
-        """Get JSONL strings for deduplicated (flattened) references by id."""
-        deduplicated = await self._get_deduplicated_references(
-            reference_ids=reference_ids
-        )
-        return [
-            (
-                await self._anti_corruption_service.reference_to_sdk(
-                    access_control_service.redact_reference(ref)
-                )
-            ).to_jsonl()
-            for ref in deduplicated
-        ]
 
     @sql_unit_of_work
     async def get_all_reference_ids(
@@ -1188,27 +1244,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 expires_at=apply_positive_timedelta(lease_duration),
             )
 
-        file_stream = FileStream(
-            self.get_jsonl_deduplicated_references,
-            [
-                {
-                    "access_control_service": access_control_service,
-                    "reference_ids": reference_id_chunk,
-                }
-                for reference_id_chunk in list_chunker(
-                    [p.reference_id for p in pending_enhancements],
-                    settings.upload_file_chunk_size_override.get(
-                        UploadFile.ROBOT_ENHANCEMENT_REFERENCE_DATA,
-                        settings.default_upload_file_chunk_size,
-                    ),
-                )
-            ],
-        )
-
-        reference_data_file = await blob_repository.upload_file_to_blob_storage(
-            content=file_stream,
+        reference_data_file, _ = await self.stream_references_to_blob(
+            reference_ids=[pe.reference_id for pe in pending_enhancements],
+            export_format=ExportFormat.JSONL,
+            access_control_service=access_control_service,
+            blob_repository=blob_repository,
             path="robot_enhancement_batch_reference_data",
             filename=f"{robot_enhancement_batch.id}.jsonl",
+            chunk_size=settings.upload_file_chunk_size_override.get(
+                UploadFile.ROBOT_ENHANCEMENT_REFERENCE_DATA,
+                settings.default_upload_file_chunk_size,
+            ),
         )
 
         return await self._enhancement_service.build_robot_enhancement_batch(
