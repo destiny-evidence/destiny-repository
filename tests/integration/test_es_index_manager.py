@@ -540,6 +540,40 @@ async def test_we_do_not_roll_back_to_nonexistent_index(index_manager: IndexMana
         await index_manager.rollback()
 
 
+async def test_migrate_applies_reindex_script(
+    es_manager_for_tests: AsyncESClientManager,
+) -> None:
+    """A configured reindex_script transforms every document during migration."""
+    async with es_manager_for_tests.client() as client:
+        await delete_test_indices(client)
+        index_manager = IndexManager(
+            SimpleDoc,
+            client,
+            reindex_status_polling_interval=1,
+            reindex_script={
+                "lang": "painless",
+                "source": "ctx._source.content = ctx._id",
+            },
+        )
+        await index_manager.initialize_index()
+
+        doc_ids = []
+        for i in range(5):
+            doc = SimpleDoc.from_domain(SimpleDomainModel(content=f"doc {i}"))
+            await doc.save(using=client, validate=True)
+            doc_ids.append(str(doc.meta.id))
+        await client.indices.refresh(index=index_manager.alias_name)
+
+        await index_manager.migrate()
+
+        new_index = await index_manager.get_current_index_name()
+        for doc_id in doc_ids:
+            fetched = await client.get(index=new_index, id=doc_id)
+            assert fetched["_source"]["content"] == doc_id
+
+        await delete_test_indices(client)
+
+
 async def get_current_index_settings(index_manager: IndexManager) -> dict[str, Any]:
     """Get index settings."""
     index_name = await index_manager.get_current_index_name()

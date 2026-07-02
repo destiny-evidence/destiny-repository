@@ -45,6 +45,7 @@ class IndexManager:
         repair_subset_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         reindex_status_polling_interval: int = 5 * 60,  # default to 5min
+        reindex_script: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize the migration manager.
@@ -58,6 +59,7 @@ class IndexManager:
                 in which case subset repair is unsupported for this index.
             version_prefix: Prefix for version numbers in index names
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
+            reindex_script: Painless script applied to each doc during reindex (defaults None)
 
         """  # noqa: E501
         self.document_class = document_class
@@ -65,6 +67,7 @@ class IndexManager:
         self.repair_task = repair_task
         self.repair_subset_task = repair_subset_task
         self.reindex_status_polling_interval = reindex_status_polling_interval
+        self.reindex_script = reindex_script
 
         self.alias_name = document_class.Index.name
         self.otel_enabled = otel_enabled
@@ -362,6 +365,7 @@ class IndexManager:
             conflicts="proceed",
             source={"index": source_index},
             dest={"index": dest_index, "version_type": "external"},
+            script=self.reindex_script,
             wait_for_completion=False,
             refresh=True,
         )
