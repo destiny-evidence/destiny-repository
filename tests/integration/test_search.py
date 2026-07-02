@@ -622,10 +622,10 @@ async def test_tied_sort_is_stable_across_doc_layouts(
         )
         for _ in range(8)
     ]
-    ascending = sorted(references, key=lambda reference: reference.id)
+    descending = sorted(references, key=lambda reference: reference.id, reverse=True)
 
-    order_a = await _reindex_and_search(es_client, ascending)
-    order_b = await _reindex_and_search(es_client, list(reversed(ascending)))
+    order_a = await _reindex_and_search(es_client, descending)
+    order_b = await _reindex_and_search(es_client, list(reversed(descending)))
 
     assert order_a == order_b
-    assert order_a == [reference.id for reference in ascending]
+    assert order_a == [reference.id for reference in descending]

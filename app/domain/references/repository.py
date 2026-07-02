@@ -379,7 +379,7 @@ class ReferenceESRepository(
         """Search references matching ``query``; structured filters AND with q."""
         # Append the unique doc id as a final tie-breaker so equal-sort-value hits
         # have a deterministic order
-        sort = [*sort, "id"] if sort else ["_score", "id"]
+        sort = [*sort, "-id"] if sort else ["_score", "-id"]
         return await self.search_with_query_string(
             query.query_string,
             fields=self.default_search_fields,
