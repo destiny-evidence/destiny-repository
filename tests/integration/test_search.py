@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator, Callable
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -15,6 +16,7 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import ESQueryError, ParseError
 from app.domain.references import routes as references
+from app.domain.references.models.models import SearchQuery
 from app.domain.references.repository import (
     ReferenceESRepository,
     ReferenceSQLRepository,
@@ -578,3 +580,52 @@ async def test_concept_filter_empty_uri_returns_400(
         params={"q": "title:Concept", "concept": [f"{CONCEPT_A},"]},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def _reindex_and_search(
+    es_client: AsyncElasticsearch, references: list["Reference"]
+) -> list[UUID]:
+    """Wipe, re-add references in order, return hit ids for an all-tied sort."""
+    await es_client.delete_by_query(
+        index="reference", body={"query": {"match_all": {}}}, conflicts="proceed"
+    )
+    await es_client.indices.refresh(index="reference")
+    repository = ReferenceESRepository(es_client)
+    for reference in references:
+        await repository.add(to_indexable(reference))
+    await es_client.indices.refresh(index="reference")
+    result = await repository.search(
+        SearchQuery(query_string="*"), page_size=50, sort=["-publication_year"]
+    )
+    return [hit.id for hit in result.hits]
+
+
+async def test_tied_sort_is_stable_across_doc_layouts(
+    es_client: AsyncElasticsearch,
+) -> None:
+    """
+    Tie-broken results order identically regardless of ``_doc`` layout.
+
+    Ensures that insertion order does not affect sort. ES uses metadata magic
+    under the hood to tiebreak, but across replicas this can lead to different
+    sorting behaviour.
+    """
+    references = [
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        publication_year=2020
+                    )
+                )
+            ]
+        )
+        for _ in range(8)
+    ]
+    ascending = sorted(references, key=lambda reference: reference.id)
+
+    order_a = await _reindex_and_search(es_client, ascending)
+    order_b = await _reindex_and_search(es_client, list(reversed(ascending)))
+
+    assert order_a == order_b
+    assert order_a == [reference.id for reference in ascending]
