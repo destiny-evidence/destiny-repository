@@ -137,6 +137,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
     docs = [
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Climate adaptation strategies",
             linked_data_concepts=[CONCEPT_A, CONCEPT_B],
@@ -145,6 +146,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Climate modelling primer",
             linked_data_concepts=[CONCEPT_A],
@@ -153,6 +155,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Medical imaging review",
             linked_data_concepts=[CONCEPT_A, CONCEPT_C],
@@ -161,6 +164,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Medical diagnostics overview",
             linked_data_concepts=[CONCEPT_B],
@@ -169,6 +173,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Medical training handbook",
             linked_data_concepts=None,
@@ -411,6 +416,7 @@ async def sibling_references(es_client: AsyncElasticsearch) -> None:
     for i, concepts in enumerate(_SIBLING_DOC_CONCEPTS, start=1):
         await ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title=f"doc {i}",
             linked_data_concepts=concepts,
