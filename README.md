@@ -35,21 +35,46 @@ modification to run the application), copy the example file:
 
 ```shell
 cp .env.example .env
+
+# To run any of the following commands, environment variables need to be set by
+source .env
 ```
+If you want to run locally and have no tenant-id, you at least need to replace the 
+`<` and `>` in the `.env` file.
 
 ### Starting the development server
 
 First you will need to start the auxiliary servers:
 
 ```sh
+source .env  # set environment variables
 docker compose up -d
 ```
+
+Make sure there is enough space where the docker volumes are located (typically 
+`/var/lib/docker/`); elasticsearch will cause issues if the partition is >90%. 
+Plan for 2–3GB for images and volumes.
+
+If you want to locate the volumes in a specific location, you can create 
+`docker-compose.override.yml`:
+```
+volumes:
+  certs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /path/to/volumes/certs
+  ...
+```
+Remember to create the directory before starting.
 
 #### Database
 
 Once the database server is running, run the migrations to setup the database.
 
 ```sh
+source .env  # set environment variables
 uv run alembic upgrade head
 ```
 
