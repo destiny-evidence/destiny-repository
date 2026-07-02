@@ -582,10 +582,10 @@ async def test_concept_filter_empty_uri_returns_400(
     assert response.status_code == status.HTTP_400_BAD_REQUEST
 
 
-async def _reindex_and_search(
+async def _wipe_and_index(
     es_client: AsyncElasticsearch, references: list["Reference"]
-) -> list[UUID]:
-    """Wipe, re-add references in order, return hit ids for an all-tied sort."""
+) -> ReferenceESRepository:
+    """Wipe the index and re-add ``references`` in the given order."""
     await es_client.delete_by_query(
         index="reference", body={"query": {"match_all": {}}}, conflicts="proceed"
     )
@@ -594,6 +594,14 @@ async def _reindex_and_search(
     for reference in references:
         await repository.add(to_indexable(reference))
     await es_client.indices.refresh(index="reference")
+    return repository
+
+
+async def _reindex_and_search(
+    es_client: AsyncElasticsearch, references: list["Reference"]
+) -> list[UUID]:
+    """Wipe, re-add references in order, return hit ids for an all-tied sort."""
+    repository = await _wipe_and_index(es_client, references)
     result = await repository.search(
         SearchQuery(query_string="*"), page_size=50, sort=["-publication_year"]
     )
@@ -629,3 +637,53 @@ async def test_tied_sort_is_stable_across_doc_layouts(
 
     assert order_a == order_b
     assert order_a == [reference.id for reference in descending]
+
+
+async def test_relevance_pagination_is_stable_and_non_overlapping(
+    es_client: AsyncElasticsearch,
+) -> None:
+    """
+    Default relevance sort paginates deterministically when scores tie.
+
+    Every reference shares an identical title, so a title query scores them
+    equally and ordering rests entirely on the id tiebreaker. Requesting the
+    same page twice must return the same ids, and consecutive pages must not
+    overlap.
+    """
+    references = [
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="identicaltitletoken"
+                    )
+                )
+            ]
+        )
+        for _ in range(8)
+    ]
+    repository = await _wipe_and_index(es_client, references)
+
+    async def fetch_page(page: int) -> list[UUID]:
+        result = await repository.search(
+            SearchQuery(query_string="title:identicaltitletoken"),
+            page=page,
+            page_size=3,
+        )
+        return [hit.id for hit in result.hits]
+
+    page_1_first = await fetch_page(1)
+    page_2_first = await fetch_page(2)
+    page_1_second = await fetch_page(1)
+    page_2_second = await fetch_page(2)
+
+    # Identical requests return identical pages.
+    assert page_1_first == page_1_second
+    assert page_2_first == page_2_second
+
+    # Consecutive pages do not overlap...
+    assert set(page_1_first).isdisjoint(page_2_first)
+
+    # ...and together they follow the descending-id tiebreaker.
+    expected = sorted((r.id for r in references), reverse=True)
+    assert page_1_first + page_2_first == expected[:6]
