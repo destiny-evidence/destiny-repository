@@ -5,8 +5,9 @@ services:
       POSTGRES_USER: localuser
       POSTGRES_PASSWORD: localpass
       POSTGRES_DB: destiny_dev
+      POSTGRES_PORT: 5432
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - db_data:/var/lib/postgresql/data
     healthcheck:
