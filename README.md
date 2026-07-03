@@ -33,13 +33,14 @@ accidental exposure of secrets, this file is ignored using the `.gitignore`
 file. To set up a copy of the configuration (which should not require
 modification to run the application), copy the example file:
 
-```shell
+```sh
 cp .env.example .env
 
 # To run any of the following commands, environment variables need to be set by
 source .env
 ```
-If you want to run locally and have no tenant-id, you at least need to replace the 
+
+If you want to run locally and have no tenant-id, you at least need to replace the
 `<` and `>` in the `.env` file.
 
 ### Starting the development server
@@ -51,13 +52,14 @@ source .env  # set environment variables
 docker compose up -d
 ```
 
-Make sure there is enough space where the docker volumes are located (typically 
-`/var/lib/docker/`); elasticsearch will cause issues if the partition is >90%. 
+Make sure there is enough space where the docker volumes are located (typically
+`/var/lib/docker/`); elasticsearch will cause issues if the partition is >90%.
 Plan for 2–3GB for images and volumes.
 
-If you want to locate the volumes in a specific location, you can create 
+If you want to locate the volumes in a specific location, you can create
 `docker-compose.override.yml`:
-```
+
+```yaml
 volumes:
   certs:
     driver: local
@@ -67,6 +69,7 @@ volumes:
       device: /path/to/volumes/certs
   ...
 ```
+
 Remember to create the directory before starting.
 
 #### Database
