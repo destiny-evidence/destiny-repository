@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncGenerator, Callable
 from typing import TYPE_CHECKING
-from uuid import UUID
+from uuid import UUID, uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -687,3 +687,42 @@ async def test_relevance_pagination_is_stable_and_non_overlapping(
     # ...and together they follow the descending-id tiebreaker.
     expected = sorted((r.id for r in references), reverse=True)
     assert page_1_first + page_2_first == expected[:6]
+
+
+async def test_search_tolerates_index_without_id_mapping(
+    es_client: AsyncElasticsearch,
+) -> None:
+    """
+    Search succeeds against an index that predates the sortable ``id`` field.
+
+    This simulates a pre-migration scenario where the ``id`` field was not yet mapped,
+    and can optionally be removed later.
+    """
+    # Replace the fully-mapped test index with one lacking the `id` field.
+    for index in await es_client.indices.get(index="reference*"):
+        await es_client.indices.delete(index=index)
+    await es_client.indices.create(
+        index="reference",
+        mappings={
+            "properties": {
+                "title": {"type": "text"},
+                "abstract": {"type": "text"},
+            }
+        },
+    )
+    for _ in range(5):
+        await es_client.index(
+            index="reference",
+            id=str(uuid7()),
+            document={"title": "premigration", "abstract": "doc"},
+        )
+    await es_client.indices.refresh(index="reference")
+
+    repository = ReferenceESRepository(es_client)
+    # Without unmapped_type on the id tiebreaker this raises ESQueryError
+    result = await repository.search(
+        SearchQuery(query_string="title:premigration"), page_size=10
+    )
+
+    assert result.total.value == 5
+    assert len(result.hits) == 5

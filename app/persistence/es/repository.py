@@ -3,7 +3,7 @@
 import json
 from abc import ABC
 from collections.abc import AsyncGenerator, Sequence
-from typing import Generic, Never
+from typing import Any, Generic, Never
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch, NotFoundError
@@ -217,7 +217,7 @@ class GenericAsyncESRepository(
         page: int = 1,
         page_size: int = 20,
         fields: Sequence[str] | None = None,
-        sort: list[str] | None = None,
+        sort: list[str | dict[str, Any]] | None = None,
         filter_clauses: Sequence[Query] | None = None,
         *,
         parse_document: bool = False,
@@ -234,8 +234,9 @@ class GenericAsyncESRepository(
         :param fields: The fields to search within. If None, searches all fields (unless
             the query specifies otherwise).
         :type fields: Sequence[str] | None
-        :param sort: The sorting criteria for the search results.
-        :type sort: list[str] | None
+        :param sort: The sorting criteria for the search results. Entries may be
+            field-name strings or full ES sort dicts.
+        :type sort: list[str | dict[str, Any]] | None
         :param filter_clauses: Structured DSL clauses ANDed with the query string under
             ``bool.filter`` (non-scoring). ``None`` or empty issues the bare query.
         :type filter_clauses: Sequence[Query] | None
