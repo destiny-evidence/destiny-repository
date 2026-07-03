@@ -217,8 +217,10 @@ def argument_parser() -> argparse.ArgumentParser:
         "--reindex-script",
         type=str,
         help=(
-            "Optional painless script applied to each document during the migration "
-            "reindex, e.g. 'ctx._source.id = ctx._id'."
+            "Optional Painless script "
+            "(https://www.elastic.co/docs/explore-analyze/scripting/modules-scripting-painless) "  # noqa: E501
+            "applied to each document during the migration reindex, "
+            "e.g. 'ctx._source.id = ctx._id'."
         ),
         default=None,
     )
