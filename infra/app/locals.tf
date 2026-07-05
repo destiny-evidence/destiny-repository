@@ -54,8 +54,8 @@ locals {
     }
 
     production = {
-      db_storage_mb   = 4193280 # 4TB with host caching
-      db_storage_tier = "P50"
+      db_storage_mb   = 8388608 # 8TB
+      db_storage_tier = "P60"
       db_backup_days  = 35
       db_ha_enabled   = true
       db_sku_name     = "GP_Standard_D8ds_v5" # More memory -> better chance of indexes being cached in memory, improving performance
