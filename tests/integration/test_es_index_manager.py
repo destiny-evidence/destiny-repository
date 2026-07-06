@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ESError, NotFoundError
 from app.persistence.es.client import AsyncESClientManager
 from app.persistence.es.index_manager import IndexManager
 from tests.es_utils import delete_test_indices
@@ -538,6 +538,75 @@ async def test_we_do_not_roll_back_to_nonexistent_index(index_manager: IndexMana
         NotFoundError, match=f"Target index {SimpleDoc.Index.name}_v1 does not exist"
     ):
         await index_manager.rollback()
+
+
+async def test_migrate_applies_reindex_script(
+    es_manager_for_tests: AsyncESClientManager,
+) -> None:
+    """A configured reindex_script transforms every document during migration."""
+    async with es_manager_for_tests.client() as client:
+        await delete_test_indices(client)
+        index_manager = IndexManager(
+            SimpleDoc,
+            client,
+            reindex_status_polling_interval=1,
+            reindex_script={
+                "lang": "painless",
+                "source": "ctx._source.content = ctx._id",
+            },
+        )
+        await index_manager.initialize_index()
+
+        doc_ids = []
+        for i in range(5):
+            doc = SimpleDoc.from_domain(SimpleDomainModel(content=f"doc {i}"))
+            await doc.save(using=client, validate=True)
+            doc_ids.append(str(doc.meta.id))
+        await client.indices.refresh(index=index_manager.alias_name)
+
+        await index_manager.migrate()
+
+        new_index = await index_manager.get_current_index_name()
+        for doc_id in doc_ids:
+            fetched = await client.get(index=new_index, id=doc_id)
+            assert fetched["_source"]["content"] == doc_id
+
+        await delete_test_indices(client)
+
+
+async def test_migrate_with_invalid_reindex_script_raises(
+    es_manager_for_tests: AsyncESClientManager,
+) -> None:
+    """An uncompilable reindex script fails the migration before any index work."""
+    async with es_manager_for_tests.client() as client:
+        await delete_test_indices(client)
+        index_manager = IndexManager(
+            SimpleDoc,
+            client,
+            reindex_status_polling_interval=1,
+            # Missing right-hand side: compile error.
+            reindex_script={"lang": "painless", "source": "ctx._source.content = "},
+        )
+        await index_manager.initialize_index()
+        original_index = await index_manager.get_current_index_name()
+
+        for i in range(5):
+            doc = SimpleDoc.from_domain(SimpleDomainModel(content=f"doc {i}"))
+            await doc.save(using=client, validate=True)
+        await client.indices.refresh(index=index_manager.alias_name)
+
+        with pytest.raises(ESError, match="compile"):
+            await index_manager.migrate()
+
+        # No destination index was created; the alias still points at the intact
+        # original with all its documents.
+        indices = await client.indices.get(index=f"{index_manager.alias_name}*")
+        assert list(indices) == [original_index]
+        assert await index_manager.get_current_index_name() == original_index
+        count = await client.count(index=index_manager.alias_name)
+        assert count["count"] == 5
+
+        await delete_test_indices(client)
 
 
 async def get_current_index_settings(index_manager: IndexManager) -> dict[str, Any]:

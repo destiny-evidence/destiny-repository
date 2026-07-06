@@ -3,7 +3,7 @@
 import datetime
 from abc import ABC
 from collections.abc import Mapping, Sequence
-from typing import ClassVar, Literal
+from typing import Any, ClassVar, Literal
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
@@ -377,12 +377,18 @@ class ReferenceESRepository(
         sort: list[str] | None = None,
     ) -> ESSearchResult:
         """Search references matching ``query``; structured filters AND with q."""
+        # Append the unique doc id as a final tie-breaker so equal-sort-value hits
+        # have a deterministic order. unmapped_type allows it to work prior to the
+        # migration that adds the id field, this can optionally be removed later
+        tiebreaker: dict[str, Any] = {
+            "id": {"order": "desc", "unmapped_type": "keyword"}
+        }
         return await self.search_with_query_string(
             query.query_string,
             fields=self.default_search_fields,
             page=page,
             page_size=page_size,
-            sort=sort,
+            sort=[*sort, tiebreaker] if sort else ["_score", tiebreaker],
             filter_clauses=self._build_filter_clauses(query),
             parse_document=False,
         )

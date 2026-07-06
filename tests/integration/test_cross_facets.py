@@ -120,6 +120,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
     docs = [
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Botany in Africa one",
             linked_data_concepts=[BOTANY, AFRICA],
@@ -128,6 +129,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Botany in Africa two",
             linked_data_concepts=[BOTANY, AFRICA],
@@ -136,6 +138,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Zoology in Asia",
             linked_data_concepts=[ZOOLOGY, ASIA],
@@ -144,6 +147,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Microbiology in Europe",
             linked_data_concepts=[MICROBIOLOGY, EUROPE],
@@ -152,6 +156,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="Botany and Zoology in Africa",
             linked_data_concepts=[BOTANY, ZOOLOGY, AFRICA],
@@ -160,6 +165,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
+            id=uuid7(),
             visibility=Visibility.PUBLIC,
             title="More botany and zoology in Africa",
             linked_data_concepts=[BOTANY, ZOOLOGY, AFRICA],

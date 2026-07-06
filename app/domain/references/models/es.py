@@ -406,6 +406,7 @@ class ReferenceDocument(
 
         name = "reference"
 
+    id: UUID = mapped_field(Keyword(required=True))
     visibility: Visibility = mapped_field(Keyword(required=True))
     duplicate_determination: DuplicateDetermination | None = mapped_field(
         Keyword(required=False),
@@ -417,6 +418,7 @@ class ReferenceDocument(
         return cls(
             # Parent's parent does accept meta, but mypy doesn't like it here.
             meta={"id": domain_obj.id},  # type: ignore[call-arg]
+            id=domain_obj.id,
             visibility=domain_obj.visibility,
             duplicate_determination=domain_obj.duplicate_determination,
             **ReferenceSearchFieldsMixin.from_projections(

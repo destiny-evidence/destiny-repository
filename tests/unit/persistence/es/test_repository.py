@@ -367,6 +367,7 @@ async def linked_data_ref(
     ref_id = uuid7()
     doc = ReferenceDocument(
         meta={"id": ref_id},
+        id=uuid7(),
         visibility=Visibility.PUBLIC,
         title="Effectiveness of reading interventions",
         linked_data_concepts=[

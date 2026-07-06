@@ -2,6 +2,7 @@
 
 from collections.abc import AsyncGenerator, Callable
 from typing import TYPE_CHECKING
+from uuid import UUID, uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
@@ -15,6 +16,7 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import ESQueryError, ParseError
 from app.domain.references import routes as references
+from app.domain.references.models.models import SearchQuery
 from app.domain.references.repository import (
     ReferenceESRepository,
     ReferenceSQLRepository,
@@ -578,3 +580,149 @@ async def test_concept_filter_empty_uri_returns_400(
         params={"q": "title:Concept", "concept": [f"{CONCEPT_A},"]},
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+async def _wipe_and_index(
+    es_client: AsyncElasticsearch, references: list["Reference"]
+) -> ReferenceESRepository:
+    """Wipe the index and re-add ``references`` in the given order."""
+    await es_client.delete_by_query(
+        index="reference", body={"query": {"match_all": {}}}, conflicts="proceed"
+    )
+    await es_client.indices.refresh(index="reference")
+    repository = ReferenceESRepository(es_client)
+    for reference in references:
+        await repository.add(to_indexable(reference))
+    await es_client.indices.refresh(index="reference")
+    return repository
+
+
+async def _reindex_and_search(
+    es_client: AsyncElasticsearch, references: list["Reference"]
+) -> list[UUID]:
+    """Wipe, re-add references in order, return hit ids for an all-tied sort."""
+    repository = await _wipe_and_index(es_client, references)
+    result = await repository.search(
+        SearchQuery(query_string="*"), page_size=50, sort=["-publication_year"]
+    )
+    return [hit.id for hit in result.hits]
+
+
+async def test_tied_sort_is_stable_across_doc_layouts(
+    es_client: AsyncElasticsearch,
+) -> None:
+    """
+    Tie-broken results order identically regardless of ``_doc`` layout.
+
+    Ensures that insertion order does not affect sort. ES uses metadata magic
+    under the hood to tiebreak, but across replicas this can lead to different
+    sorting behaviour.
+    """
+    references = [
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        publication_year=2020
+                    )
+                )
+            ]
+        )
+        for _ in range(8)
+    ]
+    descending = sorted(references, key=lambda reference: reference.id, reverse=True)
+
+    order_a = await _reindex_and_search(es_client, descending)
+    order_b = await _reindex_and_search(es_client, list(reversed(descending)))
+
+    assert order_a == order_b
+    assert order_a == [reference.id for reference in descending]
+
+
+async def test_relevance_pagination_is_stable_and_non_overlapping(
+    es_client: AsyncElasticsearch,
+) -> None:
+    """
+    Default relevance sort paginates deterministically when scores tie.
+
+    Every reference shares an identical title, so a title query scores them
+    equally and ordering rests entirely on the id tiebreaker. Requesting the
+    same page twice must return the same ids, and consecutive pages must not
+    overlap.
+    """
+    references = [
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="identicaltitletoken"
+                    )
+                )
+            ]
+        )
+        for _ in range(8)
+    ]
+    repository = await _wipe_and_index(es_client, references)
+
+    async def fetch_page(page: int) -> list[UUID]:
+        result = await repository.search(
+            SearchQuery(query_string="title:identicaltitletoken"),
+            page=page,
+            page_size=3,
+        )
+        return [hit.id for hit in result.hits]
+
+    page_1_first = await fetch_page(1)
+    page_2_first = await fetch_page(2)
+    page_1_second = await fetch_page(1)
+    page_2_second = await fetch_page(2)
+
+    # Identical requests return identical pages.
+    assert page_1_first == page_1_second
+    assert page_2_first == page_2_second
+
+    # Consecutive pages do not overlap...
+    assert set(page_1_first).isdisjoint(page_2_first)
+
+    # ...and together they follow the descending-id tiebreaker.
+    expected = sorted((r.id for r in references), reverse=True)
+    assert page_1_first + page_2_first == expected[:6]
+
+
+async def test_search_tolerates_index_without_id_mapping(
+    es_client: AsyncElasticsearch,
+) -> None:
+    """
+    Search succeeds against an index that predates the sortable ``id`` field.
+
+    This simulates a pre-migration scenario where the ``id`` field was not yet mapped,
+    and can optionally be removed later.
+    """
+    # Replace the fully-mapped test index with one lacking the `id` field.
+    for index in await es_client.indices.get(index="reference*"):
+        await es_client.indices.delete(index=index)
+    await es_client.indices.create(
+        index="reference",
+        mappings={
+            "properties": {
+                "title": {"type": "text"},
+                "abstract": {"type": "text"},
+            }
+        },
+    )
+    for _ in range(5):
+        await es_client.index(
+            index="reference",
+            id=str(uuid7()),
+            document={"title": "premigration", "abstract": "doc"},
+        )
+    await es_client.indices.refresh(index="reference")
+
+    repository = ReferenceESRepository(es_client)
+    # Without unmapped_type on the id tiebreaker this raises ESQueryError
+    result = await repository.search(
+        SearchQuery(query_string="title:premigration"), page_size=10
+    )
+
+    assert result.total.value == 5
+    assert len(result.hits) == 5
