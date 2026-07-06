@@ -398,9 +398,11 @@ class IndexManager:
         task = await self.client.tasks.get(task_id=response["task"])
 
         while not task["completed"]:
-            progress = task["task"]["status"]["created"]
-            +task["task"]["status"]["updated"]
-            +task["task"]["status"]["version_conflicts"]
+            progress = (
+                task["task"]["status"]["created"]
+                + task["task"]["status"]["updated"]
+                + task["task"]["status"]["version_conflicts"]
+            )
 
             logger.info(
                 "Reindexing documents in progress: %s out of %s", progress, total_docs
