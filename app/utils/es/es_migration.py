@@ -66,11 +66,15 @@ def get_index_settings_changeset(
     return settings
 
 
-async def run_migration(alias: str, number_of_shards: int | None) -> None:
+async def run_migration(
+    alias: str, number_of_shards: int | None, reindex_script: str | None = None
+) -> None:
     """Run elasticsearch index migrations."""
     es_config = settings.es_config
 
     await es_manager.init(es_config)
+
+    script = {"lang": "painless", "source": reindex_script} if reindex_script else None
 
     try:
         async with es_manager.client() as client:
@@ -79,6 +83,7 @@ async def run_migration(alias: str, number_of_shards: int | None) -> None:
                 client=client,
                 otel_enabled=settings.otel_enabled,
                 reindex_status_polling_interval=settings.reindex_status_polling_interval,
+                reindex_script=script,
             )
 
             index_settings_changeset = get_index_settings_changeset(
@@ -207,6 +212,19 @@ def argument_parser() -> argparse.ArgumentParser:
         default=None,
     )
 
+    parser.add_argument(
+        "-s",
+        "--reindex-script",
+        type=str,
+        help=(
+            "Optional Painless script "
+            "(https://www.elastic.co/docs/explore-analyze/scripting/modules-scripting-painless) "  # noqa: E501
+            "applied to each document during the migration reindex, "
+            "e.g. 'ctx._source.id = ctx._id'."
+        ),
+        default=None,
+    )
+
     return parser
 
 
@@ -255,6 +273,10 @@ def validate_args(args: argparse.Namespace) -> None:
         msg = "You can only specify number_of_shards when migrating an index."
         raise RuntimeError(msg)
 
+    if args.reindex_script and not args.migrate:
+        msg = "You can only specify reindex_script when migrating an index."
+        raise RuntimeError(msg)
+
 
 if __name__ == "__main__":
     parser = argument_parser()
@@ -270,7 +292,11 @@ if __name__ == "__main__":
     if args.migrate:
         for alias in aliases:
             asyncio.run(
-                run_migration(alias=alias, number_of_shards=args.number_of_shards)
+                run_migration(
+                    alias=alias,
+                    number_of_shards=args.number_of_shards,
+                    reindex_script=args.reindex_script,
+                )
             )
 
     elif args.rollback:

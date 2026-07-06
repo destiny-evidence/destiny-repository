@@ -11,7 +11,7 @@ from elasticsearch.dsl import AsyncDocument, AsyncIndex
 from opentelemetry import trace
 from taskiq import AsyncTaskiqDecoratedTask
 
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ESError, NotFoundError
 from app.core.telemetry.attributes import (
     Attributes,
     set_span_status,
@@ -45,6 +45,7 @@ class IndexManager:
         repair_subset_task: AsyncTaskiqDecoratedTask[..., Coroutine[Any, Any, None]]
         | None = None,
         reindex_status_polling_interval: int = 5 * 60,  # default to 5min
+        reindex_script: dict[str, Any] | None = None,
     ) -> None:
         """
         Initialize the migration manager.
@@ -58,6 +59,8 @@ class IndexManager:
                 in which case subset repair is unsupported for this index.
             version_prefix: Prefix for version numbers in index names
             reindex_status_polling_interval: How often to check status of reindexing (defaults 5s)
+            reindex_script: `Painless <https://www.elastic.co/docs/explore-analyze/scripting/modules-scripting-painless>`_
+                script applied to each doc during reindex (defaults None)
 
         """  # noqa: E501
         self.document_class = document_class
@@ -65,6 +68,7 @@ class IndexManager:
         self.repair_task = repair_task
         self.repair_subset_task = repair_subset_task
         self.reindex_status_polling_interval = reindex_status_polling_interval
+        self.reindex_script = reindex_script
 
         self.alias_name = document_class.Index.name
         self.otel_enabled = otel_enabled
@@ -275,6 +279,11 @@ class IndexManager:
             attribute=Attributes.DB_COLLECTION_ALIAS_NAME, value=self.alias_name
         )
 
+        # Compile the reindex script before touching any index, so a bad script
+        # (e.g. a typo passed on the migration command line) fails fast rather than
+        # part-way through the reindex.
+        await self._validate_reindex_script()
+
         source_index = await self.get_current_index_name()
 
         if source_index is None:
@@ -329,6 +338,22 @@ class IndexManager:
         logger.info("Migration completed successfully to %s", destination_index)
         return destination_index
 
+    async def _validate_reindex_script(self) -> None:
+        """Compile the reindex script cluster-side without running a migration."""
+        if not self.reindex_script:
+            return
+
+        script_id = f"{self.alias_name}-reindex-validation"
+        try:
+            await self.client.put_script(
+                id=script_id, script=self.reindex_script, context="reindex"
+            )
+        except elasticsearch.BadRequestError as exc:
+            msg = f"Reindex script failed to compile: {exc}"
+            raise ESError(msg) from exc
+
+        await self.client.delete_script(id=script_id)
+
     @tracer.start_as_current_span("Reindex index")
     async def _reindex_data(self, source_index: str, dest_index: str) -> None:
         """
@@ -362,6 +387,7 @@ class IndexManager:
             conflicts="proceed",
             source={"index": source_index},
             dest={"index": dest_index, "version_type": "external"},
+            script=self.reindex_script,
             wait_for_completion=False,
             refresh=True,
         )
@@ -372,9 +398,11 @@ class IndexManager:
         task = await self.client.tasks.get(task_id=response["task"])
 
         while not task["completed"]:
-            progress = task["task"]["status"]["created"]
-            +task["task"]["status"]["updated"]
-            +task["task"]["status"]["version_conflicts"]
+            progress = (
+                task["task"]["status"]["created"]
+                + task["task"]["status"]["updated"]
+                + task["task"]["status"]["version_conflicts"]
+            )
 
             logger.info(
                 "Reindexing documents in progress: %s out of %s", progress, total_docs
