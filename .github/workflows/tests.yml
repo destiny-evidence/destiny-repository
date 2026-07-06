@@ -23,7 +23,7 @@ jobs:
         image: postgres
         # Provide the password for postgres
         env:
-          POSTGRES_PASSWORD: ${{ secrets.db_password }}
+          POSTGRES_PASSWORD: postgres
         # Set health checks to wait until postgres has started
         options: >-
           --health-cmd pg_isready
@@ -61,7 +61,7 @@ jobs:
 
       - name: Run test with pytest via uv
         env:
-          DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://postgres:${{ secrets.db_password }}@localhost:5432/destiny_test"}'
+          DB_CONFIG: '{"DB_URL": "postgresql+asyncpg://postgres:postgres@localhost:5432/destiny_test"}'
           ES_CONFIG: '{"ES_INSECURE_URL": "http://localhost:9200"}'
           AZURE_APPLICATION_ID: ${{ vars.azure_application_id }}
           AZURE_LOGIN_URL: ${{ vars.azure_login_url }}
