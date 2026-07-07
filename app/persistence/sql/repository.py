@@ -355,12 +355,13 @@ class GenericAsyncSqlRepository(
             SQLNotFoundError: If any of the records do not exist.
 
         """
-        query = select(self._persistence_cls).where(self._persistence_cls.id.in_(pks))
+        query = select(self._persistence_cls.id).where(
+            self._persistence_cls.id.in_(pks)
+        )
         result = await self._session.execute(query)
-        db_references = result.scalars().all()
+        found_pks = set(result.scalars().all())
 
-        if len(db_references) != len(pks):
-            missing_pks = set(pks) - {ref.id for ref in db_references}
+        if missing_pks := set(pks) - found_pks:
             detail = (
                 f"Unable to find {self._persistence_cls.__name__}"
                 f" with pks {missing_pks}"

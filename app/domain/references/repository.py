@@ -69,6 +69,9 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
 )
 from app.domain.references.models.models import (
+    ReferenceExport as DomainReferenceExport,
+)
+from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
 )
 from app.domain.references.models.models import (
@@ -94,12 +97,14 @@ from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.models.sql import (
     ReferenceDuplicateDecision as SQLReferenceDuplicateDecision,
 )
+from app.domain.references.models.sql import (
+    ReferenceExport as SQLReferenceExport,
+)
 from app.domain.references.models.sql import RobotAutomation as SQLRobotAutomation
 from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.models.sql import SearchExport as SQLSearchExport
-from app.persistence.blob.models import BlobStorageFile
 from app.persistence.es.persistence import (
     ESFacetBucket,
     ESScoreResult,
@@ -899,13 +904,29 @@ class SearchExportSQLRepository(
             SQLSearchExport,
         )
 
-    @trace_repository_method(tracer)
-    async def update_by_pk(self, pk: UUID, **kwargs: object) -> DomainSearchExport:
-        """Encode any BlobStorageFile field at the persistence boundary."""
-        result_file = kwargs.get("result_file")
-        if isinstance(result_file, BlobStorageFile):
-            kwargs["result_file"] = result_file.to_uri()
-        return await super().update_by_pk(pk, **kwargs)
+
+class ReferenceExportRepositoryBase(
+    GenericAsyncRepository[DomainReferenceExport, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for reference export jobs."""
+
+
+class ReferenceExportSQLRepository(
+    GenericAsyncSqlRepository[
+        DomainReferenceExport, SQLReferenceExport, Literal["__none__"]
+    ],
+    ReferenceExportRepositoryBase,
+):
+    """Concrete implementation of a repository for reference exports using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainReferenceExport,
+            SQLReferenceExport,
+        )
 
 
 class RobotAutomationRepositoryBase(
