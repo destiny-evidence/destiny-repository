@@ -27,6 +27,7 @@ from app.domain.references.models.models import (
     EnhancementRequestStatus,
     EnhancementType,
     ExportFormat,
+    ExportStatus,
     ExternalIdentifierAdapter,
     ExternalIdentifierType,
     LinkedDataConceptFilter,
@@ -34,7 +35,6 @@ from app.domain.references.models.models import (
     LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
-    SearchExportStatus,
     SearchQuery,
     Visibility,
 )
@@ -55,6 +55,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.models import (
     ReferenceDuplicateDecision as DomainReferenceDuplicateDecision,
+)
+from app.domain.references.models.models import (
+    ReferenceExport as DomainReferenceExport,
 )
 from app.domain.references.models.models import (
     RobotAutomation as DomainRobotAutomation,
@@ -448,7 +451,64 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
         )
 
 
-class SearchExport(GenericSQLPersistence[DomainSearchExport]):
+class ExportSQLMixin:
+    """
+    Shared columns for export job persistence models.
+
+    A declarative mixin: `mapped_column`s here are copied onto each concrete
+    export table (`search_export`, `reference_export`).
+    """
+
+    export_format: Mapped[ExportFormat] = mapped_column(
+        String, nullable=False, server_default=ExportFormat.JSONL.value
+    )
+    status: Mapped[ExportStatus] = mapped_column(String, nullable=False)
+    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
+    n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error: Mapped[str | None] = mapped_column(String, nullable=True)
+
+
+class ReferenceExport(ExportSQLMixin, GenericSQLPersistence[DomainReferenceExport]):
+    """SQL Persistence model for a ReferenceExport job (explicit id list)."""
+
+    __tablename__ = "reference_export"
+
+    reference_ids: Mapped[list[UUID]] = mapped_column(ARRAY(SQL_UUID), nullable=False)
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainReferenceExport) -> Self:
+        """Create a persistence model from a domain ReferenceExport object."""
+        return cls(
+            id=domain_obj.id,
+            reference_ids=domain_obj.reference_ids,
+            status=domain_obj.status,
+            export_format=domain_obj.export_format,
+            result_file=domain_obj.result_file.to_uri()
+            if domain_obj.result_file
+            else None,
+            n_references=domain_obj.n_references,
+            error=domain_obj.error,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainReferenceExport:
+        """Convert the persistence model into a Domain ReferenceExport object."""
+        return DomainReferenceExport(
+            id=self.id,
+            reference_ids=self.reference_ids,
+            status=self.status,
+            export_format=self.export_format,
+            result_file=BlobStorageFile.from_uri(self.result_file)
+            if self.result_file
+            else None,
+            n_references=self.n_references,
+            error=self.error,
+        )
+
+
+class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
     """SQL Persistence model for a SearchExport job."""
 
     __tablename__ = "search_export"
@@ -469,19 +529,9 @@ class SearchExport(GenericSQLPersistence[DomainSearchExport]):
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-
-    export_format: Mapped[ExportFormat] = mapped_column(
-        String, nullable=False, server_default=ExportFormat.JSONL.value
-    )
-
-    status: Mapped[SearchExportStatus] = mapped_column(String, nullable=False)
-
-    result_file: Mapped[str | None] = mapped_column(String, nullable=True)
-    n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
     truncated: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, server_default="false"
     )
-    error: Mapped[str | None] = mapped_column(String, nullable=True)
 
     @classmethod
     def from_domain(cls, domain_obj: DomainSearchExport) -> Self:

@@ -493,6 +493,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    max_reference_export_size: int = Field(
+        default=10000,
+        description=(
+            "Maximum number of reference IDs allowed in a single reference export "
+            "request. Requests exceeding this are rejected."
+        ),
+    )
+
     default_es_indexing_chunk_size: int = Field(
         default=1000,
         description=(

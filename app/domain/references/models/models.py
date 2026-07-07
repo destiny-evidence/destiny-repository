@@ -69,8 +69,8 @@ class EnhancementRequestStatus(StrEnum):
     """All enhancements have been created."""
 
 
-class SearchExportStatus(StrEnum):
-    """The status of a search export job."""
+class ExportStatus(StrEnum):
+    """The status of an export job."""
 
     PENDING = auto()
     """Export job has been queued."""
@@ -80,6 +80,10 @@ class SearchExportStatus(StrEnum):
     """Export job has completed and the file is available."""
     FAILED = auto()
     """Export job failed before producing a file."""
+
+
+# Retained for backward compatibility; export status is not search-specific.
+SearchExportStatus = ExportStatus
 
 
 class ExportFormat(StrEnum):
@@ -539,7 +543,45 @@ Errors for individual references are provided <TBC>.
         return len(self.reference_ids)
 
 
-class SearchExport(DomainBaseModel, SQLAttributeMixin):
+class Export(DomainBaseModel, SQLAttributeMixin):
+    """
+    A queued job that produces a downloadable file of references.
+
+    Base for the two export levels: `ReferenceExport` (an explicit id list) and
+    `SearchExport` (the references matching a search).
+    """
+
+    export_format: ExportFormat = Field(
+        default=ExportFormat.JSONL,
+        description="The serialization format of the produced file.",
+    )
+    status: ExportStatus = Field(
+        default=ExportStatus.PENDING,
+        description="The current status of the export job.",
+    )
+    result_file: BlobStorageFile | None = Field(
+        default=None,
+        description="The file produced by the job, once completed.",
+    )
+    n_references: int | None = Field(
+        default=None,
+        description="The number of references in the produced file.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Error message, if the job failed.",
+    )
+
+
+class ReferenceExport(Export):
+    """A queued job that produces a file of an explicit list of references."""
+
+    reference_ids: list[UUID] = Field(
+        description="The references to export, in the order provided.",
+    )
+
+
+class SearchExport(Export):
     """A queued job that produces a file of references matching a search."""
 
     query: "SearchQuery" = Field(
@@ -549,22 +591,6 @@ class SearchExport(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Sort fields, in the same form `/references/search/` accepts.",
     )
-    export_format: ExportFormat = Field(
-        default=ExportFormat.JSONL,
-        description="The serialization format of the produced file.",
-    )
-    status: SearchExportStatus = Field(
-        default=SearchExportStatus.PENDING,
-        description="The current status of the export job.",
-    )
-    result_file: BlobStorageFile | None = Field(
-        default=None,
-        description="The JSONL file produced by the job, once completed.",
-    )
-    n_references: int | None = Field(
-        default=None,
-        description="The number of references in the produced file.",
-    )
     truncated: bool = Field(
         default=False,
         description=(
@@ -572,10 +598,6 @@ class SearchExport(DomainBaseModel, SQLAttributeMixin):
             "result-window cap. When true, the JSONL contains only the first "
             "window's worth of matches."
         ),
-    )
-    error: str | None = Field(
-        default=None,
-        description="Error message, if the job failed.",
     )
 
 
