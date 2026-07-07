@@ -725,7 +725,8 @@ resource "elasticstack_elasticsearch_security_api_key" "es_index_migrator" {
   name = local.es_index_migrator_name
   role_descriptors = jsonencode({
     app_access = {
-      cluster = ["monitor"]
+      # "manage" is required to pre-compile index migration scripts
+      cluster = ["monitor", "manage"]
       indices = [
         {
           names                    = local.managed_indices
