@@ -9,12 +9,14 @@
 """Router for handling management of references."""
 
 import datetime
-from typing import Annotated
+from collections.abc import Awaitable, Callable
+from typing import Annotated, Any
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
 from fastapi import (
     APIRouter,
+    Body,
     Depends,
     HTTPException,
     Path,
@@ -33,6 +35,7 @@ from pydantic import (
     field_validator,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
+from taskiq import AsyncTaskiqDecoratedTask
 
 from app.api.auth import (
     AuthMethod,
@@ -75,9 +78,13 @@ from app.domain.references.services.access_control_service import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.export_service import (
+    ReferenceExportService,
+    SearchExportService,
+)
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
+    run_reference_export_task,
     run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
@@ -231,6 +238,27 @@ def search_export_service(
     )
 
 
+def reference_export_service(
+    sql_uow: Annotated[AsyncSqlUnitOfWork, Depends(sql_unit_of_work)],
+    es_uow: Annotated[AsyncESUnitOfWork, Depends(es_unit_of_work)],
+    reference_anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    access_control_service: Annotated[
+        ReferenceAccessControlService, Depends(reference_reader_access_control_service)
+    ],
+) -> ReferenceExportService:
+    """Return the reference export service."""
+    return ReferenceExportService(
+        anti_corruption_service=reference_anti_corruption_service,
+        sql_uow=sql_uow,
+        es_uow=es_uow,
+        access_control_service=access_control_service,
+        reference_service=reference_service,
+    )
+
+
 def reference_hybrid_access_control_service(
     entitlements: Annotated[
         frozenset[Entitlement], Depends(enhancement_request_hybrid_auth)
@@ -250,7 +278,12 @@ search_router = APIRouter(
     tags=["search"],
     dependencies=[Depends(reference_reader_auth)],
 )
-exports_router = APIRouter(
+search_exports_router = APIRouter(
+    prefix="/exports",
+    tags=["exports"],
+    dependencies=[Depends(reference_reader_auth)],
+)
+reference_exports_router = APIRouter(
     prefix="/exports",
     tags=["exports"],
     dependencies=[Depends(reference_reader_auth)],
@@ -750,7 +783,40 @@ async def cross_tabulate_facets(
     return anti_corruption_service.cross_facet_to_sdk(cells, total)
 
 
-@exports_router.post(
+async def _enqueue_export_task(
+    *,
+    task: AsyncTaskiqDecoratedTask[Any, Any],
+    export_id: destiny_sdk.UUID,
+    task_kwargs: dict[str, object],
+    fail: Callable[[destiny_sdk.UUID, str], Awaitable[object]],
+) -> None:
+    """
+    Enqueue an export task, failing the job row and returning 503 if the broker is down.
+
+    If the broker is unreachable the row would otherwise be stuck in `pending`
+    forever, so flip it to `failed` and surface a retryable error to the caller.
+    """
+    try:
+        await queue_task_with_trace(
+            task,
+            long_running=True,
+            priority=TaskPriority.HIGH,
+            otel_enabled=settings.otel_enabled,
+            **task_kwargs,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to enqueue export task",
+            export_id=str(export_id),
+        )
+        await fail(export_id, f"Failed to enqueue export task: {exc}")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not enqueue export job; please retry.",
+        ) from exc
+
+
+@search_exports_router.post(
     "/",
     status_code=status.HTTP_202_ACCEPTED,
     description=(
@@ -779,35 +845,19 @@ async def request_search_export(
         sort=sort,
         export_format=export_format,
     )
-    try:
-        await queue_task_with_trace(
-            run_search_export_task,
-            long_running=True,
-            priority=TaskPriority.HIGH,
-            search_export_id=search_export.id,
-            entitlements=entitlements,
-            otel_enabled=settings.otel_enabled,
-        )
-    except Exception as exc:
-        # If the broker is unreachable the row would otherwise be stuck in
-        # `pending` forever, so flip it to `failed` and surface a retryable
-        # error to the caller.
-        logger.exception(
-            "Failed to enqueue search export task",
-            search_export_id=str(search_export.id),
-        )
-        search_export = await search_export_service.fail_search_export(
-            search_export.id,
-            f"Failed to enqueue export task: {exc}",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Could not enqueue search export job; please retry.",
-        ) from exc
+    await _enqueue_export_task(
+        task=run_search_export_task,
+        export_id=search_export.id,
+        task_kwargs={
+            "search_export_id": search_export.id,
+            "entitlements": entitlements,
+        },
+        fail=search_export_service.fail,
+    )
     return await anti_corruption_service.search_export_to_sdk(search_export)
 
 
-@exports_router.get(
+@search_exports_router.get(
     "/{search_export_id}/",
     description=(
         "Get the status of a search export job. Once `status` is "
@@ -831,14 +881,86 @@ async def get_search_export(
     ],
 ) -> destiny_sdk.references.SearchExportRead:
     """Get the status of a search export job, including its signed URL."""
-    search_export = await search_export_service.get_search_export(search_export_id)
+    search_export = await search_export_service.get(search_export_id)
     return await anti_corruption_service.search_export_to_sdk(search_export)
+
+
+@reference_exports_router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+    description=(
+        "Queue an export job that produces a file of the given references, in JSONL "
+        "(default) or RIS via the `export_format` parameter. Accepts an explicit list "
+        f"of reference IDs (at most {settings.max_reference_export_size:,}). Requests "
+        "that are empty, exceed the limit, or name references that do not exist are "
+        "rejected. Returns the job id with `status: pending`; poll "
+        "`GET /references/exports/{id}/` until the job completes."
+    ),
+)
+async def request_reference_export(
+    reference_ids: Annotated[
+        list[destiny_sdk.UUID],
+        Body(
+            min_length=1,
+            max_length=settings.max_reference_export_size,
+            description="The references to export.",
+        ),
+    ],
+    reference_export_service: Annotated[
+        ReferenceExportService, Depends(reference_export_service)
+    ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    entitlements: Annotated[frozenset[Entitlement], Depends(reference_reader_auth)],
+    export_format: ExportFormat = ExportFormat.JSONL,
+) -> destiny_sdk.references.ReferenceExportRead:
+    """Queue a reference export job and return its id and pending status."""
+    reference_export = await reference_export_service.request_reference_export(
+        reference_ids,
+        export_format=export_format,
+    )
+    await _enqueue_export_task(
+        task=run_reference_export_task,
+        export_id=reference_export.id,
+        task_kwargs={
+            "reference_export_id": reference_export.id,
+            "entitlements": entitlements,
+        },
+        fail=reference_export_service.fail,
+    )
+    return await anti_corruption_service.reference_export_to_sdk(reference_export)
+
+
+@reference_exports_router.get(
+    "/{reference_export_id}/",
+    description=(
+        "Get the status of a reference export job. Once `status` is `completed`, the "
+        "response includes a signed `result_url` for the produced export file. The URL "
+        "is re-signed on each call, so an expired URL can be refreshed by polling."
+    ),
+)
+async def get_reference_export(
+    reference_export_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the reference export job.")
+    ],
+    reference_export_service: Annotated[
+        ReferenceExportService, Depends(reference_export_service)
+    ],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> destiny_sdk.references.ReferenceExportRead:
+    """Get the status of a reference export job, including its signed URL."""
+    reference_export = await reference_export_service.get(reference_export_id)
+    return await anti_corruption_service.reference_export_to_sdk(reference_export)
 
 
 # NB it's important these occur before defining `/references/{reference_id}/` route
 # to avoid route conflicts. Order matters for FastAPI route matching.
-search_router.include_router(exports_router)
+search_router.include_router(search_exports_router)
 reference_router.include_router(search_router)
+reference_router.include_router(reference_exports_router)
 
 
 @reference_router.get("/{reference_id}/")
