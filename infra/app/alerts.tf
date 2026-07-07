@@ -62,7 +62,7 @@ resource "azurerm_logic_app_action_http" "post_to_slack" {
           "type": "header",
           "text": {
             "type": "plain_text",
-            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev0'), '🚨 CRITICAL', if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev1'), '❌ ERROR', '⚠️ WARNING'))} @{triggerBody()?['data']?['essentials']?['alertRule']}",
+            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '✅ RESOLVED', if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev0'), '🚨 CRITICAL', if(equals(triggerBody()?['data']?['essentials']?['severity'], 'Sev1'), '❌ ERROR', '⚠️ WARNING')))} @{triggerBody()?['data']?['essentials']?['alertRule']}",
             "emoji": true
           }
         },
