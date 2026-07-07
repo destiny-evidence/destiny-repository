@@ -544,12 +544,7 @@ Errors for individual references are provided <TBC>.
 
 
 class Export(DomainBaseModel, SQLAttributeMixin):
-    """
-    A queued job that produces a downloadable file of references.
-
-    Base for the two export levels: `ReferenceExport` (an explicit id list) and
-    `SearchExport` (the references matching a search).
-    """
+    """A queued job that produces a downloadable file of references."""
 
     export_format: ExportFormat = Field(
         default=ExportFormat.JSONL,
