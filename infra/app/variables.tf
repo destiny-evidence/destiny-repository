@@ -385,6 +385,12 @@ variable "max_reference_lookup_query_length" {
   default     = 100
 }
 
+variable "max_reference_export_size" {
+  description = "Maximum number of reference IDs to allow in a single reference export request"
+  type        = number
+  default     = 10000
+}
+
 variable "es_aggregation_max_buckets" {
   description = "Maximum buckets returned per Elasticsearch terms aggregation."
   type        = number
