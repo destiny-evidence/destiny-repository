@@ -262,13 +262,19 @@ resource "azuread_app_role_assignment" "ui_users_to_auth_ui" {
 resource "azuread_service_principal" "destiny_repository_auth" {
   client_id                    = azuread_application_registration.destiny_repository_auth.client_id
   app_role_assignment_required = true
-  owners                       = [data.azuread_client_config.current.object_id]
+  # Scream test: Azure API-user login retired in favour of Keycloak. Flip back to
+  # true to re-enable delegated token acquisition via this client.
+  account_enabled = false
+  owners          = [data.azuread_client_config.current.object_id]
 }
 
 resource "azuread_service_principal" "destiny_repository_auth_ui" {
   client_id                    = azuread_application_registration.destiny_repository_auth_ui.client_id
   app_role_assignment_required = true
-  owners                       = [data.azuread_client_config.current.object_id]
+  # Scream test: Azure API-user login retired in favour of Keycloak. Flip back to
+  # true to re-enable delegated token acquisition via this client.
+  account_enabled = false
+  owners          = [data.azuread_client_config.current.object_id]
 }
 
 resource "azuread_application_redirect_uris" "local_redirect" {
