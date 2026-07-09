@@ -372,6 +372,16 @@ async def test_reference_export_rejects_empty_list(client: AsyncClient) -> None:
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
+async def test_reference_export_rejects_over_limit(client: AsyncClient) -> None:
+    """A list longer than the configured maximum is rejected by request validation."""
+    over_limit = references.settings.max_reference_export_size + 1
+    response = await client.post(
+        "/v1/references/exports/",
+        json=[str(uuid7()) for _ in range(over_limit)],
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
 async def test_reference_export_rejects_unknown_id(
     session: AsyncSession,
     client: AsyncClient,

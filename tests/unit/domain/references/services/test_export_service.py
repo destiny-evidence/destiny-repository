@@ -217,6 +217,25 @@ async def test_request_reference_export_rejects_unknown_ids() -> None:
     sql_uow.reference_exports.add.assert_not_called()
 
 
+async def test_request_reference_export_deduplicates_ids() -> None:
+    """Repeated ids collapse (first-seen order) so the stored count matches the file."""
+    first, second = uuid7(), uuid7()
+    service = ReferenceExportService.__new__(ReferenceExportService)
+    sql_uow = MagicMock()
+    sql_uow.references.verify_pk_existence = AsyncMock()
+    sql_uow.reference_exports.add = AsyncMock()
+    service.sql_uow = sql_uow
+
+    reference_export = (
+        await ReferenceExportService.request_reference_export.__wrapped__(  # type: ignore[attr-defined]
+            service, [first, first, second, first]
+        )
+    )
+
+    assert reference_export.reference_ids == [first, second]
+    sql_uow.references.verify_pk_existence.assert_awaited_once_with([first, second])
+
+
 def test_reference_export_sql_round_trip() -> None:
     """from_domain → to_domain preserves the reference ids and shared export fields."""
     reference_ids = [uuid7(), uuid7(), uuid7()]

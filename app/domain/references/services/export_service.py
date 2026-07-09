@@ -212,6 +212,7 @@ class ReferenceExportService(ExportServiceBase[ReferenceExport]):
         Rejects any id that names a reference that doesn't exist. List size and
         emptiness are enforced at the API layer, so internal callers aren't capped.
         """
+        reference_ids = list(dict.fromkeys(reference_ids))
         await self.sql_uow.references.verify_pk_existence(reference_ids)
         reference_export = ReferenceExport(
             reference_ids=reference_ids, export_format=export_format

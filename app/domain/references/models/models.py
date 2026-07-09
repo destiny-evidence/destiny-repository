@@ -571,9 +571,7 @@ class Export(DomainBaseModel, SQLAttributeMixin):
 class ReferenceExport(Export):
     """A queued job that produces a file of an explicit list of references."""
 
-    reference_ids: list[UUID] = Field(
-        description="The references to export, in the order provided.",
-    )
+    reference_ids: list[UUID] = Field(description="The references to export.")
 
 
 class SearchExport(Export):
