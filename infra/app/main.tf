@@ -127,6 +127,10 @@ locals {
       value = var.max_reference_lookup_query_length
     },
     {
+      name  = "MAX_REFERENCE_EXPORT_SIZE",
+      value = var.max_reference_export_size
+    },
+    {
       name  = "ES_AGGREGATION_MAX_BUCKETS",
       value = tostring(var.es_aggregation_max_buckets)
     },

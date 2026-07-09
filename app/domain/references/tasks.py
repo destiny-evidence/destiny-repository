@@ -30,7 +30,10 @@ from app.domain.references.services.access_control_service import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.export_service import (
+    ReferenceExportService,
+    SearchExportService,
+)
 from app.domain.robots.service import RobotService
 from app.domain.robots.services.anti_corruption_service import (
     RobotAntiCorruptionService,
@@ -212,7 +215,44 @@ async def run_search_export_task(
             access_control_service=access_control_service,
             reference_service=reference_service,
         )
-        await search_export_service.run_search_export(search_export_id, blob_repository)
+        await search_export_service.run(search_export_id, blob_repository)
+
+
+@broker.task
+async def run_reference_export_task(
+    reference_export_id: UUID, entitlements: list[str]
+) -> None:
+    """
+    Run a reference (id-list) export job and write its result to blob storage.
+
+    ``entitlements`` is the caller's entitlement snapshot, taken at enqueue
+    time, used to redact references before they're streamed to blob storage.
+    """
+    name_span("Run reference export")
+    trace_attribute(Attributes.REFERENCE_EXPORT_ID, str(reference_export_id))
+    logger.info(
+        "Running reference export",
+        reference_export_id=str(reference_export_id),
+    )
+    access_control_service = ReferenceAccessControlService(
+        entitlements=frozenset(Entitlement(e) for e in entitlements)
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        reference_export_service = ReferenceExportService(
+            anti_corruption_service=reference_anti_corruption_service,
+            sql_uow=sql_uow,
+            es_uow=es_uow,
+            access_control_service=access_control_service,
+            reference_service=reference_service,
+        )
+        await reference_export_service.run(reference_export_id, blob_repository)
 
 
 @broker.task

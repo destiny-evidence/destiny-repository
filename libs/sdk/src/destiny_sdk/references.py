@@ -198,8 +198,8 @@ class ExportFormat(StrEnum):
         return self.value
 
 
-class SearchExportStatus(StrEnum):
-    """The status of a search export job."""
+class ExportStatus(StrEnum):
+    """The status of an export job."""
 
     PENDING = auto()
     """The export job has been queued but not yet started."""
@@ -211,11 +211,15 @@ class SearchExportStatus(StrEnum):
     """The export job failed before producing a file."""
 
 
-class SearchExportRead(BaseModel):
-    """A search export job, used to poll for status and a signed URL."""
+# Retained for backward compatibility; export status is not search-specific.
+SearchExportStatus = ExportStatus
+
+
+class ExportReadBase(BaseModel):
+    """Shared fields for export jobs, used to poll for status and a signed URL."""
 
     id: UUID = Field(description="The ID of the export job.")
-    status: SearchExportStatus = Field(
+    status: ExportStatus = Field(
         description="The current status of the export job.",
     )
     export_format: ExportFormat = Field(
@@ -234,6 +238,15 @@ class SearchExportRead(BaseModel):
         default=None,
         description="The number of references included in the produced file.",
     )
+    error: str | None = Field(
+        default=None,
+        description="Error encountered while producing the export.",
+    )
+
+
+class SearchExportRead(ExportReadBase):
+    """A search export job, used to poll for status and a signed URL."""
+
     truncated: bool = Field(
         default=False,
         description=(
@@ -242,7 +255,7 @@ class SearchExportRead(BaseModel):
             "matches."
         ),
     )
-    error: str | None = Field(
-        default=None,
-        description="Error encountered while producing the export.",
-    )
+
+
+class ReferenceExportRead(ExportReadBase):
+    """A reference (id-list) export job, used to poll for status and a signed URL."""

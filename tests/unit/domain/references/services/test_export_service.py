@@ -6,16 +6,22 @@ from uuid import uuid7
 
 import pytest
 
+from app.core.exceptions import SQLNotFoundError
 from app.domain.references.models.models import (
     ExportFormat,
+    ReferenceExport,
     SearchExport,
     SearchQuery,
 )
+from app.domain.references.models.sql import ReferenceExport as SQLReferenceExport
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.export_service import (
+    ReferenceExportService,
+    SearchExportService,
+)
 from app.domain.references.services.search_service import SearchService
 from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from tests.factories import (
@@ -36,17 +42,35 @@ def _make_service() -> SearchExportService:
     return service
 
 
-async def test_collect_search_export_ids_flags_truncated_on_gte_total(
+@pytest.mark.parametrize(
+    ("total", "n_hits", "expected_truncated"),
+    [
+        pytest.param(
+            ESSearchTotal(value=10_000, relation="gte"), 10_000, True, id="gte_at_cap"
+        ),
+        pytest.param(
+            ESSearchTotal(value=25_000, relation="eq"), 10_000, True, id="eq_above_cap"
+        ),
+        pytest.param(ESSearchTotal(value=0, relation="eq"), 0, False, id="empty"),
+        pytest.param(
+            ESSearchTotal(value=10_000, relation="eq"), 10_000, False, id="eq_at_cap"
+        ),
+    ],
+)
+async def test_collect_search_export_ids_truncation(
     monkeypatch: pytest.MonkeyPatch,
+    total: ESSearchTotal,
+    n_hits: int,
+    expected_truncated: bool,  # noqa: FBT001
 ) -> None:
-    """When ES reports `gte` at the cap, the result is flagged as truncated."""
+    """`truncated` is set iff the match set exceeded the result-window cap."""
     monkeypatch.setattr(
         SearchService,
         "search",
         AsyncMock(
             return_value=ESSearchResult(
-                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
-                total=ESSearchTotal(value=10_000, relation="gte"),
+                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(n_hits)],
+                total=total,
                 page=1,
             )
         ),
@@ -56,81 +80,8 @@ async def test_collect_search_export_ids_flags_truncated_on_gte_total(
         _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
     )
 
-    assert len(ids) == 10_000
-    assert truncated is True
-
-
-async def test_collect_search_export_ids_flags_truncated_on_eq_above_cap(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """If ES tracks the exact count past the cap, `eq` total > cap is truncated."""
-    monkeypatch.setattr(
-        SearchService,
-        "search",
-        AsyncMock(
-            return_value=ESSearchResult(
-                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
-                total=ESSearchTotal(value=25_000, relation="eq"),
-                page=1,
-            )
-        ),
-    )
-
-    ids, truncated = await _collect_export_ids(
-        _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
-    )
-
-    assert len(ids) == 10_000
-    assert truncated is True
-
-
-async def test_collect_search_export_ids_handles_empty_result_set(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Zero hits returns ([], False) without crashing."""
-    monkeypatch.setattr(
-        SearchService,
-        "search",
-        AsyncMock(
-            return_value=ESSearchResult(
-                hits=[],
-                total=ESSearchTotal(value=0, relation="eq"),
-                page=1,
-            )
-        ),
-    )
-
-    ids, truncated = await _collect_export_ids(
-        _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
-    )
-
-    assert ids == []
-    assert truncated is False
-
-
-async def test_collect_search_export_ids_exactly_at_cap_not_truncated(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A result set of exactly 10,000 with `eq` total must not be flagged truncated."""
-    monkeypatch.setattr(
-        SearchService,
-        "search",
-        AsyncMock(
-            return_value=ESSearchResult(
-                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(10_000)],
-                total=ESSearchTotal(value=10_000, relation="eq"),
-                page=1,
-            )
-        ),
-    )
-
-    ids, truncated = await _collect_export_ids(
-        _make_service(), SearchExport(query=SearchQuery(query_string="climate"))
-    )
-
-    assert len(ids) == 10_000
-    # ES says eq=10_000: it counted exactly to the cap, so we got everything.
-    assert truncated is False
+    assert len(ids) == n_hits
+    assert truncated is expected_truncated
 
 
 def _reference_with_title(title: str):
@@ -220,26 +171,107 @@ async def test_stream_references_to_blob_serializes_jsonl() -> None:
     anti_corruption.reference_to_sdk.assert_awaited_once_with(reference)
 
 
-async def test_stream_search_export_uses_format_extension() -> None:
-    """The lifecycle service names the blob file with the export format extension."""
+async def test_stream_export_file_uses_format_extension_and_path() -> None:
+    """The primitive names the file by export id + format, and uses the blob path."""
     reference_service = MagicMock()
     reference_service.stream_references_to_blob = AsyncMock(
         return_value=(BlobStorageFileFactory.build(), 2)
     )
-    service = SearchExportService.__new__(SearchExportService)
+    service = ReferenceExportService.__new__(ReferenceExportService)
     service._reference_service = reference_service  # noqa: SLF001
     service._access_control_service = MagicMock()  # noqa: SLF001
-    export = SearchExport(
-        query=SearchQuery(query_string="x"), export_format=ExportFormat.RIS
-    )
+    export_id = uuid7()
 
-    await SearchExportService._stream_search_export.__wrapped__(  # type: ignore[attr-defined]  # noqa: SLF001
-        service, export, [uuid7(), uuid7()], MagicMock()
+    await ReferenceExportService.stream_export_file.__wrapped__(  # type: ignore[attr-defined]
+        service,
+        export_id=export_id,
+        reference_ids=[uuid7(), uuid7()],
+        export_format=ExportFormat.RIS,
+        blob_repository=MagicMock(),
     )
 
     kwargs = reference_service.stream_references_to_blob.await_args.kwargs
-    assert kwargs["filename"] == f"{export.id}.ris"
+    assert kwargs["filename"] == f"{export_id}.ris"
     assert kwargs["export_format"] == ExportFormat.RIS
+    assert kwargs["path"] == "reference_exports"
+
+
+async def test_request_reference_export_rejects_unknown_ids() -> None:
+    """Unknown reference ids surface the repository's not-found error up front."""
+    service = ReferenceExportService.__new__(ReferenceExportService)
+    sql_uow = MagicMock()
+    sql_uow.references.verify_pk_existence = AsyncMock(
+        side_effect=SQLNotFoundError(
+            detail="missing",
+            lookup_model="Reference",
+            lookup_type="id",
+            lookup_value={uuid7()},
+        )
+    )
+    service.sql_uow = sql_uow
+
+    with pytest.raises(SQLNotFoundError):
+        await ReferenceExportService.request_reference_export.__wrapped__(  # type: ignore[attr-defined]
+            service, [uuid7()]
+        )
+    sql_uow.reference_exports.add.assert_not_called()
+
+
+async def test_request_reference_export_deduplicates_ids() -> None:
+    """Repeated ids collapse (first-seen order) so the stored count matches the file."""
+    first, second = uuid7(), uuid7()
+    service = ReferenceExportService.__new__(ReferenceExportService)
+    sql_uow = MagicMock()
+    sql_uow.references.verify_pk_existence = AsyncMock()
+    sql_uow.reference_exports.add = AsyncMock()
+    service.sql_uow = sql_uow
+
+    reference_export = (
+        await ReferenceExportService.request_reference_export.__wrapped__(  # type: ignore[attr-defined]
+            service, [first, first, second, first]
+        )
+    )
+
+    assert reference_export.reference_ids == [first, second]
+    sql_uow.references.verify_pk_existence.assert_awaited_once_with([first, second])
+
+
+def test_reference_export_sql_round_trip() -> None:
+    """from_domain → to_domain preserves the reference ids and shared export fields."""
+    reference_ids = [uuid7(), uuid7(), uuid7()]
+    domain = ReferenceExport(
+        reference_ids=reference_ids, export_format=ExportFormat.RIS
+    )
+
+    restored = SQLReferenceExport.from_domain(domain).to_domain()
+
+    assert restored.reference_ids == reference_ids
+    assert restored.export_format == ExportFormat.RIS
+    assert restored.status == domain.status
+    assert restored.n_references is None
+    assert restored.result_file is None
+
+
+async def test_run_reference_export_streams_stored_ids_without_search() -> None:
+    """run streams the stored reference ids directly."""
+    reference_ids = [uuid7(), uuid7()]
+    export = ReferenceExport(reference_ids=reference_ids)
+    blob = BlobStorageFileFactory.build()
+
+    service = ReferenceExportService.__new__(ReferenceExportService)
+    service._claim = AsyncMock(return_value=export)  # type: ignore[method-assign] # noqa: SLF001
+    service.stream_export_file = AsyncMock(return_value=(blob, 2))  # type: ignore[method-assign]
+    service._complete = AsyncMock()  # type: ignore[method-assign] # noqa: SLF001
+
+    blob_repository = MagicMock()
+    await service.run(export.id, blob_repository)
+
+    stream_call = service.stream_export_file.await_args
+    assert stream_call is not None
+    stream_kwargs = stream_call.kwargs
+    assert stream_kwargs["reference_ids"] == reference_ids
+    assert stream_kwargs["export_id"] == export.id
+    service._complete.assert_awaited_once_with(export.id, blob, 2)  # noqa: SLF001
 
 
 async def test_stream_references_to_blob_jsonl_flattens_duplicates(

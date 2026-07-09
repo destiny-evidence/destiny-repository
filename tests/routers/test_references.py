@@ -1020,7 +1020,7 @@ async def test_request_search_export_happy_path(
     )
     monkeypatch.setattr(
         SearchExportService,
-        "_stream_search_export",
+        "stream_export_file",
         AsyncMock(return_value=(fake_result_file, 1)),
     )
 
