@@ -7,6 +7,14 @@ _camel_case_pattern = re.compile(r"(?<!^)(?=[A-Z])")
 
 UNICODE_LETTER_PATTERN = re.compile(r"[^\W\d_]+", flags=re.UNICODE)
 
+# A UTF-8 multi-byte sequence misdecoded as latin-1 surfaces as a lead code point
+# in U+00C2-U+00F4 (the 0xC2-0xF4 UTF-8 lead bytes) followed by a continuation in
+# U+0080-U+00BF (the 0x80-0xBF continuation bytes), or a single (U+0080-U+009F)
+# control code point.
+MOJIBAKE_SIGNATURE = re.compile(
+    f"[{chr(0xC2)}-{chr(0xF4)}][{chr(0x80)}-{chr(0xBF)}]|[{chr(0x80)}-{chr(0x9F)}]"
+)
+
 
 def is_meaningful_token(token: str, min_token_length: int) -> bool:
     """
