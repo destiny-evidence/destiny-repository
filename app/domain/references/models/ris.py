@@ -15,7 +15,7 @@ from typing import Annotated
 from pydantic import Field
 
 from app.domain.base import ProjectedBaseModel
-from app.utils.strings import flatten_newlines
+from app.utils.strings import demojibake, flatten_newlines
 
 
 class RisType(StrEnum):
@@ -95,4 +95,4 @@ class RisRecord(ProjectedBaseModel):
     @staticmethod
     def _line(tag: str, value: object) -> str:
         """Format a single ``TAG  - value`` line, flattening internal newlines."""
-        return f"{tag}  - {flatten_newlines(str(value))}"
+        return f"{tag}  - {flatten_newlines(demojibake(str(value)))}"
