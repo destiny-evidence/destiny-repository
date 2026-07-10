@@ -74,6 +74,15 @@ def test_render_flattens_internal_newlines():
     ]
 
 
+def test_render_demojibakes_display_text():
+    """Legacy import mojibake in free-text fields is repaired on render."""
+    clean = "Café Über: a Study"
+    mojibake = clean.encode("utf-8").decode("latin-1")
+    record = RisRecord(reference_type=RisType.JOURNAL, title=mojibake)
+
+    assert f"TI  - {clean}" in record.render().split("\n")
+
+
 def test_render_excludes_abstract_by_default():
     """The abstract is omitted by default and included only when not excluded."""
     record = RisRecord(reference_type=RisType.JOURNAL, abstract="An abstract.")

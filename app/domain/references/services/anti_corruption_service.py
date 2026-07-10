@@ -39,6 +39,10 @@ from app.persistence.es.persistence import (
     ESSearchResult,
     ESSearchTotal,
 )
+from app.utils.strings import demojibake, demojibake_walk
+
+# JSON-LD literal keys carrying human-readable free text
+_LINKED_DATA_TEXT_KEYS = frozenset({"name", "description", "supportingText", "@value"})
 
 
 class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
@@ -163,6 +167,27 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         else:
             return full_text
 
+    def _demojibake_enhancement_content(
+        self,
+        content: destiny_sdk.enhancements.EnhancementContent,
+    ) -> None:
+        """In-place repair of legacy import mojibake for human display."""
+        match content:
+            case destiny_sdk.enhancements.BibliographicMetadataEnhancement():
+                content.title = demojibake(content.title)
+                content.publisher = demojibake(content.publisher)
+                for author in content.authorship or []:
+                    author.display_name = demojibake(author.display_name)
+                if venue := content.publication_venue:
+                    venue.display_name = demojibake(venue.display_name)
+                    venue.host_organization_name = demojibake(
+                        venue.host_organization_name
+                    )
+            case destiny_sdk.enhancements.AbstractContentEnhancement():
+                content.abstract = demojibake(content.abstract)
+            case destiny_sdk.enhancements.LinkedDataEnhancement():
+                demojibake_walk(content.data, _LINKED_DATA_TEXT_KEYS)
+
     async def enhancement_to_sdk(
         self, enhancement: Enhancement
     ) -> destiny_sdk.references.Enhancement:
@@ -173,9 +198,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 dumped["content"] = (
                     await self.full_text_enhancement_content_to_sdk(enhancement.content)
                 ).model_dump()
-            return destiny_sdk.references.Enhancement.model_validate(dumped)
+            sdk_enhancement = destiny_sdk.references.Enhancement.model_validate(dumped)
+            self._demojibake_enhancement_content(sdk_enhancement.content)
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
+        else:
+            return sdk_enhancement
 
     def enhancement_from_sdk(
         self,

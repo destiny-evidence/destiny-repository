@@ -153,6 +153,95 @@ class TestFullTextEnhancementFromSdk:
         assert domain_ft.blob.to_uri() == str(sdk_full_text.file_url)
 
 
+def _mojibake(value: str) -> str:
+    """Reproduce the legacy import bug: UTF-8 bytes misdecoded as latin-1."""
+    return value.encode("utf-8").decode("latin-1")
+
+
+_CLEAN_TITLE = "Teachers’ training"  # noqa: RUF001
+_CLEAN_DESCRIPTION = "Détails de l’étude"  # noqa: RUF001
+_CLEAN_SUPPORTING = "supporting ’text’"  # noqa: RUF001
+
+
+class TestEnhancementToSdkDemojibake:
+    """Legacy import mojibake is repaired for display at the ACS seam (#781)."""
+
+    @pytest.fixture
+    def service(self):
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    async def test_repairs_bibliographic_display_text(self, service):
+        content = destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+            title=_mojibake(_CLEAN_TITLE),
+            publisher=_mojibake("Éditeur Universitaire"),
+            authorship=[
+                destiny_sdk.enhancements.Authorship(
+                    display_name=_mojibake("José Peña"),
+                    position=destiny_sdk.enhancements.AuthorPosition.FIRST,
+                )
+            ],
+            publication_venue=destiny_sdk.enhancements.PublicationVenue(
+                display_name=_mojibake("Régional Review"),
+                host_organization_name=_mojibake("Universität Zürich"),
+            ),
+        )
+        enhancement = EnhancementFactory.build(content=content)
+
+        sdk = await service.enhancement_to_sdk(enhancement)
+
+        assert isinstance(
+            sdk.content, destiny_sdk.enhancements.BibliographicMetadataEnhancement
+        )
+        assert sdk.content.title == _CLEAN_TITLE
+        assert sdk.content.publisher == "Éditeur Universitaire"
+        assert sdk.content.authorship is not None
+        assert sdk.content.authorship[0].display_name == "José Peña"
+        assert sdk.content.publication_venue is not None
+        assert sdk.content.publication_venue.display_name == "Régional Review"
+        assert (
+            sdk.content.publication_venue.host_organization_name == "Universität Zürich"
+        )
+
+    async def test_repairs_abstract_text(self, service):
+        content = destiny_sdk.enhancements.AbstractContentEnhancement(
+            process=AbstractProcessType.OTHER,
+            abstract=_mojibake("Über die Grénze — a café study"),
+        )
+        enhancement = EnhancementFactory.build(content=content)
+
+        sdk = await service.enhancement_to_sdk(enhancement)
+
+        assert isinstance(
+            sdk.content, destiny_sdk.enhancements.AbstractContentEnhancement
+        )
+        assert sdk.content.abstract == "Über die Grénze — a café study"
+
+    async def test_repairs_linked_data_literals_but_not_identifiers(self, service):
+        # An @id carrying the mojibake byte pattern must survive untouched even
+        # though it sits alongside repaired literals.
+        unsafe_id = "https://id.example.org/" + _mojibake("Ünsafe")
+        content = destiny_sdk.enhancements.LinkedDataEnhancement(
+            vocabulary_uri=HttpUrl("https://vocab.example.org/v1"),
+            data={
+                "@context": "https://vocab.example.org/v1",
+                "@id": unsafe_id,
+                "name": _mojibake("Klíma"),
+                "description": _mojibake(_CLEAN_DESCRIPTION),
+                "supportingText": _mojibake(_CLEAN_SUPPORTING),
+            },
+        )
+        enhancement = EnhancementFactory.build(content=content)
+
+        sdk = await service.enhancement_to_sdk(enhancement)
+
+        assert isinstance(sdk.content, destiny_sdk.enhancements.LinkedDataEnhancement)
+        assert sdk.content.data["name"] == "Klíma"
+        assert sdk.content.data["description"] == _CLEAN_DESCRIPTION
+        assert sdk.content.data["supportingText"] == _CLEAN_SUPPORTING
+        assert sdk.content.data["@id"] == unsafe_id
+        assert sdk.content.data["@context"] == "https://vocab.example.org/v1"
+
+
 class TestLinkedDataConceptFilterFromQueryParameter:
     """Tests for parsing concept filters from query parameter values."""
 
