@@ -763,6 +763,170 @@ class ReferenceSearchFields(ProjectedBaseModel):
         return [cls._normalise_string(v) for v in value if v]
 
 
+CURRENT_FUZZY_RETRIEVAL_POLICY = "current_fuzzy_v1"
+
+
+class CandidateIdentifier(BaseModel):
+    """An external identifier, used as request input and as match provenance."""
+
+    identifier_type: ExternalIdentifierType = Field(
+        description="The type of the identifier, e.g. doi, pm_id, open_alex."
+    )
+    identifier: str = Field(description="The identifier value.")
+    other_identifier_name: str | None = Field(
+        default=None,
+        description="The name of the identifier when identifier_type is other.",
+    )
+
+
+class CandidateSelectionInput(BaseModel):
+    """
+    The reference to find candidates for.
+
+    Provide exactly one of a stored ``reference_id`` (projected into search
+    fields server-side) or an inline set of candidate-search fields.
+    """
+
+    reference_id: UUID | None = Field(
+        default=None,
+        description="A stored reference to hydrate and project into search fields.",
+    )
+    title: str | None = Field(default=None, description="The title to search on.")
+    authors: list[str] = Field(
+        default_factory=list, description="The authors to search on."
+    )
+    publication_year: int | None = Field(
+        default=None, description="The publication year to search on."
+    )
+    identifiers: list[CandidateIdentifier] = Field(
+        default_factory=list,
+        description="Identifiers to union with the Elasticsearch candidates.",
+    )
+
+    @model_validator(mode="after")
+    def validate_exactly_one_input_mode(self) -> Self:
+        """Require exactly one of reference_id or inline candidate-search fields."""
+        has_reference_id = self.reference_id is not None
+        has_inline = bool(
+            self.title or self.authors or self.publication_year or self.identifiers
+        )
+        if has_reference_id == has_inline:
+            msg = (
+                "Provide exactly one of reference_id or inline candidate-search "
+                "fields, not both or neither."
+            )
+            raise ValueError(msg)
+        return self
+
+
+class CandidateSelectionRequest(BaseModel):
+    """A request for candidate canonical references, for dedup evaluation."""
+
+    input: CandidateSelectionInput = Field(
+        description="The reference to find candidates for."
+    )
+    k: int | None = Field(
+        default=None,
+        ge=1,
+        le=1000,
+        description=(
+            "Number of candidates to retrieve. Defaults to the configured value."
+        ),
+    )
+    include_identifier_matches: bool = Field(
+        default=True,
+        description=(
+            "Union exact identifier matches from Postgres with ES candidates."
+        ),
+    )
+    hydrate: bool = Field(
+        default=True,
+        description="Include hydrated bibliographic fields on each candidate.",
+    )
+
+
+class CandidateElasticsearchRoute(BaseModel):
+    """Provenance for a candidate surfaced by the Elasticsearch query."""
+
+    type: Literal["elasticsearch"] = "elasticsearch"
+    policy: str = Field(description="The retrieval policy that surfaced the candidate.")
+    rank: int = Field(description="Rank within the Elasticsearch results (1-based).")
+    score: float = Field(description="The Elasticsearch relevance score.")
+
+
+class CandidateIdentifierRoute(BaseModel):
+    """Provenance for a candidate surfaced by an exact identifier match."""
+
+    type: Literal["identifier"] = "identifier"
+    matched_identifiers: list[CandidateIdentifier] = Field(
+        description="The input identifiers that matched this candidate."
+    )
+
+
+CandidateRoute = Annotated[
+    CandidateElasticsearchRoute | CandidateIdentifierRoute,
+    Field(discriminator="type"),
+]
+
+
+class CandidateReferenceProjection(BaseModel):
+    """Hydrated bibliographic projection of a candidate reference."""
+
+    title: str | None = None
+    authors: list[str] = Field(default_factory=list)
+    publication_year: int | None = None
+    identifiers: list[CandidateIdentifier] = Field(default_factory=list)
+
+
+class Candidate(BaseModel):
+    """A candidate canonical reference with route provenance."""
+
+    reference_id: UUID
+    rank: int = Field(description="Overall rank across all routes (1-based).")
+    routes: list[CandidateRoute] = Field(
+        description="How this candidate was surfaced (ES and/or identifier)."
+    )
+    reference: CandidateReferenceProjection | None = Field(
+        default=None,
+        description="Hydrated bibliographic fields; omitted when hydrate is false.",
+    )
+
+
+class InputSearchability(BaseModel):
+    """Whether the input reference is searchable for candidate retrieval."""
+
+    searchable: bool = Field(description="Whether candidate retrieval was attempted.")
+    reason: str = Field(description="Explanation of the searchability decision.")
+
+
+class CandidateSelectionDiagnostics(BaseModel):
+    """Retrieval diagnostics for evaluation."""
+
+    es_took_ms: int | None = None
+    es_total_hits: int | None = None
+    es_returned: int = 0
+    identifier_returned: int = 0
+    candidate_count: int = 0
+    truncated: bool = False
+    kth_es_score: float | None = None
+    lowest_es_score: float | None = None
+
+
+class CandidateSelectionResult(BaseModel):
+    """Ranked candidates and diagnostics for a candidate-selection request."""
+
+    retrieval_policy: str = CURRENT_FUZZY_RETRIEVAL_POLICY
+    index_version: str | None = Field(
+        default=None,
+        description="The reference index version the candidates were drawn from.",
+    )
+    k_requested: int
+    include_identifier_matches: bool
+    input_searchability: InputSearchability
+    diagnostics: CandidateSelectionDiagnostics
+    candidates: list[Candidate] = Field(default_factory=list)
+
+
 class LinkedDataProjection(ProjectedBaseModel):
     """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
 

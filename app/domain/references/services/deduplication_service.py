@@ -194,13 +194,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision.id,
                 duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
             )
+        # The candidate depth here preserves this path's historical behaviour; the
+        # production K is chosen by the recall@K evaluation, not this path.
         search_result = await self.es_uow.references.search_for_candidate_canonicals(
             search_fields,
             reference_id=reference.id,
             scoring_config=settings.dedup_scoring,
+            k=10,
         )
 
-        if not search_result:
+        if not search_result.hits:
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
@@ -217,7 +220,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision = (
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(
                     reference_duplicate_decision.id,
-                    candidate_canonical_ids=[result.id for result in search_result],
+                    candidate_canonical_ids=[
+                        result.id for result in search_result.hits
+                    ],
                     duplicate_determination=DuplicateDetermination.NOMINATED,
                 )
             )

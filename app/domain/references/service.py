@@ -13,6 +13,7 @@ from app.core.config import (
     get_settings,
 )
 from app.core.exceptions import (
+    DeduplicationValueError,
     DuplicateEnhancementError,
     FullTextIngestionError,
     InvalidParentEnhancementError,
@@ -23,6 +24,17 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    CURRENT_FUZZY_RETRIEVAL_POLICY,
+    Candidate,
+    CandidateCanonicalSearchFields,
+    CandidateElasticsearchRoute,
+    CandidateIdentifier,
+    CandidateIdentifierRoute,
+    CandidateReferenceProjection,
+    CandidateSelectionDiagnostics,
+    CandidateSelectionInput,
+    CandidateSelectionRequest,
+    CandidateSelectionResult,
     CrossFacetCell,
     DuplicateDetermination,
     Enhancement,
@@ -31,8 +43,11 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExportFormat,
     ExternalIdentifier,
+    ExternalIdentifierAdapter,
+    ExternalIdentifierType,
     FacetType,
     IdentifierLookup,
+    InputSearchability,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
@@ -48,6 +63,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.projections import (
     DeduplicatedReferenceProjection,
     ReferenceRisProjection,
+    ReferenceSearchFieldsProjection,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.repository import (
@@ -94,6 +110,29 @@ from app.utils.time_and_date import apply_positive_timedelta
 logger = get_logger(__name__)
 settings = get_settings()
 tracer = get_tracer(__name__)
+
+# ES does not index identifiers, so exact-identifier candidates come from Postgres.
+_UNIONABLE_IDENTIFIER_TYPES = frozenset(
+    {
+        ExternalIdentifierType.DOI,
+        ExternalIdentifierType.PM_ID,
+        ExternalIdentifierType.OPEN_ALEX,
+    }
+)
+
+
+def _unsearchable_reason(search_fields: CandidateCanonicalSearchFields) -> str:
+    """Explain which required search fields are absent."""
+    missing = [
+        name
+        for name, value in (
+            ("title", search_fields.title),
+            ("authors", search_fields.authors),
+            ("publication_year", search_fields.publication_year),
+        )
+        if not value
+    ]
+    return f"Missing required search field(s): {', '.join(missing)}."
 
 
 class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
@@ -529,6 +568,230 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         # Filter again in case multiple duplicates pointed to same canonical
         return list({reference.id: reference for reference in references}.values())
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def get_deduplication_candidates(
+        self, request: CandidateSelectionRequest
+    ) -> CandidateSelectionResult:
+        """
+        Retrieve ranked candidate canonicals for a reference, without persisting.
+
+        Read-only evaluation surface for deduplication candidate retrieval: it runs
+        the shared Elasticsearch candidate query and, optionally, unions exact
+        identifier matches from Postgres, returning route provenance and retrieval
+        diagnostics. It writes no duplicate-decision or candidate state.
+        """
+        k = request.k or settings.dedup_scoring.candidate_k
+        index_version = await self.es_uow.references.get_current_index_name()
+
+        (
+            search_fields,
+            self_id,
+            identifier_lookups,
+        ) = await self._resolve_candidate_selection_input(request.input)
+
+        if not search_fields.is_searchable:
+            return CandidateSelectionResult(
+                index_version=index_version,
+                k_requested=k,
+                include_identifier_matches=request.include_identifier_matches,
+                input_searchability=InputSearchability(
+                    searchable=False,
+                    reason=_unsearchable_reason(search_fields),
+                ),
+                diagnostics=CandidateSelectionDiagnostics(),
+            )
+
+        es_result = await self.es_uow.references.search_for_candidate_canonicals(
+            search_fields,
+            scoring_config=settings.dedup_scoring,
+            k=k,
+            reference_id=self_id,
+        )
+        es_scores = {hit.id: hit.score for hit in es_result.hits}
+        es_ranks = {hit.id: rank for rank, hit in enumerate(es_result.hits, start=1)}
+
+        identifier_matches: dict[UUID, dict[tuple, CandidateIdentifier]] = {}
+        if request.include_identifier_matches and identifier_lookups:
+            identifier_matches = await self._union_identifier_matches(
+                identifier_lookups, self_id=self_id
+            )
+
+        # Identifier-only matches rank ahead of ES-scored matches for evaluator
+        # visibility; everything carrying an ES score follows in score order.
+        identifier_only_ids = [
+            cid for cid in identifier_matches if cid not in es_scores
+        ]
+        ordered_ids = identifier_only_ids + [hit.id for hit in es_result.hits]
+
+        hydrated_by_id: dict[UUID, Reference] = {}
+        if request.hydrate and ordered_ids:
+            hydrated = await self.sql_uow.references.get_hydrated(
+                ordered_ids, enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
+            )
+            hydrated_by_id = {reference.id: reference for reference in hydrated}
+
+        candidates = []
+        for rank, cid in enumerate(ordered_ids, start=1):
+            routes: list[CandidateElasticsearchRoute | CandidateIdentifierRoute] = []
+            if cid in es_scores:
+                routes.append(
+                    CandidateElasticsearchRoute(
+                        policy=CURRENT_FUZZY_RETRIEVAL_POLICY,
+                        rank=es_ranks[cid],
+                        score=es_scores[cid],
+                    )
+                )
+            if cid in identifier_matches:
+                routes.append(
+                    CandidateIdentifierRoute(
+                        matched_identifiers=list(identifier_matches[cid].values())
+                    )
+                )
+            candidates.append(
+                Candidate(
+                    reference_id=cid,
+                    rank=rank,
+                    routes=routes,
+                    reference=self._project_candidate_reference(hydrated_by_id[cid])
+                    if request.hydrate and cid in hydrated_by_id
+                    else None,
+                )
+            )
+
+        es_returned = len(es_result.hits)
+        return CandidateSelectionResult(
+            index_version=index_version,
+            k_requested=k,
+            include_identifier_matches=request.include_identifier_matches,
+            input_searchability=InputSearchability(searchable=True, reason="ok"),
+            diagnostics=CandidateSelectionDiagnostics(
+                es_took_ms=es_result.took_ms,
+                es_total_hits=es_result.total.value,
+                es_returned=es_returned,
+                identifier_returned=len(identifier_matches),
+                candidate_count=len(ordered_ids),
+                truncated=es_result.total.value > es_returned,
+                kth_es_score=es_result.hits[k - 1].score if es_returned >= k else None,
+                lowest_es_score=es_result.hits[-1].score if es_result.hits else None,
+            ),
+            candidates=candidates,
+        )
+
+    async def _resolve_candidate_selection_input(
+        self, input_: CandidateSelectionInput
+    ) -> tuple[CandidateCanonicalSearchFields, UUID | None, list[IdentifierLookup]]:
+        """Resolve request input into search fields, a self-id, and id lookups."""
+        if input_.reference_id is not None:
+            reference = await self.sql_uow.references.get_by_pk(
+                input_.reference_id, preload=["enhancements", "identifiers"]
+            )
+            search_fields = (
+                ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+                    reference
+                )
+            )
+            lookups = [
+                IdentifierLookup.from_specific(linked.identifier)
+                for linked in (reference.identifiers or [])
+                if linked.identifier.identifier_type in _UNIONABLE_IDENTIFIER_TYPES
+            ]
+            return search_fields, reference.id, lookups
+
+        search_fields = CandidateCanonicalSearchFields(
+            title=input_.title,
+            authors=input_.authors,
+            publication_year=input_.publication_year,
+        )
+        lookups = [
+            self._identifier_lookup_from_candidate(identifier)
+            for identifier in input_.identifiers
+            if identifier.identifier_type in _UNIONABLE_IDENTIFIER_TYPES
+        ]
+        return search_fields, None, lookups
+
+    @staticmethod
+    def _identifier_lookup_from_candidate(
+        identifier: CandidateIdentifier,
+    ) -> IdentifierLookup:
+        """Normalise an input identifier into a lookup, canonicalising its value."""
+        try:
+            specific = ExternalIdentifierAdapter.validate_python(
+                identifier.model_dump()
+            )
+        except ValueError as exc:
+            msg = f"Invalid identifier for candidate selection: {identifier.identifier}"
+            raise DeduplicationValueError(msg) from exc
+        return IdentifierLookup.from_specific(specific)
+
+    async def _union_identifier_matches(
+        self,
+        lookups: list[IdentifierLookup],
+        *,
+        self_id: UUID | None,
+    ) -> dict[UUID, dict[tuple, CandidateIdentifier]]:
+        """Exact-match identifiers in Postgres, resolved to canonical candidates."""
+        matched_references = await self.sql_uow.references.find_with_identifiers(
+            lookups,
+            preload=["identifiers", "duplicate_decision"],
+            match="any",
+        )
+        query_keys = {(lookup.identifier_type, lookup.identifier) for lookup in lookups}
+        matches: dict[UUID, dict[tuple, CandidateIdentifier]] = {}
+        for reference in matched_references:
+            if reference.id == self_id:
+                continue
+            # A match on a duplicate resolves to its canonical, which may be a
+            # different, older reference outside the queried set.
+            if reference.is_canonical_like:
+                canonical_id = reference.id
+            elif (
+                reference.duplicate_decision
+                and reference.duplicate_decision.canonical_reference_id
+            ):
+                canonical_id = reference.duplicate_decision.canonical_reference_id
+            else:
+                continue
+            if canonical_id == self_id:
+                continue
+            bucket = matches.setdefault(canonical_id, {})
+            for linked in reference.identifiers or []:
+                key = (
+                    linked.identifier.identifier_type,
+                    str(linked.identifier.identifier),
+                )
+                if key in query_keys:
+                    bucket[key] = CandidateIdentifier(
+                        identifier_type=linked.identifier.identifier_type,
+                        identifier=str(linked.identifier.identifier),
+                        other_identifier_name=getattr(
+                            linked.identifier, "other_identifier_name", None
+                        ),
+                    )
+        return matches
+
+    @staticmethod
+    def _project_candidate_reference(
+        reference: Reference,
+    ) -> CandidateReferenceProjection:
+        """Project a hydrated reference into candidate bibliographic fields."""
+        fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        return CandidateReferenceProjection(
+            title=fields.title,
+            authors=fields.authors,
+            publication_year=fields.publication_year,
+            identifiers=[
+                CandidateIdentifier(
+                    identifier_type=linked.identifier.identifier_type,
+                    identifier=str(linked.identifier.identifier),
+                    other_identifier_name=getattr(
+                        linked.identifier, "other_identifier_name", None
+                    ),
+                )
+                for linked in (reference.identifiers or [])
+            ],
+        )
 
     @sql_unit_of_work
     async def add_identifier(
