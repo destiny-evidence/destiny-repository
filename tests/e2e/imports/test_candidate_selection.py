@@ -9,10 +9,11 @@ from destiny_sdk.enhancements import Authorship
 from destiny_sdk.identifiers import DOIIdentifier
 from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
-from sqlalchemy import text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.references.models.models import Reference, Visibility
+from app.domain.references.models.sql import ReferenceDuplicateDecision
 from tests.e2e.utils import import_references, refresh_reference_index
 from tests.factories import (
     BibliographicMetadataEnhancementFactory,
@@ -54,7 +55,7 @@ def canonical_reference(doi: DOIIdentifier) -> Reference:
 
 async def _count_duplicate_decisions(pg_session: AsyncSession) -> int:
     result = await pg_session.execute(
-        text("SELECT COUNT(*) FROM reference_duplicate_decision;")
+        select(func.count()).select_from(ReferenceDuplicateDecision)
     )
     return result.scalar_one()
 

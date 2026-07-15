@@ -904,9 +904,15 @@ class Candidate(BaseModel):
 
 
 class InputSearchability(BaseModel):
-    """Whether the input reference is searchable for candidate retrieval."""
+    """Whether the input meets the Elasticsearch bibliographic searchability gate."""
 
-    searchable: bool = Field(description="Whether candidate retrieval was attempted.")
+    searchable: bool = Field(
+        description=(
+            "Whether the input meets the Elasticsearch searchability gate (title, "
+            "authors, publication year). Exact identifier matching runs regardless, "
+            "so candidates may be present even when this is false."
+        )
+    )
     reason: str = Field(description="Explanation of the searchability decision.")
 
 

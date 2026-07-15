@@ -122,7 +122,7 @@ _UNIONABLE_IDENTIFIER_TYPES = frozenset(
 
 
 def _unsearchable_reason(search_fields: CandidateCanonicalSearchFields) -> str:
-    """Explain which required search fields are absent."""
+    """Explain which Elasticsearch search fields are absent."""
     missing = [
         name
         for name, value in (
@@ -132,7 +132,10 @@ def _unsearchable_reason(search_fields: CandidateCanonicalSearchFields) -> str:
         )
         if not value
     ]
-    return f"Missing required search field(s): {', '.join(missing)}."
+    return (
+        f"Not searchable via Elasticsearch (missing: {', '.join(missing)}); "
+        "exact identifier matches, if any, are still returned."
+    )
 
 
 class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
