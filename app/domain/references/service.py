@@ -583,7 +583,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         diagnostics. It writes no duplicate-decision or candidate state.
         """
         k = request.k or settings.dedup_scoring.candidate_k
-        index_version = await self.es_uow.references.get_current_index_name()
 
         (
             search_fields,
@@ -591,39 +590,39 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             identifier_lookups,
         ) = await self._resolve_candidate_selection_input(request.input)
 
-        if not search_fields.is_searchable:
-            return CandidateSelectionResult(
-                index_version=index_version,
-                k_requested=k,
-                include_identifier_matches=request.include_identifier_matches,
-                input_searchability=InputSearchability(
-                    searchable=False,
-                    reason=_unsearchable_reason(search_fields),
-                ),
-                diagnostics=CandidateSelectionDiagnostics(),
-            )
-
-        es_result = await self.es_uow.references.search_for_candidate_canonicals(
-            search_fields,
-            scoring_config=settings.dedup_scoring,
-            k=k,
-            reference_id=self_id,
-        )
-        es_scores = {hit.id: hit.score for hit in es_result.hits}
-        es_ranks = {hit.id: rank for rank, hit in enumerate(es_result.hits, start=1)}
-
+        # Exact identifier matching does not depend on bibliographic searchability;
+        # it is the route for records that fail the ES searchability gate, so it runs
+        # regardless of it.
         identifier_matches: dict[UUID, dict[tuple, CandidateIdentifier]] = {}
         if request.include_identifier_matches and identifier_lookups:
             identifier_matches = await self._union_identifier_matches(
                 identifier_lookups, self_id=self_id
             )
 
+        # The ES candidate query and its index-version stamp are only meaningful for
+        # searchable inputs.
+        searchable = search_fields.is_searchable
+        es_result = None
+        index_version = None
+        if searchable:
+            index_version = await self.es_uow.references.get_current_index_name()
+            es_result = await self.es_uow.references.search_for_candidate_canonicals(
+                search_fields,
+                scoring_config=settings.dedup_scoring,
+                k=k,
+                reference_id=self_id,
+            )
+
+        es_hits = es_result.hits if es_result else []
+        es_scores = {hit.id: hit.score for hit in es_hits}
+        es_ranks = {hit.id: rank for rank, hit in enumerate(es_hits, start=1)}
+
         # Identifier-only matches rank ahead of ES-scored matches for evaluator
         # visibility; everything carrying an ES score follows in score order.
         identifier_only_ids = [
             cid for cid in identifier_matches if cid not in es_scores
         ]
-        ordered_ids = identifier_only_ids + [hit.id for hit in es_result.hits]
+        ordered_ids = identifier_only_ids + [hit.id for hit in es_hits]
 
         hydrated_by_id: dict[UUID, Reference] = {}
         if request.hydrate and ordered_ids:
@@ -660,21 +659,24 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 )
             )
 
-        es_returned = len(es_result.hits)
+        es_returned = len(es_hits)
         return CandidateSelectionResult(
             index_version=index_version,
             k_requested=k,
             include_identifier_matches=request.include_identifier_matches,
-            input_searchability=InputSearchability(searchable=True, reason="ok"),
+            input_searchability=InputSearchability(
+                searchable=searchable,
+                reason="ok" if searchable else _unsearchable_reason(search_fields),
+            ),
             diagnostics=CandidateSelectionDiagnostics(
-                es_took_ms=es_result.took_ms,
-                es_total_hits=es_result.total.value,
+                es_took_ms=es_result.took_ms if es_result else None,
+                es_total_hits=es_result.total.value if es_result else None,
                 es_returned=es_returned,
                 identifier_returned=len(identifier_matches),
                 candidate_count=len(ordered_ids),
-                truncated=es_result.total.value > es_returned,
-                kth_es_score=es_result.hits[k - 1].score if es_returned >= k else None,
-                lowest_es_score=es_result.hits[-1].score if es_result.hits else None,
+                truncated=(es_result.total.value > es_returned) if es_result else False,
+                kth_es_score=es_hits[k - 1].score if es_returned >= k else None,
+                lowest_es_score=es_hits[-1].score if es_hits else None,
             ),
             candidates=candidates,
         )
@@ -742,8 +744,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         for reference in matched_references:
             if reference.id == self_id:
                 continue
-            # A match on a duplicate resolves to its canonical, which may be a
-            # different, older reference outside the queried set.
+            # Unlike the ES query, this read-only path does not restrict to
+            # CANONICAL-at-rest references: that filter guards a nomination write
+            # race we don't have, so an exact identifier match is surfaced whatever
+            # its dedup state. A match on a duplicate resolves to its canonical,
+            # which may be a different, older reference outside the queried set.
             if reference.is_canonical_like:
                 canonical_id = reference.id
             elif (
@@ -752,7 +757,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             ):
                 canonical_id = reference.duplicate_decision.canonical_reference_id
             else:
-                continue
+                msg = (
+                    "Identifier match is a determined duplicate without a canonical "
+                    "reference id. This should not happen."
+                )
+                raise RuntimeError(msg)
             if canonical_id == self_id:
                 continue
             bucket = matches.setdefault(canonical_id, {})
@@ -762,13 +771,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     str(linked.identifier.identifier),
                 )
                 if key in query_keys:
-                    bucket[key] = CandidateIdentifier(
-                        identifier_type=linked.identifier.identifier_type,
-                        identifier=str(linked.identifier.identifier),
-                        other_identifier_name=getattr(
-                            linked.identifier, "other_identifier_name", None
-                        ),
-                    )
+                    bucket[key] = CandidateIdentifier.from_specific(linked.identifier)
         return matches
 
     @staticmethod
@@ -782,13 +785,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             authors=fields.authors,
             publication_year=fields.publication_year,
             identifiers=[
-                CandidateIdentifier(
-                    identifier_type=linked.identifier.identifier_type,
-                    identifier=str(linked.identifier.identifier),
-                    other_identifier_name=getattr(
-                        linked.identifier, "other_identifier_name", None
-                    ),
-                )
+                CandidateIdentifier.from_specific(linked.identifier)
                 for linked in (reference.identifiers or [])
             ],
         )

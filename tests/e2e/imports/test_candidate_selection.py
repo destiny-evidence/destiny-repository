@@ -162,6 +162,48 @@ async def test_candidates_by_reference_id_is_searchable_and_read_only(
     assert await _count_duplicate_decisions(pg_session) == decisions_before
 
 
+async def test_candidates_identifier_only_input_matches_despite_unsearchable(  # noqa: PLR0913
+    destiny_client_v1: httpx.AsyncClient,
+    pg_session: AsyncSession,
+    es_client: AsyncElasticsearch,
+    get_import_file_signed_url: Callable[
+        [list[ReferenceFileInput]], _AsyncGeneratorContextManager[str]
+    ],
+    canonical_reference: Reference,
+    doi: DOIIdentifier,
+):
+    """An identifier-only payload (no title/authors/year) still matches by DOI."""
+    reference_id = (
+        await import_references(
+            destiny_client_v1,
+            pg_session,
+            es_client,
+            [canonical_reference],
+            get_import_file_signed_url,
+        )
+    ).pop()
+    await refresh_reference_index(es_client)
+
+    response = await destiny_client_v1.post(
+        CANDIDATES_URL,
+        json={
+            "input": {
+                "identifiers": [
+                    {"identifier_type": "doi", "identifier": str(doi.identifier)}
+                ]
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["input_searchability"]["searchable"] is False
+    candidate = next(
+        c for c in body["candidates"] if c["reference_id"] == str(reference_id)
+    )
+    assert [route["type"] for route in candidate["routes"]] == ["identifier"]
+
+
 async def test_candidates_unsearchable_returns_empty_200(
     destiny_client_v1: httpx.AsyncClient,
 ):

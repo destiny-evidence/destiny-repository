@@ -778,6 +778,17 @@ class CandidateIdentifier(BaseModel):
         description="The name of the identifier when identifier_type is other.",
     )
 
+    @classmethod
+    def from_specific(cls, external_identifier: ExternalIdentifier) -> Self:
+        """Build from a stored identifier, casting its value to a string."""
+        return cls(
+            identifier_type=external_identifier.identifier_type,
+            identifier=str(external_identifier.identifier),
+            other_identifier_name=getattr(
+                external_identifier, "other_identifier_name", None
+            ),
+        )
+
 
 class CandidateSelectionInput(BaseModel):
     """

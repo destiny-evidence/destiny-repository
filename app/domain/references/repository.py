@@ -6,7 +6,7 @@ from collections.abc import Mapping, Sequence
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
-from elasticsearch import AsyncElasticsearch, NotFoundError
+from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from elasticsearch.dsl.query import Bool, MatchAll, Prefix, Query, Range, Term, Terms
 from elasticsearch.dsl.response import Response
@@ -105,6 +105,7 @@ from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.models.sql import SearchExport as SQLSearchExport
+from app.persistence.es.index_manager import IndexManager
 from app.persistence.es.persistence import (
     CandidateCanonicalSearchResult,
     ESFacetBucket,
@@ -788,14 +789,9 @@ class ReferenceESRepository(
     @trace_repository_method(tracer)
     async def get_current_index_name(self) -> str | None:
         """Return the physical index name currently behind the alias, if any."""
-        try:
-            alias_info = await self._client.indices.get_alias(
-                name=self._persistence_cls.Index.name
-            )
-        except NotFoundError:
-            return None
-        indices = list(alias_info.keys())
-        return indices[0] if indices else None
+        return await IndexManager(
+            self._persistence_cls, self._client
+        ).get_current_index_name()
 
 
 class ExternalIdentifierRepositoryBase(

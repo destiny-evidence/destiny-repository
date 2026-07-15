@@ -337,6 +337,45 @@ async def test_hydrate_includes_reference_projection(build_service):
 
 
 @pytest.mark.asyncio
+async def test_identifier_only_input_matches_when_es_unsearchable(build_service):
+    """An identifier-only input still surfaces exact matches despite the gate."""
+    doi = DOIIdentifierFactory.build()
+    identifier_ref = ReferenceFactory.build(visibility="public")
+    identifier_ref = identifier_ref.model_copy(
+        update={
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    identifier=doi, reference_id=identifier_ref.id
+                )
+            ],
+            "duplicate_decision": None,
+        }
+    )
+    service, es_refs, _, _ = build_service(found_references=[identifier_ref])
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                identifiers=[
+                    CandidateIdentifier(
+                        identifier_type=ExternalIdentifierType.DOI,
+                        identifier=str(doi.identifier),
+                    )
+                ]
+            ),
+            hydrate=False,
+        )
+    )
+
+    # The ES gate is not met, but the identifier route still returns the match.
+    assert result.input_searchability.searchable is False
+    es_refs.search_for_candidate_canonicals.assert_not_awaited()
+    assert [c.reference_id for c in result.candidates] == [identifier_ref.id]
+    assert result.candidates[0].routes[0].type == "identifier"
+    assert result.diagnostics.identifier_returned == 1
+    assert result.diagnostics.es_total_hits is None
+
+
 async def test_unsearchable_input_returns_empty_200(build_service):
     service, es_refs, _, _ = build_service()
 
