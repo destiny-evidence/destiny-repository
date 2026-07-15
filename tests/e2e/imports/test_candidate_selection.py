@@ -118,9 +118,11 @@ async def test_candidates_inline_unions_es_and_identifier_without_persisting(  #
     assert candidate["reference"]["title"] == "A Distinctive Candidate Selection Study"
     assert candidate["reference"]["publication_year"] == 2024
 
-    assert body["diagnostics"]["es_returned"] >= 1
-    assert body["diagnostics"]["identifier_returned"] >= 1
-    assert body["diagnostics"]["candidate_count"] >= 1
+    # Isolated per test: exactly the one imported reference, found by both routes
+    # and collapsed to a single candidate by the union.
+    assert body["diagnostics"]["es_returned"] == 1
+    assert body["diagnostics"]["identifier_returned"] == 1
+    assert body["diagnostics"]["candidate_count"] == 1
 
     # Read-only: the request must not create or change any duplicate-decision state.
     assert await _count_duplicate_decisions(pg_session) == decisions_before
