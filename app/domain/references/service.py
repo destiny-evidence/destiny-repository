@@ -614,6 +614,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 scoring_config=settings.dedup_scoring,
                 k=k,
                 reference_id=self_id,
+                # The evaluation endpoint reports the exact total; the nomination
+                # path does not, so only this caller opts into the full count.
+                track_total_hits=True,
             )
 
         es_hits = es_result.hits if es_result else []

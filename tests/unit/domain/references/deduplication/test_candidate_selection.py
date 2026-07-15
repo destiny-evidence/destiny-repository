@@ -7,6 +7,7 @@ import pytest
 from destiny_sdk.enhancements import Authorship
 from pydantic import ValidationError
 
+from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     CURRENT_FUZZY_RETRIEVAL_POLICY,
     CandidateIdentifier,
@@ -374,6 +375,25 @@ async def test_identifier_only_input_matches_when_es_unsearchable(build_service)
     assert result.candidates[0].routes[0].type == "identifier"
     assert result.diagnostics.identifier_returned == 1
     assert result.diagnostics.es_total_hits is None
+
+
+async def test_invalid_identifier_raises(build_service):
+    """A malformed identifier value fails normalisation and raises (422 in the API)."""
+    service, _, _, _ = build_service()
+    with pytest.raises(DeduplicationValueError):
+        await service.get_deduplication_candidates(
+            CandidateSelectionRequest(
+                input=CandidateSelectionInput(
+                    identifiers=[
+                        CandidateIdentifier(
+                            identifier_type=ExternalIdentifierType.DOI,
+                            identifier="not-a-doi",
+                        )
+                    ]
+                ),
+                hydrate=False,
+            )
+        )
 
 
 async def test_unsearchable_input_returns_empty_200(build_service):

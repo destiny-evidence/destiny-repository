@@ -222,6 +222,21 @@ async def test_candidates_unsearchable_returns_empty_200(
     assert body["candidates"] == []
 
 
+async def test_candidates_invalid_identifier_returns_422(
+    destiny_client_v1: httpx.AsyncClient,
+):
+    """A malformed identifier value fails normalisation with a 422."""
+    response = await destiny_client_v1.post(
+        CANDIDATES_URL,
+        json={
+            "input": {
+                "identifiers": [{"identifier_type": "doi", "identifier": "not-a-doi"}]
+            }
+        },
+    )
+    assert response.status_code == 422
+
+
 async def test_candidates_rejects_both_and_neither_inputs(
     destiny_client_v1: httpx.AsyncClient,
 ):

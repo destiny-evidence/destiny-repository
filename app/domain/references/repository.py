@@ -687,6 +687,7 @@ class ReferenceESRepository(
         *,
         k: int,
         reference_id: UUID | None = None,
+        track_total_hits: bool = False,
     ) -> CandidateCanonicalSearchResult:
         """
         Fuzzy match candidate fingerprints to existing references.
@@ -712,6 +713,10 @@ class ReferenceESRepository(
         :param reference_id: The ID of the potential duplicate, excluded from the
             results when provided.
         :type reference_id: UUID | None
+        :param track_total_hits: Compute the exact total hit count instead of the
+            Elasticsearch default (capped at 10k). Off by default so the nomination
+            path, which ignores the total, does not pay for a full count.
+        :type track_total_hits: bool
         :return: Ranked candidate ids with scores and retrieval diagnostics.
         :rtype: CandidateCanonicalSearchResult
         """
@@ -763,8 +768,12 @@ class ReferenceESRepository(
                 )
             )
             .source(fields=False)
-            .extra(size=k, track_total_hits=True)
+            .extra(size=k)
         )
+        # Only force an exact count when asked; leaving it unset keeps the ES default
+        # (accurate up to 10k, then a lower bound) rather than disabling totals.
+        if track_total_hits:
+            search = search.extra(track_total_hits=True)
 
         response = await search.execute()
 
