@@ -10,6 +10,8 @@ from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    CandidateIdentifier,
+    CandidateReference,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
@@ -244,6 +246,24 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
     ) -> CandidateCanonicalSearchFields:
         """Return fields needed for candidate canonical selection."""
         return cls.get_from_reference(reference).to_canonical_candidate_search_fields()
+
+
+class CandidateReferenceProjection(GenericProjection[CandidateReference]):
+    """Projection from a reference to hydrated candidate bibliographic fields."""
+
+    @classmethod
+    def get_from_reference(cls, reference: Reference) -> CandidateReference:
+        """Project a hydrated reference into candidate bibliographic fields."""
+        fields = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        return CandidateReference(
+            title=fields.title,
+            authors=fields.authors,
+            publication_year=fields.publication_year,
+            identifiers=[
+                CandidateIdentifier.from_specific(linked.identifier)
+                for linked in (reference.identifiers or [])
+            ],
+        )
 
 
 class ReferenceRisProjection(GenericProjection[RisRecord]):

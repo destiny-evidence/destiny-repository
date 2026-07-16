@@ -330,6 +330,17 @@ class GenericExternalIdentifier(DomainBaseModel):
             else None,
         )
 
+    @classmethod
+    def from_generic(cls, identifier: "GenericExternalIdentifier") -> Self:
+        """
+        Validate and canonicalise a loosely-typed identifier via the SDK models.
+
+        Raises ``pydantic.ValidationError`` if the value is not a valid identifier
+        of its declared type.
+        """
+        specific = ExternalIdentifierAdapter.validate_python(identifier.model_dump())
+        return cls.from_specific(specific)
+
 
 class IdentifierLookup(GenericExternalIdentifier):
     """Model to search for an external identifier."""
@@ -766,28 +777,17 @@ class ReferenceSearchFields(ProjectedBaseModel):
 CURRENT_FUZZY_RETRIEVAL_POLICY = "current_fuzzy_v1"
 
 
-class CandidateIdentifier(BaseModel):
-    """An external identifier, used as request input and as match provenance."""
+class CandidateIdentifier(GenericExternalIdentifier):
+    """
+    An external identifier used as candidate-search input and match provenance.
+
+    Narrows :class:`GenericExternalIdentifier` to require an explicit type;
+    candidate search does not accept database-id (untyped) lookups.
+    """
 
     identifier_type: ExternalIdentifierType = Field(
         description="The type of the identifier, e.g. doi, pm_id, open_alex."
     )
-    identifier: str = Field(description="The identifier value.")
-    other_identifier_name: str | None = Field(
-        default=None,
-        description="The name of the identifier when identifier_type is other.",
-    )
-
-    @classmethod
-    def from_specific(cls, external_identifier: ExternalIdentifier) -> Self:
-        """Build from a stored identifier, casting its value to a string."""
-        return cls(
-            identifier_type=external_identifier.identifier_type,
-            identifier=str(external_identifier.identifier),
-            other_identifier_name=getattr(
-                external_identifier, "other_identifier_name", None
-            ),
-        )
 
 
 class CandidateSelectionInput(BaseModel):
@@ -880,8 +880,8 @@ CandidateRoute = Annotated[
 ]
 
 
-class CandidateReferenceProjection(BaseModel):
-    """Hydrated bibliographic projection of a candidate reference."""
+class CandidateReference(ProjectedBaseModel):
+    """Hydrated bibliographic fields of a candidate reference."""
 
     title: str | None = None
     authors: list[str] = Field(default_factory=list)
@@ -897,7 +897,7 @@ class Candidate(BaseModel):
     routes: list[CandidateRoute] = Field(
         description="How this candidate was surfaced (ES and/or identifier)."
     )
-    reference: CandidateReferenceProjection | None = Field(
+    reference: CandidateReference | None = Field(
         default=None,
         description="Hydrated bibliographic fields; omitted when hydrate is false.",
     )
