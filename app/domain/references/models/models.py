@@ -330,20 +330,20 @@ class GenericExternalIdentifier(DomainBaseModel):
             else None,
         )
 
+
+class IdentifierLookup(GenericExternalIdentifier):
+    """Model to search for an external identifier."""
+
     @classmethod
-    def from_generic(cls, identifier: "GenericExternalIdentifier") -> Self:
+    def from_generic(cls, identifier: GenericExternalIdentifier) -> Self:
         """
-        Validate and canonicalise a loosely-typed identifier via the SDK models.
+        Build a lookup from a loosely-typed identifier, validating and canonicalising.
 
         Raises ``pydantic.ValidationError`` if the value is not a valid identifier
         of its declared type.
         """
         specific = ExternalIdentifierAdapter.validate_python(identifier.model_dump())
         return cls.from_specific(specific)
-
-
-class IdentifierLookup(GenericExternalIdentifier):
-    """Model to search for an external identifier."""
 
 
 class FullTextEnhancement(DomainBaseModel):
