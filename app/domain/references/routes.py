@@ -61,6 +61,8 @@ from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     AnnotationFilter,
+    CandidateSelectionRequest,
+    CandidateSelectionResult,
     ExportFormat,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
@@ -315,6 +317,11 @@ enhancement_request_automation_router = APIRouter(
 deduplication_router = APIRouter(
     prefix="/duplicate-decisions",
     tags=["duplicate-decisions"],
+    dependencies=[Depends(reference_deduplication_auth)],
+)
+candidate_selection_router = APIRouter(
+    prefix="/deduplication",
+    tags=["deduplication"],
     dependencies=[Depends(reference_deduplication_auth)],
 )
 
@@ -1445,3 +1452,41 @@ async def make_duplicate_decisions(
 
 
 reference_router.include_router(deduplication_router)
+
+
+@candidate_selection_router.post(
+    "/candidates/",
+    status_code=status.HTTP_200_OK,
+)
+@experimental
+async def get_deduplication_candidates(
+    request: CandidateSelectionRequest,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+) -> CandidateSelectionResult:
+    """
+    Return ranked candidate canonicals for a reference, for dedup evaluation.
+
+    This is a read-only endpoint: it performs no deduplication and writes no
+    duplicate-decision or candidate state. It runs the same Elasticsearch
+    candidate query used by the nomination path and, by default, unions exact
+    identifier matches from Postgres.
+
+    Provide either a stored ``reference_id`` or an inline candidate-search
+    payload. Inputs that fail the searchability gate return an empty candidate
+    list with a reason rather than an error.
+    """
+    logger.info(
+        "Retrieving deduplication candidates.",
+        k=request.k,
+        include_identifier_matches=request.include_identifier_matches,
+    )
+    try:
+        return await reference_service.get_deduplication_candidates(request)
+    except DeduplicationValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(e),
+        ) from e
+
+
+reference_router.include_router(candidate_selection_router)

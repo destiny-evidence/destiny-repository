@@ -23,6 +23,8 @@ from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
+    CandidateSelectionRequest,
+    CandidateSelectionResult,
     CrossFacetCell,
     DuplicateDetermination,
     Enhancement,
@@ -529,6 +531,21 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         # Filter again in case multiple duplicates pointed to same canonical
         return list({reference.id: reference for reference in references}.values())
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def get_deduplication_candidates(
+        self, request: CandidateSelectionRequest
+    ) -> CandidateSelectionResult:
+        """
+        Retrieve ranked candidate canonicals for a reference, without persisting.
+
+        Read-only evaluation surface for deduplication candidate retrieval: it runs
+        the shared Elasticsearch candidate query and, optionally, unions exact
+        identifier matches from Postgres, returning route provenance and retrieval
+        diagnostics. It writes no duplicate-decision or candidate state.
+        """
+        return await self._deduplication_service.get_deduplication_candidates(request)
 
     @sql_unit_of_work
     async def add_identifier(

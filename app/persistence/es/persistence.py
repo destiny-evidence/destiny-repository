@@ -117,6 +117,21 @@ class ESSearchResult(BaseModel):
     )
 
 
+class CandidateCanonicalSearchResult(BaseModel):
+    """Candidate-canonical search results with retrieval diagnostics."""
+
+    hits: list[ESScoreResult] = Field(
+        default_factory=list,
+        description="Candidate references, ranked by score descending.",
+    )
+    total: ESSearchTotal = Field(
+        description="Total references matching the query (see track_total_hits).",
+    )
+    took_ms: int = Field(
+        description="Elasticsearch-reported query duration in milliseconds.",
+    )
+
+
 class ESFacetBucket(BaseModel):
     """A single bucket from a terms aggregation."""
 
