@@ -19,6 +19,13 @@ def test_resolve_returns_current_fuzzy_v1_regime():
     assert policy.year_strategy is YearStrategy.HARD_WINDOW
 
 
+def test_no_year_filter_v1_regime():
+    policy = resolve_retrieval_policy("no_year_filter_v1")
+    assert policy.name == "no_year_filter_v1"
+    assert policy.union_identifiers is True
+    assert policy.year_strategy is YearStrategy.NO_FILTER
+
+
 def test_resolve_unknown_policy_raises():
     with pytest.raises(DeduplicationValueError) as exc:
         resolve_retrieval_policy("does_not_exist")

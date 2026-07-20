@@ -10,6 +10,7 @@ from pydantic import ValidationError
 from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     CURRENT_FUZZY_RETRIEVAL_POLICY,
+    CandidateElasticsearchRoute,
     CandidateIdentifier,
     CandidateSelectionInput,
     CandidateSelectionRequest,
@@ -18,6 +19,7 @@ from app.domain.references.models.models import (
     Reference,
     ReferenceDuplicateDecision,
 )
+from app.domain.references.models.retrieval_policy import YearStrategy
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -182,6 +184,36 @@ async def test_unknown_retrieval_policy_raises(build_service):
                 retrieval_policy="no_such_policy",
             )
         )
+
+
+@pytest.mark.asyncio
+async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service):
+    hit = uuid7()
+    service, es_refs, _, _ = build_service(
+        es_result=_es_result(ESScoreResult(id=hit, score=5.0))
+    )
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="t", authors=["a"], publication_year=2020
+            ),
+            retrieval_policy="no_year_filter_v1",
+            hydrate=False,
+        )
+    )
+
+    _, kwargs = es_refs.search_for_candidate_canonicals.call_args
+    assert kwargs["year_strategy"] is YearStrategy.NO_FILTER
+    assert result.retrieval_policy == "no_year_filter_v1"
+    es_route_policies = [
+        route.policy
+        for candidate in result.candidates
+        for route in candidate.routes
+        if isinstance(route, CandidateElasticsearchRoute)
+    ]
+    assert es_route_policies
+    assert all(p == "no_year_filter_v1" for p in es_route_policies)
 
 
 @pytest.mark.asyncio

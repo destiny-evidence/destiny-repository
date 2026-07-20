@@ -20,11 +20,13 @@ class YearStrategy(Enum):
     """
     How a policy treats the publication-year signal.
 
-    Extension seam: HARD_WINDOW is the only strategy today. A soft
-    year-distance decay strategy is added here with its policy, not before.
+    Extension seam: HARD_WINDOW keeps the hard ±1 filter, NO_FILTER drops the
+    year clause. A soft year-distance decay strategy (SOFT_DECAY) is added here
+    once we have grounding on its weights/policy.
     """
 
     HARD_WINDOW = "hard_window"
+    NO_FILTER = "no_filter"
 
 
 class RetrievalPolicy(BaseModel):
@@ -37,6 +39,9 @@ class RetrievalPolicy(BaseModel):
     year_strategy: YearStrategy
 
 
+NO_YEAR_FILTER_POLICY = "no_year_filter_v1"
+
+
 _RETRIEVAL_POLICIES: dict[str, RetrievalPolicy] = {
     policy.name: policy
     for policy in (
@@ -44,6 +49,11 @@ _RETRIEVAL_POLICIES: dict[str, RetrievalPolicy] = {
             name=CURRENT_FUZZY_RETRIEVAL_POLICY,
             union_identifiers=True,
             year_strategy=YearStrategy.HARD_WINDOW,
+        ),
+        RetrievalPolicy(
+            name=NO_YEAR_FILTER_POLICY,
+            union_identifiers=True,
+            year_strategy=YearStrategy.NO_FILTER,
         ),
     )
 }

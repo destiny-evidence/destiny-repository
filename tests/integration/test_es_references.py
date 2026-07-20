@@ -25,6 +25,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.projections import (
     ReferenceSearchFieldsProjection,
 )
+from app.domain.references.models.retrieval_policy import YearStrategy
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
@@ -675,3 +676,77 @@ async def test_canonical_candidate_search(
         k=100,
     )
     assert not results.hits
+
+
+async def test_no_year_filter_returns_year_drifted_candidate(
+    es_reference_repository: ReferenceESRepository, reference: Reference
+):
+    """NO_FILTER drops the ±1 year gate: a 10-year-drifted duplicate is returned."""
+
+    def _with_biblio(ref_id: object, year: int) -> Reference:
+        return reference.model_copy(
+            update={
+                "id": ref_id,
+                "enhancements": [
+                    enhancement.model_copy(
+                        update={
+                            "id": uuid7(),
+                            "reference_id": ref_id,
+                            "content": (
+                                enhancement.content.model_copy(
+                                    update={
+                                        "title": "Shared Drifted Title",
+                                        "authorship": [
+                                            Authorship(
+                                                display_name="Jane Smith",
+                                                position=AuthorPosition.FIRST,
+                                            )
+                                        ],
+                                        "publication_year": year,
+                                    }
+                                )
+                                if enhancement.content.enhancement_type
+                                == EnhancementType.BIBLIOGRAPHIC
+                                else enhancement.content
+                            ),
+                        }
+                    )
+                    for enhancement in (reference.enhancements or [])
+                ],
+            }
+        )
+
+    query_ref = _with_biblio(uuid7(), 2000)
+    drifted_target = _with_biblio(uuid7(), 2010)
+
+    await es_reference_repository.add(to_indexable(query_ref))
+    await es_reference_repository.add(to_indexable(drifted_target))
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    search_fields = (
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(query_ref)
+    )
+
+    hard = await es_reference_repository.search_for_candidate_canonicals(
+        search_fields,
+        scoring_config=DedupCandidateScoringConfig(),
+        k=100,
+        reference_id=query_ref.id,
+        year_strategy=YearStrategy.HARD_WINDOW,
+    )
+    unfiltered = await es_reference_repository.search_for_candidate_canonicals(
+        search_fields,
+        scoring_config=DedupCandidateScoringConfig(),
+        k=100,
+        reference_id=query_ref.id,
+        year_strategy=YearStrategy.NO_FILTER,
+    )
+
+    hard_ids = {hit.id for hit in hard.hits}
+    unfiltered_ids = {hit.id for hit in unfiltered.hits}
+    assert drifted_target.id not in hard_ids
+    assert drifted_target.id in unfiltered_ids
+    # Tiny index: removing the year gate strictly widens eligibility.
+    assert unfiltered.total.value >= hard.total.value

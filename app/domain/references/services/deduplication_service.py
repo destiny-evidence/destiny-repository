@@ -127,6 +127,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 # The evaluation endpoint reports the exact total; the nomination
                 # path does not, so only this caller opts into the full count.
                 track_total_hits=True,
+                year_strategy=policy.year_strategy,
             )
 
         es_hits = es_result.hits if es_result else []

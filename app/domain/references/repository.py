@@ -3,7 +3,7 @@
 import datetime
 from abc import ABC
 from collections.abc import Mapping, Sequence
-from typing import Any, ClassVar, Literal
+from typing import Any, ClassVar, Literal, assert_never
 from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
@@ -83,6 +83,7 @@ from app.domain.references.models.models import (
 from app.domain.references.models.projections import (
     EnhancementRequestStatusProjection,
 )
+from app.domain.references.models.retrieval_policy import YearStrategy
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
 )
@@ -679,8 +680,73 @@ class ReferenceESRepository(
         # Enough to prefer multi-author overlap without summing to inflation.
         return Q("dis_max", queries=queries, tie_breaker=0.1)
 
+    @staticmethod
+    def _year_filter_clauses(
+        publication_year: int | None, year_strategy: YearStrategy
+    ) -> list[Q]:
+        """Year range clauses for the strategy; empty when unfiltered or year absent."""
+        match year_strategy:
+            case YearStrategy.HARD_WINDOW:
+                if publication_year is None:
+                    return []
+                return [
+                    Q(
+                        "range",
+                        publication_year={
+                            "gte": publication_year - 1,
+                            "lte": publication_year + 1,
+                        },
+                    )
+                ]
+            case YearStrategy.NO_FILTER:
+                return []
+            case _:  # pragma: no cover - exhaustiveness guard
+                assert_never(year_strategy)
+
+    def _build_candidate_query(
+        self,
+        search_fields: CandidateCanonicalSearchFields,
+        *,
+        scoring_config: DedupCandidateScoringConfig,
+        year_strategy: YearStrategy,
+        reference_id: UUID | None,
+    ) -> Q:
+        """Build the candidate bool query for a retrieval policy's year strategy."""
+        author_query = self._build_author_dis_max_query(
+            search_fields.authors,
+            max_clauses=scoring_config.max_author_clauses,
+            min_token_length=scoring_config.min_author_token_length,
+        )
+        should_clauses = [author_query] if author_query else []
+        # Canonical filter is unconditional: duplicates are never candidates,
+        # whatever the year strategy or year presence. Only the year range is
+        # strategy-dependent. (This also avoids race conditions where two references
+        # being deduplicated concurrently could create conflicting relationships.)
+        filter_clauses = [
+            *self._year_filter_clauses(search_fields.publication_year, year_strategy),
+            Q("term", duplicate_determination=DuplicateDetermination.CANONICAL),
+        ]
+        return Q(
+            "bool",
+            must=[
+                Q(
+                    "match",
+                    title={
+                        "query": search_fields.title,
+                        "fuzziness": "AUTO",
+                        "boost": 2.0,
+                        "operator": "or",
+                        "minimum_should_match": "50%",
+                    },
+                )
+            ],
+            should=should_clauses,
+            filter=filter_clauses,
+            must_not=[Q("ids", values=[reference_id])] if reference_id else [],
+        )
+
     @trace_repository_method(tracer)
-    async def search_for_candidate_canonicals(
+    async def search_for_candidate_canonicals(  # noqa: PLR0913
         self,
         search_fields: CandidateCanonicalSearchFields,
         scoring_config: DedupCandidateScoringConfig,
@@ -688,6 +754,7 @@ class ReferenceESRepository(
         k: int,
         reference_id: UUID | None = None,
         track_total_hits: bool = False,
+        year_strategy: YearStrategy = YearStrategy.HARD_WINDOW,
     ) -> CandidateCanonicalSearchResult:
         """
         Fuzzy match candidate fingerprints to existing references.
@@ -720,51 +787,14 @@ class ReferenceESRepository(
         :return: Ranked candidate ids with scores and retrieval diagnostics.
         :rtype: CandidateCanonicalSearchResult
         """
-        author_query = self._build_author_dis_max_query(
-            search_fields.authors,
-            max_clauses=scoring_config.max_author_clauses,
-            min_token_length=scoring_config.min_author_token_length,
-        )
-        should_clauses = [author_query] if author_query else []
-
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
             .query(
-                Q(
-                    "bool",
-                    must=[
-                        Q(
-                            "match",
-                            title={
-                                "query": search_fields.title,
-                                "fuzziness": "AUTO",
-                                "boost": 2.0,
-                                "operator": "or",
-                                "minimum_should_match": "50%",
-                            },
-                        )
-                    ],
-                    should=should_clauses,
-                    filter=[
-                        Q(
-                            "range",
-                            publication_year={
-                                "gte": search_fields.publication_year - 1,
-                                "lte": search_fields.publication_year + 1,
-                            },
-                        ),
-                        # Only match against canonical references that are "at rest".
-                        # Duplicates are never candidates. This also avoids race
-                        # conditions where two references being deduplicated
-                        # concurrently could create conflicting relationships.
-                        Q(
-                            "term",
-                            duplicate_determination=DuplicateDetermination.CANONICAL,
-                        ),
-                    ]
-                    if search_fields.publication_year
-                    else [],
-                    must_not=[Q("ids", values=[reference_id])] if reference_id else [],
+                self._build_candidate_query(
+                    search_fields,
+                    scoring_config=scoring_config,
+                    year_strategy=year_strategy,
+                    reference_id=reference_id,
                 )
             )
             .source(fields=False)
