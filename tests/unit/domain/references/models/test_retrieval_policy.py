@@ -58,6 +58,16 @@ def test_is_input_searchable_requires_title_and_authors():
     assert policy.is_input_searchable(fields) is False
 
 
+def test_control_year_required_rejects_zero_year_matching_baseline():
+    """A zero publication_year is 'no year': the control stays baseline-equivalent."""
+    fields = CandidateCanonicalSearchFields(
+        title="t", authors=["a"], publication_year=0
+    )
+    control = resolve_retrieval_policy(CURRENT_FUZZY_RETRIEVAL_POLICY)
+    assert control.is_input_searchable(fields) is False
+    assert control.is_input_searchable(fields) == fields.is_searchable
+
+
 def test_resolve_unknown_policy_raises():
     with pytest.raises(DeduplicationValueError) as exc:
         resolve_retrieval_policy("does_not_exist")

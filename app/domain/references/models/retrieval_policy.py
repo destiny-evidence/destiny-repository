@@ -47,7 +47,8 @@ class RetrievalPolicy(BaseModel):
     ) -> bool:
         """Whether the input has the fields this policy needs for ES retrieval."""
         has_core = bool(search_fields.title and search_fields.authors)
-        has_year = search_fields.publication_year is not None
+        # Falsy year (0/None) counts as absent, matching the baseline all(...) gate.
+        has_year = bool(search_fields.publication_year)
         return has_core and (has_year or not self.requires_publication_year)
 
 
