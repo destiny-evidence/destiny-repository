@@ -9,7 +9,6 @@ from app.core.config import Environment, get_settings
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    CURRENT_FUZZY_RETRIEVAL_POLICY,
     Candidate,
     CandidateCanonicalSearchFields,
     CandidateElasticsearchRoute,
@@ -33,6 +32,7 @@ from app.domain.references.models.projections import (
     CandidateReferenceProjection,
     ReferenceSearchFieldsProjection,
 )
+from app.domain.references.models.retrieval_policy import resolve_retrieval_policy
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -95,6 +95,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         diagnostics. It writes no duplicate-decision or candidate state.
         """
         k = request.k or settings.dedup_scoring.candidate_k
+        policy = resolve_retrieval_policy(request.retrieval_policy)
 
         (
             search_fields,
@@ -106,7 +107,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         # it is the route for records that fail the ES searchability gate, so it runs
         # regardless of it.
         identifier_matches: dict[UUID, dict[tuple, CandidateIdentifier]] = {}
-        if request.include_identifier_matches and identifier_lookups:
+        if policy.union_identifiers and identifier_lookups:
             identifier_matches = await self._union_identifier_matches(
                 identifier_lookups, self_id=self_id
             )
@@ -152,7 +153,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             if cid in es_scores:
                 routes.append(
                     CandidateElasticsearchRoute(
-                        policy=CURRENT_FUZZY_RETRIEVAL_POLICY,
+                        policy=policy.name,
                         rank=es_ranks[cid],
                         score=es_scores[cid],
                     )
@@ -178,9 +179,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         es_returned = len(es_hits)
         return CandidateSelectionResult(
+            retrieval_policy=policy.name,
             index_version=index_version,
             k_requested=k,
-            include_identifier_matches=request.include_identifier_matches,
             input_searchability=InputSearchability(
                 searchable=searchable,
                 reason="ok" if searchable else _unsearchable_reason(search_fields),

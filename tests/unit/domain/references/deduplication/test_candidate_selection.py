@@ -143,6 +143,46 @@ class TestCandidateSelectionInputValidation:
                 input=CandidateSelectionInput(reference_id=uuid7()), k=1001
             )
 
+    def test_rejects_removed_include_identifier_matches(self):
+        with pytest.raises(ValidationError):
+            CandidateSelectionRequest.model_validate(
+                {
+                    "input": {
+                        "title": "t",
+                        "authors": ["a"],
+                        "publication_year": 2020,
+                    },
+                    "include_identifier_matches": False,
+                }
+            )
+
+    def test_rejects_unknown_field(self):
+        with pytest.raises(ValidationError):
+            CandidateSelectionRequest.model_validate(
+                {
+                    "input": {
+                        "title": "t",
+                        "authors": ["a"],
+                        "publication_year": 2020,
+                    },
+                    "not_a_real_field": 1,
+                }
+            )
+
+
+@pytest.mark.asyncio
+async def test_unknown_retrieval_policy_raises(build_service):
+    service, _, _, _ = build_service()
+    with pytest.raises(DeduplicationValueError):
+        await service.get_deduplication_candidates(
+            CandidateSelectionRequest(
+                input=CandidateSelectionInput(
+                    title="t", authors=["a"], publication_year=2020
+                ),
+                retrieval_policy="no_such_policy",
+            )
+        )
+
 
 @pytest.mark.asyncio
 async def test_inline_input_returns_ranked_es_candidates(build_service):
@@ -157,7 +197,6 @@ async def test_inline_input_returns_ranked_es_candidates(build_service):
             input=CandidateSelectionInput(
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
-            include_identifier_matches=False,
             hydrate=False,
         )
     )
@@ -189,7 +228,6 @@ async def test_reference_id_input_self_excludes_and_defaults_k(build_service):
     result = await service.get_deduplication_candidates(
         CandidateSelectionRequest(
             input=CandidateSelectionInput(reference_id=reference.id),
-            include_identifier_matches=False,
             hydrate=False,
         )
     )
@@ -212,7 +250,6 @@ async def test_k_override_passed_to_es(build_service):
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
             k=25,
-            include_identifier_matches=False,
             hydrate=False,
         )
     )
@@ -326,7 +363,6 @@ async def test_hydrate_includes_reference_projection(build_service):
             input=CandidateSelectionInput(
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
-            include_identifier_matches=False,
             hydrate=True,
         )
     )
@@ -423,7 +459,6 @@ async def test_writes_no_duplicate_decision_state(build_service):
             input=CandidateSelectionInput(
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
-            include_identifier_matches=False,
             hydrate=False,
         )
     )

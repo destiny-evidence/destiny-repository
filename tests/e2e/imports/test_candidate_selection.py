@@ -237,6 +237,35 @@ async def test_candidates_invalid_identifier_returns_422(
     assert response.status_code == 422
 
 
+async def test_candidates_rejects_removed_include_identifier_matches(
+    destiny_client_v1: httpx.AsyncClient,
+):
+    """The retired include_identifier_matches flag is now an unknown field (422)."""
+    response = await destiny_client_v1.post(
+        CANDIDATES_URL,
+        json={
+            "input": {"title": "t", "authors": ["a"], "publication_year": 2020},
+            "include_identifier_matches": False,
+        },
+    )
+    assert response.status_code == 422
+
+
+async def test_candidates_unknown_retrieval_policy_returns_422(
+    destiny_client_v1: httpx.AsyncClient,
+):
+    """An unknown retrieval_policy surfaces a helpful 422."""
+    response = await destiny_client_v1.post(
+        CANDIDATES_URL,
+        json={
+            "input": {"title": "t", "authors": ["a"], "publication_year": 2020},
+            "retrieval_policy": "no_such_policy",
+        },
+    )
+    assert response.status_code == 422
+    assert "no_such_policy" in response.text
+
+
 async def test_candidates_rejects_both_and_neither_inputs(
     destiny_client_v1: httpx.AsyncClient,
 ):

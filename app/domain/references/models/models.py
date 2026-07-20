@@ -833,8 +833,18 @@ class CandidateSelectionInput(BaseModel):
 class CandidateSelectionRequest(BaseModel):
     """A request for candidate canonical references, for dedup evaluation."""
 
+    model_config = ConfigDict(extra="forbid")
+
     input: CandidateSelectionInput = Field(
         description="The reference to find candidates for."
+    )
+    retrieval_policy: str = Field(
+        default=CURRENT_FUZZY_RETRIEVAL_POLICY,
+        description=(
+            "Named, server-side retrieval policy fixing the full candidate regime "
+            "(query shape, year strategy, identifier union). Defaults to the "
+            "current fuzzy baseline."
+        ),
     )
     k: int | None = Field(
         default=None,
@@ -842,12 +852,6 @@ class CandidateSelectionRequest(BaseModel):
         le=1000,
         description=(
             "Number of candidates to retrieve. Defaults to the configured value."
-        ),
-    )
-    include_identifier_matches: bool = Field(
-        default=True,
-        description=(
-            "Union exact identifier matches from Postgres with ES candidates."
         ),
     )
     hydrate: bool = Field(
@@ -938,7 +942,6 @@ class CandidateSelectionResult(BaseModel):
         description="The reference index version the candidates were drawn from.",
     )
     k_requested: int
-    include_identifier_matches: bool
     input_searchability: InputSearchability
     diagnostics: CandidateSelectionDiagnostics
     candidates: list[Candidate] = Field(default_factory=list)
