@@ -913,8 +913,9 @@ class InputSearchability(BaseModel):
     searchable: bool = Field(
         description=(
             "Whether the input meets the Elasticsearch searchability gate (title, "
-            "authors, publication year). Exact identifier matching runs regardless, "
-            "so candidates may be present even when this is false."
+            "authors, and publication year unless the selected retrieval policy "
+            "makes it optional). Exact identifier matching runs regardless, so "
+            "candidates may be present even when this is false."
         )
     )
     reason: str = Field(description="Explanation of the searchability decision.")
