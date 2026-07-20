@@ -23,7 +23,7 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 
 from app.core.config import DedupCandidateScoringConfig, get_settings
 from app.core.telemetry.repository import trace_repository_method
@@ -173,17 +173,17 @@ class ReferenceSQLRepository(
         query = select(SQLReference).where(SQLReference.id.in_(reference_ids))
         if enhancement_types:
             query = query.options(
-                joinedload(
+                selectinload(
                     SQLReference.enhancements.and_(
                         SQLEnhancement.enhancement_type.in_(enhancement_types)
                     )
                 )
             )
         else:
-            query = query.options(joinedload(SQLReference.enhancements))
+            query = query.options(selectinload(SQLReference.enhancements))
         if external_identifier_types:
             query = query.options(
-                joinedload(
+                selectinload(
                     SQLReference.identifiers.and_(
                         SQLExternalIdentifier.identifier_type.in_(
                             external_identifier_types
@@ -192,7 +192,7 @@ class ReferenceSQLRepository(
                 )
             )
         else:
-            query = query.options(joinedload(SQLReference.identifiers))
+            query = query.options(selectinload(SQLReference.identifiers))
         result = await self._session.execute(query)
         db_references = result.unique().scalars().all()
         return [
