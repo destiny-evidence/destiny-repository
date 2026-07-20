@@ -32,7 +32,10 @@ from app.domain.references.models.projections import (
     CandidateReferenceProjection,
     ReferenceSearchFieldsProjection,
 )
-from app.domain.references.models.retrieval_policy import resolve_retrieval_policy
+from app.domain.references.models.retrieval_policy import (
+    RetrievalPolicy,
+    resolve_retrieval_policy,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -54,21 +57,38 @@ _UNIONABLE_IDENTIFIER_TYPES = frozenset(
 )
 
 
-def _unsearchable_reason(search_fields: CandidateCanonicalSearchFields) -> str:
-    """Explain which Elasticsearch search fields are absent."""
-    missing = [
-        name
-        for name, value in (
-            ("title", search_fields.title),
-            ("authors", search_fields.authors),
-            ("publication_year", search_fields.publication_year),
-        )
-        if not value
+def _unsearchable_reason(
+    search_fields: CandidateCanonicalSearchFields, policy: RetrievalPolicy
+) -> str:
+    """Explain which Elasticsearch search fields are absent, per policy."""
+    checks: list[tuple[str, object]] = [
+        ("title", search_fields.title),
+        ("authors", search_fields.authors),
     ]
+    if policy.requires_publication_year:
+        checks.append(("publication_year", search_fields.publication_year))
+    missing = [name for name, value in checks if not value]
     return (
         f"Not searchable via Elasticsearch (missing: {', '.join(missing)}); "
         "exact identifier matches, if any, are still returned."
     )
+
+
+def _searchability_reason(
+    search_fields: CandidateCanonicalSearchFields,
+    policy: RetrievalPolicy,
+    *,
+    searchable: bool,
+) -> str:
+    """Reason string separating year-absent-but-permitted from ordinary cases."""
+    if not searchable:
+        return _unsearchable_reason(search_fields, policy)
+    if search_fields.publication_year is None:
+        return (
+            f"searchable: publication_year absent, not required by "
+            f"policy '{policy.name}'"
+        )
+    return "ok"
 
 
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
@@ -114,7 +134,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         # The ES candidate query and its index-version stamp are only meaningful for
         # searchable inputs.
-        searchable = search_fields.is_searchable
+        searchable = policy.is_input_searchable(search_fields)
         es_result = None
         index_version = None
         if searchable:
@@ -185,7 +205,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             k_requested=k,
             input_searchability=InputSearchability(
                 searchable=searchable,
-                reason="ok" if searchable else _unsearchable_reason(search_fields),
+                reason=_searchability_reason(
+                    search_fields, policy, searchable=searchable
+                ),
             ),
             diagnostics=CandidateSelectionDiagnostics(
                 es_took_ms=es_result.took_ms if es_result else None,

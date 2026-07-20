@@ -13,7 +13,10 @@ from types import MappingProxyType
 from pydantic import BaseModel, ConfigDict
 
 from app.core.exceptions import DeduplicationValueError
-from app.domain.references.models.models import CURRENT_FUZZY_RETRIEVAL_POLICY
+from app.domain.references.models.models import (
+    CURRENT_FUZZY_RETRIEVAL_POLICY,
+    CandidateCanonicalSearchFields,
+)
 
 
 class YearStrategy(Enum):
@@ -37,9 +40,19 @@ class RetrievalPolicy(BaseModel):
     name: str
     union_identifiers: bool
     year_strategy: YearStrategy
+    requires_publication_year: bool = True
+
+    def is_input_searchable(
+        self, search_fields: CandidateCanonicalSearchFields
+    ) -> bool:
+        """Whether the input has the fields this policy needs for ES retrieval."""
+        has_core = bool(search_fields.title and search_fields.authors)
+        has_year = search_fields.publication_year is not None
+        return has_core and (has_year or not self.requires_publication_year)
 
 
 NO_YEAR_FILTER_POLICY = "no_year_filter_v1"
+YEAR_OPTIONAL_POLICY = "no_year_filter_year_optional_v1"
 
 
 _RETRIEVAL_POLICIES: dict[str, RetrievalPolicy] = {
@@ -54,6 +67,12 @@ _RETRIEVAL_POLICIES: dict[str, RetrievalPolicy] = {
             name=NO_YEAR_FILTER_POLICY,
             union_identifiers=True,
             year_strategy=YearStrategy.NO_FILTER,
+        ),
+        RetrievalPolicy(
+            name=YEAR_OPTIONAL_POLICY,
+            union_identifiers=True,
+            year_strategy=YearStrategy.NO_FILTER,
+            requires_publication_year=False,
         ),
     )
 }

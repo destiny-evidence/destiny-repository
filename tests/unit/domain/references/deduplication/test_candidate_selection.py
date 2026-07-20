@@ -217,6 +217,41 @@ async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service
 
 
 @pytest.mark.asyncio
+async def test_year_optional_policy_searches_missing_year_input(build_service):
+    service, es_refs, _, _ = build_service(
+        es_result=_es_result(ESScoreResult(id=uuid7(), score=4.0))
+    )
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(title="t", authors=["a"]),  # no year
+            retrieval_policy="no_year_filter_year_optional_v1",
+            hydrate=False,
+        )
+    )
+
+    assert result.input_searchability.searchable is True
+    es_refs.search_for_candidate_canonicals.assert_awaited_once()
+    _, kwargs = es_refs.search_for_candidate_canonicals.call_args
+    assert kwargs["year_strategy"] is YearStrategy.NO_FILTER
+
+
+@pytest.mark.asyncio
+async def test_missing_year_input_unsearchable_under_control(build_service):
+    service, es_refs, _, _ = build_service()
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(title="t", authors=["a"]),  # no year
+            retrieval_policy="current_fuzzy_v1",
+        )
+    )
+
+    assert result.input_searchability.searchable is False
+    es_refs.search_for_candidate_canonicals.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_inline_input_returns_ranked_es_candidates(build_service):
     id1, id2 = uuid7(), uuid7()
     es_result = _es_result(

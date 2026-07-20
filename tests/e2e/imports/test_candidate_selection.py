@@ -222,6 +222,26 @@ async def test_candidates_unsearchable_returns_empty_200(
     assert body["candidates"] == []
 
 
+async def test_candidates_year_optional_policy_admits_missing_year(
+    destiny_client_v1: httpx.AsyncClient,
+):
+    """The year-optional policy admits a title+authors input that lacks a year."""
+    payload = {"input": {"title": "A title without a year", "authors": ["Jane Doe"]}}
+
+    default = await destiny_client_v1.post(CANDIDATES_URL, json=payload)
+    assert default.status_code == 200
+    assert default.json()["input_searchability"]["searchable"] is False
+
+    year_optional = await destiny_client_v1.post(
+        CANDIDATES_URL,
+        json={**payload, "retrieval_policy": "no_year_filter_year_optional_v1"},
+    )
+    assert year_optional.status_code == 200
+    body = year_optional.json()
+    assert body["input_searchability"]["searchable"] is True
+    assert body["retrieval_policy"] == "no_year_filter_year_optional_v1"
+
+
 async def test_candidates_invalid_identifier_returns_422(
     destiny_client_v1: httpx.AsyncClient,
 ):

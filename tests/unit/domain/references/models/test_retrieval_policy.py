@@ -4,7 +4,10 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.exceptions import DeduplicationValueError
-from app.domain.references.models.models import CURRENT_FUZZY_RETRIEVAL_POLICY
+from app.domain.references.models.models import (
+    CURRENT_FUZZY_RETRIEVAL_POLICY,
+    CandidateCanonicalSearchFields,
+)
 from app.domain.references.models.retrieval_policy import (
     RETRIEVAL_POLICIES,
     YearStrategy,
@@ -24,6 +27,35 @@ def test_no_year_filter_v1_regime():
     assert policy.name == "no_year_filter_v1"
     assert policy.union_identifiers is True
     assert policy.year_strategy is YearStrategy.NO_FILTER
+
+
+def test_year_optional_policy_regime():
+    policy = resolve_retrieval_policy("no_year_filter_year_optional_v1")
+    assert policy.year_strategy is YearStrategy.NO_FILTER
+    assert policy.requires_publication_year is False
+
+
+def test_year_required_policies_default_true():
+    for name in (CURRENT_FUZZY_RETRIEVAL_POLICY, "no_year_filter_v1"):
+        assert resolve_retrieval_policy(name).requires_publication_year is True
+
+
+def test_is_input_searchable_year_optional_admits_missing_year():
+    fields = CandidateCanonicalSearchFields(
+        title="t", authors=["a"], publication_year=None
+    )
+    year_optional = resolve_retrieval_policy("no_year_filter_year_optional_v1")
+    year_required = resolve_retrieval_policy("no_year_filter_v1")
+    assert year_optional.is_input_searchable(fields) is True
+    assert year_required.is_input_searchable(fields) is False
+
+
+def test_is_input_searchable_requires_title_and_authors():
+    fields = CandidateCanonicalSearchFields(
+        title="t", authors=[], publication_year=2020
+    )
+    policy = resolve_retrieval_policy("no_year_filter_year_optional_v1")
+    assert policy.is_input_searchable(fields) is False
 
 
 def test_resolve_unknown_policy_raises():
