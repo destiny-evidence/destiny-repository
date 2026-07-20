@@ -56,31 +56,30 @@ NO_YEAR_FILTER_POLICY = "no_year_filter_v1"
 YEAR_OPTIONAL_POLICY = "no_year_filter_year_optional_v1"
 
 
-_RETRIEVAL_POLICIES: dict[str, RetrievalPolicy] = {
-    policy.name: policy
-    for policy in (
-        RetrievalPolicy(
-            name=CURRENT_FUZZY_RETRIEVAL_POLICY,
-            union_identifiers=True,
-            year_strategy=YearStrategy.HARD_WINDOW,
-        ),
-        RetrievalPolicy(
-            name=NO_YEAR_FILTER_POLICY,
-            union_identifiers=True,
-            year_strategy=YearStrategy.NO_FILTER,
-        ),
-        RetrievalPolicy(
-            name=YEAR_OPTIONAL_POLICY,
-            union_identifiers=True,
-            year_strategy=YearStrategy.NO_FILTER,
-            requires_publication_year=False,
-        ),
-    )
-}
-
-# Exposed read-only so a policy name's semantics cannot be mutated at runtime.
+# Wrapped read-only with no module-level handle to the backing dict, so a policy
+# name's semantics cannot be remapped at runtime.
 RETRIEVAL_POLICIES: Mapping[str, RetrievalPolicy] = MappingProxyType(
-    _RETRIEVAL_POLICIES
+    {
+        policy.name: policy
+        for policy in (
+            RetrievalPolicy(
+                name=CURRENT_FUZZY_RETRIEVAL_POLICY,
+                union_identifiers=True,
+                year_strategy=YearStrategy.HARD_WINDOW,
+            ),
+            RetrievalPolicy(
+                name=NO_YEAR_FILTER_POLICY,
+                union_identifiers=True,
+                year_strategy=YearStrategy.NO_FILTER,
+            ),
+            RetrievalPolicy(
+                name=YEAR_OPTIONAL_POLICY,
+                union_identifiers=True,
+                year_strategy=YearStrategy.NO_FILTER,
+                requires_publication_year=False,
+            ),
+        )
+    }
 )
 
 
