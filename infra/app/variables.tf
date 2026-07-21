@@ -40,13 +40,13 @@ variable "tasks_max_replicas" {
 }
 
 variable "auth_provider" {
-  description = "Authentication provider to use for JWT validation."
+  description = "Authentication provider for JWT validation. Pinned to 'both'; see validation below."
   type        = string
-  default     = "azure"
+  default     = "both"
 
   validation {
-    condition     = contains(["azure", "keycloak", "both"], var.auth_provider)
-    error_message = "auth_provider must be one of: azure, keycloak, both."
+    condition     = var.auth_provider == "both"
+    error_message = "auth_provider must be 'both': Azure managed identities depend on Azure token validation remaining enabled alongside Keycloak."
   }
 }
 
@@ -169,11 +169,6 @@ variable "created_by" {
 variable "developers_group_id" {
   type        = string
   description = "Id of a group to assign to all API roles on destiny repository, allowing api authentication for devs"
-}
-
-variable "ui_users_group_id" {
-  type        = string
-  description = "Id of a group to assign to UI-relevant API roles on destiny repository"
 }
 
 variable "db_crud_group_id" {
