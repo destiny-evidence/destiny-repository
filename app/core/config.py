@@ -387,6 +387,12 @@ class DedupCandidateScoringConfig(BaseModel):
         le=5,
         description="Minimum token length for author name matching.",
     )
+    candidate_k: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Default number of candidate references to retrieve.",
+    )
 
 
 class Settings(BaseSettings):

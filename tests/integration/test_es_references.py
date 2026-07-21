@@ -655,9 +655,12 @@ async def test_canonical_candidate_search(
         search_fields=matching_search_fields,
         reference_id=matching_ref1.id,
         scoring_config=DedupCandidateScoringConfig(),
+        k=100,
     )
 
-    assert {reference.id for reference in results} == {matching_ref2.id}
+    assert {hit.id for hit in results.hits} == {matching_ref2.id}
+    assert results.total.value == 1
+    assert results.took_ms >= 0
 
     non_matching_search_fields = (
         ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
@@ -669,5 +672,6 @@ async def test_canonical_candidate_search(
         non_matching_search_fields,
         reference_id=non_matching_ref.id,
         scoring_config=DedupCandidateScoringConfig(),
+        k=100,
     )
-    assert not results
+    assert not results.hits

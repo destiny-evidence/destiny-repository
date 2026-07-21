@@ -292,13 +292,13 @@ async def test_nominate_candidate_canonicals_candidates_found(
 
     # Patch service.es_uow to mock search_for_candidate_duplicates
     service.es_uow = MagicMock()
-    candidate_result = [MagicMock(id=uuid7())]
+    candidate_hit = MagicMock(id=uuid7())
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
-        return_value=candidate_result
+        return_value=MagicMock(hits=[candidate_hit])
     )
     result = await service.nominate_candidate_canonicals(decision)
     assert result.duplicate_determination == DuplicateDetermination.NOMINATED
-    assert result.candidate_canonical_ids == [candidate_result[0].id]
+    assert result.candidate_canonical_ids == [candidate_hit.id]
     service.es_uow.references.search_for_candidate_canonicals.assert_awaited()
 
 
@@ -360,7 +360,7 @@ async def test_nominate_candidate_canonicals_no_candidates(
     # Patch service.es_uow to mock search_for_candidate_canonicals
     service.es_uow = MagicMock()
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
-        return_value=[]
+        return_value=MagicMock(hits=[])
     )
     result = await service.nominate_candidate_canonicals(decision)
     assert result.duplicate_determination == DuplicateDetermination.CANONICAL

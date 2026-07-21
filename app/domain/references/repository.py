@@ -105,7 +105,9 @@ from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.models.sql import SearchExport as SQLSearchExport
+from app.persistence.es.index_manager import IndexManager
 from app.persistence.es.persistence import (
+    CandidateCanonicalSearchResult,
     ESFacetBucket,
     ESScoreResult,
     ESSearchResult,
@@ -681,18 +683,21 @@ class ReferenceESRepository(
     async def search_for_candidate_canonicals(
         self,
         search_fields: CandidateCanonicalSearchFields,
-        reference_id: UUID,
         scoring_config: DedupCandidateScoringConfig,
-    ) -> list[ESScoreResult]:
+        *,
+        k: int,
+        reference_id: UUID | None = None,
+        track_total_hits: bool = False,
+    ) -> CandidateCanonicalSearchResult:
         """
         Fuzzy match candidate fingerprints to existing references.
 
-        This is a high-recall search strategy.
+        This is a high-recall search strategy. Shared by the deduplication
+        nomination path and the candidate-selection evaluation endpoint so that
+        both exercise the same query; the query shape itself is the baseline
+        under evaluation and is not yet a chosen production policy.
 
-        NOT TESTED/EVALUATED. Thrown together as a proof of concept, this must
-        be polished and evaluated before use.
-
-        The proof of concept does:
+        The query does:
 
         - MUST: fuzzy match on title (requires 50% of terms to match)
         - SHOULD: author matching
@@ -701,12 +706,19 @@ class ReferenceESRepository(
 
         :param search_fields: The search fields of the potential duplicate.
         :type search_fields: CandidateCanonicalSearchFields
-        :param reference_id: The ID of the potential duplicate.
-        :type reference_id: UUID
         :param scoring_config: Configuration for author scoring.
         :type scoring_config: DedupCandidateScoringConfig
-        :return: A list of search results with IDs and scores.
-        :rtype: list[ESScoreResult]
+        :param k: Maximum number of candidates to return.
+        :type k: int
+        :param reference_id: The ID of the potential duplicate, excluded from the
+            results when provided.
+        :type reference_id: UUID | None
+        :param track_total_hits: Compute the exact total hit count instead of the
+            Elasticsearch default (capped at 10k). Off by default so the nomination
+            path, which ignores the total, does not pay for a full count.
+        :type track_total_hits: bool
+        :return: Ranked candidate ids with scores and retrieval diagnostics.
+        :rtype: CandidateCanonicalSearchResult
         """
         author_query = self._build_author_dis_max_query(
             search_fields.authors,
@@ -752,15 +764,20 @@ class ReferenceESRepository(
                     ]
                     if search_fields.publication_year
                     else [],
-                    must_not=[Q("ids", values=[reference_id])],
+                    must_not=[Q("ids", values=[reference_id])] if reference_id else [],
                 )
             )
             .source(fields=False)
+            .extra(size=k)
         )
+        # Only force an exact count when asked; leaving it unset keeps the ES default
+        # (accurate up to 10k, then a lower bound) rather than disabling totals.
+        if track_total_hits:
+            search = search.extra(track_total_hits=True)
 
         response = await search.execute()
 
-        return sorted(
+        hits = sorted(
             [
                 ESScoreResult(id=hit.meta.id, score=hit.meta.score)
                 for hit in response.hits
@@ -768,6 +785,22 @@ class ReferenceESRepository(
             key=lambda result: result.score,
             reverse=True,
         )
+        return CandidateCanonicalSearchResult(
+            hits=hits,
+            # ES DSL typing on response.hits is incorrect
+            total=ESSearchTotal(
+                value=response.hits.total.value,  # type: ignore[attr-defined]
+                relation=response.hits.total.relation,  # type: ignore[attr-defined]
+            ),
+            took_ms=response.took,
+        )
+
+    @trace_repository_method(tracer)
+    async def get_current_index_name(self) -> str | None:
+        """Return the physical index name currently behind the alias, if any."""
+        return await IndexManager(
+            self._persistence_cls, self._client
+        ).get_current_index_name()
 
 
 class ExternalIdentifierRepositoryBase(
