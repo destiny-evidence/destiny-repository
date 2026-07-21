@@ -4,6 +4,7 @@ resource "random_uuid" "importer_role" {}
 resource "random_uuid" "reference_reader_role" {}
 resource "random_uuid" "reference_full_text_reader_role" {}
 resource "random_uuid" "reference_deduplicator_role" {}
+resource "random_uuid" "robot_writer_role" {}
 resource "random_uuid" "robot_entitlement_writer_role" {}
 resource "random_uuid" "enhancement_request_writer_role" {}
 
@@ -77,6 +78,15 @@ resource "azuread_application_app_role" "enhancement_request_writer" {
   display_name         = "Enhancement Request Writer"
   role_id              = random_uuid.enhancement_request_writer_role.result
   value                = "enhancement_request.writer"
+}
+
+resource "azuread_application_app_role" "robot_writer" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can register robots and rotate robot client secrets"
+  display_name         = "Robot Writer"
+  role_id              = random_uuid.robot_writer_role.result
+  value                = "robot.writer"
 }
 
 resource "azuread_application_app_role" "robot_entitlement_writer" {
