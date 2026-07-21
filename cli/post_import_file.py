@@ -26,12 +26,13 @@ from cli.client import ApiArgumentParser
 from cli.get_import_batch_summary import check_import_batch_status
 
 
-def register_import_record(
+def register_import_record(  # noqa: PLR0913
     client: httpx.Client,
     expected_reference_count: int,
     processor_name: str,
     processor_version: str,
     source_name: str,
+    notes: str | None = None,
 ) -> ImportRecordRead:
     """Register a new import record."""
     print("Registering a new import record...")
@@ -42,6 +43,7 @@ def register_import_record(
             processor_version=processor_version,
             source_name=source_name,
             expected_reference_count=expected_reference_count,
+            notes=notes,
         ).model_dump(mode="json"),
     )
     response.raise_for_status()
@@ -116,6 +118,7 @@ def post_import_file(  # noqa: PLR0913
     processor_name: str,
     processor_version: str,
     source_name: str,
+    notes: str | None = None,
     poll_interval: float = 5,
 ) -> None:
     """Post a file to the Destiny API for import."""
@@ -125,6 +128,7 @@ def post_import_file(  # noqa: PLR0913
         processor_name,
         processor_version,
         source_name,
+        notes=notes,
     )
     import_batch = register_import_batch(client, import_record.id, file_url)
     finalise_import_record(client, import_record.id)
@@ -166,6 +170,14 @@ def argument_parser() -> ApiArgumentParser:
         help="Source name for the import (e.g., EPPI)",
     )
     parser.add_argument(
+        "--notes",
+        default=None,
+        help=(
+            "Free-text notes stored on the import record "
+            "(e.g. reason for importing, known issues)."
+        ),
+    )
+    parser.add_argument(
         "--poll-interval",
         type=float,
         default=5,
@@ -187,6 +199,7 @@ if __name__ == "__main__":
                 processor_name=args.processor_name,
                 processor_version=args.processor_version,
                 source_name=args.source_name,
+                notes=args.notes,
                 poll_interval=args.poll_interval,
             )
     except httpx.HTTPError as exc:
