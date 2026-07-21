@@ -12,10 +12,9 @@ from types import MappingProxyType
 
 from pydantic import BaseModel, ConfigDict
 
-from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
-    CURRENT_FUZZY_RETRIEVAL_POLICY,
     CandidateCanonicalSearchFields,
+    RetrievalPolicyName,
 )
 
 
@@ -37,7 +36,7 @@ class RetrievalPolicy(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str
+    name: RetrievalPolicyName
     union_identifiers: bool
     year_strategy: YearStrategy
     requires_publication_year: bool = True
@@ -52,28 +51,24 @@ class RetrievalPolicy(BaseModel):
         return has_core and (has_year or not self.requires_publication_year)
 
 
-NO_YEAR_FILTER_POLICY = "no_year_filter_v1"
-YEAR_OPTIONAL_POLICY = "no_year_filter_year_optional_v1"
-
-
 # Wrapped read-only with no module-level handle to the backing dict, so a policy
 # name's semantics cannot be remapped at runtime.
-RETRIEVAL_POLICIES: Mapping[str, RetrievalPolicy] = MappingProxyType(
+RETRIEVAL_POLICIES: Mapping[RetrievalPolicyName, RetrievalPolicy] = MappingProxyType(
     {
         policy.name: policy
         for policy in (
             RetrievalPolicy(
-                name=CURRENT_FUZZY_RETRIEVAL_POLICY,
+                name=RetrievalPolicyName.CURRENT_FUZZY_V1,
                 union_identifiers=True,
                 year_strategy=YearStrategy.HARD_WINDOW,
             ),
             RetrievalPolicy(
-                name=NO_YEAR_FILTER_POLICY,
+                name=RetrievalPolicyName.NO_YEAR_FILTER_V1,
                 union_identifiers=True,
                 year_strategy=YearStrategy.NO_FILTER,
             ),
             RetrievalPolicy(
-                name=YEAR_OPTIONAL_POLICY,
+                name=RetrievalPolicyName.NO_YEAR_FILTER_YEAR_OPTIONAL_V1,
                 union_identifiers=True,
                 year_strategy=YearStrategy.NO_FILTER,
                 requires_publication_year=False,
@@ -83,11 +78,6 @@ RETRIEVAL_POLICIES: Mapping[str, RetrievalPolicy] = MappingProxyType(
 )
 
 
-def resolve_retrieval_policy(name: str) -> RetrievalPolicy:
-    """Return the named policy, or raise DeduplicationValueError if unknown."""
-    try:
-        return RETRIEVAL_POLICIES[name]
-    except KeyError as exc:
-        valid = ", ".join(sorted(RETRIEVAL_POLICIES))
-        msg = f"Unknown retrieval_policy '{name}'. Valid policies: {valid}."
-        raise DeduplicationValueError(msg) from exc
+def resolve_retrieval_policy(name: RetrievalPolicyName) -> RetrievalPolicy:
+    """Return the immutable policy bundle registered under this name."""
+    return RETRIEVAL_POLICIES[name]

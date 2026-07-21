@@ -9,7 +9,6 @@ from pydantic import ValidationError
 
 from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
-    CURRENT_FUZZY_RETRIEVAL_POLICY,
     CandidateElasticsearchRoute,
     CandidateIdentifier,
     CandidateSelectionInput,
@@ -18,6 +17,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     Reference,
     ReferenceDuplicateDecision,
+    RetrievalPolicyName,
 )
 from app.domain.references.models.retrieval_policy import YearStrategy
 from app.domain.references.service import ReferenceService
@@ -172,17 +172,14 @@ class TestCandidateSelectionInputValidation:
             )
 
 
-@pytest.mark.asyncio
-async def test_unknown_retrieval_policy_raises(build_service):
-    service, _, _, _ = build_service()
-    with pytest.raises(DeduplicationValueError):
-        await service.get_deduplication_candidates(
-            CandidateSelectionRequest(
-                input=CandidateSelectionInput(
-                    title="t", authors=["a"], publication_year=2020
-                ),
-                retrieval_policy="no_such_policy",
-            )
+def test_unknown_retrieval_policy_rejected_by_request_model():
+    """An unknown policy is rejected when the request is built (a 422 at the API)."""
+    with pytest.raises(ValidationError):
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="t", authors=["a"], publication_year=2020
+            ),
+            retrieval_policy="no_such_policy",  # type: ignore[arg-type]
         )
 
 
@@ -198,14 +195,14 @@ async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service
             input=CandidateSelectionInput(
                 title="t", authors=["a"], publication_year=2020
             ),
-            retrieval_policy="no_year_filter_v1",
+            retrieval_policy=RetrievalPolicyName.NO_YEAR_FILTER_V1,
             hydrate=False,
         )
     )
 
     _, kwargs = es_refs.search_for_candidate_canonicals.call_args
     assert kwargs["year_strategy"] is YearStrategy.NO_FILTER
-    assert result.retrieval_policy == "no_year_filter_v1"
+    assert result.retrieval_policy == RetrievalPolicyName.NO_YEAR_FILTER_V1
     es_route_policies = [
         route.policy
         for candidate in result.candidates
@@ -225,7 +222,7 @@ async def test_year_optional_policy_searches_missing_year_input(build_service):
     result = await service.get_deduplication_candidates(
         CandidateSelectionRequest(
             input=CandidateSelectionInput(title="t", authors=["a"]),  # no year
-            retrieval_policy="no_year_filter_year_optional_v1",
+            retrieval_policy=RetrievalPolicyName.NO_YEAR_FILTER_YEAR_OPTIONAL_V1,
             hydrate=False,
         )
     )
@@ -243,7 +240,7 @@ async def test_missing_year_input_unsearchable_under_control(build_service):
     result = await service.get_deduplication_candidates(
         CandidateSelectionRequest(
             input=CandidateSelectionInput(title="t", authors=["a"]),  # no year
-            retrieval_policy="current_fuzzy_v1",
+            retrieval_policy=RetrievalPolicyName.CURRENT_FUZZY_V1,
         )
     )
 
@@ -268,7 +265,7 @@ async def test_inline_input_returns_ranked_es_candidates(build_service):
         )
     )
 
-    assert result.retrieval_policy == CURRENT_FUZZY_RETRIEVAL_POLICY
+    assert result.retrieval_policy == RetrievalPolicyName.CURRENT_FUZZY_V1
     assert result.index_version == "reference_v3"
     assert result.input_searchability.searchable is True
     assert [c.reference_id for c in result.candidates] == [id1, id2]

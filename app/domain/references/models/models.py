@@ -774,7 +774,23 @@ class ReferenceSearchFields(ProjectedBaseModel):
         return [cls._normalise_string(v) for v in value if v]
 
 
-CURRENT_FUZZY_RETRIEVAL_POLICY = "current_fuzzy_v1"
+class RetrievalPolicyName(StrEnum):
+    """
+    Named, versioned candidate-retrieval policies for the Candidate Selection API.
+
+    Each value fixes a full retrieval regime (query shape, year strategy,
+    identifier union) under a stable name so recall@K stays comparable across
+    runs. A name's semantics never change; a new regime gets a new name.
+    """
+
+    CURRENT_FUZZY_V1 = "current_fuzzy_v1"
+    """Control: fuzzy title/author match with a hard +/-1 publication-year
+    window; requires publication year as input. Mirrors the baseline gate."""
+    NO_YEAR_FILTER_V1 = "no_year_filter_v1"
+    """Drops the year filter from the query, but still requires publication year
+    as input."""
+    NO_YEAR_FILTER_YEAR_OPTIONAL_V1 = "no_year_filter_year_optional_v1"
+    """Drops the year filter and makes publication year optional as input."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):
@@ -838,8 +854,8 @@ class CandidateSelectionRequest(BaseModel):
     input: CandidateSelectionInput = Field(
         description="The reference to find candidates for."
     )
-    retrieval_policy: str = Field(
-        default=CURRENT_FUZZY_RETRIEVAL_POLICY,
+    retrieval_policy: RetrievalPolicyName = Field(
+        default=RetrievalPolicyName.CURRENT_FUZZY_V1,
         description=(
             "Named, server-side retrieval policy fixing the full candidate regime "
             "(query shape, year strategy, identifier union). Defaults to the "
@@ -937,7 +953,7 @@ class CandidateSelectionDiagnostics(BaseModel):
 class CandidateSelectionResult(BaseModel):
     """Ranked candidates and diagnostics for a candidate-selection request."""
 
-    retrieval_policy: str = CURRENT_FUZZY_RETRIEVAL_POLICY
+    retrieval_policy: RetrievalPolicyName = RetrievalPolicyName.CURRENT_FUZZY_V1
     index_version: str | None = Field(
         default=None,
         description="The reference index version the candidates were drawn from.",

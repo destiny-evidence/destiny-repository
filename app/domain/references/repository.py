@@ -718,10 +718,8 @@ class ReferenceESRepository(
             min_token_length=scoring_config.min_author_token_length,
         )
         should_clauses = [author_query] if author_query else []
-        # Canonical filter is unconditional: duplicates are never candidates,
-        # whatever the year strategy or year presence. Only the year range is
-        # strategy-dependent. (This also avoids race conditions where two references
-        # being deduplicated concurrently could create conflicting relationships.)
+        # Requiring CANONICAL prevents two references being deduplicated
+        # concurrently from forming conflicting relationships.
         filter_clauses = [
             *self._year_filter_clauses(search_fields.publication_year, year_strategy),
             Q("term", duplicate_determination=DuplicateDetermination.CANONICAL),
