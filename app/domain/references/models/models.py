@@ -652,8 +652,8 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     """
     Fields used for candidate canonical selection.
 
-    The search implementation lives at
-    :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
+    The retrieval policy is interpreted by
+    :func:`app.domain.references.services.deduplication_service.build_candidate_canonical_search_query`.
     """
 
     publication_year: int | None = Field(
@@ -672,6 +672,23 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     def is_searchable(self) -> bool:
         """Whether the projection has the fields required to search for candidates."""
         return all((self.publication_year, self.authors, self.title))
+
+
+class CandidateCanonicalSearchQuery(BaseModel):
+    """Service-owned candidate query specification for Elasticsearch translation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str
+    title_fuzziness: str
+    title_boost: float
+    title_operator: Literal["or"]
+    title_minimum_should_match: str
+    author_terms: tuple[str, ...]
+    author_tie_breaker: float
+    publication_year_range: tuple[int, int] | None
+    duplicate_determination: DuplicateDetermination
+    excluded_reference_id: UUID | None
 
 
 class ReferenceSearchFields(ProjectedBaseModel):

@@ -1,51 +1,101 @@
 # ruff: noqa: SLF001
-"""Tests for the candidate query builder's year-clause seam.
-
-Tests exercise the repository's private query-builder helpers directly.
-"""
+"""Tests for service query construction and Elasticsearch translation."""
 
 from unittest.mock import MagicMock
+from uuid import UUID
+
+import pytest
 
 from app.core.config import DedupCandidateScoringConfig
-from app.domain.references.models.models import CandidateCanonicalSearchFields
-from app.domain.references.models.retrieval_policy import YearStrategy
+from app.core.exceptions import DeduplicationValueError
+from app.domain.references.models.models import (
+    CandidateCanonicalSearchFields,
+    DuplicateDetermination,
+    RetrievalPolicyName,
+)
+from app.domain.references.models.retrieval_policy import resolve_retrieval_policy
 from app.domain.references.repository import ReferenceESRepository
+from app.domain.references.services.deduplication_service import (
+    build_candidate_canonical_search_query,
+)
+
+
+def _query(
+    fields: CandidateCanonicalSearchFields,
+    policy_name: RetrievalPolicyName,
+    *,
+    reference_id: UUID | None = None,
+):
+    return build_candidate_canonical_search_query(
+        fields,
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(policy_name),
+        reference_id=reference_id,
+    )
 
 
 def test_hard_window_builds_pm1_year_range():
-    clauses = ReferenceESRepository._year_filter_clauses(2000, YearStrategy.HARD_WINDOW)
-    assert len(clauses) == 1
-    assert clauses[0].to_dict()["range"]["publication_year"] == {
-        "gte": 1999,
-        "lte": 2001,
-    }
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.CURRENT_FUZZY_V1)
+    assert query.publication_year_range == (1999, 2001)
 
 
 def test_no_filter_yields_no_year_clause():
-    assert (
-        ReferenceESRepository._year_filter_clauses(2000, YearStrategy.NO_FILTER) == []
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
     )
+    query = _query(fields, RetrievalPolicyName.NO_YEAR_FILTER_V1)
+    assert query.publication_year_range is None
 
 
 def test_hard_window_without_year_yields_no_clause():
-    assert (
-        ReferenceESRepository._year_filter_clauses(None, YearStrategy.HARD_WINDOW) == []
+    fields = CandidateCanonicalSearchFields(title="Shared Title", authors=["Smith"])
+    query = _query(fields, RetrievalPolicyName.CURRENT_FUZZY_V1)
+    assert query.publication_year_range is None
+
+
+def test_hard_window_with_year_zero_yields_no_clause():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=0
     )
+    query = _query(fields, RetrievalPolicyName.CURRENT_FUZZY_V1)
+    assert query.publication_year_range is None
+
+
+def test_builder_rejects_missing_title():
+    fields = CandidateCanonicalSearchFields(authors=["Smith"], publication_year=2000)
+
+    with pytest.raises(DeduplicationValueError, match="requires a title"):
+        _query(fields, RetrievalPolicyName.CURRENT_FUZZY_V1)
+
+
+def test_service_builds_complete_query_regime():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["G Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.CURRENT_FUZZY_V1)
+    assert query.title == "Shared Title"
+    assert query.title_fuzziness == "AUTO"
+    assert query.title_boost == 2.0
+    assert query.title_minimum_should_match == "50%"
+    assert query.author_terms == ("Smith",)
+    assert query.author_tie_breaker == 0.1
+    assert query.duplicate_determination.value == "canonical"
 
 
 def test_build_candidate_query_canonical_unconditional():
     """Canonical filter present for every strategy; only the year range varies."""
-    repo = ReferenceESRepository(client=MagicMock())
     fields = CandidateCanonicalSearchFields(
         title="Shared Title", authors=["Smith"], publication_year=2000
     )
-    for strategy in (YearStrategy.HARD_WINDOW, YearStrategy.NO_FILTER):
-        query = repo._build_candidate_query(
-            fields,
-            scoring_config=DedupCandidateScoringConfig(),
-            year_strategy=strategy,
-            reference_id=None,
-        )
+    repo = ReferenceESRepository(client=MagicMock())
+    for policy_name in (
+        RetrievalPolicyName.CURRENT_FUZZY_V1,
+        RetrievalPolicyName.NO_YEAR_FILTER_V1,
+    ):
+        query = repo._to_es_candidate_query(_query(fields, policy_name))
         filter_dicts = [clause.to_dict() for clause in query.filter]
         assert any(
             "term" in fd and "duplicate_determination" in fd["term"]
@@ -54,4 +104,54 @@ def test_build_candidate_query_canonical_unconditional():
         has_year_range = any(
             "range" in fd and "publication_year" in fd["range"] for fd in filter_dicts
         )
-        assert has_year_range is (strategy is YearStrategy.HARD_WINDOW)
+        assert has_year_range is (policy_name is RetrievalPolicyName.CURRENT_FUZZY_V1)
+
+
+def test_es_translation_preserves_baseline_query_semantics():
+    reference_id = UUID("00000000-0000-0000-0000-000000000001")
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["G Smith"], publication_year=2000
+    )
+    query = _query(
+        fields,
+        RetrievalPolicyName.CURRENT_FUZZY_V1,
+        reference_id=reference_id,
+    )
+
+    assert ReferenceESRepository._to_es_candidate_query(query).to_dict() == {
+        "bool": {
+            "must": [
+                {
+                    "match": {
+                        "title": {
+                            "query": "Shared Title",
+                            "fuzziness": "AUTO",
+                            "boost": 2.0,
+                            "operator": "or",
+                            "minimum_should_match": "50%",
+                        }
+                    }
+                }
+            ],
+            "should": [
+                {
+                    "dis_max": {
+                        "queries": [{"match": {"authors": "Smith"}}],
+                        "tie_breaker": 0.1,
+                    }
+                }
+            ],
+            "filter": [
+                {
+                    "range": {
+                        "publication_year": {
+                            "gte": 1999,
+                            "lte": 2001,
+                        }
+                    }
+                },
+                {"term": {"duplicate_determination": DuplicateDetermination.CANONICAL}},
+            ],
+            "must_not": [{"ids": {"values": [reference_id]}}],
+        }
+    }

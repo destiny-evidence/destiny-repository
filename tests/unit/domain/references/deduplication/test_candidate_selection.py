@@ -19,7 +19,6 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDecision,
     RetrievalPolicyName,
 )
-from app.domain.references.models.retrieval_policy import YearStrategy
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -200,8 +199,8 @@ async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service
         )
     )
 
-    _, kwargs = es_refs.search_for_candidate_canonicals.call_args
-    assert kwargs["year_strategy"] is YearStrategy.NO_FILTER
+    query = es_refs.search_for_candidate_canonicals.call_args.args[0]
+    assert query.publication_year_range is None
     assert result.retrieval_policy == RetrievalPolicyName.NO_YEAR_FILTER_V1
     es_route_policies = [
         route.policy
@@ -229,8 +228,8 @@ async def test_year_optional_policy_searches_missing_year_input(build_service):
 
     assert result.input_searchability.searchable is True
     es_refs.search_for_candidate_canonicals.assert_awaited_once()
-    _, kwargs = es_refs.search_for_candidate_canonicals.call_args
-    assert kwargs["year_strategy"] is YearStrategy.NO_FILTER
+    query = es_refs.search_for_candidate_canonicals.call_args.args[0]
+    assert query.publication_year_range is None
 
 
 @pytest.mark.asyncio
@@ -297,8 +296,9 @@ async def test_reference_id_input_self_excludes_and_defaults_k(build_service):
     )
 
     sql_refs.get_by_pk.assert_awaited_once()
-    _, kwargs = es_refs.search_for_candidate_canonicals.call_args
-    assert kwargs["reference_id"] == reference.id
+    query = es_refs.search_for_candidate_canonicals.call_args.args[0]
+    kwargs = es_refs.search_for_candidate_canonicals.call_args.kwargs
+    assert query.excluded_reference_id == reference.id
     assert kwargs["k"] == 100  # configured default
     assert result.k_requested == 100
     assert [c.reference_id for c in result.candidates] == [hit]

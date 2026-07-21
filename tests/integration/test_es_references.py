@@ -20,15 +20,19 @@ from app.domain.references.models.models import (
     Reference,
     ReferenceSearchProjection,
     ReferenceWithChangeset,
+    RetrievalPolicyName,
     RobotAutomation,
 )
 from app.domain.references.models.projections import (
     ReferenceSearchFieldsProjection,
 )
-from app.domain.references.models.retrieval_policy import YearStrategy
+from app.domain.references.models.retrieval_policy import resolve_retrieval_policy
 from app.domain.references.repository import (
     ReferenceESRepository,
     RobotAutomationESRepository,
+)
+from app.domain.references.services.deduplication_service import (
+    build_candidate_canonical_search_query,
 )
 from app.utils.time_and_date import utc_now
 from tests.factories import to_indexable
@@ -652,10 +656,14 @@ async def test_canonical_candidate_search(
     )
 
     # Test the search_for_candidate_canonicals method
-    results = await es_reference_repository.search_for_candidate_canonicals(
-        search_fields=matching_search_fields,
-        reference_id=matching_ref1.id,
+    matching_query = build_candidate_canonical_search_query(
+        matching_search_fields,
         scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(RetrievalPolicyName.CURRENT_FUZZY_V1),
+        reference_id=matching_ref1.id,
+    )
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        matching_query,
         k=100,
     )
 
@@ -669,10 +677,14 @@ async def test_canonical_candidate_search(
         )
     )
 
-    results = await es_reference_repository.search_for_candidate_canonicals(
+    non_matching_query = build_candidate_canonical_search_query(
         non_matching_search_fields,
-        reference_id=non_matching_ref.id,
         scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(RetrievalPolicyName.CURRENT_FUZZY_V1),
+        reference_id=non_matching_ref.id,
+    )
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        non_matching_query,
         k=100,
     )
     assert not results.hits
@@ -729,19 +741,25 @@ async def test_no_year_filter_returns_year_drifted_candidate(
         ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(query_ref)
     )
 
-    hard = await es_reference_repository.search_for_candidate_canonicals(
+    hard_query = build_candidate_canonical_search_query(
         search_fields,
         scoring_config=DedupCandidateScoringConfig(),
-        k=100,
+        policy=resolve_retrieval_policy(RetrievalPolicyName.CURRENT_FUZZY_V1),
         reference_id=query_ref.id,
-        year_strategy=YearStrategy.HARD_WINDOW,
+    )
+    unfiltered_query = build_candidate_canonical_search_query(
+        search_fields,
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(RetrievalPolicyName.NO_YEAR_FILTER_V1),
+        reference_id=query_ref.id,
+    )
+    hard = await es_reference_repository.search_for_candidate_canonicals(
+        hard_query,
+        k=100,
     )
     unfiltered = await es_reference_repository.search_for_candidate_canonicals(
-        search_fields,
-        scoring_config=DedupCandidateScoringConfig(),
+        unfiltered_query,
         k=100,
-        reference_id=query_ref.id,
-        year_strategy=YearStrategy.NO_FILTER,
     )
 
     hard_ids = {hit.id for hit in hard.hits}
