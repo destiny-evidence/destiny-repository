@@ -1,6 +1,6 @@
 """Service for searching references."""
 
-from collections.abc import Iterable, Sequence
+from collections.abc import AsyncGenerator, Iterable, Sequence
 from typing import ClassVar
 
 from opentelemetry import trace
@@ -78,6 +78,16 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             page_size=page_size,
             sort=sort,
         )
+
+    async def scan(
+        self,
+        query: SearchQuery,
+        sort: list[str] | None = None,
+        limit: int | None = None,
+    ) -> AsyncGenerator[ESSearchResult, None]:
+        """Scan all references matching ``query``, paging beyond the result window."""
+        async for page in self.es_uow.references.scan(query, sort=sort, limit=limit):
+            yield page
 
     async def aggregate_facets(
         self,
