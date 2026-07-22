@@ -652,8 +652,8 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     """
     Fields used for candidate canonical selection.
 
-    The search implementation lives at
-    :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
+    The retrieval policy is interpreted by
+    :func:`app.domain.references.services.deduplication_service.build_candidate_canonical_search_query`.
     """
 
     publication_year: int | None = Field(
@@ -672,6 +672,23 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
     def is_searchable(self) -> bool:
         """Whether the projection has the fields required to search for candidates."""
         return all((self.publication_year, self.authors, self.title))
+
+
+class CandidateCanonicalSearchQuery(BaseModel):
+    """Service-owned candidate query specification for Elasticsearch translation."""
+
+    model_config = ConfigDict(frozen=True)
+
+    title: str
+    title_fuzziness: str
+    title_boost: float
+    title_operator: Literal["or"]
+    title_minimum_should_match: str
+    author_terms: tuple[str, ...]
+    author_tie_breaker: float
+    publication_year_range: tuple[int, int] | None
+    duplicate_determination: DuplicateDetermination
+    excluded_reference_id: UUID | None
 
 
 class ReferenceSearchFields(ProjectedBaseModel):
@@ -774,7 +791,23 @@ class ReferenceSearchFields(ProjectedBaseModel):
         return [cls._normalise_string(v) for v in value if v]
 
 
-CURRENT_FUZZY_RETRIEVAL_POLICY = "current_fuzzy_v1"
+class RetrievalPolicyName(StrEnum):
+    """
+    Named, versioned candidate-retrieval policies for the Candidate Selection API.
+
+    Each value fixes a full retrieval regime (query shape, year strategy,
+    identifier union) under a stable name so recall@K stays comparable across
+    runs. A name's semantics never change; a new regime gets a new name.
+    """
+
+    CURRENT_FUZZY_V1 = "current_fuzzy_v1"
+    """Control: fuzzy title/author match with a hard +/-1 publication-year
+    window; requires publication year as input. Mirrors the baseline gate."""
+    NO_YEAR_FILTER_V1 = "no_year_filter_v1"
+    """Drops the year filter from the query, but still requires publication year
+    as input."""
+    NO_YEAR_FILTER_YEAR_OPTIONAL_V1 = "no_year_filter_year_optional_v1"
+    """Drops the year filter and makes publication year optional as input."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):
@@ -833,8 +866,18 @@ class CandidateSelectionInput(BaseModel):
 class CandidateSelectionRequest(BaseModel):
     """A request for candidate canonical references, for dedup evaluation."""
 
+    model_config = ConfigDict(extra="forbid")
+
     input: CandidateSelectionInput = Field(
         description="The reference to find candidates for."
+    )
+    retrieval_policy: RetrievalPolicyName = Field(
+        default=RetrievalPolicyName.CURRENT_FUZZY_V1,
+        description=(
+            "Named, server-side retrieval policy fixing the full candidate regime "
+            "(query shape, year strategy, identifier union). Defaults to the "
+            "current fuzzy baseline."
+        ),
     )
     k: int | None = Field(
         default=None,
@@ -842,12 +885,6 @@ class CandidateSelectionRequest(BaseModel):
         le=1000,
         description=(
             "Number of candidates to retrieve. Defaults to the configured value."
-        ),
-    )
-    include_identifier_matches: bool = Field(
-        default=True,
-        description=(
-            "Union exact identifier matches from Postgres with ES candidates."
         ),
     )
     hydrate: bool = Field(
@@ -909,8 +946,9 @@ class InputSearchability(BaseModel):
     searchable: bool = Field(
         description=(
             "Whether the input meets the Elasticsearch searchability gate (title, "
-            "authors, publication year). Exact identifier matching runs regardless, "
-            "so candidates may be present even when this is false."
+            "authors, and publication year unless the selected retrieval policy "
+            "makes it optional). Exact identifier matching runs regardless, so "
+            "candidates may be present even when this is false."
         )
     )
     reason: str = Field(description="Explanation of the searchability decision.")
@@ -932,13 +970,12 @@ class CandidateSelectionDiagnostics(BaseModel):
 class CandidateSelectionResult(BaseModel):
     """Ranked candidates and diagnostics for a candidate-selection request."""
 
-    retrieval_policy: str = CURRENT_FUZZY_RETRIEVAL_POLICY
+    retrieval_policy: RetrievalPolicyName = RetrievalPolicyName.CURRENT_FUZZY_V1
     index_version: str | None = Field(
         default=None,
         description="The reference index version the candidates were drawn from.",
     )
     k_requested: int
-    include_identifier_matches: bool
     input_searchability: InputSearchability
     diagnostics: CandidateSelectionDiagnostics
     candidates: list[Candidate] = Field(default_factory=list)

@@ -1478,7 +1478,7 @@ async def get_deduplication_candidates(
     logger.info(
         "Retrieving deduplication candidates.",
         k=request.k,
-        include_identifier_matches=request.include_identifier_matches,
+        retrieval_policy=request.retrieval_policy,
     )
     try:
         return await reference_service.get_deduplication_candidates(request)

@@ -23,9 +23,9 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import selectinload
 
-from app.core.config import DedupCandidateScoringConfig, get_settings
+from app.core.config import get_settings
 from app.core.telemetry.repository import trace_repository_method
 from app.domain.references.models.es import (
     ReferenceDocument,
@@ -33,7 +33,7 @@ from app.domain.references.models.es import (
 )
 from app.domain.references.models.models import (
     AnnotationFilter,
-    CandidateCanonicalSearchFields,
+    CandidateCanonicalSearchQuery,
     CrossFacetAxis,
     CrossFacetCell,
     DuplicateDetermination,
@@ -117,7 +117,6 @@ from app.persistence.es.repository import GenericAsyncESRepository
 from app.persistence.generics import GenericPersistenceType
 from app.persistence.repository import GenericAsyncRepository
 from app.persistence.sql.repository import GenericAsyncSqlRepository
-from app.utils.regex import UNICODE_LETTER_PATTERN, is_meaningful_token
 
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
@@ -172,17 +171,17 @@ class ReferenceSQLRepository(
         query = select(SQLReference).where(SQLReference.id.in_(reference_ids))
         if enhancement_types:
             query = query.options(
-                joinedload(
+                selectinload(
                     SQLReference.enhancements.and_(
                         SQLEnhancement.enhancement_type.in_(enhancement_types)
                     )
                 )
             )
         else:
-            query = query.options(joinedload(SQLReference.enhancements))
+            query = query.options(selectinload(SQLReference.enhancements))
         if external_identifier_types:
             query = query.options(
-                joinedload(
+                selectinload(
                     SQLReference.identifiers.and_(
                         SQLExternalIdentifier.identifier_type.in_(
                             external_identifier_types
@@ -191,7 +190,7 @@ class ReferenceSQLRepository(
                 )
             )
         else:
-            query = query.options(joinedload(SQLReference.identifiers))
+            query = query.options(selectinload(SQLReference.identifiers))
         result = await self._session.execute(query)
         db_references = result.unique().scalars().all()
         return [
@@ -624,95 +623,73 @@ class ReferenceESRepository(
         return cells
 
     @staticmethod
-    def _build_author_dis_max_query(
-        authors: list[str],
-        *,
-        max_clauses: int,
-        min_token_length: int,
-    ) -> Q | None:
-        """
-        Build a dis_max query for author matching with bounded score contribution.
-
-        Uses dis_max instead of bool.should to prevent author-count inflation.
-        bool.should sums all matching clauses, so papers with thousands of authors
-        (e.g. CERN collaborations) produce inflated scores that drown out title
-        relevance. dis_max takes the best clause score and discounts the rest, bounding
-        the author contribution regardless of author count.
-
-        Caps the clause count to avoid sending redundant clauses to ES (dis_max
-        discounts them anyway). Filters short tokens because single-letter
-        initials match too broadly and produce false positive score boosts.
-
-        Args:
-            authors: Author names to build match queries from.
-            max_clauses: Maximum number of match queries to emit.
-            min_token_length: Minimum token length; filters initials.
-
-        Returns:
-            A dis_max Q object, or None if no valid queries remain.
-
-        """
-        queries: list[Q] = []
-        seen_terms: set[str] = set()
-        for author in authors:
-            tokens = [
-                token
-                for token in UNICODE_LETTER_PATTERN.findall(author)
-                if is_meaningful_token(token, min_token_length)
-            ]
-            if not tokens:
-                continue
-
-            terms = " ".join(tokens)
-            if terms in seen_terms:
-                continue
-
-            seen_terms.add(terms)
-            queries.append(Q("match", authors=terms))
-            if len(queries) >= max_clauses:
-                break
-
-        if not queries:
-            return None
-
-        # 0.1 = best-matching author dominates, additional matches add 10% each.
-        # Enough to prefer multi-author overlap without summing to inflation.
-        return Q("dis_max", queries=queries, tie_breaker=0.1)
+    def _to_es_candidate_query(query: CandidateCanonicalSearchQuery) -> Q:
+        """Translate a domain candidate query into Elasticsearch DSL."""
+        # bool.should sums every matching author clause, so large collaborations can
+        # drown out title relevance. dis_max bounds that contribution around the best
+        # author match while its tie-breaker gives smaller credit to additional ones.
+        author_query = (
+            Q(
+                "dis_max",
+                queries=[Q("match", authors=terms) for terms in query.author_terms],
+                tie_breaker=query.author_tie_breaker,
+            )
+            if query.author_terms
+            else None
+        )
+        should_clauses = [author_query] if author_query else []
+        filter_clauses = []
+        if query.publication_year_range is not None:
+            start, end = query.publication_year_range
+            filter_clauses.append(
+                Q("range", publication_year={"gte": start, "lte": end})
+            )
+        filter_clauses.append(
+            Q(
+                "term",
+                duplicate_determination=query.duplicate_determination,
+            )
+        )
+        return Q(
+            "bool",
+            must=[
+                Q(
+                    "match",
+                    title={
+                        "query": query.title,
+                        "fuzziness": query.title_fuzziness,
+                        "boost": query.title_boost,
+                        "operator": query.title_operator,
+                        "minimum_should_match": query.title_minimum_should_match,
+                    },
+                )
+            ],
+            should=should_clauses,
+            filter=filter_clauses,
+            must_not=[Q("ids", values=[query.excluded_reference_id])]
+            if query.excluded_reference_id
+            else [],
+        )
 
     @trace_repository_method(tracer)
     async def search_for_candidate_canonicals(
         self,
-        search_fields: CandidateCanonicalSearchFields,
-        scoring_config: DedupCandidateScoringConfig,
+        query: CandidateCanonicalSearchQuery,
         *,
         k: int,
-        reference_id: UUID | None = None,
         track_total_hits: bool = False,
     ) -> CandidateCanonicalSearchResult:
         """
-        Fuzzy match candidate fingerprints to existing references.
+        Execute a candidate-canonical search specification in Elasticsearch.
 
-        This is a high-recall search strategy. Shared by the deduplication
-        nomination path and the candidate-selection evaluation endpoint so that
-        both exercise the same query; the query shape itself is the baseline
-        under evaluation and is not yet a chosen production policy.
+        The deduplication service owns retrieval-policy interpretation and query
+        semantics; this repository translates the resulting specification into
+        Elasticsearch DSL and executes it.
 
-        The query does:
-
-        - MUST: fuzzy match on title (requires 50% of terms to match)
-        - SHOULD: author matching
-        - FILTER: publication year within ±1 year range (non-scoring)
-        - FILTER: only canonical references (at rest)
-
-        :param search_fields: The search fields of the potential duplicate.
-        :type search_fields: CandidateCanonicalSearchFields
-        :param scoring_config: Configuration for author scoring.
-        :type scoring_config: DedupCandidateScoringConfig
+        :param query: The domain search specification to execute.
+        :type query: CandidateCanonicalSearchQuery
         :param k: Maximum number of candidates to return.
         :type k: int
-        :param reference_id: The ID of the potential duplicate, excluded from the
-            results when provided.
-        :type reference_id: UUID | None
         :param track_total_hits: Compute the exact total hit count instead of the
             Elasticsearch default (capped at 10k). Off by default so the nomination
             path, which ignores the total, does not pay for a full count.
@@ -720,53 +697,9 @@ class ReferenceESRepository(
         :return: Ranked candidate ids with scores and retrieval diagnostics.
         :rtype: CandidateCanonicalSearchResult
         """
-        author_query = self._build_author_dis_max_query(
-            search_fields.authors,
-            max_clauses=scoring_config.max_author_clauses,
-            min_token_length=scoring_config.min_author_token_length,
-        )
-        should_clauses = [author_query] if author_query else []
-
         search = (
             AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
-            .query(
-                Q(
-                    "bool",
-                    must=[
-                        Q(
-                            "match",
-                            title={
-                                "query": search_fields.title,
-                                "fuzziness": "AUTO",
-                                "boost": 2.0,
-                                "operator": "or",
-                                "minimum_should_match": "50%",
-                            },
-                        )
-                    ],
-                    should=should_clauses,
-                    filter=[
-                        Q(
-                            "range",
-                            publication_year={
-                                "gte": search_fields.publication_year - 1,
-                                "lte": search_fields.publication_year + 1,
-                            },
-                        ),
-                        # Only match against canonical references that are "at rest".
-                        # Duplicates are never candidates. This also avoids race
-                        # conditions where two references being deduplicated
-                        # concurrently could create conflicting relationships.
-                        Q(
-                            "term",
-                            duplicate_determination=DuplicateDetermination.CANONICAL,
-                        ),
-                    ]
-                    if search_fields.publication_year
-                    else [],
-                    must_not=[Q("ids", values=[reference_id])] if reference_id else [],
-                )
-            )
+            .query(self._to_es_candidate_query(query))
             .source(fields=False)
             .extra(size=k)
         )
