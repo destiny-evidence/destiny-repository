@@ -8,102 +8,13 @@ resource "random_uuid" "robot_writer_role" {}
 resource "random_uuid" "robot_entitlement_writer_role" {}
 resource "random_uuid" "enhancement_request_writer_role" {}
 
-# Unique UUIDs for oauth2_permission_scope (delegated permissions)
-resource "random_uuid" "administrator_scope" {}
-resource "random_uuid" "importer_scope" {}
-resource "random_uuid" "reference_reader_scope" {}
-resource "random_uuid" "reference_full_text_reader_scope" {}
-resource "random_uuid" "reference_deduplicator_scope" {}
-resource "random_uuid" "robot_writer_scope" {}
-resource "random_uuid" "robot_entitlement_writer_scope" {}
-resource "random_uuid" "enhancement_request_writer_scope" {}
-
-# AD application for destiny repository
-# App scopes to allow various functions (i.e. imports) should be added as oauth2_permission_scope here
+# AD application via managed identities for destiny repository.
 resource "azuread_application" "destiny_repository" {
   display_name     = local.name
   sign_in_audience = "AzureADMyOrg"
 
   api {
     requested_access_token_version = 2
-
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to administer the system as the signed-in user"
-      admin_consent_display_name = "Administrator as user"
-      id                         = random_uuid.administrator_scope.result
-      type                       = "User"
-      value                      = "administrator.all"
-      user_consent_description   = "Allow you to administer the system"
-      user_consent_display_name  = "Administrator"
-    }
-
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to import as the signed-in user"
-      admin_consent_display_name = "Import as user"
-      id                         = random_uuid.importer_scope.result
-      type                       = "User"
-      value                      = "import.writer.all"
-      user_consent_description   = "Allow you to import"
-      user_consent_display_name  = "Import"
-    }
-
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to view references as the signed-in user"
-      admin_consent_display_name = "Reference Reader as user"
-      id                         = random_uuid.reference_reader_scope.result
-      type                       = "User"
-      value                      = "reference.reader.all"
-      user_consent_description   = "Allow you to view references"
-      user_consent_display_name  = "Reference Reader"
-    }
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to view the full texts of references as the signed-in user"
-      admin_consent_display_name = "Reference Full Text Reader as user"
-      id                         = random_uuid.reference_full_text_reader_scope.result
-      type                       = "User"
-      value                      = "reference.full_text.reader.all"
-      user_consent_description   = "Allow you to view the full texts of references"
-      user_consent_display_name  = "Reference Full Text Reader"
-    }
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to deduplicate references as the signed-in user"
-      admin_consent_display_name = "Reference Deduplicator as user"
-      id                         = random_uuid.reference_deduplicator_scope.result
-      type                       = "User"
-      value                      = "reference.deduplicator.all"
-      user_consent_description   = "Allow you to deduplicate references"
-      user_consent_display_name  = "Reference Deduplicator"
-    }
-
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to request enhancements as the signed-in user"
-      admin_consent_display_name = "Enhancement Request Writer as user"
-      id                         = random_uuid.enhancement_request_writer_scope.result
-      type                       = "User"
-      value                      = "enhancement_request.writer.all"
-      user_consent_description   = "Allow you to request enhancements"
-      user_consent_display_name  = "Enhancement Request Writer"
-    }
-
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to register robots and rotate robot client secrets as the signed-in user"
-      admin_consent_display_name = "Robot Writer as user"
-      id                         = random_uuid.robot_writer_scope.result
-      type                       = "User"
-      value                      = "robot.writer.all"
-      user_consent_description   = "Allow you to register robots and rotate robot client secrets"
-      user_consent_display_name  = "Robot Writer"
-    }
-
-    oauth2_permission_scope {
-      admin_consent_description  = "Allow the app to write entitlements on robots as the signed-in user"
-      admin_consent_display_name = "Robot Entitlement Writer as user"
-      id                         = random_uuid.robot_entitlement_writer_scope.result
-      type                       = "User"
-      value                      = "robot.entitlement.writer.all"
-      user_consent_description   = "Allow you to write entitlements on robots"
-      user_consent_display_name  = "Robot Entitlement Writer"
-    }
   }
 
   lifecycle {
@@ -169,6 +80,15 @@ resource "azuread_application_app_role" "enhancement_request_writer" {
   value                = "enhancement_request.writer"
 }
 
+resource "azuread_application_app_role" "robot_writer" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can register robots and rotate robot client secrets"
+  display_name         = "Robot Writer"
+  role_id              = random_uuid.robot_writer_role.result
+  value                = "robot.writer"
+}
+
 resource "azuread_application_app_role" "robot_entitlement_writer" {
   application_id       = azuread_application.destiny_repository.id
   allowed_member_types = ["Application"]
@@ -203,105 +123,6 @@ resource "azuread_application_api_access" "github_actions" {
   role_ids = [
     azuread_application_app_role.importer.role_id
   ]
-}
-
-# Create an application that we can use to authenticate with the Destiny Repository
-resource "azuread_application_registration" "destiny_repository_auth" {
-  display_name                   = "${local.name}-auth-client"
-  sign_in_audience               = "AzureADMyOrg"
-  requested_access_token_version = 2
-}
-
-resource "azuread_application_api_access" "destiny_repository_auth" {
-  application_id = azuread_application_registration.destiny_repository_auth.id
-  api_client_id  = azuread_application.destiny_repository.client_id
-
-  scope_ids = [
-    random_uuid.administrator_scope.result,
-    random_uuid.importer_scope.result,
-    random_uuid.reference_reader_scope.result,
-    random_uuid.enhancement_request_writer_scope.result,
-    random_uuid.robot_writer_scope.result,
-    random_uuid.reference_deduplicator_scope.result,
-  ]
-}
-
-
-resource "azuread_application_registration" "destiny_repository_auth_ui" {
-  display_name                   = "${local.name}-auth-ui-client"
-  sign_in_audience               = "AzureADMyOrg"
-  requested_access_token_version = 2
-}
-
-resource "azuread_application_api_access" "destiny_repository_auth_ui" {
-  application_id = azuread_application_registration.destiny_repository_auth_ui.id
-  api_client_id  = azuread_application.destiny_repository.client_id
-
-  scope_ids = [
-    random_uuid.reference_reader_scope.result,
-    random_uuid.enhancement_request_writer_scope.result,
-    random_uuid.robot_writer_scope.result,
-  ]
-}
-
-# This group is managed by click-ops in Entra Id
-# Allow group members to authenticate via the auth client
-resource "azuread_app_role_assignment" "developer_to_auth" {
-  app_role_id         = "00000000-0000-0000-0000-000000000000"
-  principal_object_id = var.developers_group_id
-  resource_object_id  = azuread_service_principal.destiny_repository_auth.object_id
-}
-
-
-resource "azuread_app_role_assignment" "ui_users_to_auth_ui" {
-  app_role_id         = "00000000-0000-0000-0000-000000000000"
-  principal_object_id = var.ui_users_group_id
-  resource_object_id  = azuread_service_principal.destiny_repository_auth_ui.object_id
-}
-
-resource "azuread_service_principal" "destiny_repository_auth" {
-  client_id                    = azuread_application_registration.destiny_repository_auth.client_id
-  app_role_assignment_required = true
-  # Scream test: Azure API-user login retired in favour of Keycloak. Flip back to
-  # true to re-enable delegated token acquisition via this client.
-  account_enabled = false
-  owners          = [data.azuread_client_config.current.object_id]
-}
-
-resource "azuread_service_principal" "destiny_repository_auth_ui" {
-  client_id                    = azuread_application_registration.destiny_repository_auth_ui.client_id
-  app_role_assignment_required = true
-  # Scream test: Azure API-user login retired in favour of Keycloak. Flip back to
-  # true to re-enable delegated token acquisition via this client.
-  account_enabled = false
-  owners          = [data.azuread_client_config.current.object_id]
-}
-
-resource "azuread_application_redirect_uris" "local_redirect" {
-  # This is necessary to return the token to you if you're grabbing a token for local dev
-  application_id = azuread_application_registration.destiny_repository_auth.id
-  type           = "PublicClient"
-
-  redirect_uris = local.redirect_uris
-}
-
-resource "azuread_application_redirect_uris" "ui_redirect" {
-  # This is necessary to return the token to the UI
-  application_id = azuread_application_registration.destiny_repository_auth_ui.id
-  type           = "SPA"
-
-  redirect_uris = [
-    "https://${local.ui_hostname}",
-    "https://${data.azurerm_container_app.ui.ingress[0].fqdn}",
-  ]
-}
-
-resource "azuread_application_redirect_uris" "ui_public_client_redirect" {
-  # This is necessary to return the token to the user when using PublicClient flow
-  application_id = azuread_application_registration.destiny_repository_auth_ui.id
-  type           = "PublicClient"
-
-  redirect_uris = local.redirect_uris
 }
 
 # Openalex incremental updater role assignments

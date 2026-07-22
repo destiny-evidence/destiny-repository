@@ -351,20 +351,8 @@ module "container_app_ui" {
 
   env_vars = [
     {
-      name  = "NEXT_PUBLIC_AZURE_CLIENT_ID"
-      value = azuread_application_registration.destiny_repository_auth_ui.client_id
-    },
-    {
-      name  = "NEXT_PUBLIC_AZURE_LOGIN_URL"
-      value = local.auth_login_url
-    },
-    {
       name  = "NEXT_PUBLIC_API_URL"
       value = "https://${local.api_hostname}/v1/"
-    },
-    {
-      name  = "NEXT_PUBLIC_AZURE_APPLICATION_ID"
-      value = local.auth_application_id
     },
     {
       name = "AUTH_PROVIDER"
