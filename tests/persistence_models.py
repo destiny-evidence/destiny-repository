@@ -1,10 +1,11 @@
 """Simple domain and persistence models for testing repositories."""
 
 from typing import Literal, Self
+from uuid import UUID
 
 import sqlalchemy as sa
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.dsl import Integer, Text, mapped_field
+from elasticsearch.dsl import Integer, Keyword, Text, mapped_field
 from sqlalchemy import String
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Mapped, mapped_column
@@ -67,6 +68,7 @@ class SimpleSQLRepository(
 class SimpleDoc(GenericESPersistence):
     """Simple test document with basic fields."""
 
+    id: UUID = mapped_field(Keyword(required=True))
     title: str = mapped_field(Text())
     year: int = mapped_field(Integer())
     content: str = mapped_field(Text())
@@ -90,6 +92,7 @@ class SimpleDoc(GenericESPersistence):
         """Create from simple domain dict."""
         return cls(
             meta={"id": domain_model.id},  # type: ignore[call-arg]
+            id=domain_model.id,
             title=domain_model.title,
             year=domain_model.year,
             content=domain_model.content,

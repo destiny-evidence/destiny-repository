@@ -2,7 +2,8 @@
 
 import json
 from abc import ABC
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from contextlib import asynccontextmanager
 from typing import Any, Generic, Never
 from uuid import UUID
 
@@ -21,7 +22,10 @@ from app.core.exceptions import (
     ESQueryError,
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
-from app.core.telemetry.repository import trace_repository_method
+from app.core.telemetry.repository import (
+    trace_repository_generator,
+    trace_repository_method,
+)
 from app.persistence.es.generics import GenericESPersistenceType
 from app.persistence.es.persistence import (
     ESFacetBucket,
@@ -33,6 +37,8 @@ from app.persistence.generics import GenericDomainModelType
 from app.persistence.repository import GenericAsyncRepository
 
 tracer = trace.get_tracer(__name__)
+
+ES_MAX_PAGE_SIZE = 10_000
 
 
 class GenericAsyncESRepository(
@@ -192,22 +198,32 @@ class GenericAsyncESRepository(
         :rtype: ESSearchResult
         """
         return ESSearchResult(
-            hits=[
-                ESHit(
-                    id=hit.meta.id,
-                    score=hit.meta.score,
-                    document=self._persistence_cls.from_hit(hit).to_domain()
-                    if parse_document
-                    else None,
-                )
-                for hit in response.hits
-            ],
-            # ES DSL typing on response.hits is incorrect
-            total=ESSearchTotal(
-                value=response.hits.total.value,  # type: ignore[attr-defined]
-                relation=response.hits.total.relation,  # type: ignore[attr-defined]
-            ),
+            hits=self._parse_hits(response, parse_document=parse_document),
+            total=self._extract_total(response),
             page=page,
+        )
+
+    def _parse_hits(
+        self, response: Response[Hit], *, parse_document: bool = False
+    ) -> list[ESHit]:
+        """Parse the hits of a search response into domain-facing ``ESHit``s."""
+        return [
+            ESHit(
+                id=hit.meta.id,
+                score=hit.meta.score,
+                document=self._persistence_cls.from_hit(hit).to_domain()
+                if parse_document
+                else None,
+            )
+            for hit in response.hits
+        ]
+
+    def _extract_total(self, response: Response[Hit]) -> ESSearchTotal:
+        """Read the total hit count from a response that tracked totals."""
+        # ES DSL typing on response.hits is incorrect
+        return ESSearchTotal(
+            value=response.hits.total.value,  # type: ignore[attr-defined]
+            relation=response.hits.total.relation,  # type: ignore[attr-defined]
         )
 
     @trace_repository_method(tracer)
@@ -258,6 +274,140 @@ class GenericAsyncESRepository(
             search = search.source(includes=[])
         response = await self._execute_search(search)
         return self._parse_search_result(response, page, parse_document=parse_document)
+
+    @asynccontextmanager
+    async def _point_in_time(self, keep_alive: str) -> AsyncIterator[str]:
+        """Open a point-in-time and guarantee it is closed."""
+        pit = await self._client.open_point_in_time(
+            index=self._persistence_cls.Index.name, keep_alive=keep_alive
+        )
+        pit_id = pit["id"]
+        try:
+            yield pit_id
+        finally:
+            await self._client.close_point_in_time(id=pit_id)
+
+    @trace_repository_generator(tracer)
+    async def scan_with_query_string(  # noqa: PLR0913
+        self,
+        query: str,
+        page_size: int = 500,
+        limit: int | None = None,
+        fields: Sequence[str] | None = None,
+        sort: list[str | dict[str, Any]] | None = None,
+        filter_clauses: Sequence[Query] | None = None,
+        *,
+        parse_document: bool = False,
+        keep_alive: str = "10m",
+    ) -> AsyncGenerator[ESSearchResult, None]:
+        """
+        Iterate over matching records in pages, unbounded by the result window.
+
+        This uses a point-in-time (PIT) page indefinitely, yielding one
+        :class:`ESSearchResult` per page. The result set is a consistent snapshot taken
+        when the PIT opens.
+
+        :param query: The query string to search with.
+        :type query: str
+        :param page_size: Records per page, i.e. the batch size per ES round-trip.
+            Must be in ``[1, ES_MAX_PAGE_SIZE]``.
+        :type page_size: int
+        :param limit: Stop after yielding this many hits in total. ``None`` scans the
+            whole result set.
+        :type limit: int | None
+        :param fields: The fields to search within. If None, searches all fields
+            (unless the query specifies otherwise).
+        :type fields: Sequence[str] | None
+        :param sort: The sorting criteria. Entries may be field-name strings or full
+            ES sort dicts. If not provided, a tiebreaker is appended to guarantee a
+            total order for paging.
+        :type sort: list[str | dict[str, Any]] | None
+        :param filter_clauses: Structured DSL clauses ANDed with the query string
+            under ``bool.filter`` (non-scoring).
+        :type filter_clauses: Sequence[Query] | None
+        :param parse_document: Whether to retrieve the documents and include them in
+            the hits as domain models.
+        :type parse_document: bool
+        :param keep_alive: PIT time-to-live, renewed on each page request.
+        :type keep_alive: str
+        :return: An async generator yielding one search result per page.
+        :rtype: AsyncGenerator[ESSearchResult, None]
+        """
+        if not 1 <= page_size <= ES_MAX_PAGE_SIZE:
+            msg = f"page_size must be in [1, {ES_MAX_PAGE_SIZE}], got {page_size}."
+            raise ESError(msg)
+        if limit is not None and limit < 1:
+            msg = f"limit must be a positive integer, got {limit}."
+            raise ESError(msg)
+
+        sort_keys = self._scan_sort_keys(sort)
+
+        async with self._point_in_time(keep_alive) as pit_id:
+            # The index is bound to the PIT, so it is not set on the search.
+            search = (
+                AsyncSearch(using=self._client)
+                .extra(pit={"id": pit_id, "keep_alive": keep_alive})
+                .extra(track_total_hits=True)
+                .query(self._compose_query(query, fields, filter_clauses))
+                .sort(*sort_keys)
+            )
+            if not parse_document:
+                search = search.source(includes=[])
+
+            emitted = 0
+            page = 1
+            cached_total: ESSearchTotal | None = None
+            while True:
+                remaining = None if limit is None else limit - emitted
+                current_size = (
+                    page_size if remaining is None else min(page_size, remaining)
+                )
+                search = search.extra(size=current_size)
+                response = await self._execute_search(search)
+
+                if cached_total is None:
+                    cached_total = self._extract_total(response)
+                    # Total is fixed at PIT open; stop recomputing it per page.
+                    search = search.extra(track_total_hits=False)
+
+                hits = self._parse_hits(response, parse_document=parse_document)
+                if not hits:
+                    break
+
+                yield ESSearchResult(hits=hits, total=cached_total, page=page)
+                emitted += len(hits)
+
+                if limit is not None and emitted >= limit:
+                    break
+                if len(hits) < current_size:
+                    break
+
+                search = search.extra(search_after=response.hits[-1].meta.sort)
+                page += 1
+
+    @staticmethod
+    def _sort_key_field(key: str | dict[str, Any]) -> str:
+        """Return the field name a sort entry sorts on (str or single-key dict)."""
+        if isinstance(key, dict):
+            return next(iter(key), "")
+        return key.lstrip("-+")
+
+    def _scan_sort_keys(
+        self, sort: list[str | dict[str, Any]] | None
+    ) -> list[str | dict[str, Any]]:
+        """
+        Append a total-order tiebreaker to the caller's sort keys.
+
+        Prefer the document ``id`` where it exists, otherwise fall back to
+        ``_shard_doc``, ES's PIT-only built-in tiebreaker.
+        """
+        keys = list(sort) if sort else []
+        if "id" in self._persistence_cls._doc_type.mapping:  # noqa: SLF001
+            if not any(self._sort_key_field(key) == "id" for key in keys):
+                keys.append({"id": {"order": "desc"}})
+        elif not any(self._sort_key_field(key) == "_shard_doc" for key in keys):
+            keys.append("_shard_doc")
+        return keys
 
     @trace_repository_method(tracer)
     async def aggregate_terms(
