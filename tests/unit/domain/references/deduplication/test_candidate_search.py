@@ -1,56 +1,42 @@
-# ruff: noqa: SLF001
-"""Tests for ReferenceESRepository._build_author_dis_max_query."""
+"""Tests for service-side candidate author-query construction."""
 
 from app.core.config import DedupCandidateScoringConfig
-from app.domain.references.repository import ReferenceESRepository
+from app.domain.references.services.deduplication_service import (
+    _candidate_author_terms,
+)
 
 _CONFIG_DEFAULTS = DedupCandidateScoringConfig()
 
-_DEFAULTS = {
-    "max_clauses": _CONFIG_DEFAULTS.max_author_clauses,
-    "min_token_length": _CONFIG_DEFAULTS.min_author_token_length,
-}
+
+def _queries(
+    authors: list[str],
+    *,
+    max_clauses: int = _CONFIG_DEFAULTS.max_author_clauses,
+    min_token_length: int = _CONFIG_DEFAULTS.min_author_token_length,
+) -> tuple[str, ...]:
+    config = DedupCandidateScoringConfig(
+        max_author_clauses=max_clauses,
+        min_author_token_length=min_token_length,
+    )
+    return _candidate_author_terms(authors, scoring_config=config)
 
 
-def _dis_max(result):
-    """Extract the dis_max dict from a Q object."""
-    return result.to_dict()["dis_max"]
-
-
-class TestBuildAuthorDisMaxQuery:
+class TestBuildCandidateAuthorQueries:
     def test_empty_authors(self):
-        assert (
-            ReferenceESRepository._build_author_dis_max_query([], **_DEFAULTS) is None
-        )
+        assert _queries([]) == ()
 
     def test_single_author(self):
-        result = ReferenceESRepository._build_author_dis_max_query(
-            ["George Harrison"], **_DEFAULTS
-        )
-        assert result is not None
-        queries = _dis_max(result)["queries"]
-        assert len(queries) == 1
-        assert "authors" in queries[0]["match"]
+        assert _queries(["George Harrison"]) == ("George Harrison",)
 
     def test_multiple_authors(self):
-        result = ReferenceESRepository._build_author_dis_max_query(
-            ["George Harrison", "Ringo Starr", "Paul McCartney"], **_DEFAULTS
-        )
-        assert result is not None
-        assert len(_dis_max(result)["queries"]) == 3
+        assert len(_queries(["George Harrison", "Ringo Starr", "Paul McCartney"])) == 3
 
     def test_max_clauses_limits_queries(self):
         alphabet = "abcdefghijklmnopqrstuvwxyz"
         authors = [
             f"Author {alphabet[i]}{alphabet[j]}" for i in range(5) for j in range(6)
         ]
-        result = ReferenceESRepository._build_author_dis_max_query(
-            authors,
-            max_clauses=10,
-            min_token_length=_CONFIG_DEFAULTS.min_author_token_length,
-        )
-        assert result is not None
-        assert len(_dis_max(result)["queries"]) == 10
+        assert len(_queries(authors, max_clauses=10)) == 10
 
     def test_large_author_list_caps_at_default(self):
         """200 authors still produces a query, capped at the default max_clauses."""
@@ -58,82 +44,38 @@ class TestBuildAuthorDisMaxQuery:
         authors = [
             f"Author {alphabet[i]}{alphabet[j]}" for i in range(8) for j in range(26)
         ][:200]
-        result = ReferenceESRepository._build_author_dis_max_query(authors, **_DEFAULTS)
-        assert result is not None
-        assert len(_dis_max(result)["queries"]) == _CONFIG_DEFAULTS.max_author_clauses
+        assert len(_queries(authors)) == _CONFIG_DEFAULTS.max_author_clauses
 
     def test_filters_single_letter_initials(self):
-        result = ReferenceESRepository._build_author_dis_max_query(
-            ["G Harrison"], **_DEFAULTS
-        )
-        assert result is not None
-        match_value = _dis_max(result)["queries"][0]["match"]["authors"]
+        match_value = _queries(["G Harrison"])[0]
         assert "harrison" in match_value.lower()
         assert "g" not in match_value.lower().split()
 
     def test_author_with_only_initials_excluded(self):
-        assert (
-            ReferenceESRepository._build_author_dis_max_query(["J S"], **_DEFAULTS)
-            is None
-        )
-        assert (
-            ReferenceESRepository._build_author_dis_max_query(["É D"], **_DEFAULTS)
-            is None
-        )
+        assert _queries(["J S"]) == ()
+        assert _queries(["É D"]) == ()
 
     def test_mixed_authors_some_filtered(self):
         """Only authors with meaningful tokens produce clauses."""
-        result = ReferenceESRepository._build_author_dis_max_query(
-            ["G H", "Ringo Starr", "P M"], **_DEFAULTS
-        )
-        assert result is not None
-        assert len(_dis_max(result)["queries"]) == 1
+        assert _queries(["G H", "Ringo Starr", "P M"]) == ("Ringo Starr",)
 
     def test_max_clauses_skips_invalid_authors(self):
-        result = ReferenceESRepository._build_author_dis_max_query(
-            ["G H", "Ringo Starr"],
-            max_clauses=1,
-            min_token_length=_CONFIG_DEFAULTS.min_author_token_length,
-        )
-        assert result is not None
-        assert len(_dis_max(result)["queries"]) == 1
+        assert _queries(["G H", "Ringo Starr"], max_clauses=1) == ("Ringo Starr",)
 
     def test_min_token_length_custom(self):
-        # "Ringo" and "Starr" are both 5 chars
-        assert (
-            ReferenceESRepository._build_author_dis_max_query(
-                ["Ringo Starr"],
-                max_clauses=_CONFIG_DEFAULTS.max_author_clauses,
-                min_token_length=6,
-            )
-            is None
-        )
-        assert (
-            ReferenceESRepository._build_author_dis_max_query(
-                ["Ringo Starr"],
-                max_clauses=_CONFIG_DEFAULTS.max_author_clauses,
-                min_token_length=5,
-            )
-            is not None
-        )
+        # "John" and "Paul" are both 4 chars.
+        assert _queries(["John Paul"], min_token_length=5) == ()
+        assert _queries(["John Paul"], min_token_length=4) == ("John Paul",)
 
     def test_preserves_meaningful_tokens(self):
-        result = ReferenceESRepository._build_author_dis_max_query(
-            ["George Harrison"], **_DEFAULTS
-        )
-        assert result is not None
-        match_value = _dis_max(result)["queries"][0]["match"]["authors"]
+        match_value = _queries(["George Harrison"])[0]
         assert "George" in match_value
         assert "Harrison" in match_value
 
     def test_preserves_non_ascii_tokens(self):
-        result = ReferenceESRepository._build_author_dis_max_query(
-            ["José Álvarez", "李 雷"], **_DEFAULTS
-        )
-        assert result is not None
-        queries = _dis_max(result)["queries"]
+        queries = _queries(["José Álvarez", "李 雷"])
         assert len(queries) == 2
-        assert "José" in queries[0]["match"]["authors"]
-        assert "Álvarez" in queries[0]["match"]["authors"]
-        assert "李" in queries[1]["match"]["authors"]
-        assert "雷" in queries[1]["match"]["authors"]
+        assert "José" in queries[0]
+        assert "Álvarez" in queries[0]
+        assert "李" in queries[1]
+        assert "雷" in queries[1]

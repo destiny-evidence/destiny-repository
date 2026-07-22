@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
-    CURRENT_FUZZY_RETRIEVAL_POLICY,
+    CandidateElasticsearchRoute,
     CandidateIdentifier,
     CandidateSelectionInput,
     CandidateSelectionRequest,
@@ -17,6 +17,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     Reference,
     ReferenceDuplicateDecision,
+    RetrievalPolicyName,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
@@ -143,6 +144,108 @@ class TestCandidateSelectionInputValidation:
                 input=CandidateSelectionInput(reference_id=uuid7()), k=1001
             )
 
+    def test_rejects_removed_include_identifier_matches(self):
+        with pytest.raises(ValidationError):
+            CandidateSelectionRequest.model_validate(
+                {
+                    "input": {
+                        "title": "t",
+                        "authors": ["a"],
+                        "publication_year": 2020,
+                    },
+                    "include_identifier_matches": False,
+                }
+            )
+
+    def test_rejects_unknown_field(self):
+        with pytest.raises(ValidationError):
+            CandidateSelectionRequest.model_validate(
+                {
+                    "input": {
+                        "title": "t",
+                        "authors": ["a"],
+                        "publication_year": 2020,
+                    },
+                    "not_a_real_field": 1,
+                }
+            )
+
+
+def test_unknown_retrieval_policy_rejected_by_request_model():
+    """An unknown policy is rejected when the request is built (a 422 at the API)."""
+    with pytest.raises(ValidationError):
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="t", authors=["a"], publication_year=2020
+            ),
+            retrieval_policy="no_such_policy",  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.asyncio
+async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service):
+    hit = uuid7()
+    service, es_refs, _, _ = build_service(
+        es_result=_es_result(ESScoreResult(id=hit, score=5.0))
+    )
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="t", authors=["a"], publication_year=2020
+            ),
+            retrieval_policy=RetrievalPolicyName.NO_YEAR_FILTER_V1,
+            hydrate=False,
+        )
+    )
+
+    query = es_refs.search_for_candidate_canonicals.call_args.args[0]
+    assert query.publication_year_range is None
+    assert result.retrieval_policy == RetrievalPolicyName.NO_YEAR_FILTER_V1
+    es_route_policies = [
+        route.policy
+        for candidate in result.candidates
+        for route in candidate.routes
+        if isinstance(route, CandidateElasticsearchRoute)
+    ]
+    assert es_route_policies
+    assert all(p == "no_year_filter_v1" for p in es_route_policies)
+
+
+@pytest.mark.asyncio
+async def test_year_optional_policy_searches_missing_year_input(build_service):
+    service, es_refs, _, _ = build_service(
+        es_result=_es_result(ESScoreResult(id=uuid7(), score=4.0))
+    )
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(title="t", authors=["a"]),  # no year
+            retrieval_policy=RetrievalPolicyName.NO_YEAR_FILTER_YEAR_OPTIONAL_V1,
+            hydrate=False,
+        )
+    )
+
+    assert result.input_searchability.searchable is True
+    es_refs.search_for_candidate_canonicals.assert_awaited_once()
+    query = es_refs.search_for_candidate_canonicals.call_args.args[0]
+    assert query.publication_year_range is None
+
+
+@pytest.mark.asyncio
+async def test_missing_year_input_unsearchable_under_control(build_service):
+    service, es_refs, _, _ = build_service()
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(title="t", authors=["a"]),  # no year
+            retrieval_policy=RetrievalPolicyName.CURRENT_FUZZY_V1,
+        )
+    )
+
+    assert result.input_searchability.searchable is False
+    es_refs.search_for_candidate_canonicals.assert_not_awaited()
+
 
 @pytest.mark.asyncio
 async def test_inline_input_returns_ranked_es_candidates(build_service):
@@ -157,12 +260,11 @@ async def test_inline_input_returns_ranked_es_candidates(build_service):
             input=CandidateSelectionInput(
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
-            include_identifier_matches=False,
             hydrate=False,
         )
     )
 
-    assert result.retrieval_policy == CURRENT_FUZZY_RETRIEVAL_POLICY
+    assert result.retrieval_policy == RetrievalPolicyName.CURRENT_FUZZY_V1
     assert result.index_version == "reference_v3"
     assert result.input_searchability.searchable is True
     assert [c.reference_id for c in result.candidates] == [id1, id2]
@@ -189,14 +291,14 @@ async def test_reference_id_input_self_excludes_and_defaults_k(build_service):
     result = await service.get_deduplication_candidates(
         CandidateSelectionRequest(
             input=CandidateSelectionInput(reference_id=reference.id),
-            include_identifier_matches=False,
             hydrate=False,
         )
     )
 
     sql_refs.get_by_pk.assert_awaited_once()
-    _, kwargs = es_refs.search_for_candidate_canonicals.call_args
-    assert kwargs["reference_id"] == reference.id
+    query = es_refs.search_for_candidate_canonicals.call_args.args[0]
+    kwargs = es_refs.search_for_candidate_canonicals.call_args.kwargs
+    assert query.excluded_reference_id == reference.id
     assert kwargs["k"] == 100  # configured default
     assert result.k_requested == 100
     assert [c.reference_id for c in result.candidates] == [hit]
@@ -212,7 +314,6 @@ async def test_k_override_passed_to_es(build_service):
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
             k=25,
-            include_identifier_matches=False,
             hydrate=False,
         )
     )
@@ -326,7 +427,6 @@ async def test_hydrate_includes_reference_projection(build_service):
             input=CandidateSelectionInput(
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
-            include_identifier_matches=False,
             hydrate=True,
         )
     )
@@ -423,7 +523,6 @@ async def test_writes_no_duplicate_decision_state(build_service):
             input=CandidateSelectionInput(
                 title="A study", authors=["Jane Doe"], publication_year=2025
             ),
-            include_identifier_matches=False,
             hydrate=False,
         )
     )

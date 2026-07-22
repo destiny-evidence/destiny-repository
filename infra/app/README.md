@@ -171,18 +171,13 @@ terraform-docs markdown --output-file README.md .
 
 | Name                                                                                                                                                                                 | Type        |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------- |
-| [azuread_app_role_assignment.developer_to_auth](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/app_role_assignment)                                  | resource    |
 | [azuread_app_role_assignment.developer_to_importer](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/app_role_assignment)                              | resource    |
-| [azuread_application_api_access.destiny_repository_auth](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_api_access)                      | resource    |
 | [azuread_application_app_role.importer](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_app_role)                                         | resource    |
 | [azuread_application_federated_identity_credential.github](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_federated_identity_credential) | resource    |
 | [azuread_application_identifier_uri.this](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_identifier_uri)                                 | resource    |
-| [azuread_application_redirect_uris.local_redirect](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_redirect_uris)                         | resource    |
 | [azuread_application_registration.destiny_repository](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_registration)                       | resource    |
-| [azuread_application_registration.destiny_repository_auth](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_registration)                  | resource    |
 | [azuread_application_registration.github_actions](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/application_registration)                           | resource    |
 | [azuread_service_principal.destiny_repository](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/service_principal)                                     | resource    |
-| [azuread_service_principal.destiny_repository_auth](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/service_principal)                                | resource    |
 | [azuread_service_principal.github_actions](https://registry.terraform.io/providers/hashicorp/azuread/3.1.0/docs/resources/service_principal)                                         | resource    |
 | [azurerm_network_security_group.db](https://registry.terraform.io/providers/hashicorp/azurerm/4.26.0/docs/resources/network_security_group)                                          | resource    |
 | [azurerm_postgresql_flexible_server.this](https://registry.terraform.io/providers/hashicorp/azurerm/4.26.0/docs/resources/postgresql_flexible_server)                                | resource    |

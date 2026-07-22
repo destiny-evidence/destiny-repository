@@ -1,17 +1,17 @@
 """Service for managing reference duplicate detection."""
 
-from typing import Literal
+from typing import Literal, assert_never
 from uuid import UUID
 
 from opentelemetry import trace
 
-from app.core.config import Environment, get_settings
+from app.core.config import DedupCandidateScoringConfig, Environment, get_settings
 from app.core.exceptions import DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    CURRENT_FUZZY_RETRIEVAL_POLICY,
     Candidate,
     CandidateCanonicalSearchFields,
+    CandidateCanonicalSearchQuery,
     CandidateElasticsearchRoute,
     CandidateIdentifier,
     CandidateIdentifierRoute,
@@ -28,10 +28,16 @@ from app.domain.references.models.models import (
     Reference,
     ReferenceDuplicateDecision,
     ReferenceDuplicateDeterminationResult,
+    RetrievalPolicyName,
 )
 from app.domain.references.models.projections import (
     CandidateReferenceProjection,
     ReferenceSearchFieldsProjection,
+)
+from app.domain.references.models.retrieval_policy import (
+    RetrievalPolicy,
+    YearStrategy,
+    resolve_retrieval_policy,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -39,6 +45,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.service import GenericService
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.utils.regex import UNICODE_LETTER_PATTERN, is_meaningful_token
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -54,21 +61,110 @@ _UNIONABLE_IDENTIFIER_TYPES = frozenset(
 )
 
 
-def _unsearchable_reason(search_fields: CandidateCanonicalSearchFields) -> str:
-    """Explain which Elasticsearch search fields are absent."""
-    missing = [
-        name
-        for name, value in (
-            ("title", search_fields.title),
-            ("authors", search_fields.authors),
-            ("publication_year", search_fields.publication_year),
-        )
-        if not value
+def _candidate_author_terms(
+    authors: list[str], *, scoring_config: DedupCandidateScoringConfig
+) -> tuple[str, ...]:
+    """Return bounded, deduplicated author terms for candidate retrieval."""
+    queries: list[str] = []
+    seen_terms: set[str] = set()
+    for author in authors:
+        tokens = [
+            token
+            for token in UNICODE_LETTER_PATTERN.findall(author)
+            if is_meaningful_token(token, scoring_config.min_author_token_length)
+        ]
+        if not tokens:
+            continue
+
+        terms = " ".join(tokens)
+        if terms in seen_terms:
+            continue
+
+        seen_terms.add(terms)
+        queries.append(terms)
+        if len(queries) >= scoring_config.max_author_clauses:
+            break
+
+    return tuple(queries)
+
+
+def build_candidate_canonical_search_query(
+    search_fields: CandidateCanonicalSearchFields,
+    *,
+    scoring_config: DedupCandidateScoringConfig,
+    policy: RetrievalPolicy,
+    reference_id: UUID | None,
+) -> CandidateCanonicalSearchQuery:
+    """Interpret a retrieval policy as a service-owned search specification."""
+    if not search_fields.title:
+        msg = "Candidate retrieval requires a title."
+        raise DeduplicationValueError(msg)
+
+    match policy.year_strategy:
+        case YearStrategy.HARD_WINDOW:
+            publication_year_range = (
+                (
+                    search_fields.publication_year - 1,
+                    search_fields.publication_year + 1,
+                )
+                if search_fields.publication_year
+                else None
+            )
+        case YearStrategy.NO_FILTER:
+            publication_year_range = None
+        case _:  # pragma: no cover - exhaustiveness guard
+            assert_never(policy.year_strategy)
+
+    return CandidateCanonicalSearchQuery(
+        title=search_fields.title,
+        title_fuzziness="AUTO",
+        title_boost=2.0,
+        title_operator="or",
+        title_minimum_should_match="50%",
+        author_terms=_candidate_author_terms(
+            search_fields.authors, scoring_config=scoring_config
+        ),
+        # The best-matching author dominates; additional matches add 10% each.
+        author_tie_breaker=0.1,
+        publication_year_range=publication_year_range,
+        # Prevent concurrently deduplicated references forming conflicting links.
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        excluded_reference_id=reference_id,
+    )
+
+
+def _unsearchable_reason(
+    search_fields: CandidateCanonicalSearchFields, policy: RetrievalPolicy
+) -> str:
+    """Explain which Elasticsearch search fields are absent, per policy."""
+    checks: list[tuple[str, object]] = [
+        ("title", search_fields.title),
+        ("authors", search_fields.authors),
     ]
+    if policy.requires_publication_year:
+        checks.append(("publication_year", search_fields.publication_year))
+    missing = [name for name, value in checks if not value]
     return (
         f"Not searchable via Elasticsearch (missing: {', '.join(missing)}); "
         "exact identifier matches, if any, are still returned."
     )
+
+
+def _searchability_reason(
+    search_fields: CandidateCanonicalSearchFields,
+    policy: RetrievalPolicy,
+    *,
+    searchable: bool,
+) -> str:
+    """Reason string separating year-absent-but-permitted from ordinary cases."""
+    if not searchable:
+        return _unsearchable_reason(search_fields, policy)
+    if search_fields.publication_year is None:
+        return (
+            f"searchable: publication_year absent, not required by "
+            f"policy '{policy.name}'"
+        )
+    return "ok"
 
 
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
@@ -95,6 +191,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         diagnostics. It writes no duplicate-decision or candidate state.
         """
         k = request.k or settings.dedup_scoring.candidate_k
+        policy = resolve_retrieval_policy(request.retrieval_policy)
 
         (
             search_fields,
@@ -106,23 +203,27 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         # it is the route for records that fail the ES searchability gate, so it runs
         # regardless of it.
         identifier_matches: dict[UUID, dict[tuple, CandidateIdentifier]] = {}
-        if request.include_identifier_matches and identifier_lookups:
+        if policy.union_identifiers and identifier_lookups:
             identifier_matches = await self._union_identifier_matches(
                 identifier_lookups, self_id=self_id
             )
 
         # The ES candidate query and its index-version stamp are only meaningful for
         # searchable inputs.
-        searchable = search_fields.is_searchable
+        searchable = policy.is_input_searchable(search_fields)
         es_result = None
         index_version = None
         if searchable:
             index_version = await self.es_uow.references.get_current_index_name()
-            es_result = await self.es_uow.references.search_for_candidate_canonicals(
+            query = build_candidate_canonical_search_query(
                 search_fields,
                 scoring_config=settings.dedup_scoring,
-                k=k,
+                policy=policy,
                 reference_id=self_id,
+            )
+            es_result = await self.es_uow.references.search_for_candidate_canonicals(
+                query,
+                k=k,
                 # The evaluation endpoint reports the exact total; the nomination
                 # path does not, so only this caller opts into the full count.
                 track_total_hits=True,
@@ -152,7 +253,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             if cid in es_scores:
                 routes.append(
                     CandidateElasticsearchRoute(
-                        policy=CURRENT_FUZZY_RETRIEVAL_POLICY,
+                        policy=policy.name,
                         rank=es_ranks[cid],
                         score=es_scores[cid],
                     )
@@ -178,12 +279,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         es_returned = len(es_hits)
         return CandidateSelectionResult(
+            retrieval_policy=policy.name,
             index_version=index_version,
             k_requested=k,
-            include_identifier_matches=request.include_identifier_matches,
             input_searchability=InputSearchability(
                 searchable=searchable,
-                reason="ok" if searchable else _unsearchable_reason(search_fields),
+                reason=_searchability_reason(
+                    search_fields, policy, searchable=searchable
+                ),
             ),
             diagnostics=CandidateSelectionDiagnostics(
                 es_took_ms=es_result.took_ms if es_result else None,
@@ -408,8 +511,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """
         Nominate candidate canonical references for the given decision.
 
-        This uses the search strategy in
-        :attr:`app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals`.
+        This uses the control retrieval policy's search strategy.
 
         :param reference_duplicate_decision: The decision to find candidates for.
         :type reference_duplicate_decision: ReferenceDuplicateDecision
@@ -441,10 +543,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
         # The candidate depth here preserves this path's historical behaviour; the
         # production K is chosen by the recall@K evaluation, not this path.
-        search_result = await self.es_uow.references.search_for_candidate_canonicals(
+        query = build_candidate_canonical_search_query(
             search_fields,
-            reference_id=reference.id,
             scoring_config=settings.dedup_scoring,
+            policy=resolve_retrieval_policy(RetrievalPolicyName.CURRENT_FUZZY_V1),
+            reference_id=reference.id,
+        )
+        search_result = await self.es_uow.references.search_for_candidate_canonicals(
+            query,
             k=10,
         )
 
