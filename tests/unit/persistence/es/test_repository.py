@@ -1,12 +1,14 @@
 """Unit tests for Elasticsearch repository query string search functionality."""
 
+from typing import Any
 from uuid import uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.dsl import Text, mapped_field
 from elasticsearch.helpers import async_bulk
 
-from app.core.exceptions import ESQueryError
+from app.core.exceptions import ESError, ESQueryError
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import Visibility
 from app.domain.references.repository import ReferenceESRepository
@@ -14,7 +16,8 @@ from app.domain.references.services.world_bank_regions import (
     SOUTH_ASIA,
     SUB_SAHARAN_AFRICA,
 )
-from app.persistence.es.repository import GenericAsyncESRepository
+from app.persistence.es.persistence import GenericESPersistence
+from app.persistence.es.repository import ES_MAX_PAGE_SIZE, GenericAsyncESRepository
 from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
 
@@ -349,6 +352,269 @@ async def test_query_string_search_with_document(
     assert results.hits[0].document.title == "test document"
     assert results.hits[0].document.year == 2023
     assert results.hits[0].document.content == "This is sample content for testing"
+
+
+def build_simple_docs(count: int, *, title: str, year: int = 2000) -> list[SimpleDoc]:
+    """Build ``count`` indexable SimpleDocs sharing a title (and year)."""
+    docs = []
+    for _ in range(count):
+        doc_id = uuid7()
+        docs.append(
+            SimpleDoc(
+                meta={"id": doc_id},
+                id=doc_id,
+                title=title,
+                year=year,
+                content="content",
+            )
+        )
+    return docs
+
+
+async def bulk_index(repository: SimpleRepository, docs: list[SimpleDoc]) -> None:
+    """Bulk-index docs and refresh so they are immediately searchable."""
+    await async_bulk(
+        repository._client,  # noqa: SLF001
+        [doc.to_dict(include_meta=True) for doc in docs],
+        index=SimpleDoc.Index.name,
+    )
+    await repository._client.indices.refresh(  # noqa: SLF001
+        index=SimpleDoc.Index.name
+    )
+
+
+def test_scan_sort_keys_prefers_mapped_id(simple_repository: SimpleRepository):
+    """When the index maps ``id``, it is appended as the tiebreaker."""
+    assert simple_repository._scan_sort_keys(["_score"]) == [  # noqa: SLF001
+        "_score",
+        {"id": {"order": "desc"}},
+    ]
+
+
+def test_scan_sort_keys_does_not_duplicate_id(simple_repository: SimpleRepository):
+    """A caller already sorting on ``id`` is not given a second id key."""
+    assert simple_repository._scan_sort_keys([{"id": {"order": "asc"}}]) == [  # noqa: SLF001
+        {"id": {"order": "asc"}}
+    ]
+
+
+def test_scan_sort_keys_falls_back_to_shard_doc(es_client: AsyncElasticsearch):
+    """Without a mapped ``id``, ``_shard_doc`` is used as the tiebreaker."""
+
+    class NoIdDoc(GenericESPersistence):
+        title: str = mapped_field(Text())
+
+        class Index:
+            name = "test_no_id"
+
+        def to_domain(self) -> SimpleDomainModel:
+            return SimpleDomainModel(title=self.title)
+
+        @classmethod
+        def from_domain(cls, domain_model: SimpleDomainModel) -> "NoIdDoc":
+            return cls(title=domain_model.title)
+
+    repository = GenericAsyncESRepository(es_client, SimpleDomainModel, NoIdDoc)
+    assert repository._scan_sort_keys(["_score"]) == ["_score", "_shard_doc"]  # noqa: SLF001
+
+
+async def test_scan_paginates_all_results(simple_repository: SimpleRepository):
+    """Scan yields every match exactly once across incrementing pages."""
+    docs = build_simple_docs(55, title="scan")
+    await bulk_index(simple_repository, docs)
+
+    pages = [
+        page
+        async for page in simple_repository.scan_with_query_string(
+            "title:scan", page_size=20
+        )
+    ]
+
+    assert [page.page for page in pages] == [1, 2, 3]
+    # Total is exact (track_total_hits) and identical on every page.
+    assert all(page.total.value == 55 for page in pages)
+    assert all(page.total.relation == "eq" for page in pages)
+
+    returned = [hit.id for page in pages for hit in page.hits]
+    assert len(returned) == 55
+    assert {str(rid) for rid in returned} == {str(doc.id) for doc in docs}
+
+
+async def test_scan_tiebreaker_orders_fully_tied_sort(
+    simple_repository: SimpleRepository,
+):
+    """A sort whose values are all equal still pages without skips or dupes."""
+    docs = build_simple_docs(45, title="tied", year=2000)
+    await bulk_index(simple_repository, docs)
+
+    returned = [
+        hit.id
+        async for page in simple_repository.scan_with_query_string(
+            "title:tied", page_size=10, sort=["year"]
+        )
+        for hit in page.hits
+    ]
+
+    assert len(returned) == 45
+    assert {str(rid) for rid in returned} == {str(doc.id) for doc in docs}
+
+
+async def test_scan_limit_trims_final_page(simple_repository: SimpleRepository):
+    """A limit that is not a page multiple trims the final page exactly."""
+    await bulk_index(simple_repository, build_simple_docs(55, title="scan"))
+
+    pages = [
+        page
+        async for page in simple_repository.scan_with_query_string(
+            "title:scan", page_size=20, limit=25
+        )
+    ]
+
+    assert [len(page.hits) for page in pages] == [20, 5]
+    assert sum(len(page.hits) for page in pages) == 25
+
+
+async def test_scan_limit_exceeding_total_returns_all(
+    simple_repository: SimpleRepository,
+):
+    """A limit larger than the result set returns everything and stops."""
+    await bulk_index(simple_repository, build_simple_docs(10, title="scan"))
+
+    returned = [
+        hit
+        async for page in simple_repository.scan_with_query_string(
+            "title:scan", page_size=20, limit=1000
+        )
+        for hit in page.hits
+    ]
+
+    assert len(returned) == 10
+
+
+async def test_scan_exceeds_result_window(simple_repository: SimpleRepository):
+    """Scan pages past ES's 10,000 from+size result window."""
+    count = ES_MAX_PAGE_SIZE + 50
+    await bulk_index(simple_repository, build_simple_docs(count, title="big"))
+
+    pages = [
+        page
+        async for page in simple_repository.scan_with_query_string(
+            "title:big", page_size=ES_MAX_PAGE_SIZE
+        )
+    ]
+
+    assert [len(page.hits) for page in pages] == [ES_MAX_PAGE_SIZE, 50]
+    assert pages[0].total.value == count
+    assert pages[0].total.relation == "eq"
+
+
+async def test_scan_parse_document(simple_repository: SimpleRepository):
+    """parse_document=True hydrates domain models on scanned hits."""
+    await bulk_index(simple_repository, build_simple_docs(3, title="hydrate"))
+
+    pages = [
+        page
+        async for page in simple_repository.scan_with_query_string(
+            "title:hydrate", parse_document=True
+        )
+    ]
+
+    hits = [hit for page in pages for hit in page.hits]
+    assert len(hits) == 3
+    assert all(isinstance(hit.document, SimpleDomainModel) for hit in hits)
+    assert all(
+        hit.document.title == "hydrate"
+        for hit in hits
+        if isinstance(hit.document, SimpleDomainModel)
+    )
+
+
+@pytest.mark.parametrize("page_size", [0, -1, ES_MAX_PAGE_SIZE + 1])
+async def test_scan_rejects_invalid_page_size(
+    simple_repository: SimpleRepository, page_size: int
+):
+    """page_size must sit within [1, ES_MAX_PAGE_SIZE]."""
+    with pytest.raises(ESError):
+        await anext(
+            simple_repository.scan_with_query_string("title:scan", page_size=page_size)
+        )
+
+
+async def test_scan_rejects_invalid_limit(simple_repository: SimpleRepository):
+    """A non-positive limit is rejected."""
+    with pytest.raises(ESError):
+        await anext(simple_repository.scan_with_query_string("title:scan", limit=0))
+
+
+async def test_scan_closes_pit_on_early_exit(
+    simple_repository: SimpleRepository,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Abandoning the scan mid-iteration still closes the PIT."""
+    await bulk_index(simple_repository, build_simple_docs(30, title="scan"))
+
+    close_calls: list[dict] = []
+    original_close = simple_repository._client.close_point_in_time  # noqa: SLF001
+
+    async def spy_close(**kwargs: Any) -> Any:
+        close_calls.append(kwargs)
+        return await original_close(**kwargs)
+
+    monkeypatch.setattr(
+        simple_repository._client,  # noqa: SLF001
+        "close_point_in_time",
+        spy_close,
+    )
+
+    scan = simple_repository.scan_with_query_string("title:scan", page_size=10)
+    await anext(scan)
+    await scan.aclose()
+
+    assert len(close_calls) == 1
+
+
+async def test_scan_closes_pit_on_error(
+    simple_repository: SimpleRepository,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """An error mid-scan still closes the PIT (the DSL CM trap)."""
+    await bulk_index(simple_repository, build_simple_docs(30, title="scan"))
+
+    close_calls: list[dict] = []
+    original_close = simple_repository._client.close_point_in_time  # noqa: SLF001
+
+    async def spy_close(**kwargs: Any) -> Any:
+        close_calls.append(kwargs)
+        return await original_close(**kwargs)
+
+    monkeypatch.setattr(
+        simple_repository._client,  # noqa: SLF001
+        "close_point_in_time",
+        spy_close,
+    )
+
+    call_count = {"n": 0}
+    original_execute = simple_repository._execute_search  # noqa: SLF001
+
+    async def failing_execute(search: Any) -> Any:
+        call_count["n"] += 1
+        if call_count["n"] == 2:
+            msg = "boom"
+            raise RuntimeError(msg)
+        return await original_execute(search)
+
+    monkeypatch.setattr(simple_repository, "_execute_search", failing_execute)
+
+    async def drain() -> None:
+        async for _ in simple_repository.scan_with_query_string(
+            "title:scan", page_size=10
+        ):
+            pass
+
+    with pytest.raises(RuntimeError, match="boom"):
+        await drain()
+
+    assert len(close_calls) == 1
 
 
 @pytest.fixture

@@ -2,7 +2,7 @@
 
 import datetime
 from abc import ABC
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncGenerator, Mapping, Sequence
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
@@ -26,7 +26,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.core.telemetry.repository import trace_repository_method
+from app.core.telemetry.repository import (
+    trace_repository_generator,
+    trace_repository_method,
+)
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
@@ -398,6 +401,32 @@ class ReferenceESRepository(
             filter_clauses=self._build_filter_clauses(query),
             parse_document=False,
         )
+
+    @trace_repository_generator(tracer)
+    async def scan(
+        self,
+        query: SearchQuery,
+        sort: list[str] | None = None,
+        limit: int | None = None,
+        page_size: int = 500,
+    ) -> AsyncGenerator[ESSearchResult, None]:
+        """
+        Scan references matching ``query`` in pages.
+
+        ``scan_with_query_string`` appends the ``id`` tiebreaker, so unlike
+        :meth:`search` this method doesn't add one itself.
+        """
+        sort_keys: list[str | dict[str, Any]] = list(sort) if sort else ["_score"]
+        async for page in self.scan_with_query_string(
+            query.query_string,
+            fields=self.default_search_fields,
+            limit=limit,
+            page_size=page_size,
+            sort=sort_keys,
+            filter_clauses=self._build_filter_clauses(query),
+            parse_document=False,
+        ):
+            yield page
 
     @trace_repository_method(tracer)
     async def aggregate_facets(

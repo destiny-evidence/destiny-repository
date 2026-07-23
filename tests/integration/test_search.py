@@ -726,3 +726,38 @@ async def test_search_tolerates_index_without_id_mapping(
 
     assert result.total.value == 5
     assert len(result.hits) == 5
+
+
+async def test_scan_pages_all_matches(es_client: AsyncElasticsearch) -> None:
+    """scan() yields every match once across pages, with an exact total."""
+    references = [
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="scantoken", publication_year=2020
+                    )
+                )
+            ]
+        )
+        for _ in range(25)
+    ]
+    repository = await _wipe_and_index(es_client, references)
+    query = SearchQuery(query_string="title:scantoken")
+
+    pages = [page async for page in repository.scan(query, page_size=10)]
+
+    assert [page.page for page in pages] == [1, 2, 3]
+    assert all(page.total.value == 25 for page in pages)
+    assert all(page.total.relation == "eq" for page in pages)
+    returned = [hit.id for page in pages for hit in page.hits]
+    assert len(returned) == 25
+    assert set(returned) == {reference.id for reference in references}
+
+    # A limit trims the total emitted, even across page boundaries.
+    limited = [
+        hit.id
+        async for page in repository.scan(query, page_size=10, limit=15)
+        for hit in page.hits
+    ]
+    assert len(limited) == 15
