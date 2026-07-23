@@ -674,6 +674,28 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
         return all((self.publication_year, self.authors, self.title))
 
 
+class YearDecayConfig(BaseModel):
+    """Immutable, versioned publication-year decay parameters (no query origin)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    offset: int = Field(default=1, ge=0)
+    scale: int = Field(default=9, gt=0)
+    decay: float = Field(default=0.5, gt=0, lt=1)
+    weight: float = Field(default=0.10, ge=0)
+
+
+class YearDecay(YearDecayConfig):
+    """Resolved decay spec carried on a candidate query; origin is required."""
+
+    origin: int
+
+    @property
+    def max_boost(self) -> float:
+        """Cap on the summed function score; stays pinned to the bonus weight."""
+        return 1.0 + self.weight
+
+
 class CandidateCanonicalSearchQuery(BaseModel):
     """Service-owned candidate query specification for Elasticsearch translation."""
 
@@ -687,6 +709,7 @@ class CandidateCanonicalSearchQuery(BaseModel):
     author_terms: tuple[str, ...]
     author_tie_breaker: float
     publication_year_range: tuple[int, int] | None
+    publication_year_decay: YearDecay | None = None
     duplicate_determination: DuplicateDetermination
     excluded_reference_id: UUID | None
 
