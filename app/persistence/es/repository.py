@@ -2,7 +2,7 @@
 
 import json
 from abc import ABC
-from collections.abc import AsyncGenerator, AsyncIterator, Sequence
+from collections.abc import AsyncGenerator, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Generic, Never
 from uuid import UUID
@@ -276,7 +276,7 @@ class GenericAsyncESRepository(
         return self._parse_search_result(response, page, parse_document=parse_document)
 
     @asynccontextmanager
-    async def _point_in_time(self, keep_alive: str) -> AsyncIterator[str]:
+    async def _point_in_time(self, keep_alive: str) -> AsyncGenerator[str, None]:
         """Open a point-in-time and guarantee it is closed."""
         pit = await self._client.open_point_in_time(
             index=self._persistence_cls.Index.name, keep_alive=keep_alive

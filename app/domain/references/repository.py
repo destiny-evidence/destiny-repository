@@ -410,7 +410,12 @@ class ReferenceESRepository(
         limit: int | None = None,
         page_size: int = 500,
     ) -> AsyncGenerator[ESSearchResult, None]:
-        """Scan references matching ``query`` in pages."""
+        """
+        Scan references matching ``query`` in pages.
+
+        ``scan_with_query_string`` appends the ``id`` tiebreaker, so unlike
+        :meth:`search` this method doesn't add one itself.
+        """
         sort_keys: list[str | dict[str, Any]] = list(sort) if sort else ["_score"]
         async for page in self.scan_with_query_string(
             query.query_string,
