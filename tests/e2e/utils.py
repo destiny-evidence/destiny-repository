@@ -1,6 +1,8 @@
 """Utility functions for import end-to-end tests."""
 
+import asyncio
 import datetime
+import time
 from collections.abc import Callable, Mapping
 from contextlib import _AsyncGeneratorContextManager
 from uuid import UUID
@@ -107,30 +109,40 @@ async def poll_batch_status(
     return summary
 
 
-@retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
 async def poll_duplicate_process(
     session: AsyncSession,
     reference_id: UUID,
     required_state: DuplicateDetermination | None = None,
+    *,
+    timeout_seconds: float = 20.0,
+    interval_seconds: float = 1.0,
 ) -> ReferenceDuplicateDecision:
-    """Poll the duplicate process until it is in the required state."""
-    query = select(ReferenceDuplicateDecision).where(
-        ReferenceDuplicateDecision.reference_id == reference_id,
-    )
-    if required_state:
-        query = query.where(
-            ReferenceDuplicateDecision.duplicate_determination == required_state
-        )
-    else:
-        query = query.where(ReferenceDuplicateDecision.active_decision)
-    result = await session.execute(query)
-    try:
-        decision = result.scalar_one()
-    except NoResultFound as exc:
-        msg = "Reference duplicate decision not yet in required state"
-        raise TestPollingExhaustedError(msg) from exc
+    """
+    Poll the duplicate process until it is in the required state.
 
-    return decision
+    Polls on an elapsed-time budget, not a fixed attempt count: the dedup task
+    retries the active-decision constraint collision, during which a reference
+    transiently has no active decision, and recovery can outlast a short budget.
+    """
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        query = select(ReferenceDuplicateDecision).where(
+            ReferenceDuplicateDecision.reference_id == reference_id,
+        )
+        if required_state:
+            query = query.where(
+                ReferenceDuplicateDecision.duplicate_determination == required_state
+            )
+        else:
+            query = query.where(ReferenceDuplicateDecision.active_decision)
+        result = await session.execute(query)
+        try:
+            return result.scalar_one()
+        except NoResultFound as exc:
+            if time.monotonic() >= deadline:
+                msg = "Reference duplicate decision not yet in required state"
+                raise TestPollingExhaustedError(msg) from exc
+            await asyncio.sleep(interval_seconds)
 
 
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
