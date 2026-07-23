@@ -679,7 +679,7 @@ class ReferenceESRepository(
                 duplicate_determination=query.duplicate_determination,
             )
         )
-        return Q(
+        bool_query = Q(
             "bool",
             must=[
                 Q(
@@ -698,6 +698,34 @@ class ReferenceESRepository(
             must_not=[Q("ids", values=[query.excluded_reference_id])]
             if query.excluded_reference_id
             else [],
+        )
+        if query.publication_year_decay is None:
+            return bool_query
+        # Soft year decay: keep every match (no hard year filter) but multiply in a
+        # bounded exponential year-proximity bonus. The exists guard leaves
+        # candidates with no publication_year on the base score (bonus weight 0).
+        decay = query.publication_year_decay
+        return Q(
+            "function_score",
+            query=bool_query,
+            functions=[
+                {"weight": 1.0},
+                {
+                    "filter": Q("exists", field="publication_year"),
+                    "exp": {
+                        "publication_year": {
+                            "origin": decay.origin,
+                            "offset": decay.offset,
+                            "scale": decay.scale,
+                            "decay": decay.decay,
+                        }
+                    },
+                    "weight": decay.weight,
+                },
+            ],
+            score_mode="sum",
+            boost_mode="multiply",
+            max_boost=decay.max_boost,
         )
 
     @trace_repository_method(tracer)
