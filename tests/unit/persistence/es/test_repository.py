@@ -6,11 +6,12 @@ from uuid import uuid7
 import pytest
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import Text, mapped_field
+from elasticsearch.dsl.query import Term
 from elasticsearch.helpers import async_bulk
 
 from app.core.exceptions import ESError, ESQueryError
 from app.domain.references.models.es import ReferenceDocument
-from app.domain.references.models.models import Visibility
+from app.domain.references.models.models import SearchQuery, Visibility
 from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.services.world_bank_regions import (
     SOUTH_ASIA,
@@ -617,6 +618,75 @@ async def test_scan_closes_pit_on_error(
     assert len(close_calls) == 1
 
 
+def test_compose_query_scored_bare(simple_repository: SimpleRepository):
+    """A scored query with no filters is a bare query_string."""
+    query = simple_repository._compose_query("title:x", None, None)  # noqa: SLF001
+    assert query.to_dict() == {"query_string": {"query": "title:x"}}
+
+
+def test_compose_query_scored_keeps_query_in_must(simple_repository: SimpleRepository):
+    """Scored: the query_string stays in `must` (scored) alongside filters."""
+    query = simple_repository._compose_query(  # noqa: SLF001
+        "title:x", None, [Term(year=2000)]
+    )
+    assert query.to_dict() == {
+        "bool": {
+            "must": [{"query_string": {"query": "title:x"}}],
+            "filter": [{"term": {"year": 2000}}],
+        }
+    }
+
+
+def test_compose_query_non_scoring_uses_filter_context(
+    simple_repository: SimpleRepository,
+):
+    """`score=False` drops the query_string into filter context (no scoring)."""
+    query = simple_repository._compose_query(  # noqa: SLF001
+        "title:x", None, [Term(year=2000)], score=False
+    )
+    assert query.to_dict() == {
+        "bool": {
+            "filter": [
+                {"query_string": {"query": "title:x"}},
+                {"term": {"year": 2000}},
+            ]
+        }
+    }
+
+
+async def test_count_with_query_string_is_exact(simple_repository: SimpleRepository):
+    """count returns the exact number of matches."""
+    await bulk_index(simple_repository, build_simple_docs(7, title="countme"))
+    total = await simple_repository.count_with_query_string("title:countme")
+    assert total.value == 7
+    assert total.relation == "eq"
+
+
+async def test_count_exceeds_result_window(simple_repository: SimpleRepository):
+    """count is exact beyond ES's 10,000 window, unlike a bounded search."""
+    count = ES_MAX_PAGE_SIZE + 1
+    await bulk_index(simple_repository, build_simple_docs(count, title="many"))
+    total = await simple_repository.count_with_query_string("title:many")
+    assert total.value == count
+    assert total.relation == "eq"
+
+
+async def test_scan_non_scoring_returns_all(simple_repository: SimpleRepository):
+    """A non-scoring scan (filter context) still returns every match."""
+    docs = build_simple_docs(30, title="noscore")
+    await bulk_index(simple_repository, docs)
+
+    returned = [
+        hit.id
+        async for page in simple_repository.scan_with_query_string(
+            "title:noscore", page_size=10, score=False
+        )
+        for hit in page.hits
+    ]
+
+    assert {str(rid) for rid in returned} == {str(doc.id) for doc in docs}
+
+
 @pytest.fixture
 async def reference_repository(
     es_client: AsyncElasticsearch,
@@ -700,3 +770,28 @@ async def test_linked_data_field_search(
         assert str(results.hits[0].id) == linked_data_ref
     else:
         assert len(results.hits) == 0
+
+
+@pytest.mark.usefixtures("linked_data_ref")
+async def test_reference_count(reference_repository: ReferenceESRepository):
+    """`ReferenceESRepository.count` returns an exact match total for a query."""
+    total = await reference_repository.count(
+        SearchQuery(query_string="_exists_:linked_data_concepts")
+    )
+    assert total.value == 1
+    assert total.relation == "eq"
+
+
+async def test_reference_scan_non_scoring_returns_all(
+    reference_repository: ReferenceESRepository,
+    linked_data_ref: str,
+):
+    """A non-scoring reference scan orders by the id tiebreaker and returns matches."""
+    returned = [
+        hit.id
+        async for page in reference_repository.scan(
+            SearchQuery(query_string="_exists_:linked_data_concepts"), score=False
+        )
+        for hit in page.hits
+    ]
+    assert [str(rid) for rid in returned] == [linked_data_ref]

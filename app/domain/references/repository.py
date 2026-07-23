@@ -409,14 +409,21 @@ class ReferenceESRepository(
         sort: list[str] | None = None,
         limit: int | None = None,
         page_size: int = 500,
+        *,
+        score: bool = True,
     ) -> AsyncGenerator[ESSearchResult, None]:
         """
         Scan references matching ``query`` in pages.
 
         ``scan_with_query_string`` appends the ``id`` tiebreaker, so unlike
-        :meth:`search` this method doesn't add one itself.
+        :meth:`search` this method doesn't add one itself. With ``score=False`` the
+        query runs non-scoring and, absent an explicit ``sort``, ordering is purely
+        that tiebreaker.
         """
-        sort_keys: list[str | dict[str, Any]] = list(sort) if sort else ["_score"]
+        if sort:
+            sort_keys: list[str | dict[str, Any]] = list(sort)
+        else:
+            sort_keys = ["_score"] if score else []
         async for page in self.scan_with_query_string(
             query.query_string,
             fields=self.default_search_fields,
@@ -425,8 +432,18 @@ class ReferenceESRepository(
             sort=sort_keys,
             filter_clauses=self._build_filter_clauses(query),
             parse_document=False,
+            score=score,
         ):
             yield page
+
+    @trace_repository_method(tracer)
+    async def count(self, query: SearchQuery) -> ESSearchTotal:
+        """Return the exact number of references matching ``query``."""
+        return await self.count_with_query_string(
+            query.query_string,
+            fields=self.default_search_fields,
+            filter_clauses=self._build_filter_clauses(query),
+        )
 
     @trace_repository_method(tracer)
     async def aggregate_facets(
@@ -862,6 +879,20 @@ class EnhancementRequestSQLRepository(
         ).where(SQLPendingEnhancement.enhancement_request_id == enhancement_request_id)
         results = await self._session.execute(query)
         return {row[0] for row in results.all()}
+
+    async def count_pending_enhancements_by_status(
+        self, enhancement_request_id: UUID
+    ) -> dict[PendingEnhancementStatus, int]:
+        """Count the pending enhancements of a request, grouped by status."""
+        query = (
+            select(SQLPendingEnhancement.status, func.count())
+            .where(
+                SQLPendingEnhancement.enhancement_request_id == enhancement_request_id
+            )
+            .group_by(SQLPendingEnhancement.status)
+        )
+        results = await self._session.execute(query)
+        return {row[0]: row[1] for row in results.all()}
 
     async def get_by_pk(
         self,
