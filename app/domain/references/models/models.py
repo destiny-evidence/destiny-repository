@@ -831,6 +831,10 @@ class RetrievalPolicyName(StrEnum):
     as input."""
     NO_YEAR_FILTER_YEAR_OPTIONAL_V1 = "no_year_filter_year_optional_v1"
     """Drops the year filter and makes publication year optional as input."""
+    SOFT_YEAR_DECAY_V1 = "soft_year_decay_v1"
+    """Bounded soft year decay: no hard year filter; a native Elasticsearch
+    exponential proximity bonus adds at most 10% to the title/author score.
+    Requires publication year as input."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):

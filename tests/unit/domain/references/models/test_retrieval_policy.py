@@ -102,3 +102,39 @@ def test_registry_is_read_only():
         RETRIEVAL_POLICIES["injected"] = resolve_retrieval_policy(
             RetrievalPolicyName.CURRENT_FUZZY_V1
         )
+
+
+def test_soft_year_decay_v1_regime():
+    from app.domain.references.models.models import YearDecayConfig
+
+    assert RetrievalPolicyName.SOFT_YEAR_DECAY_V1.value == "soft_year_decay_v1"
+    policy = resolve_retrieval_policy(RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+    assert policy.year_strategy is YearStrategy.SOFT_DECAY
+    assert policy.union_identifiers is True
+    assert policy.requires_publication_year is True
+    assert policy.year_decay == YearDecayConfig()
+
+
+def test_soft_decay_requires_a_decay_config():
+    from app.domain.references.models.retrieval_policy import RetrievalPolicy
+
+    with pytest.raises(ValidationError):
+        RetrievalPolicy(
+            name=RetrievalPolicyName.SOFT_YEAR_DECAY_V1,
+            union_identifiers=True,
+            year_strategy=YearStrategy.SOFT_DECAY,
+            year_decay=None,
+        )
+
+
+def test_non_soft_decay_rejects_a_decay_config():
+    from app.domain.references.models.models import YearDecayConfig
+    from app.domain.references.models.retrieval_policy import RetrievalPolicy
+
+    with pytest.raises(ValidationError):
+        RetrievalPolicy(
+            name=RetrievalPolicyName.CURRENT_FUZZY_V1,
+            union_identifiers=True,
+            year_strategy=YearStrategy.HARD_WINDOW,
+            year_decay=YearDecayConfig(),
+        )

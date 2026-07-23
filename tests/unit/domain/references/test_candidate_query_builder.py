@@ -155,3 +155,27 @@ def test_es_translation_preserves_baseline_query_semantics():
             "must_not": [{"ids": {"values": [reference_id]}}],
         }
     }
+
+
+def test_soft_decay_builds_decay_spec_and_no_range():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+    assert query.publication_year_range is None
+    decay = query.publication_year_decay
+    assert decay is not None
+    assert (decay.origin, decay.offset, decay.scale, decay.decay, decay.weight) == (
+        2000,
+        1,
+        9,
+        0.5,
+        0.10,
+    )
+    assert decay.max_boost == pytest.approx(1.10)
+
+
+def test_soft_decay_without_year_raises():
+    fields = CandidateCanonicalSearchFields(title="Shared Title", authors=["Smith"])
+    with pytest.raises(DeduplicationValueError, match="publication year"):
+        _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
