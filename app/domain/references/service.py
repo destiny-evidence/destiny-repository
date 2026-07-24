@@ -29,6 +29,7 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
+    EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
     EnhancementType,
     ExportFormat,
@@ -100,6 +101,9 @@ tracer = get_tracer(__name__)
 
 class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     """The service which manages our references."""
+
+    SEARCH_ENHANCEMENT_PAGE_SIZE = 1000
+    """References scanned per page when collecting a search enhancement request."""
 
     def __init__(
         self,
@@ -734,6 +738,125 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement_request_id=enhancement_request_id,
             source=source,
         )
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def count_search_matches(
+        self, robot_id: UUID, search: SearchQuery
+    ) -> ESSearchTotal:
+        """Validate the robot and count the references the search matches."""
+        await self.sql_uow.robots.verify_pk_existence([robot_id])
+        return await self._search_service.count(search)
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def register_search_enhancement_request(
+        self, robot_id: UUID, search: SearchQuery, source: str | None = None
+    ) -> EnhancementRequest:
+        """Validate the robot, record the match count, and persist a pending request."""
+        await self.sql_uow.robots.verify_pk_existence([robot_id])
+        total = await self._search_service.count(search)
+        enhancement_request = EnhancementRequest(
+            robot_id=robot_id,
+            reference_ids=[],
+            source=source,
+            search=search,
+            search_status=EnhancementRequestSearchStatus.PENDING,
+            n_matched=total.value,
+        )
+        await self.sql_uow.enhancement_requests.add(enhancement_request)
+        return enhancement_request
+
+    @es_unit_of_work
+    async def collect_pending_enhancements_from_search(
+        self, enhancement_request_id: UUID
+    ) -> None:
+        """Scan the request's search and create pending enhancements, page by page."""
+        enhancement_request = await self._claim_search_enhancement_request(
+            enhancement_request_id
+        )
+        if enhancement_request is None:
+            logger.info(
+                "Skipping search enhancement collection; not pending",
+                enhancement_request_id=str(enhancement_request_id),
+            )
+            return
+        if enhancement_request.search is None:
+            await self._fail_search_enhancement_request(
+                enhancement_request_id, "Request has no search to collect."
+            )
+            return
+        search = enhancement_request.search
+        try:
+            async for page in self._search_service.scan(
+                search, score=False, page_size=self.SEARCH_ENHANCEMENT_PAGE_SIZE
+            ):
+                await self.create_pending_enhancements(
+                    robot_id=enhancement_request.robot_id,
+                    reference_ids=[hit.id for hit in page.hits],
+                    enhancement_request_id=enhancement_request_id,
+                )
+        except Exception as exc:
+            logger.exception(
+                "Search enhancement collection failed",
+                enhancement_request_id=str(enhancement_request_id),
+            )
+            await self._fail_search_enhancement_request(
+                enhancement_request_id, f"Failed to collect references: {exc}"
+            )
+        else:
+            await self._complete_search_enhancement_request(enhancement_request_id)
+
+    @sql_unit_of_work
+    async def _claim_search_enhancement_request(
+        self, enhancement_request_id: UUID
+    ) -> EnhancementRequest | None:
+        """Atomically move PENDING -> SEARCHING; ``None`` if not claimable."""
+        updated = await self.sql_uow.enhancement_requests.bulk_update_by_filter(
+            filter_conditions={
+                "id": enhancement_request_id,
+                "search_status": EnhancementRequestSearchStatus.PENDING,
+            },
+            search_status=EnhancementRequestSearchStatus.SEARCHING,
+        )
+        if updated == 0:
+            return None
+        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+
+    @sql_unit_of_work
+    async def _complete_search_enhancement_request(
+        self, enhancement_request_id: UUID
+    ) -> None:
+        """Mark a search request's collection phase complete."""
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request_id,
+            search_status=EnhancementRequestSearchStatus.COMPLETED,
+        )
+
+    @sql_unit_of_work
+    async def _fail_search_enhancement_request(
+        self, enhancement_request_id: UUID, error: str
+    ) -> None:
+        """Mark a search request's collection phase failed."""
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request_id,
+            search_status=EnhancementRequestSearchStatus.FAILED,
+            error=error,
+        )
+
+    @sql_unit_of_work
+    async def get_search_enhancement_request(
+        self, enhancement_request_id: UUID
+    ) -> tuple[EnhancementRequest, dict[PendingEnhancementStatus, int]]:
+        """Fetch a search request with derived status and per-status counts."""
+        requests = self.sql_uow.enhancement_requests
+        enhancement_request = await requests.get_by_pk(
+            enhancement_request_id, preload=["status"]
+        )
+        counts = await requests.count_pending_enhancements_by_status(
+            enhancement_request_id
+        )
+        return enhancement_request, counts
 
     @sql_unit_of_work
     async def expire_and_replace_stale_pending_enhancements(

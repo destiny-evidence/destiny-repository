@@ -12,7 +12,6 @@ from app.domain.references.models.models import (
     CrossFacetCell,
     Enhancement,
     EnhancementRequest,
-    EnhancementRequestSearchStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     FacetType,
@@ -31,7 +30,6 @@ from app.domain.references.models.models import (
     RobotEnhancementBatch,
     RobotResultValidationEntry,
     SearchExport,
-    SearchQuery,
 )
 from app.domain.references.services.access_control_service import RedactedReference
 from app.domain.service import GenericAntiCorruptionService
@@ -286,25 +284,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
-
-    def search_enhancement_request_from_sdk(
-        self,
-        request_in: destiny_sdk.robots.SearchEnhancementRequestIn,
-    ) -> EnhancementRequest:
-        """Create a search-based EnhancementRequest from the SDK model."""
-        try:
-            enhancement_request = EnhancementRequest(
-                robot_id=request_in.robot_id,
-                reference_ids=[],
-                source=request_in.source,
-                search=SearchQuery(query_string=request_in.search_query),
-                search_status=EnhancementRequestSearchStatus.PENDING,
-            )
-            enhancement_request.check_serializability()
-        except ValidationError as exception:
-            raise SDKToDomainError(errors=exception.errors()) from exception
-        else:
-            return enhancement_request
 
     def search_enhancement_request_to_sdk(
         self,
