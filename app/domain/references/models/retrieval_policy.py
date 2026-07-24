@@ -9,7 +9,7 @@ focused experiment cycle; a policy name's semantics never change.
 from collections.abc import Mapping
 from enum import Enum
 from types import MappingProxyType
-from typing import Self
+from typing import Literal, Self
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -44,6 +44,7 @@ class RetrievalPolicy(BaseModel):
     year_strategy: YearStrategy
     requires_publication_year: bool = True
     year_decay: YearDecayConfig | None = None
+    title_fuzziness: Literal["AUTO", "0"] = "AUTO"
 
     @model_validator(mode="after")
     def _validate_year_decay_matches_strategy(self) -> Self:
@@ -92,6 +93,13 @@ RETRIEVAL_POLICIES: Mapping[RetrievalPolicyName, RetrievalPolicy] = MappingProxy
                 union_identifiers=True,
                 year_strategy=YearStrategy.SOFT_DECAY,
                 year_decay=YearDecayConfig(),
+            ),
+            RetrievalPolicy(
+                name=RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1,
+                union_identifiers=True,
+                year_strategy=YearStrategy.SOFT_DECAY,
+                year_decay=YearDecayConfig(),
+                title_fuzziness="0",
             ),
         )
     }

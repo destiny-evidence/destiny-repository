@@ -138,3 +138,20 @@ def test_non_soft_decay_rejects_a_decay_config():
             year_strategy=YearStrategy.HARD_WINDOW,
             year_decay=YearDecayConfig(),
         )
+
+
+def test_soft_year_decay_nonfuzzy_probe_v1_regime():
+    policy = resolve_retrieval_policy(
+        RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1
+    )
+    assert policy.year_strategy is YearStrategy.SOFT_DECAY
+    assert policy.requires_publication_year is True
+    assert policy.title_fuzziness == "0"
+
+
+def test_fuzzy_policies_default_to_auto_fuzziness():
+    for name in (
+        RetrievalPolicyName.CURRENT_FUZZY_V1,
+        RetrievalPolicyName.SOFT_YEAR_DECAY_V1,
+    ):
+        assert resolve_retrieval_policy(name).title_fuzziness == "AUTO"

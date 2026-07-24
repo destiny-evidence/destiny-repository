@@ -249,3 +249,13 @@ def test_soft_decay_es_translation_wraps_function_score():
             "max_boost": 1.1,
         }
     }
+
+
+def test_nonfuzzy_probe_disables_title_fuzziness():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    fuzzy = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+    nonfuzzy = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1)
+    assert fuzzy.title_fuzziness == "AUTO"
+    assert nonfuzzy.title_fuzziness == "0"

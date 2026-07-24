@@ -128,7 +128,7 @@ def build_candidate_canonical_search_query(
 
     return CandidateCanonicalSearchQuery(
         title=search_fields.title,
-        title_fuzziness="AUTO",
+        title_fuzziness=policy.title_fuzziness,
         title_boost=2.0,
         title_operator="or",
         title_minimum_should_match="50%",

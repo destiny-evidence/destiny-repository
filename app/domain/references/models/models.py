@@ -835,6 +835,10 @@ class RetrievalPolicyName(StrEnum):
     """Bounded soft year decay: no hard year filter; a native Elasticsearch
     exponential proximity bonus adds at most 10% to the title/author score.
     Requires publication year as input."""
+    SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1 = "soft_year_decay_nonfuzzy_probe_v1"
+    """Evaluation-only probe: soft_year_decay_v1 with a non-fuzzy (zero
+    edit-distance) title match, to measure the recall cost of dropping fuzzy
+    title expansion. Not for production nomination."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):
