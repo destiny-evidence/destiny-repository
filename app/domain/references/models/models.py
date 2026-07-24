@@ -86,17 +86,17 @@ class ExportStatus(StrEnum):
 SearchExportStatus = ExportStatus
 
 
-class EnhancementRequestCollectionStatus(StrEnum):
-    """Lifecycle of the search-collection phase of a search enhancement request."""
+class EnhancementRequestSearchStatus(StrEnum):
+    """Progress of the search phase of a search-based enhancement request."""
 
     PENDING = auto()
-    """Collection task has been queued."""
-    RUNNING = auto()
-    """The search is being scanned and pending enhancements created."""
+    """Search has been queued."""
+    SEARCHING = auto()
+    """The search is being scanned and enhancements requested."""
     COMPLETED = auto()
-    """All matching references have had pending enhancements created."""
+    """All matching references have had enhancements requested."""
     FAILED = auto()
-    """Collection failed before all pending enhancements were created."""
+    """Search failed before all enhancements were requested."""
 
 
 class ExportFormat(StrEnum):
@@ -540,16 +540,16 @@ class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin)
             "with an explicit `reference_ids` list."
         ),
     )
-    search_collection_status: EnhancementRequestCollectionStatus | None = Field(
+    search_status: EnhancementRequestSearchStatus | None = Field(
         default=None,
         description=(
-            "Progress of scanning the search and creating pending enhancements; "
+            "Progress of scanning the search and requesting enhancements; "
             "None for id-list requests."
         ),
     )
     n_matched: int | None = Field(
         default=None,
-        description="References matched by `search`, known once collection starts.",
+        description="References matched by `search`, known once the search starts.",
     )
     enhancement_parameters: dict | None = Field(
         default=None,
@@ -591,8 +591,8 @@ Errors for individual references are provided <TBC>.
             if self.reference_ids:
                 msg = "A search-based enhancement request cannot list reference_ids."
                 raise ValueError(msg)
-        elif self.search_collection_status is not None or self.n_matched is not None:
-            msg = "search_collection_status and n_matched require a search."
+        elif self.search_status is not None or self.n_matched is not None:
+            msg = "search_status and n_matched require a search."
             raise ValueError(msg)
         return self
 

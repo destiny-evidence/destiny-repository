@@ -24,7 +24,7 @@ from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
 from app.domain.references.models.models import (
     AnnotationFilter,
     DuplicateDetermination,
-    EnhancementRequestCollectionStatus,
+    EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
     EnhancementType,
     ExportFormat,
@@ -386,8 +386,8 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
     source: Mapped[str | None] = mapped_column(String, nullable=True)
 
     search: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
-    search_collection_status: Mapped[EnhancementRequestCollectionStatus | None] = (
-        mapped_column(String, nullable=True)
+    search_status: Mapped[EnhancementRequestSearchStatus | None] = mapped_column(
+        String, nullable=True
     )
     n_matched: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -418,7 +418,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             search=domain_obj.search.model_dump(mode="json")
             if domain_obj.search
             else None,
-            search_collection_status=domain_obj.search_collection_status,
+            search_status=domain_obj.search_status,
             n_matched=domain_obj.n_matched,
             enhancement_parameters=domain_obj.enhancement_parameters
             if domain_obj.enhancement_parameters
@@ -451,7 +451,7 @@ class EnhancementRequest(GenericSQLPersistence[DomainEnhancementRequest]):
             request_status=self.request_status,
             source=self.source,
             search=SearchQuery.model_validate(self.search) if self.search else None,
-            search_collection_status=self.search_collection_status,
+            search_status=self.search_status,
             n_matched=self.n_matched,
             enhancement_parameters=self.enhancement_parameters
             if self.enhancement_parameters

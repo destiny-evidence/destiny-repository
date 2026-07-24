@@ -8,7 +8,7 @@ from app.domain.references.models.models import (
     EnhancementRequest as DomainEnhancementRequest,
 )
 from app.domain.references.models.models import (
-    EnhancementRequestCollectionStatus,
+    EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierType,
@@ -289,7 +289,7 @@ async def test_reference_with_relationships():
 
 
 def test_enhancement_request_search_fields_round_trip():
-    """A search-based request round-trips its search, collection status, and total."""
+    """A search-based request round-trips its search, search status, and total."""
     request = DomainEnhancementRequest(
         id=uuid7(),
         reference_ids=[],
@@ -299,24 +299,18 @@ def test_enhancement_request_search_fields_round_trip():
             query_string="climate OR warming",
             publication_year_range=PublicationYearRange(start=2000, end=2020),
         ),
-        search_collection_status=EnhancementRequestCollectionStatus.RUNNING,
+        search_status=EnhancementRequestSearchStatus.SEARCHING,
         n_matched=1234,
     )
 
     sql_request = EnhancementRequest.from_domain(request)
     assert isinstance(sql_request.search, dict)
-    assert (
-        sql_request.search_collection_status
-        == EnhancementRequestCollectionStatus.RUNNING
-    )
+    assert sql_request.search_status == EnhancementRequestSearchStatus.SEARCHING
     assert sql_request.n_matched == 1234
 
     domain_request = sql_request.to_domain()
     assert domain_request.search == request.search
-    assert (
-        domain_request.search_collection_status
-        == EnhancementRequestCollectionStatus.RUNNING
-    )
+    assert domain_request.search_status == EnhancementRequestSearchStatus.SEARCHING
     assert domain_request.n_matched == 1234
 
 
@@ -331,12 +325,12 @@ def test_enhancement_request_id_list_has_no_search_fields():
 
     sql_request = EnhancementRequest.from_domain(request)
     assert sql_request.search is None
-    assert sql_request.search_collection_status is None
+    assert sql_request.search_status is None
     assert sql_request.n_matched is None
 
     domain_request = sql_request.to_domain()
     assert domain_request.search is None
-    assert domain_request.search_collection_status is None
+    assert domain_request.search_status is None
     assert domain_request.n_matched is None
 
 
@@ -352,8 +346,8 @@ def test_enhancement_request_rejects_search_with_reference_ids():
         )
 
 
-def test_enhancement_request_rejects_collection_fields_without_search():
-    """Collection status/total are only meaningful for a search-based request."""
+def test_enhancement_request_rejects_search_fields_without_search():
+    """search_status/n_matched are only meaningful for a search-based request."""
     with pytest.raises(ValueError, match="require a search"):
         DomainEnhancementRequest(
             id=uuid7(),
