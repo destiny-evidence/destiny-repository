@@ -531,3 +531,35 @@ async def test_writes_no_duplicate_decision_state(build_service):
     decisions.add_bulk.assert_not_awaited()
     decisions.update_by_pk.assert_not_awaited()
     decisions.merge.assert_not_awaited()
+
+
+def test_track_total_hits_defaults_true_and_is_overridable():
+    default_request = CandidateSelectionRequest(
+        input=CandidateSelectionInput(title="t", authors=["a"], publication_year=2020),
+    )
+    assert default_request.track_total_hits is True
+    proxy_request = CandidateSelectionRequest(
+        input=CandidateSelectionInput(title="t", authors=["a"], publication_year=2020),
+        track_total_hits=False,
+    )
+    assert proxy_request.track_total_hits is False
+
+
+@pytest.mark.asyncio
+async def test_track_total_hits_forwarded_to_es_search(build_service):
+    service, es_refs, _, _ = build_service(
+        es_result=_es_result(ESScoreResult(id=uuid7(), score=4.0))
+    )
+
+    await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="t", authors=["a"], publication_year=2020
+            ),
+            track_total_hits=False,
+            hydrate=False,
+        )
+    )
+
+    call = es_refs.search_for_candidate_canonicals.call_args
+    assert call.kwargs["track_total_hits"] is False

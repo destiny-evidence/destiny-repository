@@ -236,9 +236,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             es_result = await self.es_uow.references.search_for_candidate_canonicals(
                 query,
                 k=k,
-                # The evaluation endpoint reports the exact total; the nomination
-                # path does not, so only this caller opts into the full count.
-                track_total_hits=True,
+                # Exact total for reporting by default; callers benchmarking
+                # throughput pass false for the production-cost proxy.
+                track_total_hits=request.track_total_hits,
             )
 
         es_hits = es_result.hits if es_result else []

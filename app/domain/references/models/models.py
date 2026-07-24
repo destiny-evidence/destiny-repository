@@ -922,6 +922,15 @@ class CandidateSelectionRequest(BaseModel):
         default=True,
         description="Include hydrated bibliographic fields on each candidate.",
     )
+    track_total_hits: bool = Field(
+        default=True,
+        description=(
+            "Compute the exact Elasticsearch total-hit count for reporting. Set "
+            "false for the production-throughput proxy: the total becomes a lower "
+            "bound and the query skips the full count, which is expensive on broad "
+            "(e.g. no-year-filter) queries."
+        ),
+    )
 
 
 class CandidateElasticsearchRoute(BaseModel):
