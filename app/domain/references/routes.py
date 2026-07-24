@@ -87,6 +87,7 @@ from app.domain.references.services.export_service import (
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.tasks import (
     run_reference_export_task,
+    run_search_enhancement_request_task,
     run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
@@ -309,6 +310,14 @@ robot_enhancement_batch_router = APIRouter(
 enhancement_request_automation_router = APIRouter(
     prefix="/automations",
     tags=["automated-enhancement-requests"],
+    dependencies=[
+        Depends(enhancement_request_hybrid_auth),
+        Depends(PayloadAttributeTracer("robot_id")),
+    ],
+)
+enhancement_request_search_router = APIRouter(
+    prefix="/search",
+    tags=["search-enhancement-requests"],
     dependencies=[
         Depends(enhancement_request_hybrid_auth),
         Depends(PayloadAttributeTracer("robot_id")),
@@ -1315,6 +1324,99 @@ async def check_enhancement_request_status(
     )
 
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
+
+
+@enhancement_request_search_router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=None,
+    responses={
+        status.HTTP_200_OK: {"model": destiny_sdk.search.SearchResultTotal},
+        status.HTTP_202_ACCEPTED: {
+            "model": destiny_sdk.robots.SearchEnhancementRequestRead
+        },
+    },
+)
+async def request_search_enhancement(
+    request_in: destiny_sdk.robots.SearchEnhancementRequestIn,
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    response: Response,
+    *,
+    dry_run: bool = False,
+) -> (
+    destiny_sdk.robots.SearchEnhancementRequestRead
+    | destiny_sdk.search.SearchResultTotal
+):
+    """
+    Request enhancements for every reference matching a search.
+
+    With ``dry_run=true`` the matching count is returned synchronously and nothing is
+    created. Otherwise the request is queued and its pollable status is returned.
+    """
+    await robot_service.get_robot_standalone(request_in.robot_id)
+    if dry_run:
+        total = await reference_service.count_search_matches(
+            SearchQuery(query_string=request_in.search_query)
+        )
+        response.status_code = status.HTTP_200_OK
+        return destiny_sdk.search.SearchResultTotal(
+            count=total.value, is_lower_bound=total.relation != "eq"
+        )
+
+    enhancement_request = await reference_service.register_search_enhancement_request(
+        anti_corruption_service.search_enhancement_request_from_sdk(request_in)
+    )
+    try:
+        await queue_task_with_trace(
+            run_search_enhancement_request_task,
+            long_running=True,
+            priority=TaskPriority.HIGH,
+            otel_enabled=settings.otel_enabled,
+            enhancement_request_id=enhancement_request.id,
+        )
+    except Exception as exc:
+        logger.exception(
+            "Failed to enqueue search enhancement request task",
+            enhancement_request_id=str(enhancement_request.id),
+        )
+        await reference_service.fail_search_enhancement_request(
+            enhancement_request.id, f"Failed to enqueue collection task: {exc}"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Could not enqueue search enhancement request; please retry.",
+        ) from exc
+
+    return anti_corruption_service.search_enhancement_request_to_sdk(
+        enhancement_request, {}
+    )
+
+
+@enhancement_request_search_router.get("/{enhancement_request_id}/")
+async def check_search_enhancement_request_status(
+    enhancement_request_id: Annotated[
+        destiny_sdk.UUID, Path(description="The ID of the search enhancement request.")
+    ],
+    reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+) -> destiny_sdk.robots.SearchEnhancementRequestRead:
+    """Check the search and enhancement progress of a search enhancement request."""
+    (
+        enhancement_request,
+        status_counts,
+    ) = await reference_service.get_search_enhancement_request(enhancement_request_id)
+    return anti_corruption_service.search_enhancement_request_to_sdk(
+        enhancement_request, status_counts
+    )
+
+
+enhancement_request_router.include_router(enhancement_request_search_router)
 
 
 @robot_enhancement_batch_router.post(

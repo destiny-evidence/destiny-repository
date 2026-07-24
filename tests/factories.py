@@ -40,6 +40,8 @@ from faker.providers import BaseProvider
 
 from app.domain.references.models.models import (
     Enhancement,
+    EnhancementRequest,
+    EnhancementRequestSearchStatus,
     FullTextEnhancement,
     LinkedDataProjection,
     LinkedExternalIdentifier,
@@ -47,6 +49,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceSearchProjection,
+    SearchQuery,
     Visibility,
 )
 from app.domain.references.models.projections import ReferenceSearchFieldsProjection
@@ -469,3 +472,14 @@ class PendingEnhancementFactory(factory.Factory):
     expires_at = factory.LazyFunction(
         lambda: utc_now() + fake.time_delta(end_datetime="+1h")
     )
+
+
+class SearchEnhancementRequestFactory(factory.Factory):
+    class Meta:
+        model = EnhancementRequest
+
+    id = uuid7_factory
+    reference_ids = factory.LazyFunction(list)
+    robot_id = uuid7_factory
+    search = factory.LazyFunction(lambda: SearchQuery(query_string="title:climate"))
+    search_status = EnhancementRequestSearchStatus.PENDING

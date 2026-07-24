@@ -19,6 +19,7 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
+    EnhancementRequestSearchStatus,
     ExternalIdentifierAdapter,
     LinkedExternalIdentifier,
     PendingEnhancement,
@@ -28,6 +29,7 @@ from app.domain.references.models.models import (
     ReferenceWithChangeset,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
+    SearchQuery,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.service import ReferenceService
@@ -41,7 +43,9 @@ from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import (
     BlobStorageFile,
 )
+from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.utils.time_and_date import utc_now
+from tests.factories import SearchEnhancementRequestFactory
 from tests.unit.domain.conftest import FakeRepository
 
 
@@ -1283,3 +1287,144 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
         and "Pending enhancement exceeded retry limit" in record.getMessage()
     ]
     assert len(warning_logs) == 2
+
+
+def _search_service_counting(total):
+    search_service = Mock()
+    search_service.count = AsyncMock(return_value=total)
+    return search_service
+
+
+def _search_service_yielding(pages):
+    async def _scan(*_args, **_kwargs):
+        for page in pages:
+            yield page
+
+    search_service = Mock()
+    search_service.scan = _scan
+    return search_service
+
+
+@pytest.mark.asyncio
+async def test_register_search_enhancement_request(fake_repository, fake_uow):
+    fake_requests = fake_repository()
+    uow = fake_uow(enhancement_requests=fake_requests)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    request = SearchEnhancementRequestFactory.build()
+
+    created = await service.register_search_enhancement_request(request)
+
+    assert created.id == request.id
+    assert created.search_status == EnhancementRequestSearchStatus.PENDING
+    # The match count is recorded by the collection task, not at registration.
+    assert created.n_matched is None
+    assert fake_requests.get_first_record().id == request.id
+
+
+@pytest.mark.asyncio
+async def test_count_search_matches(fake_repository, fake_uow):
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), fake_uow(), fake_uow()
+    )
+    search_service = _search_service_counting(ESSearchTotal(value=7, relation="eq"))
+
+    with patch.object(service, "_search_service", search_service):
+        total = await service.count_search_matches(SearchQuery(query_string="climate"))
+
+    assert total.value == 7
+
+
+@pytest.mark.asyncio
+async def test_collect_pending_enhancements_from_search(fake_repository, fake_uow):
+    request = SearchEnhancementRequestFactory.build()
+    matched_ids = [uuid7(), uuid7(), uuid7()]
+    fake_requests = fake_repository(init_entries=[request])
+    fake_pending = fake_repository()
+    uow = fake_uow(
+        enhancement_requests=fake_requests, pending_enhancements=fake_pending
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    search_service = _search_service_yielding(
+        [
+            ESSearchResult(
+                hits=[ESHit(id=matched_ids[0]), ESHit(id=matched_ids[1])],
+                total=ESSearchTotal(value=3, relation="eq"),
+                page=1,
+            ),
+            ESSearchResult(
+                hits=[ESHit(id=matched_ids[2])],
+                total=ESSearchTotal(value=3, relation="eq"),
+                page=2,
+            ),
+        ]
+    )
+
+    with patch.object(service, "_search_service", search_service):
+        await service.collect_pending_enhancements_from_search(request.id)
+
+    pending = await fake_pending.get_all()
+    assert {pe.reference_id for pe in pending} == set(matched_ids)
+    assert all(pe.enhancement_request_id == request.id for pe in pending)
+    stored = fake_requests.get_first_record()
+    assert stored.n_matched == 3
+    assert stored.search_status == EnhancementRequestSearchStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_collect_search_enhancement_request_skips_when_not_pending(
+    fake_repository, fake_uow
+):
+    request = SearchEnhancementRequestFactory.build(
+        search_status=EnhancementRequestSearchStatus.SEARCHING
+    )
+    fake_requests = fake_repository(init_entries=[request])
+    fake_pending = fake_repository()
+    uow = fake_uow(
+        enhancement_requests=fake_requests, pending_enhancements=fake_pending
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    search_service = _search_service_yielding([])
+
+    with patch.object(service, "_search_service", search_service):
+        await service.collect_pending_enhancements_from_search(request.id)
+
+    assert await fake_pending.get_all() == []
+    assert (
+        fake_requests.get_first_record().search_status
+        == EnhancementRequestSearchStatus.SEARCHING
+    )
+
+
+@pytest.mark.asyncio
+async def test_collect_search_enhancement_request_marks_failed_on_error(
+    fake_repository, fake_uow
+):
+    request = SearchEnhancementRequestFactory.build()
+    fake_requests = fake_repository(init_entries=[request])
+    uow = fake_uow(
+        enhancement_requests=fake_requests, pending_enhancements=fake_repository()
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    async def _scan_boom(*_args, **_kwargs):
+        msg = "boom"
+        raise RuntimeError(msg)
+        yield
+
+    search_service = Mock()
+    search_service.scan = _scan_boom
+
+    with patch.object(service, "_search_service", search_service):
+        await service.collect_pending_enhancements_from_search(request.id)
+
+    stored = fake_requests.get_first_record()
+    assert stored.search_status == EnhancementRequestSearchStatus.FAILED
+    assert "boom" in stored.error

@@ -12,6 +12,7 @@ from app.domain.references.models.models import (
     CrossFacetCell,
     Enhancement,
     EnhancementRequest,
+    EnhancementRequestSearchStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
     FacetType,
@@ -21,6 +22,7 @@ from app.domain.references.models.models import (
     LinkedDataCountryFilter,
     LinkedDataCountryWBRegionFilter,
     LinkedExternalIdentifier,
+    PendingEnhancementStatus,
     PublicationYearRange,
     Reference,
     ReferenceDuplicateDecision,
@@ -29,6 +31,7 @@ from app.domain.references.models.models import (
     RobotEnhancementBatch,
     RobotResultValidationEntry,
     SearchExport,
+    SearchQuery,
 )
 from app.domain.references.services.access_control_service import RedactedReference
 from app.domain.service import GenericAntiCorruptionService
@@ -280,6 +283,50 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     if enhancement_request.validation_result_file
                     else None,
                 },
+            )
+        except ValidationError as exception:
+            raise DomainToSDKError(errors=exception.errors()) from exception
+
+    def search_enhancement_request_from_sdk(
+        self,
+        request_in: destiny_sdk.robots.SearchEnhancementRequestIn,
+    ) -> EnhancementRequest:
+        """Create a pending search-based EnhancementRequest from the SDK model."""
+        try:
+            enhancement_request = EnhancementRequest(
+                robot_id=request_in.robot_id,
+                reference_ids=[],
+                source=request_in.source,
+                search=SearchQuery(query_string=request_in.search_query),
+                search_status=EnhancementRequestSearchStatus.PENDING,
+            )
+            enhancement_request.check_serializability()
+        except ValidationError as exception:
+            raise SDKToDomainError(errors=exception.errors()) from exception
+        else:
+            return enhancement_request
+
+    def search_enhancement_request_to_sdk(
+        self,
+        enhancement_request: EnhancementRequest,
+        status_counts: dict[PendingEnhancementStatus, int],
+    ) -> destiny_sdk.robots.SearchEnhancementRequestRead:
+        """Convert a search-based enhancement request to the SDK read model."""
+        try:
+            return destiny_sdk.robots.SearchEnhancementRequestRead.model_validate(
+                {
+                    "id": enhancement_request.id,
+                    "robot_id": enhancement_request.robot_id,
+                    "source": enhancement_request.source,
+                    "search_status": enhancement_request.search_status,
+                    "request_status": enhancement_request.request_status,
+                    "n_matched": enhancement_request.n_matched,
+                    "n_enhancements_requested": sum(status_counts.values()),
+                    "enhancement_status_counts": {
+                        status.value: count for status, count in status_counts.items()
+                    },
+                    "error": enhancement_request.error,
+                }
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
