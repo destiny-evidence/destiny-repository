@@ -717,6 +717,28 @@ class CandidateCanonicalSearchFields(ProjectedBaseModel):
         return all((self.publication_year, self.authors, self.title))
 
 
+class YearDecayConfig(BaseModel):
+    """Immutable, versioned publication-year decay parameters (no query origin)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    offset: int = Field(default=1, ge=0)
+    scale: int = Field(default=9, gt=0)
+    decay: float = Field(default=0.5, gt=0, lt=1)
+    weight: float = Field(default=0.10, ge=0)
+
+
+class YearDecay(YearDecayConfig):
+    """Resolved decay spec carried on a candidate query; origin is required."""
+
+    origin: int
+
+    @property
+    def max_boost(self) -> float:
+        """Cap on the summed function score; stays pinned to the bonus weight."""
+        return 1.0 + self.weight
+
+
 class CandidateCanonicalSearchQuery(BaseModel):
     """Service-owned candidate query specification for Elasticsearch translation."""
 
@@ -730,6 +752,7 @@ class CandidateCanonicalSearchQuery(BaseModel):
     author_terms: tuple[str, ...]
     author_tie_breaker: float
     publication_year_range: tuple[int, int] | None
+    publication_year_decay: YearDecay | None = None
     duplicate_determination: DuplicateDetermination
     excluded_reference_id: UUID | None
 
@@ -851,6 +874,14 @@ class RetrievalPolicyName(StrEnum):
     as input."""
     NO_YEAR_FILTER_YEAR_OPTIONAL_V1 = "no_year_filter_year_optional_v1"
     """Drops the year filter and makes publication year optional as input."""
+    SOFT_YEAR_DECAY_V1 = "soft_year_decay_v1"
+    """Bounded soft year decay: no hard year filter; a native Elasticsearch
+    exponential proximity bonus adds at most 10% to the title/author score.
+    Requires publication year as input."""
+    SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1 = "soft_year_decay_nonfuzzy_probe_v1"
+    """Evaluation-only probe: soft_year_decay_v1 with zero edit-distance title
+    matching. Used to measure the recall and latency impact of disabling fuzzy
+    title matching for this query shape. Not for production nomination."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):
@@ -933,6 +964,13 @@ class CandidateSelectionRequest(BaseModel):
     hydrate: bool = Field(
         default=True,
         description="Include hydrated bibliographic fields on each candidate.",
+    )
+    track_total_hits: bool = Field(
+        default=True,
+        description=(
+            "Exact total-hit count (true, past the ES 10k cap) or the Elasticsearch "
+            "default lower bound (false, as on the nomination path)."
+        ),
     )
 
 
