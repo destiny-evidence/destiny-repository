@@ -140,6 +140,18 @@ def test_non_soft_decay_rejects_a_decay_config():
         )
 
 
+def test_soft_decay_policies_unsearchable_without_year():
+    """SOFT_DECAY needs a year origin, so a yearless input is not searchable."""
+    fields = CandidateCanonicalSearchFields(
+        title="t", authors=["a"], publication_year=None
+    )
+    for name in (
+        RetrievalPolicyName.SOFT_YEAR_DECAY_V1,
+        RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1,
+    ):
+        assert resolve_retrieval_policy(name).is_input_searchable(fields) is False
+
+
 def test_soft_year_decay_nonfuzzy_probe_v1_regime():
     policy = resolve_retrieval_policy(
         RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1
