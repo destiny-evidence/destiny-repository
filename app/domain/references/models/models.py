@@ -86,6 +86,19 @@ class ExportStatus(StrEnum):
 SearchExportStatus = ExportStatus
 
 
+class EnhancementRequestCollectionStatus(StrEnum):
+    """Lifecycle of the search-collection phase of a search enhancement request."""
+
+    PENDING = auto()
+    """Collection task has been queued."""
+    RUNNING = auto()
+    """The search is being scanned and pending enhancements created."""
+    COMPLETED = auto()
+    """All matching references have had pending enhancements created."""
+    FAILED = auto()
+    """Collection failed before all pending enhancements were created."""
+
+
 class ExportFormat(StrEnum):
     """The serialization format of a reference export."""
 
@@ -520,6 +533,24 @@ class EnhancementRequest(DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin)
         default=None,
         description="The source of the batch enhancement request.",
     )
+    search: "SearchQuery | None" = Field(
+        default=None,
+        description=(
+            "The search this request was created from, if any. Mutually exclusive "
+            "with an explicit `reference_ids` list."
+        ),
+    )
+    search_collection_status: EnhancementRequestCollectionStatus | None = Field(
+        default=None,
+        description=(
+            "Progress of scanning the search and creating pending enhancements; "
+            "None for id-list requests."
+        ),
+    )
+    n_matched: int | None = Field(
+        default=None,
+        description="References matched by `search`, known once collection starts.",
+    )
     enhancement_parameters: dict | None = Field(
         default=None,
         description="Additional optional parameters to pass through to the robot.",
@@ -552,6 +583,18 @@ Errors for individual references are provided <TBC>.
     def n_references(self) -> int:
         """The number of references in the request."""
         return len(self.reference_ids)
+
+    @model_validator(mode="after")
+    def _validate_search_xor_reference_ids(self) -> Self:
+        """Require a request to be search-based or an explicit id list, never both."""
+        if self.search is not None:
+            if self.reference_ids:
+                msg = "A search-based enhancement request cannot list reference_ids."
+                raise ValueError(msg)
+        elif self.search_collection_status is not None or self.n_matched is not None:
+            msg = "search_collection_status and n_matched require a search."
+            raise ValueError(msg)
+        return self
 
 
 class Export(DomainBaseModel, SQLAttributeMixin):
