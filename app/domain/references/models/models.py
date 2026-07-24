@@ -836,9 +836,9 @@ class RetrievalPolicyName(StrEnum):
     exponential proximity bonus adds at most 10% to the title/author score.
     Requires publication year as input."""
     SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1 = "soft_year_decay_nonfuzzy_probe_v1"
-    """Evaluation-only probe: soft_year_decay_v1 with a non-fuzzy (zero
-    edit-distance) title match, to measure the recall cost of dropping fuzzy
-    title expansion. Not for production nomination."""
+    """Evaluation-only probe: soft_year_decay_v1 with zero edit-distance title
+    matching. Used to measure the recall and latency impact of disabling fuzzy
+    title matching for this query shape. Not for production nomination."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):
@@ -926,9 +926,9 @@ class CandidateSelectionRequest(BaseModel):
         default=True,
         description=(
             "Compute the exact Elasticsearch total-hit count for reporting. Set "
-            "false for the production-throughput proxy: the total becomes a lower "
-            "bound and the query skips the full count, which is expensive on broad "
-            "(e.g. no-year-filter) queries."
+            "false for the production-throughput proxy: Elasticsearch may return a "
+            "lower-bound total and can avoid exact full-count work, which is "
+            "especially relevant on broad no-year-filter queries."
         ),
     )
 
