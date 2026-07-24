@@ -94,6 +94,14 @@ class Attributes(StrEnum):
     SEARCH_EXPORT_ID = "app.search_export.id"
     REFERENCE_EXPORT_ID = "app.reference_export.id"
 
+    # Robot automation detection (percolation)
+    PERCOLATION_DOCUMENT_COUNT = "app.percolation.document_count"
+    PERCOLATION_MATCH_COUNT = "app.percolation.match_count"
+    ROBOT_AUTOMATION_MATCH_COUNT = "app.robot_automation.match_count"
+    ROBOT_AUTOMATION_PENDING_ENHANCEMENT_COUNT = (
+        "app.robot_automation.pending_enhancement_count"
+    )
+
     # Other
     FILE_LINE_NO = "app.file.line_number"
 

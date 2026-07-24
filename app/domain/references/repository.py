@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import (
     trace_repository_generator,
     trace_repository_method,
@@ -1039,6 +1040,12 @@ class RobotAutomationESRepository(
                     reference_ids={reference.id for reference in matches},
                 )
             )
+
+        trace_attribute(Attributes.PERCOLATION_DOCUMENT_COUNT, len(documents))
+        trace_attribute(
+            Attributes.PERCOLATION_MATCH_COUNT,
+            len(robot_automation_percolation_results),
+        )
 
         return robot_automation_percolation_results
 
