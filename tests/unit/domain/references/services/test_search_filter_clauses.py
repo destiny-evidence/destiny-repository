@@ -175,3 +175,36 @@ def test_build_filter_clauses_excludes_named_facet_filters():
         Range(publication_year={"gte": 2020}),
         Term(annotations="taxonomy:x/y"),
     ]
+
+
+def test_normalize_sort_key_bare_relevance_is_best_first():
+    """Bare ``relevance`` maps to ``_score`` descending (best matches first)."""
+    repository = _StubReferenceESRepository()
+    assert repository._normalize_sort_key("relevance") == {  # noqa: SLF001
+        "_score": {"order": "desc"}
+    }
+
+
+def test_normalize_sort_key_descending_relevance_is_worst_first():
+    """``-relevance`` inverts to ``_score`` ascending (worst matches first)."""
+    repository = _StubReferenceESRepository()
+    assert repository._normalize_sort_key("-relevance") == {  # noqa: SLF001
+        "_score": {"order": "asc"}
+    }
+
+
+def test_normalize_sort_key_plus_relevance_is_best_first():
+    """A leading ``+`` is stripped but does not invert the best-first default."""
+    repository = _StubReferenceESRepository()
+    assert repository._normalize_sort_key("+relevance") == {  # noqa: SLF001
+        "_score": {"order": "desc"}
+    }
+
+
+def test_normalize_sort_key_passes_mapped_fields_through_unchanged():
+    """Non-``relevance`` tokens are returned verbatim for ES to resolve."""
+    repository = _StubReferenceESRepository()
+    assert repository._normalize_sort_key("year") == "year"  # noqa: SLF001
+    assert repository._normalize_sort_key("-year") == "-year"  # noqa: SLF001
+    # A field that merely contains "relevance" is not the virtual token.
+    assert repository._normalize_sort_key("relevance_score") == "relevance_score"  # noqa: SLF001
