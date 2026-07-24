@@ -690,46 +690,49 @@ async def test_canonical_candidate_search(
     assert not results.hits
 
 
+def _reference_with_drifted_biblio(
+    reference: Reference, ref_id: object, year: int
+) -> Reference:
+    """Copy the fixture reference with a shared drifted title/author and a set year."""
+    return reference.model_copy(
+        update={
+            "id": ref_id,
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid7(),
+                        "reference_id": ref_id,
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": "Shared Drifted Title",
+                                    "authorship": [
+                                        Authorship(
+                                            display_name="Jane Smith",
+                                            position=AuthorPosition.FIRST,
+                                        )
+                                    ],
+                                    "publication_year": year,
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+
 async def test_no_year_filter_returns_year_drifted_candidate(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """NO_FILTER drops the ±1 year gate: a 10-year-drifted duplicate is returned."""
-
-    def _with_biblio(ref_id: object, year: int) -> Reference:
-        return reference.model_copy(
-            update={
-                "id": ref_id,
-                "enhancements": [
-                    enhancement.model_copy(
-                        update={
-                            "id": uuid7(),
-                            "reference_id": ref_id,
-                            "content": (
-                                enhancement.content.model_copy(
-                                    update={
-                                        "title": "Shared Drifted Title",
-                                        "authorship": [
-                                            Authorship(
-                                                display_name="Jane Smith",
-                                                position=AuthorPosition.FIRST,
-                                            )
-                                        ],
-                                        "publication_year": year,
-                                    }
-                                )
-                                if enhancement.content.enhancement_type
-                                == EnhancementType.BIBLIOGRAPHIC
-                                else enhancement.content
-                            ),
-                        }
-                    )
-                    for enhancement in (reference.enhancements or [])
-                ],
-            }
-        )
-
-    query_ref = _with_biblio(uuid7(), 2000)
-    drifted_target = _with_biblio(uuid7(), 2010)
+    query_ref = _reference_with_drifted_biblio(reference, uuid7(), 2000)
+    drifted_target = _reference_with_drifted_biblio(reference, uuid7(), 2010)
 
     await es_reference_repository.add(to_indexable(query_ref))
     await es_reference_repository.add(to_indexable(drifted_target))
@@ -774,43 +777,9 @@ async def test_soft_year_decay_returns_and_reranks_year_drifted_candidate(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """SOFT_DECAY keeps the far-year duplicate (recall) but ranks the near-year duplicate above it (proximity bonus)."""
-
-    def _with_biblio(ref_id: object, year: int) -> Reference:
-        return reference.model_copy(
-            update={
-                "id": ref_id,
-                "enhancements": [
-                    enhancement.model_copy(
-                        update={
-                            "id": uuid7(),
-                            "reference_id": ref_id,
-                            "content": (
-                                enhancement.content.model_copy(
-                                    update={
-                                        "title": "Shared Drifted Title",
-                                        "authorship": [
-                                            Authorship(
-                                                display_name="Jane Smith",
-                                                position=AuthorPosition.FIRST,
-                                            )
-                                        ],
-                                        "publication_year": year,
-                                    }
-                                )
-                                if enhancement.content.enhancement_type
-                                == EnhancementType.BIBLIOGRAPHIC
-                                else enhancement.content
-                            ),
-                        }
-                    )
-                    for enhancement in (reference.enhancements or [])
-                ],
-            }
-        )
-
-    query_ref = _with_biblio(uuid7(), 2000)
-    near_target = _with_biblio(uuid7(), 2001)  # distance 1 -> full bonus
-    far_target = _with_biblio(uuid7(), 2010)  # distance 10 -> halved bonus
+    query_ref = _reference_with_drifted_biblio(reference, uuid7(), 2000)
+    near_target = _reference_with_drifted_biblio(reference, uuid7(), 2001)  # dist 1
+    far_target = _reference_with_drifted_biblio(reference, uuid7(), 2010)  # dist 10
 
     await es_reference_repository.add(to_indexable(query_ref))
     await es_reference_repository.add(to_indexable(near_target))
