@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.ReferenceExport
+
+A queued job that produces a file of an explicit list of references.
+" alt="" coords="5,5,299,229"/>
+<area shape="rect" id="node2" title="app.persistence.blob.models.BlobStorageFile
+
+Model to represent Blob Storage files.
+" alt="" coords="443,118,681,258"/>
+</map>

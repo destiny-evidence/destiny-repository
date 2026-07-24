@@ -1,0 +1,13 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.CandidateIdentifier
+
+An external identifier used as candidate&#45;search input and match provenance.
+
+Narrows :class:`GenericExternalIdentifier` to require an explicit type;
+candidate search does not accept database&#45;id (untyped) lookups.
+" alt="" coords="461,119,804,231"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.CandidateReference
+
+Hydrated bibliographic fields of a candidate reference.
+" alt="" coords="5,5,317,145"/>
+</map>

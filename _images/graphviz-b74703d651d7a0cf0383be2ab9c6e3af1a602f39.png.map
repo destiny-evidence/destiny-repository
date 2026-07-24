@@ -1,0 +1,37 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.Candidate
+
+A candidate canonical reference with route provenance.
+" alt="" coords="529,447,1079,587"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.CandidateElasticsearchRoute
+
+Provenance for a candidate surfaced by the Elasticsearch query.
+" alt="" coords="1272,344,1509,484"/>
+<area shape="rect" id="node3" title="app.domain.references.models.models.CandidateIdentifierRoute
+
+Provenance for a candidate surfaced by an exact identifier match.
+" alt="" coords="1223,532,1559,616"/>
+<area shape="rect" id="node4" title="app.domain.references.models.models.CandidateReference
+
+Hydrated bibliographic fields of a candidate reference.
+" alt="" coords="1235,664,1547,804"/>
+<area shape="rect" id="node5" title="app.domain.references.models.models.CandidateIdentifier
+
+An external identifier used as candidate&#45;search input and match provenance.
+
+Narrows :class:`GenericExternalIdentifier` to require an explicit type;
+candidate search does not accept database&#45;id (untyped) lookups.
+" alt="" coords="1703,683,2045,795"/>
+<area shape="rect" id="node6" title="app.domain.references.models.models.CandidateSelectionDiagnostics
+
+Retrieval diagnostics for evaluation.
+" alt="" coords="681,147,927,399"/>
+<area shape="rect" id="node7" title="app.domain.references.models.models.CandidateSelectionResult
+
+Ranked candidates and diagnostics for a candidate&#45;selection request.
+" alt="" coords="5,5,385,201"/>
+<area shape="rect" id="node8" title="app.domain.references.models.models.InputSearchability
+
+Whether the input meets the Elasticsearch bibliographic searchability gate.
+" alt="" coords="727,15,881,99"/>
+</map>
