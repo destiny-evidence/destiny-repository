@@ -690,46 +690,49 @@ async def test_canonical_candidate_search(
     assert not results.hits
 
 
+def _reference_with_drifted_biblio(
+    reference: Reference, ref_id: object, year: int
+) -> Reference:
+    """Copy the fixture reference with a shared drifted title/author and a set year."""
+    return reference.model_copy(
+        update={
+            "id": ref_id,
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid7(),
+                        "reference_id": ref_id,
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": "Shared Drifted Title",
+                                    "authorship": [
+                                        Authorship(
+                                            display_name="Jane Smith",
+                                            position=AuthorPosition.FIRST,
+                                        )
+                                    ],
+                                    "publication_year": year,
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+
 async def test_no_year_filter_returns_year_drifted_candidate(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
     """NO_FILTER drops the ±1 year gate: a 10-year-drifted duplicate is returned."""
-
-    def _with_biblio(ref_id: object, year: int) -> Reference:
-        return reference.model_copy(
-            update={
-                "id": ref_id,
-                "enhancements": [
-                    enhancement.model_copy(
-                        update={
-                            "id": uuid7(),
-                            "reference_id": ref_id,
-                            "content": (
-                                enhancement.content.model_copy(
-                                    update={
-                                        "title": "Shared Drifted Title",
-                                        "authorship": [
-                                            Authorship(
-                                                display_name="Jane Smith",
-                                                position=AuthorPosition.FIRST,
-                                            )
-                                        ],
-                                        "publication_year": year,
-                                    }
-                                )
-                                if enhancement.content.enhancement_type
-                                == EnhancementType.BIBLIOGRAPHIC
-                                else enhancement.content
-                            ),
-                        }
-                    )
-                    for enhancement in (reference.enhancements or [])
-                ],
-            }
-        )
-
-    query_ref = _with_biblio(uuid7(), 2000)
-    drifted_target = _with_biblio(uuid7(), 2010)
+    query_ref = _reference_with_drifted_biblio(reference, uuid7(), 2000)
+    drifted_target = _reference_with_drifted_biblio(reference, uuid7(), 2010)
 
     await es_reference_repository.add(to_indexable(query_ref))
     await es_reference_repository.add(to_indexable(drifted_target))
@@ -768,3 +771,50 @@ async def test_no_year_filter_returns_year_drifted_candidate(
     assert drifted_target.id in unfiltered_ids
     # Tiny index: removing the year gate strictly widens eligibility.
     assert unfiltered.total.value >= hard.total.value
+
+
+async def test_soft_year_decay_returns_and_reranks_year_drifted_candidate(
+    es_reference_repository: ReferenceESRepository, reference: Reference
+):
+    """SOFT_DECAY preserves recall while preferring closer publication years."""
+    query_ref = _reference_with_drifted_biblio(reference, uuid7(), 2000)
+    near_target = _reference_with_drifted_biblio(reference, uuid7(), 2001)
+    far_target = _reference_with_drifted_biblio(reference, uuid7(), 2010)
+
+    await es_reference_repository.add(to_indexable(query_ref))
+    await es_reference_repository.add(to_indexable(near_target))
+    await es_reference_repository.add(to_indexable(far_target))
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    search_fields = (
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(query_ref)
+    )
+    no_filter_query = build_candidate_canonical_search_query(
+        search_fields,
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(RetrievalPolicyName.NO_YEAR_FILTER_V1),
+        reference_id=query_ref.id,
+    )
+    soft_query = build_candidate_canonical_search_query(
+        search_fields,
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(RetrievalPolicyName.SOFT_YEAR_DECAY_V1),
+        reference_id=query_ref.id,
+    )
+    no_filter = await es_reference_repository.search_for_candidate_canonicals(
+        no_filter_query, k=100
+    )
+    soft = await es_reference_repository.search_for_candidate_canonicals(
+        soft_query, k=100
+    )
+
+    soft_ranks = {hit.id: rank for rank, hit in enumerate(soft.hits)}
+    # Recall: soft decay filters nothing; the far-year duplicate is still returned.
+    assert far_target.id in soft_ranks
+    assert near_target.id in soft_ranks
+    # Same matching set as no_year_filter_v1: decay only reranks.
+    assert soft.total.value == no_filter.total.value
+    # Proximity bonus: the near-year duplicate outranks the far-year one.
+    assert soft_ranks[near_target.id] < soft_ranks[far_target.id]

@@ -9,26 +9,26 @@ focused experiment cycle; a policy name's semantics never change.
 from collections.abc import Mapping
 from enum import Enum
 from types import MappingProxyType
+from typing import Literal, Self
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
     RetrievalPolicyName,
+    YearDecayConfig,
 )
 
 
 class YearStrategy(Enum):
-    """
-    How a policy treats the publication-year signal.
-
-    Extension seam: HARD_WINDOW keeps the hard ±1 filter, NO_FILTER drops the
-    year clause. A soft year-distance decay strategy (SOFT_DECAY) is added here
-    once we have grounding on its weights/policy.
-    """
+    """How a policy treats the publication-year signal."""
 
     HARD_WINDOW = "hard_window"
+    """Keep the hard ±1 publication-year filter."""
     NO_FILTER = "no_filter"
+    """Drop the year clause entirely."""
+    SOFT_DECAY = "soft_decay"
+    """Drop the hard filter and apply a bounded year-proximity bonus instead."""
 
 
 class RetrievalPolicy(BaseModel):
@@ -40,6 +40,18 @@ class RetrievalPolicy(BaseModel):
     union_identifiers: bool
     year_strategy: YearStrategy
     requires_publication_year: bool = True
+    year_decay: YearDecayConfig | None = None
+    title_fuzziness: Literal["AUTO", "0"] = "AUTO"
+
+    @model_validator(mode="after")
+    def _validate_year_decay_matches_strategy(self) -> Self:
+        """year_decay is present iff the strategy is SOFT_DECAY."""
+        if (self.year_decay is not None) != (
+            self.year_strategy is YearStrategy.SOFT_DECAY
+        ):
+            msg = "year_decay must be set iff year_strategy is SOFT_DECAY."
+            raise ValueError(msg)
+        return self
 
     def is_input_searchable(
         self, search_fields: CandidateCanonicalSearchFields
@@ -72,6 +84,19 @@ RETRIEVAL_POLICIES: Mapping[RetrievalPolicyName, RetrievalPolicy] = MappingProxy
                 union_identifiers=True,
                 year_strategy=YearStrategy.NO_FILTER,
                 requires_publication_year=False,
+            ),
+            RetrievalPolicy(
+                name=RetrievalPolicyName.SOFT_YEAR_DECAY_V1,
+                union_identifiers=True,
+                year_strategy=YearStrategy.SOFT_DECAY,
+                year_decay=YearDecayConfig(),
+            ),
+            RetrievalPolicy(
+                name=RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1,
+                union_identifiers=True,
+                year_strategy=YearStrategy.SOFT_DECAY,
+                year_decay=YearDecayConfig(),
+                title_fuzziness="0",
             ),
         )
     }

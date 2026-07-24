@@ -29,6 +29,7 @@ from app.domain.references.models.models import (
     ReferenceDuplicateDecision,
     ReferenceDuplicateDeterminationResult,
     RetrievalPolicyName,
+    YearDecay,
 )
 from app.domain.references.models.projections import (
     CandidateReferenceProjection,
@@ -100,6 +101,7 @@ def build_candidate_canonical_search_query(
         msg = "Candidate retrieval requires a title."
         raise DeduplicationValueError(msg)
 
+    publication_year_decay: YearDecay | None = None
     match policy.year_strategy:
         case YearStrategy.HARD_WINDOW:
             publication_year_range = (
@@ -112,12 +114,21 @@ def build_candidate_canonical_search_query(
             )
         case YearStrategy.NO_FILTER:
             publication_year_range = None
+        case YearStrategy.SOFT_DECAY:
+            if policy.year_decay is None or not search_fields.publication_year:
+                msg = "soft_year_decay requires a decay config and a publication year."
+                raise DeduplicationValueError(msg)
+            publication_year_range = None
+            publication_year_decay = YearDecay(
+                **policy.year_decay.model_dump(),
+                origin=search_fields.publication_year,
+            )
         case _:  # pragma: no cover - exhaustiveness guard
             assert_never(policy.year_strategy)
 
     return CandidateCanonicalSearchQuery(
         title=search_fields.title,
-        title_fuzziness="AUTO",
+        title_fuzziness=policy.title_fuzziness,
         title_boost=2.0,
         title_operator="or",
         title_minimum_should_match="50%",
@@ -127,6 +138,7 @@ def build_candidate_canonical_search_query(
         # The best-matching author dominates; additional matches add 10% each.
         author_tie_breaker=0.1,
         publication_year_range=publication_year_range,
+        publication_year_decay=publication_year_decay,
         # Prevent concurrently deduplicated references forming conflicting links.
         duplicate_determination=DuplicateDetermination.CANONICAL,
         excluded_reference_id=reference_id,
@@ -224,9 +236,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             es_result = await self.es_uow.references.search_for_candidate_canonicals(
                 query,
                 k=k,
-                # The evaluation endpoint reports the exact total; the nomination
-                # path does not, so only this caller opts into the full count.
-                track_total_hits=True,
+                track_total_hits=request.track_total_hits,
             )
 
         es_hits = es_result.hits if es_result else []

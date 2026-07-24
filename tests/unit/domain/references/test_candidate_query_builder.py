@@ -155,3 +155,107 @@ def test_es_translation_preserves_baseline_query_semantics():
             "must_not": [{"ids": {"values": [reference_id]}}],
         }
     }
+
+
+def test_soft_decay_builds_decay_spec_and_no_range():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+    assert query.publication_year_range is None
+    decay = query.publication_year_decay
+    assert decay is not None
+    assert (decay.origin, decay.offset, decay.scale, decay.decay, decay.weight) == (
+        2000,
+        1,
+        9,
+        0.5,
+        0.10,
+    )
+    assert decay.max_boost == pytest.approx(1.10)
+
+
+def test_soft_decay_without_year_raises():
+    fields = CandidateCanonicalSearchFields(title="Shared Title", authors=["Smith"])
+    with pytest.raises(DeduplicationValueError, match="publication year"):
+        _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+
+
+def test_soft_decay_es_translation_wraps_function_score():
+    reference_id = UUID("00000000-0000-0000-0000-000000000001")
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["G Smith"], publication_year=2000
+    )
+    query = _query(
+        fields,
+        RetrievalPolicyName.SOFT_YEAR_DECAY_V1,
+        reference_id=reference_id,
+    )
+
+    assert ReferenceESRepository._to_es_candidate_query(query).to_dict() == {
+        "function_score": {
+            "query": {
+                "bool": {
+                    "must": [
+                        {
+                            "match": {
+                                "title": {
+                                    "query": "Shared Title",
+                                    "fuzziness": "AUTO",
+                                    "boost": 2.0,
+                                    "operator": "or",
+                                    "minimum_should_match": "50%",
+                                }
+                            }
+                        }
+                    ],
+                    "should": [
+                        {
+                            "dis_max": {
+                                "queries": [{"match": {"authors": "Smith"}}],
+                                "tie_breaker": 0.1,
+                            }
+                        }
+                    ],
+                    "filter": [
+                        {
+                            "term": {
+                                "duplicate_determination": (
+                                    DuplicateDetermination.CANONICAL
+                                )
+                            }
+                        }
+                    ],
+                    "must_not": [{"ids": {"values": [reference_id]}}],
+                }
+            },
+            "functions": [
+                {"weight": 1.0},
+                {
+                    "filter": {"exists": {"field": "publication_year"}},
+                    "exp": {
+                        "publication_year": {
+                            "origin": 2000,
+                            "offset": 1,
+                            "scale": 9,
+                            "decay": 0.5,
+                        }
+                    },
+                    "weight": 0.1,
+                },
+            ],
+            "score_mode": "sum",
+            "boost_mode": "multiply",
+            "max_boost": 1.1,
+        }
+    }
+
+
+def test_nonfuzzy_probe_disables_title_fuzziness():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    fuzzy = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+    nonfuzzy = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1)
+    assert fuzzy.title_fuzziness == "AUTO"
+    assert nonfuzzy.title_fuzziness == "0"
