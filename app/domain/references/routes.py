@@ -1340,6 +1340,7 @@ async def check_enhancement_request_status(
 async def request_search_enhancement(
     request_in: destiny_sdk.robots.SearchEnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
+    robot_service: Annotated[RobotService, Depends(robot_service)],
     anti_corruption_service: Annotated[
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
@@ -1356,10 +1357,10 @@ async def request_search_enhancement(
     With ``dry_run=true`` the matching count is returned synchronously and nothing is
     created. Otherwise the request is queued and its pollable status is returned.
     """
-    search = SearchQuery(query_string=request_in.search_query)
+    await robot_service.get_robot_standalone(request_in.robot_id)
     if dry_run:
         total = await reference_service.count_search_matches(
-            request_in.robot_id, search
+            SearchQuery(query_string=request_in.search_query)
         )
         response.status_code = status.HTTP_200_OK
         return destiny_sdk.search.SearchResultTotal(
@@ -1367,7 +1368,7 @@ async def request_search_enhancement(
         )
 
     enhancement_request = await reference_service.register_search_enhancement_request(
-        robot_id=request_in.robot_id, search=search, source=request_in.source
+        anti_corruption_service.search_enhancement_request_from_sdk(request_in)
     )
     try:
         await queue_task_with_trace(

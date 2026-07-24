@@ -131,6 +131,10 @@ locals {
       value = var.max_reference_export_size
     },
     {
+      name  = "SEARCH_ENHANCEMENT_SCAN_PAGE_SIZE",
+      value = var.search_enhancement_scan_page_size
+    },
+    {
       name  = "ES_AGGREGATION_MAX_BUCKETS",
       value = tostring(var.es_aggregation_max_buckets)
     },

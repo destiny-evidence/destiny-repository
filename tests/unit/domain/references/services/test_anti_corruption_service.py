@@ -350,6 +350,23 @@ class TestSearchEnhancementRequest:
     def service(self) -> ReferenceAntiCorruptionService:
         return ReferenceAntiCorruptionService(sign_url=AsyncMock())
 
+    def test_from_sdk_builds_pending_search_request(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        robot_id = uuid7()
+        request = service.search_enhancement_request_from_sdk(
+            destiny_sdk.robots.SearchEnhancementRequestIn(
+                robot_id=robot_id,
+                search_query="climate OR warming",
+                source="destiny-search",
+            )
+        )
+        assert request.robot_id == robot_id
+        assert request.reference_ids == []
+        assert request.source == "destiny-search"
+        assert request.search == SearchQuery(query_string="climate OR warming")
+        assert request.search_status == EnhancementRequestSearchStatus.PENDING
+
     def test_to_sdk_reports_counts_and_statuses(
         self, service: ReferenceAntiCorruptionService
     ) -> None:

@@ -302,6 +302,7 @@ async def test_request_search_enhancement_dry_run(
     service = AsyncMock()
     service.count_search_matches.return_value = ESSearchTotal(value=5, relation="eq")
     app.dependency_overrides[references.reference_service] = lambda: service
+    app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
 
     response = await client.post(
         "/v1/enhancement-requests/search/",
@@ -324,6 +325,7 @@ async def test_request_search_enhancement_enqueues(
     service = AsyncMock()
     service.register_search_enhancement_request.return_value = request
     app.dependency_overrides[references.reference_service] = lambda: service
+    app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
 
     with patch.object(references, "queue_task_with_trace", AsyncMock()) as enqueue:
         response = await client.post(
@@ -352,6 +354,7 @@ async def test_request_search_enhancement_broker_down_fails_request(
     service = AsyncMock()
     service.register_search_enhancement_request.return_value = request
     app.dependency_overrides[references.reference_service] = lambda: service
+    app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
 
     with patch.object(
         references, "queue_task_with_trace", AsyncMock(side_effect=RuntimeError("down"))
@@ -363,6 +366,25 @@ async def test_request_search_enhancement_broker_down_fails_request(
 
     assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
     service.fail_search_enhancement_request.assert_awaited_once()
+
+
+async def test_request_search_enhancement_unknown_robot(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    """An unknown robot is rejected up front, before any work is done."""
+    service = AsyncMock()
+    app.dependency_overrides[references.reference_service] = lambda: service
+    # The real robot_service runs against an empty DB, so the robot is not found.
+
+    response = await client.post(
+        "/v1/enhancement-requests/search/",
+        json={"robot_id": str(uuid7()), "search_query": "title:climate"},
+    )
+
+    # A body-referenced robot that doesn't exist is unprocessable, not a missing URL.
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    service.count_search_matches.assert_not_called()
+    service.register_search_enhancement_request.assert_not_called()
 
 
 async def test_check_search_enhancement_request_status(

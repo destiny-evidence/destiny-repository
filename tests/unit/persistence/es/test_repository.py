@@ -687,6 +687,49 @@ async def test_scan_non_scoring_returns_all(simple_repository: SimpleRepository)
     assert {str(rid) for rid in returned} == {str(doc.id) for doc in docs}
 
 
+async def test_non_scoring_matches_identically_to_scoring_for_complex_query(
+    simple_repository: SimpleRepository,
+):
+    """
+    Filter context (non-scoring) matches the same documents as query context.
+
+    Exercises a climate-query-shaped string (nested OR of quoted phrases and
+    wildcards, with ``AND NOT``) to confirm dropping scoring doesn't change *which*
+    documents match.
+    """
+    docs = [
+        SimpleDoc(meta={"id": uuid7()}, title=title, year=2020, content=content)
+        for title, content in [
+            ("global warming trends", "climate report"),
+            ("greenhouse effect study", "atmospheric emissions"),
+            ("carbon policy brief", "carbon dioxide and co2 targets"),
+            ("unrelated warming note", "global warming aside"),
+            ("marine biology", "unrelated content"),
+        ]
+    ]
+    await bulk_index(simple_repository, docs)
+
+    query = (
+        '(title:"global warming" OR title:"greenhouse effect" '
+        'OR content:climat* OR content:"carbon dioxide") '
+        "AND NOT title:unrelated"
+    )
+
+    scored = await simple_repository.search_with_query_string(query, page_size=100)
+    scored_ids = {hit.id for hit in scored.hits}
+
+    scanned_ids = {
+        hit.id
+        async for page in simple_repository.scan_with_query_string(query, score=False)
+        for hit in page.hits
+    }
+    count = await simple_repository.count_with_query_string(query)
+
+    assert scored_ids
+    assert scanned_ids == scored_ids
+    assert count.value == len(scored_ids)
+
+
 @pytest.fixture
 async def reference_repository(
     es_client: AsyncElasticsearch,

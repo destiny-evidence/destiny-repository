@@ -1306,56 +1306,32 @@ def _search_service_yielding(pages):
 
 
 @pytest.mark.asyncio
-async def test_register_search_enhancement_request(
-    fake_repository, fake_uow, test_robot
-):
+async def test_register_search_enhancement_request(fake_repository, fake_uow):
     fake_requests = fake_repository()
-    uow = fake_uow(
-        enhancement_requests=fake_requests,
-        robots=fake_repository(init_entries=[test_robot]),
-    )
+    uow = fake_uow(enhancement_requests=fake_requests)
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
+    request = SearchEnhancementRequestFactory.build()
 
-    created = await service.register_search_enhancement_request(
-        robot_id=test_robot.id, search=SearchQuery(query_string="climate")
-    )
+    created = await service.register_search_enhancement_request(request)
 
+    assert created.id == request.id
     assert created.search_status == EnhancementRequestSearchStatus.PENDING
-    assert created.search == SearchQuery(query_string="climate")
     # The match count is recorded by the collection task, not at registration.
     assert created.n_matched is None
-    assert fake_requests.get_first_record().id == created.id
+    assert fake_requests.get_first_record().id == request.id
 
 
 @pytest.mark.asyncio
-async def test_register_search_enhancement_request_missing_robot(
-    fake_repository, fake_uow
-):
-    uow = fake_uow(enhancement_requests=fake_repository(), robots=fake_repository())
+async def test_count_search_matches(fake_repository, fake_uow):
     service = ReferenceService(
-        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
-    )
-
-    with pytest.raises(SQLNotFoundError):
-        await service.register_search_enhancement_request(
-            robot_id=uuid7(), search=SearchQuery(query_string="climate")
-        )
-
-
-@pytest.mark.asyncio
-async def test_count_search_matches(fake_repository, fake_uow, test_robot):
-    uow = fake_uow(robots=fake_repository(init_entries=[test_robot]))
-    service = ReferenceService(
-        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+        ReferenceAntiCorruptionService(fake_repository()), fake_uow(), fake_uow()
     )
     search_service = _search_service_counting(ESSearchTotal(value=7, relation="eq"))
 
     with patch.object(service, "_search_service", search_service):
-        total = await service.count_search_matches(
-            robot_id=test_robot.id, search=SearchQuery(query_string="climate")
-        )
+        total = await service.count_search_matches(SearchQuery(query_string="climate"))
 
     assert total.value == 7
 

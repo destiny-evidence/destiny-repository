@@ -102,9 +102,6 @@ tracer = get_tracer(__name__)
 class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     """The service which manages our references."""
 
-    SEARCH_ENHANCEMENT_PAGE_SIZE = 1000
-    """References scanned per page when collecting a search enhancement request."""
-
     def __init__(
         self,
         anti_corruption_service: ReferenceAntiCorruptionService,
@@ -739,33 +736,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             source=source,
         )
 
-    @sql_unit_of_work
     @es_unit_of_work
-    async def count_search_matches(
-        self, robot_id: UUID, search: SearchQuery
-    ) -> ESSearchTotal:
-        """Validate the robot and count the references the search matches."""
-        await self.sql_uow.robots.verify_pk_existence([robot_id])
+    async def count_search_matches(self, search: SearchQuery) -> ESSearchTotal:
+        """Count the references the search matches."""
         return await self._search_service.count(search)
 
     @sql_unit_of_work
     async def register_search_enhancement_request(
-        self, robot_id: UUID, search: SearchQuery, source: str | None = None
+        self, enhancement_request: EnhancementRequest
     ) -> EnhancementRequest:
-        """
-        Validate the robot and persist a pending search request.
-
-        The match count is recorded later, by the collection task, so it reflects the
-        same point-in-time snapshot the references are collected from.
-        """
-        await self.sql_uow.robots.verify_pk_existence([robot_id])
-        enhancement_request = EnhancementRequest(
-            robot_id=robot_id,
-            reference_ids=[],
-            source=source,
-            search=search,
-            search_status=EnhancementRequestSearchStatus.PENDING,
-        )
+        """Persist a pending search enhancement request."""
         await self.sql_uow.enhancement_requests.add(enhancement_request)
         return enhancement_request
 
@@ -789,22 +769,24 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
             return
         search = enhancement_request.search
-        matched_recorded = False
+        total_count_recorded = False
         try:
             async for page in self._search_service.scan(
-                search, score=False, page_size=self.SEARCH_ENHANCEMENT_PAGE_SIZE
+                search,
+                score=False,
+                page_size=settings.search_enhancement_scan_page_size,
             ):
-                if not matched_recorded:
+                if not total_count_recorded:
                     await self._record_search_match_total(
                         enhancement_request_id, page.total.value
                     )
-                    matched_recorded = True
+                    total_count_recorded = True
                 await self.create_pending_enhancements(
                     robot_id=enhancement_request.robot_id,
                     reference_ids=[hit.id for hit in page.hits],
                     enhancement_request_id=enhancement_request_id,
                 )
-            if not matched_recorded:
+            if not total_count_recorded:
                 await self._record_search_match_total(enhancement_request_id, 0)
         except Exception as exc:
             logger.exception(
