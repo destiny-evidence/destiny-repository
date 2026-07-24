@@ -24,9 +24,8 @@ class YearStrategy(Enum):
     """
     How a policy treats the publication-year signal.
 
-    Extension seam: HARD_WINDOW keeps the hard ±1 filter, NO_FILTER drops the
-    year clause, SOFT_DECAY drops the hard filter and instead applies a bounded
-    year-proximity bonus.
+    HARD_WINDOW keeps the hard ±1 filter, NO_FILTER drops the year clause, and
+    SOFT_DECAY drops the hard filter while applying a bounded year-proximity bonus.
     """
 
     HARD_WINDOW = "hard_window"
