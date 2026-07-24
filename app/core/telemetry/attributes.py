@@ -97,7 +97,7 @@ class Attributes(StrEnum):
     # Robot automation detection (percolation)
     PERCOLATION_DOCUMENT_COUNT = "app.percolation.document_count"
     PERCOLATION_MATCH_COUNT = "app.percolation.match_count"
-    ROBOT_AUTOMATION_MATCHED_COUNT = "app.robot_automation.matched_count"
+    ROBOT_AUTOMATION_MATCH_COUNT = "app.robot_automation.match_count"
     ROBOT_AUTOMATION_PENDING_ENHANCEMENT_COUNT = (
         "app.robot_automation.pending_enhancement_count"
     )

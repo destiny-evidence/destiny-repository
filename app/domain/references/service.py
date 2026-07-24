@@ -1396,9 +1396,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference=reference,
             enhancement_ids=enhancement_ids,
         )
-        trace_attribute(
-            Attributes.ROBOT_AUTOMATION_MATCHED_COUNT, len(robot_automations)
-        )
+        trace_attribute(Attributes.ROBOT_AUTOMATION_MATCH_COUNT, len(robot_automations))
         pending_enhancement_count = 0
         for robot_automation in robot_automations:
             if robot_automation.robot_id == skip_robot_id:
@@ -1423,7 +1421,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         if robot_automations:
             logger.info(
                 "Dispatched robot automations.",
-                matched_count=len(robot_automations),
+                match_count=len(robot_automations),
                 pending_enhancement_count=pending_enhancement_count,
                 source=source_str,
             )
