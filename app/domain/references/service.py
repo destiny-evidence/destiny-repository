@@ -749,20 +749,22 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self._search_service.count(search)
 
     @sql_unit_of_work
-    @es_unit_of_work
     async def register_search_enhancement_request(
         self, robot_id: UUID, search: SearchQuery, source: str | None = None
     ) -> EnhancementRequest:
-        """Validate the robot, record the match count, and persist a pending request."""
+        """
+        Validate the robot and persist a pending search request.
+
+        The match count is recorded later, by the collection task, so it reflects the
+        same point-in-time snapshot the references are collected from.
+        """
         await self.sql_uow.robots.verify_pk_existence([robot_id])
-        total = await self._search_service.count(search)
         enhancement_request = EnhancementRequest(
             robot_id=robot_id,
             reference_ids=[],
             source=source,
             search=search,
             search_status=EnhancementRequestSearchStatus.PENDING,
-            n_matched=total.value,
         )
         await self.sql_uow.enhancement_requests.add(enhancement_request)
         return enhancement_request
@@ -787,15 +789,23 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
             return
         search = enhancement_request.search
+        matched_recorded = False
         try:
             async for page in self._search_service.scan(
                 search, score=False, page_size=self.SEARCH_ENHANCEMENT_PAGE_SIZE
             ):
+                if not matched_recorded:
+                    await self._record_search_match_total(
+                        enhancement_request_id, page.total.value
+                    )
+                    matched_recorded = True
                 await self.create_pending_enhancements(
                     robot_id=enhancement_request.robot_id,
                     reference_ids=[hit.id for hit in page.hits],
                     enhancement_request_id=enhancement_request_id,
                 )
+            if not matched_recorded:
+                await self._record_search_match_total(enhancement_request_id, 0)
         except Exception as exc:
             logger.exception(
                 "Search enhancement request scan failed",
@@ -806,6 +816,15 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         else:
             await self._complete_search_enhancement_request(enhancement_request_id)
+
+    @sql_unit_of_work
+    async def _record_search_match_total(
+        self, enhancement_request_id: UUID, n_matched: int
+    ) -> None:
+        """Record the number of references the search matched at PIT open."""
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request_id, n_matched=n_matched
+        )
 
     @sql_unit_of_work
     async def _claim_search_enhancement_request(

@@ -45,6 +45,7 @@ from app.persistence.blob.models import (
 )
 from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.utils.time_and_date import utc_now
+from tests.factories import SearchEnhancementRequestFactory
 from tests.unit.domain.conftest import FakeRepository
 
 
@@ -1288,16 +1289,6 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
     assert len(warning_logs) == 2
 
 
-def _search_request(robot_id, *, search_status=EnhancementRequestSearchStatus.PENDING):
-    return EnhancementRequest(
-        id=uuid7(),
-        reference_ids=[],
-        robot_id=robot_id,
-        search=SearchQuery(query_string="climate"),
-        search_status=search_status,
-    )
-
-
 def _search_service_counting(total):
     search_service = Mock()
     search_service.count = AsyncMock(return_value=total)
@@ -1326,16 +1317,15 @@ async def test_register_search_enhancement_request(
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    search_service = _search_service_counting(ESSearchTotal(value=42, relation="eq"))
 
-    with patch.object(service, "_search_service", search_service):
-        created = await service.register_search_enhancement_request(
-            robot_id=test_robot.id, search=SearchQuery(query_string="climate")
-        )
+    created = await service.register_search_enhancement_request(
+        robot_id=test_robot.id, search=SearchQuery(query_string="climate")
+    )
 
-    assert created.n_matched == 42
     assert created.search_status == EnhancementRequestSearchStatus.PENDING
     assert created.search == SearchQuery(query_string="climate")
+    # The match count is recorded by the collection task, not at registration.
+    assert created.n_matched is None
     assert fake_requests.get_first_record().id == created.id
 
 
@@ -1347,16 +1337,11 @@ async def test_register_search_enhancement_request_missing_robot(
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    search_service = _search_service_counting(ESSearchTotal(value=0, relation="eq"))
 
-    with (
-        patch.object(service, "_search_service", search_service),
-        pytest.raises(SQLNotFoundError),
-    ):
+    with pytest.raises(SQLNotFoundError):
         await service.register_search_enhancement_request(
             robot_id=uuid7(), search=SearchQuery(query_string="climate")
         )
-    search_service.count.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -1377,7 +1362,7 @@ async def test_count_search_matches(fake_repository, fake_uow, test_robot):
 
 @pytest.mark.asyncio
 async def test_collect_pending_enhancements_from_search(fake_repository, fake_uow):
-    request = _search_request(uuid7())
+    request = SearchEnhancementRequestFactory.build()
     matched_ids = [uuid7(), uuid7(), uuid7()]
     fake_requests = fake_repository(init_entries=[request])
     fake_pending = fake_repository()
@@ -1408,18 +1393,17 @@ async def test_collect_pending_enhancements_from_search(fake_repository, fake_uo
     pending = await fake_pending.get_all()
     assert {pe.reference_id for pe in pending} == set(matched_ids)
     assert all(pe.enhancement_request_id == request.id for pe in pending)
-    assert (
-        fake_requests.get_first_record().search_status
-        == EnhancementRequestSearchStatus.COMPLETED
-    )
+    stored = fake_requests.get_first_record()
+    assert stored.n_matched == 3
+    assert stored.search_status == EnhancementRequestSearchStatus.COMPLETED
 
 
 @pytest.mark.asyncio
 async def test_collect_search_enhancement_request_skips_when_not_pending(
     fake_repository, fake_uow
 ):
-    request = _search_request(
-        uuid7(), search_status=EnhancementRequestSearchStatus.SEARCHING
+    request = SearchEnhancementRequestFactory.build(
+        search_status=EnhancementRequestSearchStatus.SEARCHING
     )
     fake_requests = fake_repository(init_entries=[request])
     fake_pending = fake_repository()
@@ -1445,7 +1429,7 @@ async def test_collect_search_enhancement_request_skips_when_not_pending(
 async def test_collect_search_enhancement_request_marks_failed_on_error(
     fake_repository, fake_uow
 ):
-    request = _search_request(uuid7())
+    request = SearchEnhancementRequestFactory.build()
     fake_requests = fake_repository(init_entries=[request])
     uow = fake_uow(
         enhancement_requests=fake_requests, pending_enhancements=fake_repository()

@@ -1326,7 +1326,17 @@ async def check_enhancement_request_status(
     return await anti_corruption_service.enhancement_request_to_sdk(enhancement_request)
 
 
-@enhancement_request_search_router.post("/", status_code=status.HTTP_202_ACCEPTED)
+@enhancement_request_search_router.post(
+    "/",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=None,
+    responses={
+        status.HTTP_200_OK: {"model": destiny_sdk.search.SearchResultTotal},
+        status.HTTP_202_ACCEPTED: {
+            "model": destiny_sdk.robots.SearchEnhancementRequestRead
+        },
+    },
+)
 async def request_search_enhancement(
     request_in: destiny_sdk.robots.SearchEnhancementRequestIn,
     reference_service: Annotated[ReferenceService, Depends(reference_service)],

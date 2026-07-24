@@ -34,11 +34,9 @@ from app.core.exceptions import (
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     DuplicateDetermination,
-    EnhancementRequest,
     EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
-    SearchQuery,
     Visibility,
 )
 from app.domain.references.models.sql import Enhancement as SQLEnhancement
@@ -75,6 +73,7 @@ from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
     ReferenceFactory,
+    SearchEnhancementRequestFactory,
 )
 
 # Use the database session in all tests to set up the database manager.
@@ -296,20 +295,6 @@ async def test_request_batch_enhancement_happy_path(
     await broker.wait_all()
 
 
-def _search_enhancement_request(
-    *, search_status: EnhancementRequestSearchStatus, n_matched: int, **kwargs: object
-) -> EnhancementRequest:
-    return EnhancementRequest(
-        id=uuid7(),
-        reference_ids=[],
-        robot_id=uuid7(),
-        search=SearchQuery(query_string="title:climate"),
-        search_status=search_status,
-        n_matched=n_matched,
-        **kwargs,
-    )
-
-
 async def test_request_search_enhancement_dry_run(
     app: FastAPI, client: AsyncClient
 ) -> None:
@@ -333,8 +318,8 @@ async def test_request_search_enhancement_enqueues(
     app: FastAPI, client: AsyncClient
 ) -> None:
     """A real request registers, enqueues the collection task, and returns 202."""
-    request = _search_enhancement_request(
-        search_status=EnhancementRequestSearchStatus.PENDING, n_matched=5
+    request = SearchEnhancementRequestFactory.build(
+        search_status=EnhancementRequestSearchStatus.PENDING
     )
     service = AsyncMock()
     service.register_search_enhancement_request.return_value = request
@@ -350,7 +335,8 @@ async def test_request_search_enhancement_enqueues(
     body = response.json()
     assert body["id"] == str(request.id)
     assert body["search_status"] == EnhancementRequestSearchStatus.PENDING
-    assert body["n_matched"] == 5
+    # Match count is not known until the collection task runs.
+    assert body["n_matched"] is None
     enqueue.assert_awaited_once()
     assert enqueue.await_args
     assert enqueue.await_args.kwargs["enhancement_request_id"] == request.id
@@ -360,7 +346,7 @@ async def test_request_search_enhancement_broker_down_fails_request(
     app: FastAPI, client: AsyncClient
 ) -> None:
     """If the broker is unreachable the request is failed and 503 returned."""
-    request = _search_enhancement_request(
+    request = SearchEnhancementRequestFactory.build(
         search_status=EnhancementRequestSearchStatus.PENDING, n_matched=5
     )
     service = AsyncMock()
@@ -383,7 +369,7 @@ async def test_check_search_enhancement_request_status(
     app: FastAPI, client: AsyncClient
 ) -> None:
     """The status endpoint reports search progress and the enhancement rollup."""
-    request = _search_enhancement_request(
+    request = SearchEnhancementRequestFactory.build(
         search_status=EnhancementRequestSearchStatus.COMPLETED,
         n_matched=3,
         request_status=EnhancementRequestStatus.PROCESSING,
