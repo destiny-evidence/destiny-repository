@@ -547,7 +547,8 @@ SortParam = Annotated[
     Query(
         description="A list of fields to sort the results by. "
         "Prefix a field with `-` to sort in descending order. "
-        "If omitted, will sort by relevance score descending. "
+        "Use `relevance` to sort by search relevance score, best matches "
+        "first. This is opposite behavior to other fields which order by ascending."
         "Multiple sort fields can be provided and will be applied "
         "in the order given. Sort fields cannot be `text` fields.",
     ),
