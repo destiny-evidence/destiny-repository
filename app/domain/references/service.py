@@ -777,12 +777,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         if enhancement_request is None:
             logger.info(
-                "Skipping search enhancement collection; not pending",
+                "Skipping search enhancement request; not pending",
                 enhancement_request_id=str(enhancement_request_id),
             )
             return
         if enhancement_request.search is None:
-            await self._fail_search_enhancement_request(
+            await self.fail_search_enhancement_request(
                 enhancement_request_id, "Request has no search to collect."
             )
             return
@@ -798,10 +798,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 )
         except Exception as exc:
             logger.exception(
-                "Search enhancement collection failed",
+                "Search enhancement request scan failed",
                 enhancement_request_id=str(enhancement_request_id),
             )
-            await self._fail_search_enhancement_request(
+            await self.fail_search_enhancement_request(
                 enhancement_request_id, f"Failed to collect references: {exc}"
             )
         else:
@@ -827,17 +827,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def _complete_search_enhancement_request(
         self, enhancement_request_id: UUID
     ) -> None:
-        """Mark a search request's collection phase complete."""
+        """Set the request's search_status to COMPLETED."""
         await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request_id,
             search_status=EnhancementRequestSearchStatus.COMPLETED,
         )
 
     @sql_unit_of_work
-    async def _fail_search_enhancement_request(
+    async def fail_search_enhancement_request(
         self, enhancement_request_id: UUID, error: str
     ) -> None:
-        """Mark a search request's collection phase failed."""
+        """Set the request's search_status to FAILED with an error message."""
         await self.sql_uow.enhancement_requests.update_by_pk(
             enhancement_request_id,
             search_status=EnhancementRequestSearchStatus.FAILED,

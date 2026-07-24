@@ -892,7 +892,7 @@ class EnhancementRequestSQLRepository(
             .group_by(SQLPendingEnhancement.status)
         )
         results = await self._session.execute(query)
-        return {row[0]: row[1] for row in results.all()}
+        return {PendingEnhancementStatus(row[0]): row[1] for row in results.all()}
 
     async def get_by_pk(
         self,
