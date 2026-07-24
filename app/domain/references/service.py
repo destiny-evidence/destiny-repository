@@ -1396,6 +1396,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference=reference,
             enhancement_ids=enhancement_ids,
         )
+        trace_attribute(
+            Attributes.ROBOT_AUTOMATION_MATCHED_COUNT, len(robot_automations)
+        )
+        pending_enhancement_count = 0
         for robot_automation in robot_automations:
             if robot_automation.robot_id == skip_robot_id:
                 logger.warning(
@@ -1408,6 +1412,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             await self._create_pending_enhancements(
                 robot_id=robot_automation.robot_id,
                 reference_ids=robot_automation.reference_ids,
+                source=source_str,
+            )
+            pending_enhancement_count += len(robot_automation.reference_ids)
+
+        trace_attribute(
+            Attributes.ROBOT_AUTOMATION_PENDING_ENHANCEMENT_COUNT,
+            pending_enhancement_count,
+        )
+        if robot_automations:
+            logger.info(
+                "Dispatched robot automations.",
+                matched_count=len(robot_automations),
+                pending_enhancement_count=pending_enhancement_count,
                 source=source_str,
             )
 
