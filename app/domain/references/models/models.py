@@ -925,11 +925,8 @@ class CandidateSelectionRequest(BaseModel):
     track_total_hits: bool = Field(
         default=True,
         description=(
-            "Compute the exact Elasticsearch total-hit count. Defaults to true: "
-            "exact totals reveal the true candidate-pool size that the "
-            "Elasticsearch 10k default caps, which is useful for evaluation. Set "
-            "false for the Elasticsearch default (a lower-bound total), matching "
-            "the production nomination path."
+            "Exact total-hit count (true, past the ES 10k cap) or the Elasticsearch "
+            "default lower bound (false, as on the nomination path)."
         ),
     )
 
