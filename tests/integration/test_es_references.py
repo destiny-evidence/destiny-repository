@@ -776,10 +776,10 @@ async def test_no_year_filter_returns_year_drifted_candidate(
 async def test_soft_year_decay_returns_and_reranks_year_drifted_candidate(
     es_reference_repository: ReferenceESRepository, reference: Reference
 ):
-    """SOFT_DECAY keeps the far-year duplicate (recall) but ranks the near-year duplicate above it (proximity bonus)."""
+    """SOFT_DECAY preserves recall while preferring closer publication years."""
     query_ref = _reference_with_drifted_biblio(reference, uuid7(), 2000)
-    near_target = _reference_with_drifted_biblio(reference, uuid7(), 2001)  # dist 1
-    far_target = _reference_with_drifted_biblio(reference, uuid7(), 2010)  # dist 10
+    near_target = _reference_with_drifted_biblio(reference, uuid7(), 2001)
+    far_target = _reference_with_drifted_biblio(reference, uuid7(), 2010)
 
     await es_reference_repository.add(to_indexable(query_ref))
     await es_reference_repository.add(to_indexable(near_target))

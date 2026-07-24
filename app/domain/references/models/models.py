@@ -925,10 +925,11 @@ class CandidateSelectionRequest(BaseModel):
     track_total_hits: bool = Field(
         default=True,
         description=(
-            "Compute the exact Elasticsearch total-hit count for reporting. Set "
-            "false for the production-throughput proxy: Elasticsearch may return a "
-            "lower-bound total and can avoid exact full-count work, which is "
-            "especially relevant on broad no-year-filter queries."
+            "Compute the exact Elasticsearch total-hit count. Defaults to true: "
+            "exact totals reveal the true candidate-pool size that the "
+            "Elasticsearch 10k default caps, which is useful for evaluation. Set "
+            "false for the Elasticsearch default (a lower-bound total), matching "
+            "the production nomination path."
         ),
     )
 

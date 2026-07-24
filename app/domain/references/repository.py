@@ -701,9 +701,8 @@ class ReferenceESRepository(
         )
         if query.publication_year_decay is None:
             return bool_query
-        # Soft year decay: keep every match (no hard year filter) but multiply in a
-        # bounded exponential year-proximity bonus. The exists guard leaves
-        # candidates with no publication_year on the base score (bonus weight 0).
+        # The exists guard keeps year-less candidates at the base score: ES scores
+        # a missing year as 1.0, which would otherwise grant them the full bonus.
         decay = query.publication_year_decay
         return Q(
             "function_score",
