@@ -152,6 +152,31 @@ def test_soft_decay_policies_unsearchable_without_year():
         assert resolve_retrieval_policy(name).is_input_searchable(fields) is False
 
 
+def test_soft_year_decay_year_optional_v1_regime():
+    from app.domain.references.models.models import YearDecayConfig
+
+    policy = resolve_retrieval_policy(
+        RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1
+    )
+    assert policy.year_strategy is YearStrategy.SOFT_DECAY
+    assert policy.union_identifiers is True
+    assert policy.requires_publication_year is False
+    assert policy.year_decay == YearDecayConfig()
+
+
+def test_soft_year_decay_year_optional_admits_missing_year():
+    """The year-optional decay policy searches yearless inputs; its siblings do not."""
+    fields = CandidateCanonicalSearchFields(
+        title="t", authors=["a"], publication_year=None
+    )
+    year_optional = resolve_retrieval_policy(
+        RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1
+    )
+    year_required = resolve_retrieval_policy(RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+    assert year_optional.is_input_searchable(fields) is True
+    assert year_required.is_input_searchable(fields) is False
+
+
 def test_soft_year_decay_nonfuzzy_probe_v1_regime():
     policy = resolve_retrieval_policy(
         RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1
