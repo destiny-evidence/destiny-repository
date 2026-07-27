@@ -1297,48 +1297,44 @@ class PendingEnhancementSQLRepository(
         return [record.to_domain() for record in result.scalars().all()]
 
     @trace_repository_method(tracer)
-    async def count_retry_depth(self, pending_enhancement_id: UUID) -> int:
+    async def get_retry_depths(self, ids: list[UUID]) -> dict[UUID, int]:
         """
-        Count how many times a pending enhancement has been retried.
+        Return the retry-chain depth for each given pending enhancement id.
 
-        This recursively follows the retry_of chain to count the depth.
+        Depth is the number of retries preceding a pending enhancement in its
+        ``retry_of`` chain (0 for an original, non-retry enhancement).
 
         Args:
-            pending_enhancement_id: ID of the pending enhancement to check
+            ids: Pending enhancement ids to compute depths for
 
         Returns:
-            Number of retries (0 if this is the original)
+            Mapping of id to retry depth
 
         """
-        # Use a recursive CTE to count retry depth
-        cte = (
+        base = (
             select(
-                SQLPendingEnhancement.id,
+                SQLPendingEnhancement.id.label("seed_id"),
                 SQLPendingEnhancement.retry_of,
                 literal(0).label("depth"),
             )
-            .where(SQLPendingEnhancement.id == pending_enhancement_id)
-            .cte(name="retry_chain", recursive=True)
+            .where(SQLPendingEnhancement.id.in_(ids))
+            .cte("retry_chain", recursive=True)
         )
-
-        # Recursive part: join to find the parent (retry_of)
-        recursive_part = select(
-            SQLPendingEnhancement.id,
+        recursive = select(
+            base.c.seed_id,
             SQLPendingEnhancement.retry_of,
-            (cte.c.depth + 1).label("depth"),
+            (base.c.depth + 1).label("depth"),
         ).join(
             SQLPendingEnhancement,
-            SQLPendingEnhancement.id == cte.c.retry_of,
+            SQLPendingEnhancement.id == base.c.retry_of,
         )
+        chain = base.union_all(recursive)
 
-        cte = cte.union_all(recursive_part)
-
-        # Get the maximum depth
-        query = select(func.max(cte.c.depth))
+        query = select(chain.c.seed_id, func.max(chain.c.depth)).group_by(
+            chain.c.seed_id
+        )
         result = await self._session.execute(query)
-        depth = result.scalar()
-
-        return depth if depth is not None else 0
+        return dict(result.all())
 
     @trace_repository_method(tracer)
     async def expire_pending_enhancements_past_expiry(

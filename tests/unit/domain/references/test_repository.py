@@ -1,5 +1,6 @@
 import datetime
 import time
+from uuid import uuid7
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -150,21 +151,13 @@ class TestReferenceSQLRepository:
 
 
 class TestPendingEnhancementSQLRepository:
-    async def test_count_retry_depth_no_retries(
-        self, session: AsyncSession, created_pending_enhancement
-    ):
-        """Test counting retry depth for a pending enhancement with no retries."""
-        repo = PendingEnhancementSQLRepository(session)
-
-        depth = await repo.count_retry_depth(created_pending_enhancement.id)
-        assert depth == 0
-
-    async def test_count_retry_depth_with_retries(
+    async def test_get_retry_depths(
         self, session: AsyncSession, pending_enhancement_factory
     ):
-        """Test counting retry depth for a chain of retries."""
+        """get_retry_depths returns each id's depth in its retry chain."""
         repo = PendingEnhancementSQLRepository(session)
 
+        # A chain original <- retry <- retry.
         pe1 = await pending_enhancement_factory(
             status=PendingEnhancementStatus.EXPIRED,
             expires_at=utc_now() - datetime.timedelta(hours=1),
@@ -181,9 +174,17 @@ class TestPendingEnhancementSQLRepository:
         )
         await session.commit()
 
-        assert await repo.count_retry_depth(pe1.id) == 0
-        assert await repo.count_retry_depth(pe2.id) == 1
-        assert await repo.count_retry_depth(pe3.id) == 2
+        depths = await repo.get_retry_depths([pe1.id, pe2.id, pe3.id])
+        assert depths == {pe1.id: 0, pe2.id: 1, pe3.id: 2}
+
+    async def test_get_retry_depths_omits_unknown_ids(
+        self, session: AsyncSession, created_pending_enhancement
+    ):
+        """Ids with no matching record are absent from the result."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        depths = await repo.get_retry_depths([created_pending_enhancement.id, uuid7()])
+        assert depths == {created_pending_enhancement.id: 0}
 
     async def test_expire_pending_enhancements_past_expiry(
         self, session: AsyncSession, pending_enhancement_factory
