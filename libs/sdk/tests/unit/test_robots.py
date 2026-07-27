@@ -25,3 +25,20 @@ def test_robot_models_reject_any_extra_fields():
             owner="Styx",
             client_secret="I'm not allowed in this model",
         )
+
+
+def test_enhancement_request_in_rejects_duplicate_reference_ids():
+    ref_id = uuid7()
+    with pytest.raises(ValidationError):
+        destiny_sdk.robots.EnhancementRequestIn(
+            robot_id=uuid7(),
+            reference_ids=[ref_id, ref_id],
+        )
+
+
+def test_enhancement_request_in_allows_distinct_reference_ids():
+    request = destiny_sdk.robots.EnhancementRequestIn(
+        robot_id=uuid7(),
+        reference_ids=[uuid7(), uuid7()],
+    )
+    assert len(request.reference_ids) == 2
