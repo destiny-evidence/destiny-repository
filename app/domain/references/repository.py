@@ -2,7 +2,7 @@
 
 import datetime
 from abc import ABC
-from collections.abc import AsyncGenerator, Mapping, Sequence
+from collections.abc import AsyncGenerator, Collection, Mapping, Sequence
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
@@ -22,6 +22,7 @@ from sqlalchemy import (
     select,
     update,
 )
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -40,6 +41,7 @@ from app.domain.references.models.models import (
     CrossFacetAxis,
     CrossFacetCell,
     DuplicateDetermination,
+    EnhancementRequestSearchStatus,
     FacetType,
     GenericExternalIdentifier,
     LinkedDataConceptFilter,
@@ -123,6 +125,9 @@ from app.persistence.sql.repository import GenericAsyncSqlRepository
 
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
+
+# asyncpg caps bind parameters per statement at a signed 16-bit maximum
+_MAX_BIND_PARAMS_PER_STATEMENT = 2**15 - 1
 
 
 class ReferenceRepositoryBase(
@@ -939,6 +944,34 @@ class EnhancementRequestSQLRepository(
         results = await self._session.execute(query)
         return {PendingEnhancementStatus(row[0]): row[1] for row in results.all()}
 
+    @trace_repository_method(tracer)
+    async def claim_search_request(self, enhancement_request_id: UUID) -> bool:
+        """
+        Atomically move a search request into ``SEARCHING``.
+
+        Accepts a request that is ``PENDING`` (first run) or already
+        ``SEARCHING`` (a redelivered task resumes instead of no-opping).
+
+        Returns ``False`` if the request is terminal (``COMPLETED``/``FAILED``) or
+        missing.
+        """
+        stmt = (
+            update(SQLEnhancementRequest)
+            .where(
+                SQLEnhancementRequest.id == enhancement_request_id,
+                SQLEnhancementRequest.search_status.in_(
+                    [
+                        EnhancementRequestSearchStatus.PENDING,
+                        EnhancementRequestSearchStatus.SEARCHING,
+                    ]
+                ),
+            )
+            .values(search_status=EnhancementRequestSearchStatus.SEARCHING)
+        )
+        result = await self._session.execute(stmt)
+        await self._session.flush()
+        return bool(result.rowcount)
+
     async def get_by_pk(
         self,
         pk: UUID,
@@ -1261,6 +1294,44 @@ class PendingEnhancementSQLRepository(
                 entity.status.guard_transition(new_status, entity.id)
 
         return await super().bulk_update_by_filter(filter_conditions, **kwargs)
+
+    @trace_repository_method(tracer)
+    async def add_bulk_ignore_conflicts(
+        self, records: Collection[DomainPendingEnhancement]
+    ) -> int:
+        """
+        Insert pending enhancements, skipping ones that already exist.
+
+        A row is skipped when it collides with an existing *original* (non-retry)
+        pending enhancement for the same ``(enhancement_request_id,
+        reference_id)``.
+
+        Returns the number of rows actually inserted.
+        """
+        records = list(records)
+        if not records:
+            return 0
+
+        rows = [
+            SQLPendingEnhancement.from_domain(record).to_write_values()
+            for record in records
+        ]
+
+        chunk_size = max(1, _MAX_BIND_PARAMS_PER_STATEMENT // len(rows[0]))
+        inserted = 0
+        for start in range(0, len(rows), chunk_size):
+            stmt = (
+                pg_insert(SQLPendingEnhancement)
+                .values(rows[start : start + chunk_size])
+                .on_conflict_do_nothing(
+                    constraint=SQLPendingEnhancement.original_uniqueness_index
+                )
+            )
+            result = await self._session.execute(stmt)
+            inserted += result.rowcount or 0
+
+        await self._session.flush()
+        return inserted
 
     @trace_repository_method(tracer)
     async def find_available_for_robot(

@@ -659,15 +659,18 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     async def claim_search_enhancement_request(
         self, enhancement_request_id: UUID
     ) -> EnhancementRequest | None:
-        """Atomically move PENDING -> SEARCHING; ``None`` if not claimable."""
-        updated = await self.sql_uow.enhancement_requests.bulk_update_by_filter(
-            filter_conditions={
-                "id": enhancement_request_id,
-                "search_status": EnhancementRequestSearchStatus.PENDING,
-            },
-            search_status=EnhancementRequestSearchStatus.SEARCHING,
+        """
+        Claim a search request for scanning; ``None`` if not claimable.
+
+        Accepts a request that is ``PENDING`` or already ``SEARCHING`` so a task
+        redelivered after a crashed run resumes instead of no-opping. Returns
+        ``None`` only when the request is terminal (``COMPLETED``/``FAILED``) or
+        missing.
+        """
+        claimed = await self.sql_uow.enhancement_requests.claim_search_request(
+            enhancement_request_id
         )
-        if updated == 0:
+        if not claimed:
             return None
         return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
 

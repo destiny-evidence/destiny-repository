@@ -28,11 +28,13 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
+    EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    SearchQuery,
 )
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -48,6 +50,7 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.repository import (
     EnhancementRequestSQLRepository,
+    PendingEnhancementSQLRepository,
     ReferenceDuplicateDecisionSQLRepository,
     ReferenceSQLRepository,
 )
@@ -372,13 +375,15 @@ async def test_enhancement_request_status_projection(
     expected_status: EnhancementRequestStatus | None,
 ):
     """Test EnhancementRequest status projection logic."""
-    # Create a reference first
-    reference = SQLReference.from_domain(
-        Reference(
-            id=uuid7(),
-        )
-    )
-    session.add(reference)
+    # A request holds at most one original pending enhancement per reference,
+    # so give each pending enhancement its own reference. The status projection
+    # aggregates over the request's pending enhancements regardless of which
+    # reference they belong to.
+    references = [
+        SQLReference.from_domain(Reference(id=uuid7())) for _ in pending_statuses
+    ]
+    for reference in references:
+        session.add(reference)
 
     # Create a robot first (required for foreign key constraint)
     robot_id = uuid7()
@@ -398,7 +403,7 @@ async def test_enhancement_request_status_projection(
     enhancement_request = SQLEnhancementRequest.from_domain(
         EnhancementRequest(
             id=request_id,
-            reference_ids=[reference.id],
+            reference_ids=[reference.id for reference in references],
             robot_id=robot_id,
             request_status=EnhancementRequestStatus.RECEIVED,
         )
@@ -406,7 +411,7 @@ async def test_enhancement_request_status_projection(
     session.add(enhancement_request)
 
     # Create pending enhancements with different statuses
-    for status in pending_statuses:
+    for reference, status in zip(references, pending_statuses, strict=True):
         pending_enhancement = SQLPendingEnhancement.from_domain(
             PendingEnhancement(
                 id=uuid7(),
@@ -518,3 +523,147 @@ async def test_multiple_import_batch_status_projection(
         ImportBatchStatus.PARTIALLY_FAILED,
         ImportBatchStatus.STARTED,
     }
+
+
+async def test_add_bulk_ignore_conflicts_deduplicates_originals_and_exempts_retries(
+    session: AsyncSession,
+):
+    """
+    The partial unique index dedupes original pending enhancements.
+
+    Uniqueness is enforced per (enhancement_request_id, reference_id) for
+    originals, so re-running a search collection creates no duplicates; retries
+    (retry_of set) are exempt.
+    """
+    reference = SQLReference.from_domain(Reference(id=uuid7()))
+    session.add(reference)
+    robot_id = uuid7()
+    session.add(
+        SQLRobot.from_domain(
+            Robot(
+                id=robot_id,
+                name="Test Robot",
+                description="A test robot",
+                owner="test@example.com",
+                client_secret="test-secret",
+            )
+        )
+    )
+    request_id = uuid7()
+    session.add(
+        SQLEnhancementRequest.from_domain(
+            EnhancementRequest(
+                id=request_id,
+                reference_ids=[reference.id],
+                robot_id=robot_id,
+                request_status=EnhancementRequestStatus.RECEIVED,
+            )
+        )
+    )
+    await session.flush()
+    await session.commit()
+
+    repo = PendingEnhancementSQLRepository(session)
+    expires_at = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(hours=1)
+
+    original = PendingEnhancement(
+        reference_id=reference.id,
+        robot_id=robot_id,
+        enhancement_request_id=request_id,
+        expires_at=expires_at,
+    )
+    assert await repo.add_bulk_ignore_conflicts([original]) == 1
+
+    # A re-run inserting the same (request, reference) original is skipped.
+    duplicate = PendingEnhancement(
+        reference_id=reference.id,
+        robot_id=robot_id,
+        enhancement_request_id=request_id,
+        expires_at=expires_at,
+    )
+    assert await repo.add_bulk_ignore_conflicts([duplicate]) == 0
+
+    # A retry for the same (request, reference) is exempt from the index.
+    retry = PendingEnhancement(
+        reference_id=reference.id,
+        robot_id=robot_id,
+        enhancement_request_id=request_id,
+        retry_of=original.id,
+        expires_at=expires_at,
+    )
+    assert await repo.add_bulk_ignore_conflicts([retry]) == 1
+
+    await session.commit()
+    count = (
+        await session.execute(
+            text(
+                "SELECT count(*) FROM pending_enhancement "
+                "WHERE enhancement_request_id = :rid"
+            ),
+            {"rid": request_id},
+        )
+    ).scalar_one()
+    assert count == 2
+
+    # The Core insert bypasses the ORM's flush-time defaults, so confirm the
+    # non-nullable timestamps were stamped rather than left NULL.
+    missing_timestamps = (
+        await session.execute(
+            text(
+                "SELECT count(*) FROM pending_enhancement "
+                "WHERE enhancement_request_id = :rid "
+                "AND (created_at IS NULL OR updated_at IS NULL)"
+            ),
+            {"rid": request_id},
+        )
+    ).scalar_one()
+    assert missing_timestamps == 0
+
+
+async def test_claim_search_request_reentrant_and_respects_terminal(
+    session: AsyncSession,
+):
+    """claim_search_request re-enters from SEARCHING but refuses terminal states."""
+    robot_id = uuid7()
+    session.add(
+        SQLRobot.from_domain(
+            Robot(
+                id=robot_id,
+                name="Test Robot",
+                description="A test robot",
+                owner="test@example.com",
+                client_secret="test-secret",
+            )
+        )
+    )
+    request_id = uuid7()
+    session.add(
+        SQLEnhancementRequest.from_domain(
+            EnhancementRequest(
+                id=request_id,
+                reference_ids=[],
+                robot_id=robot_id,
+                search=SearchQuery(query_string="climate"),
+                search_status=EnhancementRequestSearchStatus.PENDING,
+            )
+        )
+    )
+    await session.flush()
+    await session.commit()
+
+    repo = EnhancementRequestSQLRepository(session)
+
+    # First claim: PENDING -> SEARCHING.
+    assert await repo.claim_search_request(request_id) is True
+    assert (
+        await repo.get_by_pk(request_id)
+    ).search_status == EnhancementRequestSearchStatus.SEARCHING
+
+    # Re-entry: a task redelivered after a crash may reclaim a SEARCHING request.
+    assert await repo.claim_search_request(request_id) is True
+
+    # Terminal states are not claimable.
+    await repo.update_by_pk(
+        request_id, search_status=EnhancementRequestSearchStatus.COMPLETED
+    )
+    assert await repo.claim_search_request(request_id) is False
