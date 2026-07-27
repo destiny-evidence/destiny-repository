@@ -115,13 +115,19 @@ def build_candidate_canonical_search_query(
         case YearStrategy.NO_FILTER:
             publication_year_range = None
         case YearStrategy.SOFT_DECAY:
-            if policy.year_decay is None or not search_fields.publication_year:
-                msg = "soft_year_decay requires a decay config and a publication year."
+            if policy.year_decay is None:
+                msg = "soft_year_decay requires a decay config."
                 raise DeduplicationValueError(msg)
             publication_year_range = None
-            publication_year_decay = YearDecay(
-                **policy.year_decay.model_dump(),
-                origin=search_fields.publication_year,
+            # No year means no decay origin; a year-optional input then scores on
+            # title and authors alone (eligibility is owned by is_input_searchable).
+            publication_year_decay = (
+                YearDecay(
+                    **policy.year_decay.model_dump(),
+                    origin=search_fields.publication_year,
+                )
+                if search_fields.publication_year
+                else None
             )
         case _:  # pragma: no cover - exhaustiveness guard
             assert_never(policy.year_strategy)
