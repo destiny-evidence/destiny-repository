@@ -285,6 +285,9 @@ class ReferenceESRepository(
     }
     """Mapping from a facet type to the ES field its counts are aggregated on."""
 
+    _RELEVANCE_SORT_KEY: ClassVar[str] = "relevance"
+    """Public sort token for ES's built-in ``_score``; the default sort."""
+
     def __init__(self, client: AsyncElasticsearch) -> None:
         """Initialize the repository with the Elasticsearch client."""
         super().__init__(
@@ -378,6 +381,19 @@ class ReferenceESRepository(
             )
         return clauses
 
+    def _normalize_sort_key(self, key: str) -> str | dict[str, Any]:
+        """
+        Translate `relevance` to ES `_score`.
+
+        ``relevance`` is a public API search key that maps to
+        ES's built-in ``_score``. Unlike mapped fields, its default direction is
+        best-first (descending).
+        """
+        if key.lstrip("-+") == self._RELEVANCE_SORT_KEY:
+            order = "asc" if key.startswith("-") else "desc"
+            return {"_score": {"order": order}}
+        return key
+
     @trace_repository_method(tracer)
     async def search(
         self,
@@ -393,12 +409,16 @@ class ReferenceESRepository(
         tiebreaker: dict[str, Any] = {
             "id": {"order": "desc", "unmapped_type": "keyword"}
         }
+        sort_keys = [
+            self._normalize_sort_key(key)
+            for key in (sort or [self._RELEVANCE_SORT_KEY])
+        ]
         return await self.search_with_query_string(
             query.query_string,
             fields=self.default_search_fields,
             page=page,
             page_size=page_size,
-            sort=[*sort, tiebreaker] if sort else ["_score", tiebreaker],
+            sort=[*sort_keys, tiebreaker],
             filter_clauses=self._build_filter_clauses(query),
             parse_document=False,
         )
@@ -417,7 +437,10 @@ class ReferenceESRepository(
         ``scan_with_query_string`` appends the ``id`` tiebreaker, so unlike
         :meth:`search` this method doesn't add one itself.
         """
-        sort_keys: list[str | dict[str, Any]] = list(sort) if sort else ["_score"]
+        sort_keys: list[str | dict[str, Any]] = [
+            self._normalize_sort_key(key)
+            for key in (sort or [self._RELEVANCE_SORT_KEY])
+        ]
         async for page in self.scan_with_query_string(
             query.query_string,
             fields=self.default_search_fields,

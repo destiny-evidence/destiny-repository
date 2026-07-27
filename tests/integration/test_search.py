@@ -761,3 +761,47 @@ async def test_scan_pages_all_matches(es_client: AsyncElasticsearch) -> None:
         for hit in page.hits
     ]
     assert len(limited) == 15
+
+
+async def test_relevance_sort_orders_by_score_and_can_invert(
+    es_client: AsyncElasticsearch,
+) -> None:
+    """
+    ``relevance`` sorts best-first by ES ``_score``; ``-relevance`` inverts it.
+
+    All three titles contain the query token, but shorter titles score higher
+    under BM25's field-length norm, giving them a strict relevance order that
+    the id tiebreaker never has to break.
+    """
+    titles = {
+        "high": "alpha",
+        "mid": "alpha beta gamma delta epsilon",
+        "low": (
+            "alpha beta gamma delta epsilon zeta eta "
+            "theta iota kappa lambda mu nu xi omicron"
+        ),
+    }
+    references = {
+        label: ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(title=title)
+                )
+            ]
+        )
+        for label, title in titles.items()
+    }
+    repository = await _wipe_and_index(es_client, list(references.values()))
+    query = SearchQuery(query_string="title:alpha")
+
+    async def search_ids(sort: list[str] | None) -> list[UUID]:
+        result = await repository.search(query, sort=sort)
+        return [hit.id for hit in result.hits]
+
+    best_first = [references[label].id for label in ("high", "mid", "low")]
+
+    # Explicit and omitted sort both rank best matches first.
+    assert await search_ids(["relevance"]) == best_first
+    assert await search_ids(None) == best_first
+    # -relevance inverts to worst-first.
+    assert await search_ids(["-relevance"]) == list(reversed(best_first))
