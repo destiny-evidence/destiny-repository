@@ -34,6 +34,7 @@ from app.core.exceptions import (
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     DuplicateDetermination,
+    EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
     PendingEnhancementStatus,
     Visibility,
@@ -72,6 +73,7 @@ from app.tasks import broker
 from app.utils.time_and_date import apply_positive_timedelta, iso8601_duration_adapter
 from tests.factories import (
     ReferenceFactory,
+    SearchEnhancementRequestFactory,
 )
 
 # Use the database session in all tests to set up the database manager.
@@ -291,6 +293,124 @@ async def test_request_batch_enhancement_happy_path(
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
+
+
+async def test_request_search_enhancement_dry_run(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    """A dry run returns the match count (200) and does not register a request."""
+    service = AsyncMock()
+    service.count_search_matches.return_value = ESSearchTotal(value=5, relation="eq")
+    app.dependency_overrides[references.reference_service] = lambda: service
+    app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
+
+    response = await client.post(
+        "/v1/enhancement-requests/search/",
+        params={"dry_run": "true"},
+        json={"robot_id": str(uuid7()), "search_query": "title:climate"},
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json() == {"count": 5, "is_lower_bound": False}
+    service.register_search_enhancement_request.assert_not_called()
+
+
+async def test_request_search_enhancement_enqueues(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    """A real request registers, enqueues the collection task, and returns 202."""
+    request = SearchEnhancementRequestFactory.build(
+        search_status=EnhancementRequestSearchStatus.PENDING
+    )
+    service = AsyncMock()
+    service.register_search_enhancement_request.return_value = request
+    app.dependency_overrides[references.reference_service] = lambda: service
+    app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
+
+    with patch.object(references, "queue_task_with_trace", AsyncMock()) as enqueue:
+        response = await client.post(
+            "/v1/enhancement-requests/search/",
+            json={"robot_id": str(request.robot_id), "search_query": "title:climate"},
+        )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    body = response.json()
+    assert body["id"] == str(request.id)
+    assert body["search_status"] == EnhancementRequestSearchStatus.PENDING
+    # Match count is not known until the collection task runs.
+    assert body["n_matched"] is None
+    enqueue.assert_awaited_once()
+    assert enqueue.await_args
+    assert enqueue.await_args.kwargs["enhancement_request_id"] == request.id
+
+
+async def test_request_search_enhancement_broker_down_fails_request(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    """If the broker is unreachable the request is failed and 503 returned."""
+    request = SearchEnhancementRequestFactory.build(
+        search_status=EnhancementRequestSearchStatus.PENDING, n_matched=5
+    )
+    service = AsyncMock()
+    service.register_search_enhancement_request.return_value = request
+    app.dependency_overrides[references.reference_service] = lambda: service
+    app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
+
+    with patch.object(
+        references, "queue_task_with_trace", AsyncMock(side_effect=RuntimeError("down"))
+    ):
+        response = await client.post(
+            "/v1/enhancement-requests/search/",
+            json={"robot_id": str(request.robot_id), "search_query": "title:climate"},
+        )
+
+    assert response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE
+    service.fail_search_enhancement_request.assert_awaited_once()
+
+
+async def test_request_search_enhancement_unknown_robot(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    """An unknown robot is rejected up front, before any work is done."""
+    service = AsyncMock()
+    app.dependency_overrides[references.reference_service] = lambda: service
+    # The real robot_service runs against an empty DB, so the robot is not found.
+
+    response = await client.post(
+        "/v1/enhancement-requests/search/",
+        json={"robot_id": str(uuid7()), "search_query": "title:climate"},
+    )
+
+    # A body-referenced robot that doesn't exist is unprocessable, not a missing URL.
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY
+    service.count_search_matches.assert_not_called()
+    service.register_search_enhancement_request.assert_not_called()
+
+
+async def test_check_search_enhancement_request_status(
+    app: FastAPI, client: AsyncClient
+) -> None:
+    """The status endpoint reports search progress and the enhancement rollup."""
+    request = SearchEnhancementRequestFactory.build(
+        search_status=EnhancementRequestSearchStatus.COMPLETED,
+        n_matched=3,
+        request_status=EnhancementRequestStatus.PROCESSING,
+    )
+    service = AsyncMock()
+    service.get_search_enhancement_request.return_value = (
+        request,
+        {PendingEnhancementStatus.COMPLETED: 3},
+    )
+    app.dependency_overrides[references.reference_service] = lambda: service
+
+    response = await client.get(f"/v1/enhancement-requests/search/{request.id}/")
+
+    assert response.status_code == status.HTTP_200_OK
+    body = response.json()
+    assert body["search_status"] == EnhancementRequestSearchStatus.COMPLETED
+    assert body["request_status"] == EnhancementRequestStatus.PROCESSING
+    assert body["n_enhancements_requested"] == 3
+    assert body["enhancement_status_counts"] == {PendingEnhancementStatus.COMPLETED: 3}
 
 
 async def test_add_robot_automation_happy_path(

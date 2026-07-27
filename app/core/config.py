@@ -492,6 +492,15 @@ class Settings(BaseSettings):
         ),
     )
 
+    search_enhancement_scan_page_size: int = Field(
+        default=10000,
+        description=(
+            "References scanned per page when collecting a search-based enhancement "
+            "request. Each page is one Elasticsearch round-trip and one bulk insert; "
+            "must not exceed the Elasticsearch result window (10,000)."
+        ),
+    )
+
     max_lookup_reference_query_length: int = Field(
         default=100,
         description=(

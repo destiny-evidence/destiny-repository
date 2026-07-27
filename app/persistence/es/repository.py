@@ -275,6 +275,37 @@ class GenericAsyncESRepository(
         response = await self._execute_search(search)
         return self._parse_search_result(response, page, parse_document=parse_document)
 
+    @trace_repository_method(tracer)
+    async def count_with_query_string(
+        self,
+        query: str,
+        fields: Sequence[str] | None = None,
+        filter_clauses: Sequence[Query] | None = None,
+    ) -> ESSearchTotal:
+        """
+        Return the exact number of documents matching a query string.
+
+        :param query: The query string to count matches for.
+        :type query: str
+        :param fields: The fields to search within. ``None`` defers to the query string.
+        :type fields: Sequence[str] | None
+        :param filter_clauses: Structured DSL clauses ANDed with the query string under
+            ``bool.filter``.
+        :type filter_clauses: Sequence[Query] | None
+        :return: The exact total number of matching documents.
+        :rtype: ESSearchTotal
+        """
+        # A count needs no relevance ordering, so run the query non-scoring.
+        search = (
+            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            .extra(size=0)
+            .extra(track_total_hits=True)
+            .query(self._compose_query(query, fields, filter_clauses, score=False))
+            .source(includes=[])
+        )
+        response = await self._execute_search(search)
+        return self._extract_total(response)
+
     @asynccontextmanager
     async def _point_in_time(self, keep_alive: str) -> AsyncGenerator[str, None]:
         """Open a point-in-time and guarantee it is closed."""
@@ -298,6 +329,7 @@ class GenericAsyncESRepository(
         filter_clauses: Sequence[Query] | None = None,
         *,
         parse_document: bool = False,
+        score: bool = True,
         keep_alive: str = "10m",
     ) -> AsyncGenerator[ESSearchResult, None]:
         """
@@ -328,6 +360,9 @@ class GenericAsyncESRepository(
         :param parse_document: Whether to retrieve the documents and include them in
             the hits as domain models.
         :type parse_document: bool
+        :param score: Whether to score the query. ``False`` runs the query string in
+            filter context (non-scoring, cacheable) - preferred for full scans.
+        :type score: bool
         :param keep_alive: PIT time-to-live, renewed on each page request.
         :type keep_alive: str
         :return: An async generator yielding one search result per page.
@@ -348,7 +383,7 @@ class GenericAsyncESRepository(
                 AsyncSearch(using=self._client)
                 .extra(pit={"id": pit_id, "keep_alive": keep_alive})
                 .extra(track_total_hits=True)
-                .query(self._compose_query(query, fields, filter_clauses))
+                .query(self._compose_query(query, fields, filter_clauses, score=score))
                 .sort(*sort_keys)
             )
             if not parse_document:
@@ -457,6 +492,8 @@ class GenericAsyncESRepository(
         query_string: str,
         fields: Sequence[str] | None,
         filter_clauses: Sequence[Query] | None,
+        *,
+        score: bool = True,
     ) -> Query:
         """Build the top-level query: a bare QueryString, or wrapped in bool.filter."""
         main = (
@@ -464,6 +501,8 @@ class GenericAsyncESRepository(
             if fields
             else QueryString(query=query_string)
         )
+        if not score:
+            return Bool(filter=[main, *(filter_clauses or [])])
         if not filter_clauses:
             return main
         return Bool(must=[main], filter=list(filter_clauses))

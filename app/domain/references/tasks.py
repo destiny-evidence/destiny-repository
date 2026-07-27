@@ -182,6 +182,28 @@ async def validate_and_import_robot_enhancement_batch_result(
 
 
 @broker.task
+async def run_search_enhancement_request_task(enhancement_request_id: UUID) -> None:
+    """Scan a search request's query and create pending enhancements for the matches."""
+    name_span("Run search enhancement request")
+    trace_attribute(Attributes.ENHANCEMENT_REQUEST_ID, str(enhancement_request_id))
+    logger.info(
+        "Running search enhancement request",
+        enhancement_request_id=str(enhancement_request_id),
+    )
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        await reference_service.collect_pending_enhancements_from_search(
+            enhancement_request_id
+        )
+
+
+@broker.task
 async def run_search_export_task(
     search_export_id: UUID, entitlements: list[str]
 ) -> None:

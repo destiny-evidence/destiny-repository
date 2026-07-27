@@ -84,10 +84,19 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         sort: list[str] | None = None,
         limit: int | None = None,
+        page_size: int = 500,
+        *,
+        score: bool = True,
     ) -> AsyncGenerator[ESSearchResult, None]:
         """Scan all references matching ``query``, paging beyond the result window."""
-        async for page in self.es_uow.references.scan(query, sort=sort, limit=limit):
+        async for page in self.es_uow.references.scan(
+            query, sort=sort, limit=limit, page_size=page_size, score=score
+        ):
             yield page
+
+    async def count(self, query: SearchQuery) -> ESSearchTotal:
+        """Return the exact number of references matching ``query``."""
+        return await self.es_uow.references.count(query)
 
     async def aggregate_facets(
         self,

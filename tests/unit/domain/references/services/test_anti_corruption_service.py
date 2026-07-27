@@ -11,8 +11,13 @@ from destiny_sdk.visibility import Visibility
 from pydantic import HttpUrl
 
 from app.domain.references.models.models import (
+    EnhancementRequest,
+    EnhancementRequestSearchStatus,
+    EnhancementRequestStatus,
     EnhancementType,
     FullTextEnhancement,
+    PendingEnhancementStatus,
+    SearchQuery,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -336,3 +341,60 @@ class TestLinkedDataCountryWBRegionFilterFromQueryParameter:
     ) -> None:
         with pytest.raises(ValueError, match=r"Input should be 'EAS'"):
             service.linked_data_country_wb_region_filter_from_query_parameter("XXX")
+
+
+class TestSearchEnhancementRequest:
+    """Tests for the search-based enhancement request conversions."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_from_sdk_builds_pending_search_request(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        robot_id = uuid7()
+        request = service.search_enhancement_request_from_sdk(
+            destiny_sdk.robots.SearchEnhancementRequestIn(
+                robot_id=robot_id,
+                search_query="climate OR warming",
+                source="destiny-search",
+            )
+        )
+        assert request.robot_id == robot_id
+        assert request.reference_ids == []
+        assert request.source == "destiny-search"
+        assert request.search == SearchQuery(query_string="climate OR warming")
+        assert request.search_status == EnhancementRequestSearchStatus.PENDING
+
+    def test_to_sdk_reports_counts_and_statuses(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        request = EnhancementRequest(
+            id=uuid7(),
+            reference_ids=[],
+            robot_id=uuid7(),
+            request_status=EnhancementRequestStatus.PROCESSING,
+            search=SearchQuery(query_string="climate"),
+            search_status=EnhancementRequestSearchStatus.SEARCHING,
+            n_matched=100,
+        )
+        read = service.search_enhancement_request_to_sdk(
+            request,
+            {
+                PendingEnhancementStatus.COMPLETED: 3,
+                PendingEnhancementStatus.FAILED: 1,
+            },
+        )
+        assert read.id == request.id
+        assert (
+            read.search_status
+            == destiny_sdk.robots.EnhancementRequestSearchStatus.SEARCHING
+        )
+        assert (
+            read.request_status
+            == destiny_sdk.robots.EnhancementRequestStatus.PROCESSING
+        )
+        assert read.n_matched == 100
+        assert read.n_enhancements_requested == 4
+        assert read.enhancement_status_counts == {"completed": 3, "failed": 1}

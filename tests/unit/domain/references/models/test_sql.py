@@ -5,12 +5,20 @@ import pytest
 
 from app.core.exceptions import UnstoredFullTextError
 from app.domain.references.models.models import (
+    EnhancementRequest as DomainEnhancementRequest,
+)
+from app.domain.references.models.models import (
+    EnhancementRequestSearchStatus,
+    EnhancementRequestStatus,
     EnhancementType,
     ExternalIdentifierType,
+    PublicationYearRange,
+    SearchQuery,
     Visibility,
 )
 from app.domain.references.models.sql import (
     Enhancement,
+    EnhancementRequest,
     ExternalIdentifier,
     Reference,
 )
@@ -278,3 +286,73 @@ async def test_reference_with_relationships():
     assert isinstance(domain_ref.enhancements, list)
     assert len(domain_ref.enhancements) == 1
     assert domain_ref.enhancements[0].id == dummy_enh.id
+
+
+def test_enhancement_request_search_fields_round_trip():
+    """A search-based request round-trips its search, search status, and total."""
+    request = DomainEnhancementRequest(
+        id=uuid7(),
+        reference_ids=[],
+        robot_id=uuid7(),
+        request_status=EnhancementRequestStatus.RECEIVED,
+        search=SearchQuery(
+            query_string="climate OR warming",
+            publication_year_range=PublicationYearRange(start=2000, end=2020),
+        ),
+        search_status=EnhancementRequestSearchStatus.SEARCHING,
+        n_matched=1234,
+    )
+
+    sql_request = EnhancementRequest.from_domain(request)
+    assert isinstance(sql_request.search, dict)
+    assert sql_request.search_status == EnhancementRequestSearchStatus.SEARCHING
+    assert sql_request.n_matched == 1234
+
+    domain_request = sql_request.to_domain()
+    assert domain_request.search == request.search
+    assert domain_request.search_status == EnhancementRequestSearchStatus.SEARCHING
+    assert domain_request.n_matched == 1234
+
+
+def test_enhancement_request_id_list_has_no_search_fields():
+    """An id-list request leaves the search columns null."""
+    request = DomainEnhancementRequest(
+        id=uuid7(),
+        reference_ids=[uuid7()],
+        robot_id=uuid7(),
+        request_status=EnhancementRequestStatus.RECEIVED,
+    )
+
+    sql_request = EnhancementRequest.from_domain(request)
+    assert sql_request.search is None
+    assert sql_request.search_status is None
+    assert sql_request.n_matched is None
+
+    domain_request = sql_request.to_domain()
+    assert domain_request.search is None
+    assert domain_request.search_status is None
+    assert domain_request.n_matched is None
+
+
+def test_enhancement_request_rejects_search_with_reference_ids():
+    """search and an explicit reference_ids list are mutually exclusive."""
+    with pytest.raises(ValueError, match="cannot list reference_ids"):
+        DomainEnhancementRequest(
+            id=uuid7(),
+            reference_ids=[uuid7()],
+            robot_id=uuid7(),
+            request_status=EnhancementRequestStatus.RECEIVED,
+            search=SearchQuery(query_string="climate"),
+        )
+
+
+def test_enhancement_request_rejects_search_fields_without_search():
+    """search_status/n_matched are only meaningful for a search-based request."""
+    with pytest.raises(ValueError, match="require a search"):
+        DomainEnhancementRequest(
+            id=uuid7(),
+            reference_ids=[uuid7()],
+            robot_id=uuid7(),
+            request_status=EnhancementRequestStatus.RECEIVED,
+            n_matched=5,
+        )

@@ -183,6 +183,19 @@ class EnhancementRequestStatus(StrEnum):
     """All enhancements have been created."""
 
 
+class EnhancementRequestSearchStatus(StrEnum):
+    """Progress of the search phase of a search-based enhancement request."""
+
+    PENDING = auto()
+    """Search has been queued."""
+    SEARCHING = auto()
+    """The search is being scanned and enhancements are being requested."""
+    COMPLETED = auto()
+    """All matching references have had enhancements requested."""
+    FAILED = auto()
+    """Search failed before all enhancements were requested."""
+
+
 class _EnhancementRequestBase(BaseModel):
     """
     Base enhancement request class.
@@ -253,6 +266,54 @@ If the URL expires, a new one can be generated using
         "is only used if the entire enhancement request failed, rather than an "
         "individual reference. If there was an error with processing an individual "
         "reference, it is passed in the validation result file.",
+    )
+
+
+class SearchEnhancementRequestIn(BaseModel):
+    """Request enhancements for every reference matching a search."""
+
+    robot_id: UUID = Field(
+        description="The robot to be used to create the enhancements."
+    )
+    search_query: str = Field(
+        description="The Lucene query string selecting references to enhance.",
+    )
+    source: str | None = Field(
+        default=None,
+        description="The source of the enhancement request.",
+    )
+
+
+class SearchEnhancementRequestRead(BaseModel):
+    """Status of a search-based enhancement request."""
+
+    id: UUID
+    robot_id: UUID = Field(description="The robot used to create the enhancements.")
+    source: str | None = Field(
+        default=None,
+        description="The source of the enhancement request.",
+    )
+    search_status: EnhancementRequestSearchStatus = Field(
+        description="Progress of scanning the search and requesting enhancements",
+    )
+    request_status: EnhancementRequestStatus = Field(
+        description="Downstream status of the requested enhancements.",
+    )
+    n_matched: int | None = Field(
+        default=None,
+        description="References matched by the search.",
+    )
+    n_enhancements_requested: int = Field(
+        default=0,
+        description="Enhancements requested so far.",
+    )
+    enhancement_status_counts: dict[str, int] = Field(
+        default_factory=dict,
+        description="Count of requested enhancements per status.",
+    )
+    error: str | None = Field(
+        default=None,
+        description="Procedural error affecting the whole request, if any.",
     )
 
 
