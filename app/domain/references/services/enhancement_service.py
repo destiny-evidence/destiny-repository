@@ -24,6 +24,7 @@ from app.core.telemetry.otel import new_linked_trace
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementRequest,
+    EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
     EnhancementType,
     PendingEnhancement,
@@ -47,7 +48,12 @@ from app.persistence.blob.models import (
 )
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
-from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from app.persistence.sql.uow import (
+    AsyncSqlUnitOfWork,
+)
+from app.persistence.sql.uow import (
+    unit_of_work as sql_unit_of_work,
+)
 
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -640,3 +646,71 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             discarded_enhancement_reference_ids,
             results,
         )
+
+    @sql_unit_of_work
+    async def register_search_enhancement_request(
+        self, enhancement_request: EnhancementRequest
+    ) -> EnhancementRequest:
+        """Persist a pending search enhancement request."""
+        await self.sql_uow.enhancement_requests.add(enhancement_request)
+        return enhancement_request
+
+    @sql_unit_of_work
+    async def claim_search_enhancement_request(
+        self, enhancement_request_id: UUID
+    ) -> EnhancementRequest | None:
+        """Atomically move PENDING -> SEARCHING; ``None`` if not claimable."""
+        updated = await self.sql_uow.enhancement_requests.bulk_update_by_filter(
+            filter_conditions={
+                "id": enhancement_request_id,
+                "search_status": EnhancementRequestSearchStatus.PENDING,
+            },
+            search_status=EnhancementRequestSearchStatus.SEARCHING,
+        )
+        if updated == 0:
+            return None
+        return await self.sql_uow.enhancement_requests.get_by_pk(enhancement_request_id)
+
+    @sql_unit_of_work
+    async def record_search_match_total(
+        self, enhancement_request_id: UUID, n_matched: int
+    ) -> None:
+        """Record the number of references the search matched at PIT open."""
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request_id, n_matched=n_matched
+        )
+
+    @sql_unit_of_work
+    async def complete_search_enhancement_request(
+        self, enhancement_request_id: UUID
+    ) -> None:
+        """Set the request's search_status to COMPLETED."""
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request_id,
+            search_status=EnhancementRequestSearchStatus.COMPLETED,
+        )
+
+    @sql_unit_of_work
+    async def fail_search_enhancement_request(
+        self, enhancement_request_id: UUID, error: str
+    ) -> None:
+        """Set the request's search_status to FAILED with an error message."""
+        await self.sql_uow.enhancement_requests.update_by_pk(
+            enhancement_request_id,
+            search_status=EnhancementRequestSearchStatus.FAILED,
+            error=error,
+        )
+
+    @sql_unit_of_work
+    async def get_search_enhancement_request(
+        self, enhancement_request_id: UUID
+    ) -> tuple[EnhancementRequest, dict[PendingEnhancementStatus, int]]:
+        """Fetch a search request with derived status and per-status counts."""
+        requests = self.sql_uow.enhancement_requests
+        enhancement_request = await requests.get_by_pk(
+            enhancement_request_id, preload=["status"]
+        )
+        counts = await requests.count_pending_enhancements_by_status(
+            enhancement_request_id
+        )
+        return enhancement_request, counts

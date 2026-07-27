@@ -1375,6 +1375,32 @@ async def test_collect_pending_enhancements_from_search(fake_repository, fake_uo
 
 
 @pytest.mark.asyncio
+async def test_collect_pending_enhancements_from_search_records_zero_matches(
+    fake_repository, fake_uow
+):
+    request = SearchEnhancementRequestFactory.build()
+    fake_requests = fake_repository(init_entries=[request])
+    fake_pending = fake_repository()
+    uow = fake_uow(
+        enhancement_requests=fake_requests, pending_enhancements=fake_pending
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    # A matchless search yields no pages, so the total is never seen mid-scan and
+    # must be backfilled as zero once the loop exits.
+    search_service = _search_service_yielding([])
+
+    with patch.object(service, "_search_service", search_service):
+        await service.collect_pending_enhancements_from_search(request.id)
+
+    assert await fake_pending.get_all() == []
+    stored = fake_requests.get_first_record()
+    assert stored.n_matched == 0
+    assert stored.search_status == EnhancementRequestSearchStatus.COMPLETED
+
+
+@pytest.mark.asyncio
 async def test_collect_search_enhancement_request_skips_when_not_pending(
     fake_repository, fake_uow
 ):
