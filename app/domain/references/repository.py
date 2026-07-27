@@ -408,7 +408,10 @@ class ReferenceESRepository(
         tiebreaker: dict[str, Any] = {
             "id": {"order": "desc", "unmapped_type": "keyword"}
         }
-        sort_keys = [self._normalize_sort_key(key) for key in (sort or ["relevance"])]
+        sort_keys = [
+            self._normalize_sort_key(key)
+            for key in (sort or [self._RELEVANCE_SORT_KEY])
+        ]
         return await self.search_with_query_string(
             query.query_string,
             fields=self.default_search_fields,
@@ -434,7 +437,8 @@ class ReferenceESRepository(
         :meth:`search` this method doesn't add one itself.
         """
         sort_keys: list[str | dict[str, Any]] = [
-            self._normalize_sort_key(key) for key in (sort or ["relevance"])
+            self._normalize_sort_key(key)
+            for key in (sort or [self._RELEVANCE_SORT_KEY])
         ]
         async for page in self.scan_with_query_string(
             query.query_string,

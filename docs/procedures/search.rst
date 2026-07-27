@@ -164,22 +164,40 @@ If omitted, defaults to the first page.
 Sort
 _____________
 
-The field(s) to sort the results by. Use ``-`` prefix to sort in descending order.
-
-If not provided, defaults to ``relevance`` as scored by the search engine.
+The field(s) to sort the results by.
 
 Multiple sort fields can be provided; they will be applied in the order given.
 
+If ``sort`` is omitted, results default to ``relevance`` in descending order.
+
+Sort by mapped fields
+    Mapped fields (such as ``publication_year`` or ``inclusion_destiny``)
+    sort in **ascending** order. Prefix a field with ``-`` to sort it in **descending**
+    order instead.
+
+Sorting by relevance
+    The special ``relevance`` key sorts by the search engine's relevance score rather
+    than a mapped field. Unlike mapped fields, ``relevance`` defaults to **descending**
+    order to provide best matches first. To reverse this and return the least relevant results
+    first, prefix it as ``-relevance``.
+
+Any of the :ref:`searchable fields <search-fields>` may be sorted on, except free-text
+fields (``title``, ``abstract``, ``authors`` and ``linked_data_labels``), which cannot be
+used as sort keys.
+
 .. code-block::
 
-    # Sort by inclusion score ascending:
-    ?q=...&sort=inclusion:destiny
+    # Sort by relevance, same as no sort parameter:
+    ?q=...&sort=relevance
 
     # Sort by publication year descending:
     ?q=...&sort=-publication_year
 
     # Sort by publication year ascending, then inclusion score descending:
-    ?q=...&sort=publication_year&sort=-inclusion:destiny
+    ?q=...&sort=publication_year&sort=-inclusion_destiny
+
+    # Sort by relevance first, then break ties by newest publication year:
+    ?q=...&sort=relevance&sort=-publication_year
 
 Returns
 """""""
