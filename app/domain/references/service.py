@@ -700,8 +700,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids: Iterable[UUID],
         enhancement_request_id: UUID | None = None,
         source: str | None = None,
-    ) -> list[PendingEnhancement]:
-        """Create a batch enhancement request."""
+    ) -> None:
+        """
+        Create pending enhancements for the given references.
+
+        Idempotent over ``(enhancement_request_id, reference_id)``.
+        """
         pending_enhancements_to_create = [
             PendingEnhancement(
                 reference_id=ref_id,
@@ -713,11 +717,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ]
 
         if pending_enhancements_to_create:
-            return await self.sql_uow.pending_enhancements.add_bulk(
+            await self.sql_uow.pending_enhancements.add_bulk_ignore_conflicts(
                 pending_enhancements_to_create
             )
-
-        return []
 
     @sql_unit_of_work
     async def create_pending_enhancements(
@@ -726,9 +728,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids: Iterable[UUID],
         enhancement_request_id: UUID | None = None,
         source: str | None = None,
-    ) -> list[PendingEnhancement]:
-        """Create pending enhancements."""
-        return await self._create_pending_enhancements(
+    ) -> None:
+        """Create pending enhancements in their own transaction."""
+        await self._create_pending_enhancements(
             robot_id=robot_id,
             reference_ids=reference_ids,
             enhancement_request_id=enhancement_request_id,

@@ -295,6 +295,18 @@ async def test_request_batch_enhancement_happy_path(
     await broker.wait_all()
 
 
+async def test_request_batch_enhancement_rejects_duplicate_reference_ids(
+    client: AsyncClient,
+) -> None:
+    """Duplicate reference_ids in a batch request are rejected before the handler."""
+    ref_id = str(uuid7())
+    response = await client.post(
+        "/v1/enhancement-requests/",
+        json={"reference_ids": [ref_id, ref_id], "robot_id": str(uuid7())},
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
+
+
 async def test_request_search_enhancement_dry_run(
     app: FastAPI, client: AsyncClient
 ) -> None:

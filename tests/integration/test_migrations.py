@@ -222,3 +222,63 @@ async def test_migrate_41a69_to_1a717(db_at_migration: str) -> None:
         assert row.enhancement_type == EnhancementType.ABSTRACT
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["73a049948581"])
+async def test_pending_enhancement_unique_index_fails_fast_on_duplicates(
+    db_at_migration: str,
+) -> None:
+    """The (request, reference) unique-index migration refuses pre-existing dupes."""
+    db_url = db_at_migration
+    engine = create_async_engine(db_url, future=True)
+    now = datetime.datetime.now(datetime.UTC)
+    ref_id, rob_id, req_id = str(uuid7()), str(uuid7()), str(uuid7())
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO reference (id, visibility, created_at, updated_at) "
+                "VALUES (:id, 'public', :now, :now)"
+            ),
+            {"id": ref_id, "now": now},
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO robot (id, name, description, owner, client_secret, "
+                "created_at, updated_at) "
+                "VALUES (:id, 'R', 'd', 'o@e.com', 's', :now, :now)"
+            ),
+            {"id": rob_id, "now": now},
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO enhancement_request (id, reference_ids, robot_id, "
+                "request_status, created_at, updated_at) "
+                "VALUES (:id, '{}'::uuid[], :robot_id, 'received', :now, :now)"
+            ),
+            {"id": req_id, "robot_id": rob_id, "now": now},
+        )
+        # Two original (retry_of NULL) pending enhancements for the same
+        # (request, reference): exactly what the new index forbids.
+        for _ in range(2):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO pending_enhancement (id, reference_id, robot_id, "
+                    "enhancement_request_id, status, expires_at, created_at, "
+                    "updated_at) "
+                    "VALUES (:id, :ref, :rob, :req, 'pending', :now, :now, :now)"
+                ),
+                {
+                    "id": str(uuid7()),
+                    "ref": ref_id,
+                    "rob": rob_id,
+                    "req": req_id,
+                    "now": now,
+                },
+            )
+
+    with pytest.raises(RuntimeError, match="multiple original pending enhancements"):
+        await run_migration(db_url, "9b2f1c4d7e83")
+
+    await engine.dispose()

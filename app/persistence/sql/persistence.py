@@ -3,12 +3,12 @@
 import datetime
 from abc import abstractmethod
 from enum import StrEnum, auto
-from typing import Generic, Self
+from typing import Any, Generic, Self
 from uuid import UUID, uuid7
 
 from pydantic import BaseModel, Field
 from sqlalchemy import UUID as SQL_UUID
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, inspect
 from sqlalchemy.ext.asyncio import AsyncAttrs
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -58,6 +58,21 @@ class GenericSQLPersistence(
         self, preload: list[GenericSQLPreloadableType] | None = None
     ) -> GenericDomainModelType:
         """Create a domain model from this persistence model."""
+
+    def to_write_values(self) -> dict[str, Any]:
+        """
+        Return this instance's assigned column values for a Core write.
+
+        Only columns explicitly set on the instance are included; unset columns
+        (e.g. ``created_at``/``updated_at``) are omitted so their column defaults
+        (or ``onupdate``) apply, mirroring an ORM flush.
+        """
+        assigned = self.__dict__
+        return {
+            column.key: assigned[column.key]
+            for column in inspect(type(self)).column_attrs
+            if column.key in assigned
+        }
 
 
 class RelationshipLoadType(StrEnum):

@@ -15,6 +15,7 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
@@ -800,6 +801,17 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         "EnhancementRequest", back_populates="pending_enhancements"
     )
 
+    non_retry_uniqueness_index = Index(
+        "uq_pending_enhancement_request_reference_non_retry",
+        "enhancement_request_id",
+        "reference_id",
+        unique=True,
+        postgresql_where=text("retry_of IS NULL"),
+    )
+    """At most one non-retry pending enhancement per
+    (enhancement_request_id, reference_id). Relied upon for idempotent enhancement
+    requests."""
+
     __table_args__ = (
         Index(
             "ix_pending_enhancement_enhancement_request_id_status",
@@ -822,6 +834,7 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             "ix_pending_enhancement_robot_enhancement_batch_id",
             "robot_enhancement_batch_id",
         ),
+        non_retry_uniqueness_index,
     )
 
     @classmethod
