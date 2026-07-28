@@ -92,6 +92,13 @@ RETRIEVAL_POLICIES: Mapping[RetrievalPolicyName, RetrievalPolicy] = MappingProxy
                 year_decay=YearDecayConfig(),
             ),
             RetrievalPolicy(
+                name=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+                union_identifiers=True,
+                year_strategy=YearStrategy.SOFT_DECAY,
+                year_decay=YearDecayConfig(),
+                requires_publication_year=False,
+            ),
+            RetrievalPolicy(
                 name=RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1,
                 union_identifiers=True,
                 year_strategy=YearStrategy.SOFT_DECAY,

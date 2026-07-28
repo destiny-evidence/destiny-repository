@@ -175,10 +175,25 @@ def test_soft_decay_builds_decay_spec_and_no_range():
     assert decay.max_boost == pytest.approx(1.10)
 
 
-def test_soft_decay_without_year_raises():
-    fields = CandidateCanonicalSearchFields(title="Shared Title", authors=["Smith"])
-    with pytest.raises(DeduplicationValueError, match="publication year"):
-        _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_V1)
+@pytest.mark.parametrize("year", [None, 0])
+def test_soft_decay_year_optional_without_year_builds_no_decay(year):
+    """Year-optional decay: a yearless input searches with no decay bonus, no raise."""
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=year
+    )
+    query = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1)
+    assert query.publication_year_range is None
+    assert query.publication_year_decay is None
+
+
+def test_soft_decay_year_optional_with_year_builds_decay():
+    """A year present still yields the decay spec under the year-optional policy."""
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1)
+    assert query.publication_year_decay is not None
+    assert query.publication_year_decay.origin == 2000
 
 
 def test_soft_decay_es_translation_wraps_function_score():
