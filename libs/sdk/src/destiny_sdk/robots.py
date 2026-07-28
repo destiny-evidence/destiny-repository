@@ -3,7 +3,7 @@
 from enum import StrEnum, auto
 from typing import Annotated, Any
 
-from pydantic import BaseModel, ConfigDict, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 
 from destiny_sdk.core import UUID, _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement
@@ -217,6 +217,15 @@ class _EnhancementRequestBase(BaseModel):
 
 class EnhancementRequestIn(_EnhancementRequestBase):
     """The model for requesting multiple enhancements on specific references."""
+
+    @field_validator("reference_ids")
+    @classmethod
+    def _reject_duplicate_reference_ids(cls, value: list[UUID]) -> list[UUID]:
+        """Reject duplicate ids so a request maps to a distinct set of references."""
+        if len(value) != len(set(value)):
+            msg = "reference_ids must not contain duplicate ids."
+            raise ValueError(msg)
+        return value
 
 
 class EnhancementRequestRead(_EnhancementRequestBase):

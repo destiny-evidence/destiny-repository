@@ -1402,11 +1402,13 @@ async def test_collect_pending_enhancements_from_search_records_zero_matches(
 
 
 @pytest.mark.asyncio
-async def test_collect_search_enhancement_request_skips_when_not_pending(
+async def test_collect_search_enhancement_request_skips_when_terminal(
     fake_repository, fake_uow
 ):
+    # A COMPLETED (or FAILED) request is terminal: a stray redelivery must
+    # no-op rather than re-scan and re-request enhancements.
     request = SearchEnhancementRequestFactory.build(
-        search_status=EnhancementRequestSearchStatus.SEARCHING
+        search_status=EnhancementRequestSearchStatus.COMPLETED
     )
     fake_requests = fake_repository(init_entries=[request])
     fake_pending = fake_repository()
@@ -1424,8 +1426,54 @@ async def test_collect_search_enhancement_request_skips_when_not_pending(
     assert await fake_pending.get_all() == []
     assert (
         fake_requests.get_first_record().search_status
-        == EnhancementRequestSearchStatus.SEARCHING
+        == EnhancementRequestSearchStatus.COMPLETED
     )
+
+
+@pytest.mark.asyncio
+async def test_collect_pending_enhancements_from_search_resumes_when_searching(
+    fake_repository, fake_uow
+):
+    # A request left in SEARCHING by a worker that died mid-scan must be
+    # re-runnable: the redelivered task resumes, and references already
+    # collected by the prior partial run are not duplicated.
+    request = SearchEnhancementRequestFactory.build(
+        search_status=EnhancementRequestSearchStatus.SEARCHING
+    )
+    matched_ids = [uuid7(), uuid7(), uuid7()]
+    already_collected = PendingEnhancement(
+        reference_id=matched_ids[0],
+        robot_id=request.robot_id,
+        enhancement_request_id=request.id,
+    )
+    fake_requests = fake_repository(init_entries=[request])
+    fake_pending = fake_repository(init_entries=[already_collected])
+    uow = fake_uow(
+        enhancement_requests=fake_requests, pending_enhancements=fake_pending
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    search_service = _search_service_yielding(
+        [
+            ESSearchResult(
+                hits=[ESHit(id=mid) for mid in matched_ids],
+                total=ESSearchTotal(value=3, relation="eq"),
+                page=1,
+            )
+        ]
+    )
+
+    with patch.object(service, "_search_service", search_service):
+        await service.collect_pending_enhancements_from_search(request.id)
+
+    pending = await fake_pending.get_all()
+    # Exactly one pending enhancement per matched reference: the pre-existing
+    # one for matched_ids[0] is not duplicated.
+    assert len(pending) == len(matched_ids)
+    assert {pe.reference_id for pe in pending} == set(matched_ids)
+    stored = fake_requests.get_first_record()
+    assert stored.search_status == EnhancementRequestSearchStatus.COMPLETED
 
 
 @pytest.mark.asyncio

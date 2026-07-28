@@ -11,6 +11,7 @@ from app.domain.imports.models.models import (
     ImportResult,
 )
 from app.domain.references.models.models import (
+    EnhancementRequestSearchStatus,
     PendingEnhancement,
     PendingEnhancementStatus,
 )
@@ -214,6 +215,51 @@ class FakeRepository:
                     setattr(record, key, value)
                 updated_count += 1
         return updated_count
+
+    async def add_bulk_ignore_conflicts(
+        self, records: list[DummyDomainSQLModel]
+    ) -> int:
+        """Insert records, skipping originals that collide on (request, ref).
+
+        Emulates the partial unique index on
+        ``(enhancement_request_id, reference_id) WHERE retry_of IS NULL``:
+        rows with a NULL request or a set ``retry_of`` are never skipped.
+        """
+
+        def key(record: DummyDomainSQLModel) -> tuple[object, object]:
+            return (
+                getattr(record, "enhancement_request_id", None),
+                getattr(record, "reference_id", None),
+            )
+
+        def is_constrained_original(record: DummyDomainSQLModel) -> bool:
+            return (
+                getattr(record, "enhancement_request_id", None) is not None
+                and getattr(record, "retry_of", None) is None
+            )
+
+        existing = {
+            key(r) for r in self.repository.values() if is_constrained_original(r)
+        }
+        inserted = 0
+        for record in records:
+            if is_constrained_original(record) and key(record) in existing:
+                continue
+            self.repository[record.id] = record
+            existing.add(key(record))
+            inserted += 1
+        return inserted
+
+    async def claim_search_request(self, enhancement_request_id: UUID) -> bool:
+        """Move a PENDING/SEARCHING request to SEARCHING; False if terminal."""
+        record = self.repository.get(enhancement_request_id)
+        if record is None or getattr(record, "search_status", None) not in (
+            EnhancementRequestSearchStatus.PENDING,
+            EnhancementRequestSearchStatus.SEARCHING,
+        ):
+            return False
+        setattr(record, "search_status", EnhancementRequestSearchStatus.SEARCHING)  # noqa: B010
+        return True
 
 
 def link_fake_repos(
