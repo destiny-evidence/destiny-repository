@@ -801,14 +801,14 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
         "EnhancementRequest", back_populates="pending_enhancements"
     )
 
-    original_uniqueness_index = Index(
-        "uq_pending_enhancement_request_reference_original",
+    non_retry_uniqueness_index = Index(
+        "uq_pending_enhancement_request_reference_non_retry",
         "enhancement_request_id",
         "reference_id",
         unique=True,
         postgresql_where=text("retry_of IS NULL"),
     )
-    """At most one original (non-retry) pending enhancement per
+    """At most one non-retry pending enhancement per
     (enhancement_request_id, reference_id). Relied upon for idempotent enhancement
     requests."""
 
@@ -834,7 +834,7 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
             "ix_pending_enhancement_robot_enhancement_batch_id",
             "robot_enhancement_batch_id",
         ),
-        original_uniqueness_index,
+        non_retry_uniqueness_index,
     )
 
     @classmethod

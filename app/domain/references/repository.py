@@ -1331,7 +1331,7 @@ class PendingEnhancementSQLRepository(
                 pg_insert(SQLPendingEnhancement)
                 .values(rows[start : start + chunk_size])
                 .on_conflict_do_nothing(
-                    constraint=SQLPendingEnhancement.original_uniqueness_index
+                    constraint=SQLPendingEnhancement.non_retry_uniqueness_index
                 )
             )
             result = await self._session.execute(stmt)

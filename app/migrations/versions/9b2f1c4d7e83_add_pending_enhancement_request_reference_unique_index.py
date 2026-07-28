@@ -18,7 +18,7 @@ down_revision: Union[str, None] = '73a049948581'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-_INDEX_NAME = 'uq_pending_enhancement_request_reference_original'
+_INDEX_NAME = 'uq_pending_enhancement_request_reference_non_retry'
 
 
 def upgrade() -> None:
