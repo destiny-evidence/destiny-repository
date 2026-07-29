@@ -81,11 +81,6 @@ async def trace_path_params(request: Request) -> AsyncGenerator[None, None]:
     """
     Attach request path parameters to the current span and log context.
 
-    This is a FastAPI dependency rather than middleware logic because Starlette
-    resolves routing after the middleware stack runs, so ``request.path_params``
-    is only populated by the time dependencies execute (still ahead of the route
-    handler, so bound context vars enrich the handler's logs too).
-
     Args:
         request: The incoming request.
 
