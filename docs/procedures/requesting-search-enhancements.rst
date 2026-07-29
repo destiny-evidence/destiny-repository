@@ -84,6 +84,7 @@ Flow
     sequenceDiagram
         actor User
         participant Data Repository
+        participant Robot
         opt Preview count
             User->>Data Repository: POST /enhancement-requests/search/?dry_run=true : SearchEnhancementRequestIn
             Data Repository-->>User: SearchResultTotal (count)
@@ -94,6 +95,11 @@ Flow
         Data Repository-->>User: SearchEnhancementRequestRead (id, search_status)
         Data Repository-->>Data Repository: Scan search & request enhancements
         Note over Data Repository: search_status: SEARCHING -> COMPLETED
+        loop Until all fulfilled
+            Data Repository-)Robot: Requested enhancements become available
+            Robot--)Data Repository: Fulfil enhancements
+        end
+        Note over Data Repository: request_status: PROCESSING -> COMPLETED
         loop Until terminal
             User->>Data Repository: GET /enhancement-requests/search/<id>/
             Data Repository-->>User: SearchEnhancementRequestRead (progress)
