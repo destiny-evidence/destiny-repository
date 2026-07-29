@@ -18,11 +18,14 @@ from destiny_sdk.client import (
 from destiny_sdk.identifiers import IdentifierLookup
 from destiny_sdk.references import Reference, ReferenceSearchResult
 from destiny_sdk.robots import (
+    EnhancementRequestSearchStatus,
+    EnhancementRequestStatus,
     RobotEnhancementBatchRead,
     RobotEnhancementBatchResult,
     RobotError,
+    SearchEnhancementRequestRead,
 )
-from destiny_sdk.search import AnnotationFilter
+from destiny_sdk.search import AnnotationFilter, SearchResultTotal
 from msal import (
     ConfidentialClientApplication,
     ManagedIdentityClient,
@@ -272,6 +275,92 @@ class TestOAuthClient:
         assert len(results) == 1
         assert isinstance(results[0], Reference)
         assert results[0].id == test_reference_id
+
+    def test_request_search_enhancement(
+        self,
+        httpx_mock: HTTPXMock,
+        oauth_client: OAuthClient,
+        base_url: str,
+    ) -> None:
+        """Submitting a search enhancement request returns the pollable status."""
+        robot_id = uuid7()
+        expected = SearchEnhancementRequestRead(
+            id=uuid7(),
+            robot_id=robot_id,
+            search_status=EnhancementRequestSearchStatus.PENDING,
+            request_status=EnhancementRequestStatus.RECEIVED,
+        )
+        httpx_mock.add_response(
+            url=f"{base_url}/v1/enhancement-requests/search/?dry_run=false",
+            method="POST",
+            status_code=202,
+            json=expected.model_dump(mode="json"),
+        )
+
+        result = oauth_client.request_search_enhancement(
+            robot_id=robot_id,
+            search_query="climate AND health",
+            source="test-source",
+        )
+
+        assert isinstance(result, SearchEnhancementRequestRead)
+        assert result.id == expected.id
+        assert result.search_status == EnhancementRequestSearchStatus.PENDING
+
+    def test_request_search_enhancement_dry_run(
+        self,
+        httpx_mock: HTTPXMock,
+        oauth_client: OAuthClient,
+        base_url: str,
+    ) -> None:
+        """A dry run returns the exact (uncapped) match count without creating one."""
+        httpx_mock.add_response(
+            url=f"{base_url}/v1/enhancement-requests/search/?dry_run=true",
+            method="POST",
+            status_code=200,
+            # The endpoint counts with track_total_hits, so the total is exact even
+            # at scale — never a lower bound.
+            json={"count": 5_000_000, "is_lower_bound": False},
+        )
+
+        result = oauth_client.request_search_enhancement(
+            robot_id=uuid7(),
+            search_query="climate AND health",
+            dry_run=True,
+        )
+
+        assert isinstance(result, SearchResultTotal)
+        assert result.count == 5_000_000
+        assert result.is_lower_bound is False
+
+    def test_get_search_enhancement_request(
+        self,
+        httpx_mock: HTTPXMock,
+        oauth_client: OAuthClient,
+        base_url: str,
+    ) -> None:
+        """Fetching a search enhancement request returns its two-phase status."""
+        request_id = uuid7()
+        expected = SearchEnhancementRequestRead(
+            id=request_id,
+            robot_id=uuid7(),
+            search_status=EnhancementRequestSearchStatus.COMPLETED,
+            request_status=EnhancementRequestStatus.PROCESSING,
+            n_matched=42,
+            n_enhancements_requested=42,
+            enhancement_status_counts={"pending": 40, "completed": 2},
+        )
+        httpx_mock.add_response(
+            url=f"{base_url}/v1/enhancement-requests/search/{request_id}/",
+            method="GET",
+            json=expected.model_dump(mode="json"),
+        )
+
+        result = oauth_client.get_search_enhancement_request(request_id)
+
+        assert isinstance(result, SearchEnhancementRequestRead)
+        assert result.n_matched == 42
+        assert result.search_status == EnhancementRequestSearchStatus.COMPLETED
 
     def test_handles_error_responses(
         self, httpx_mock: HTTPXMock, oauth_client: OAuthClient, base_url: str
