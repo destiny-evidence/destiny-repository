@@ -4,7 +4,7 @@ import pathlib
 from collections.abc import Callable
 from contextlib import AbstractAsyncContextManager
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Depends, FastAPI, Request
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.docs import get_redoc_html
@@ -32,7 +32,7 @@ from app.core.exceptions import (
     SDKToDomainError,
     VocabularyFetchError,
 )
-from app.core.telemetry.fastapi import FastAPITracingMiddleware
+from app.core.telemetry.fastapi import FastAPITracingMiddleware, trace_path_params
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.routes import router as import_router_v1
 from app.domain.references.routes import (
@@ -51,7 +51,9 @@ logger = get_logger(__name__)
 
 def create_v1_router() -> APIRouter:
     """Create the v1 API router with all domain-specific routers."""
-    api_v1 = APIRouter(prefix="/v1", tags=["v1"])
+    api_v1 = APIRouter(
+        prefix="/v1", tags=["v1"], dependencies=[Depends(trace_path_params)]
+    )
     api_v1.include_router(import_router_v1)
     api_v1.include_router(enhancement_request_router_v1)
     api_v1.include_router(robot_enhancement_batch_router_v1)

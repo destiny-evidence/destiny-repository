@@ -2,14 +2,14 @@
 
 from typing import Annotated
 
-from fastapi import FastAPI, Path
+from fastapi import APIRouter, Depends, FastAPI, Path
 from fastapi.testclient import TestClient
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from app.core.telemetry.fastapi import FastAPITracingMiddleware
+from app.core.telemetry.fastapi import FastAPITracingMiddleware, trace_path_params
 
 
 def setup_tracing():
@@ -26,38 +26,63 @@ def setup_tracing():
     return tracer, memory_exporter
 
 
-def test_tracing_middleware():
-    """Test the TracingMiddleware with a simple FastAPI app."""
+def _find_span(memory_exporter: InMemorySpanExporter, name: str) -> ReadableSpan | None:
+    for span in memory_exporter.get_finished_spans():
+        if span.name == name:
+            return span
+    return None
+
+
+def test_middleware_traces_query_params():
+    """Test that query params can be traced using the middleware."""
     tracer, memory_exporter = setup_tracing()
 
     app = FastAPI()
     app.add_middleware(FastAPITracingMiddleware)
 
-    @app.get("/test/{item_id}/")
+    router = APIRouter()
+
+    @router.get("/test/{item_id}")
     async def test_endpoint(
         item_id: Annotated[str, Path(...)], query_param: str = "default"
     ) -> dict[str, str]:
         return {"item_id": item_id, "query_param": query_param}
 
+    app.include_router(router)
     client = TestClient(app)
 
     with tracer.start_as_current_span("test_request"):
         client.get("/test/123?query_param=test_value&another_param=another_value")
 
-    # Get the spans from the in-memory exporter
-    spans = memory_exporter.get_finished_spans()
-
-    # Find our test span
-    test_span = None
-    for span in spans:
-        if span.name == "test_request":
-            test_span = span
-            break
-
+    test_span = _find_span(memory_exporter, "test_request")
     assert test_span is not None, "Test span not found"
 
-    # Verify the attributes were set by the middleware
     attributes = test_span.attributes
     assert attributes["http.request.query.query_param"] == "test_value"
     assert attributes["http.request.query.another_param"] == "another_value"
+
+
+def test_path_params_traced_via_dependency():
+    """# Test that path params can be traced using the dependency on the router."""
+    tracer, memory_exporter = setup_tracing()
+
+    app = FastAPI()
+    app.add_middleware(FastAPITracingMiddleware)
+
+    router = APIRouter(dependencies=[Depends(trace_path_params)])
+
+    @router.get("/test/{item_id}")
+    async def test_endpoint(item_id: Annotated[str, Path(...)]) -> dict[str, str]:
+        return {"item_id": item_id}
+
+    app.include_router(router)
+    client = TestClient(app)
+
+    with tracer.start_as_current_span("test_request"):
+        client.get("/test/123")
+
+    test_span = _find_span(memory_exporter, "test_request")
+    assert test_span is not None, "Test span not found"
+
+    attributes = test_span.attributes
     assert attributes["http.request.path.item_id"] == "123"
