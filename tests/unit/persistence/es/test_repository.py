@@ -5,7 +5,6 @@ from uuid import uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
-from elasticsearch.dsl import Text, mapped_field
 from elasticsearch.dsl.query import Term
 from elasticsearch.helpers import async_bulk
 
@@ -17,7 +16,6 @@ from app.domain.references.services.world_bank_regions import (
     SOUTH_ASIA,
     SUB_SAHARAN_AFRICA,
 )
-from app.persistence.es.persistence import GenericESPersistence
 from app.persistence.es.repository import ES_MAX_PAGE_SIZE, GenericAsyncESRepository
 from tests.persistence_models import SimpleDoc, SimpleDomainModel
 
@@ -384,39 +382,25 @@ async def bulk_index(repository: SimpleRepository, docs: list[SimpleDoc]) -> Non
     )
 
 
-def test_scan_sort_keys_prefers_mapped_id(simple_repository: SimpleRepository):
-    """When the index maps ``id``, it is appended as the tiebreaker."""
+def test_scan_sort_keys_defaults_to_doc_order(simple_repository: SimpleRepository):
+    """With no caller sort, lead with ``_doc`` (for early termination) then the
+    cross-shard-unique ``_shard_doc`` tiebreaker."""
+    assert simple_repository._scan_sort_keys(None) == ["_doc", "_shard_doc"]  # noqa: SLF001
+
+
+def test_scan_sort_keys_appends_shard_doc(simple_repository: SimpleRepository):
+    """The ``_shard_doc`` tiebreaker is appended after the caller's sort keys."""
     assert simple_repository._scan_sort_keys(["_score"]) == [  # noqa: SLF001
         "_score",
-        {"id": {"order": "desc"}},
+        "_shard_doc",
     ]
 
 
-def test_scan_sort_keys_does_not_duplicate_id(simple_repository: SimpleRepository):
-    """A caller already sorting on ``id`` is not given a second id key."""
-    assert simple_repository._scan_sort_keys([{"id": {"order": "asc"}}]) == [  # noqa: SLF001
-        {"id": {"order": "asc"}}
-    ]
-
-
-def test_scan_sort_keys_falls_back_to_shard_doc(es_client: AsyncElasticsearch):
-    """Without a mapped ``id``, ``_shard_doc`` is used as the tiebreaker."""
-
-    class NoIdDoc(GenericESPersistence):
-        title: str = mapped_field(Text())
-
-        class Index:
-            name = "test_no_id"
-
-        def to_domain(self) -> SimpleDomainModel:
-            return SimpleDomainModel(title=self.title)
-
-        @classmethod
-        def from_domain(cls, domain_model: SimpleDomainModel) -> "NoIdDoc":
-            return cls(title=domain_model.title)
-
-    repository = GenericAsyncESRepository(es_client, SimpleDomainModel, NoIdDoc)
-    assert repository._scan_sort_keys(["_score"]) == ["_score", "_shard_doc"]  # noqa: SLF001
+def test_scan_sort_keys_does_not_duplicate_shard_doc(
+    simple_repository: SimpleRepository,
+):
+    """A caller already sorting on ``_shard_doc`` is not given a second key."""
+    assert simple_repository._scan_sort_keys(["_shard_doc"]) == ["_shard_doc"]  # noqa: SLF001
 
 
 async def test_scan_paginates_all_results(simple_repository: SimpleRepository):
