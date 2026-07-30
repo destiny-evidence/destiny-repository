@@ -31,10 +31,10 @@ def _print_progress(status: SearchEnhancementRequestRead) -> None:
     )
 
 
-def poll_search_enhancement_request(
+def poll_until_search_complete(
     client: OAuthClient,
     request_id: UUID,
-    poll_interval: float = 5,
+    poll_interval: float = 30,
 ) -> SearchEnhancementRequestRead:
     """Poll until the search phase stops progressing (all requested, or failed)."""
     print(f"Polling search enhancement request {request_id}...")
@@ -54,7 +54,7 @@ def request_enhancements(  # noqa: PLR0913
     source: str,
     *,
     dry_run: bool = False,
-    poll_interval: float = 5,
+    poll_interval: float = 30,
 ) -> None:
     """Trigger an enhancement request for references matching a search query."""
     if dry_run:
@@ -80,7 +80,7 @@ def request_enhancements(  # noqa: PLR0913
         f"(search_status={request.search_status})."
     )
 
-    status = poll_search_enhancement_request(client, request.id, poll_interval)
+    status = poll_until_search_complete(client, request.id, poll_interval)
     if status.search_status is EnhancementRequestSearchStatus.FAILED:
         print(f"Search failed: {status.error}")
         sys.exit(1)
@@ -123,8 +123,8 @@ def argument_parser() -> ApiArgumentParser:
     parser.add_argument(
         "--poll-interval",
         type=float,
-        default=5,
-        help="Seconds to wait between search status checks (default 5).",
+        default=30,
+        help="Seconds to wait between search status checks (default 30).",
     )
     return parser
 

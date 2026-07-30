@@ -21,6 +21,8 @@ The ``POST /enhancement-requests/search/`` endpoint accepts four parameters:
 - A dry run flag. When ``True``, the number of matches will be returned and the request will not be submitted.
 - An optional source label. This should describe the context for which the enhancements are being requested.
 
+.. note:: A dry run counts every matching reference exactly, so for broad queries it can take noticeably longer than a normal search.
+
 Once the request is submitted, the search will run in the background and the repository will request enhancements for every matching reference.
 
 We recommend using the :doc:`SDK <../sdk/sdk>` to make these requests, though the `underlying API <https://api.evidence-repository.org/redoc#tag/search-enhancement-requests>`_ is also available.
@@ -46,21 +48,30 @@ SDK Example Usage
 
 See also: :meth:`request_search_enhancement <libs.sdk.src.destiny_sdk.client.OAuthClient.request_search_enhancement>` and :meth:`get_search_enhancement_request <libs.sdk.src.destiny_sdk.client.OAuthClient.get_search_enhancement_request>`.
 
+Preview how many references a query matches, without creating anything:
+
 .. code-block:: python
 
     from destiny_sdk.client import OAuthClient
 
     client = OAuthClient(env="production")
 
-    # Dry run
     total = client.request_search_enhancement(
         robot_id="<robot-uuid>",
         search_query='title:"climate change" AND abstract:health',
         dry_run=True,
+        timeout=120,
     )
     print(f"{total.count} references would have enhancements requested")
 
-    # Send request
+Submit the request and track its progress:
+
+.. code-block:: python
+
+    from destiny_sdk.client import OAuthClient
+
+    client = OAuthClient(env="production")
+
     request = client.request_search_enhancement(
         robot_id="<robot-uuid>",
         search_query='title:"climate change" AND abstract:health',
