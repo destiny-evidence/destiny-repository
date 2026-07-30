@@ -21,7 +21,7 @@ The ``POST /enhancement-requests/search/`` endpoint accepts four parameters:
 - A dry run flag. When ``True``, the number of matches will be returned and the request will not be submitted.
 - An optional source label. This should describe the context for which the enhancements are being requested.
 
-.. note:: A dry run counts every matching reference exactly, so for broad queries it can take noticeably longer than a normal search.
+.. note:: A dry run counts every matching reference exactly, so for broad queries it can take noticeably longer than the request itself, which occurs in the background.
 
 Once the request is submitted, the search will run in the background and the repository will request enhancements for every matching reference.
 
