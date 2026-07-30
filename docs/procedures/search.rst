@@ -21,6 +21,8 @@ Parameters
 
 The only required parameter is the query string ``q``. Additional optional parameters can be provided to filter, sort, and page through results.
 
+.. _query-string:
+
 Query String (required)
 _____________________________
 

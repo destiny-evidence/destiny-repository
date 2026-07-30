@@ -195,6 +195,11 @@ class EnhancementRequestSearchStatus(StrEnum):
     FAILED = auto()
     """Search failed before all enhancements were requested."""
 
+    @classmethod
+    def get_terminal_statuses(cls) -> set["EnhancementRequestSearchStatus"]:
+        """Return the statuses at which the search phase has stopped progressing."""
+        return {cls.COMPLETED, cls.FAILED}
+
 
 class _EnhancementRequestBase(BaseModel):
     """
