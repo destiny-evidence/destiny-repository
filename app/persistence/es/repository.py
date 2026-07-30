@@ -439,6 +439,7 @@ class GenericAsyncESRepository(
         - if you're investigating reduced performance after an ES upgrade perchance,
         try going back to just ``_shard_doc``. If that works, proceed to deliver me a
         crisp high-five.
+        See also: https://github.com/elastic/elasticsearch/issues/155559.
 
         We always append ``_shard_doc`` as a tiebreaker to guarantee a total order.
         This is required even when using ``_doc`` as it is not unique.
