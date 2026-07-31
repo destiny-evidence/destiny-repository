@@ -62,6 +62,7 @@ def request_enhancements(  # noqa: PLR0913
             robot_id=robot_id,
             search_query=query,
             source=source,
+            timeout=60,
             dry_run=True,
         )
         print(

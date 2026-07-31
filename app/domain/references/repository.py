@@ -1324,7 +1324,11 @@ class PendingEnhancementSQLRepository(
             for record in records
         ]
 
-        chunk_size = max(1, _MAX_BIND_PARAMS_PER_STATEMENT // len(rows[0]))
+        chunk_size = max(
+            1,
+            _MAX_BIND_PARAMS_PER_STATEMENT
+            // len(SQLPendingEnhancement.__table__.columns),
+        )
         inserted = 0
         for start in range(0, len(rows), chunk_size):
             stmt = (

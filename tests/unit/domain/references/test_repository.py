@@ -1,15 +1,22 @@
 import datetime
 import time
+from unittest.mock import AsyncMock, MagicMock
+from uuid import uuid7
 
 import pytest
+from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import StateTransitionError
 from app.domain.references.models.models import (
     GenericExternalIdentifier,
+    PendingEnhancement,
     PendingEnhancementStatus,
 )
 from app.domain.references.models.sql import ExternalIdentifier as SQLExternalIdentifier
+from app.domain.references.models.sql import (
+    PendingEnhancement as SQLPendingEnhancement,
+)
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.repository import (
     PendingEnhancementSQLRepository,
@@ -342,3 +349,33 @@ class TestPendingEnhancementSQLRepository:
         updated_pe2 = await repo.get_by_pk(pe2.id)
         assert updated_pe1.status == PendingEnhancementStatus.PROCESSING
         assert updated_pe2.status == PendingEnhancementStatus.PROCESSING
+
+    async def test_add_bulk_ignore_conflicts_chunks_within_bind_param_limit(self):
+        """Each chunked insert stays under asyncpg's bind parameter ceiling."""
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.execute.return_value = MagicMock(rowcount=1)
+        repo = PendingEnhancementSQLRepository(mock_session)
+
+        records = [
+            PendingEnhancement(
+                reference_id=uuid7(),
+                robot_id=uuid7(),
+                enhancement_request_id=uuid7(),
+                expires_at=utc_now() + datetime.timedelta(hours=1),
+            )
+            for _ in range(7000)
+        ]
+
+        await repo.add_bulk_ignore_conflicts(records)
+
+        statements = [call.args[0] for call in mock_session.execute.await_args_list]
+        assert len(statements) > 1, "expected the insert to be chunked"
+
+        bound = 0
+        for statement in statements:
+            params = len(statement.compile(dialect=postgresql.dialect()).params)
+            assert params <= 2**15 - 1
+            bound += params
+
+        # Every row binds every column, including the ones left to their defaults.
+        assert bound == len(records) * len(SQLPendingEnhancement.__table__.columns)
