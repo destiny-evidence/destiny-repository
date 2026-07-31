@@ -3,9 +3,11 @@
 import asyncio
 import contextlib
 from collections.abc import AsyncGenerator
-from typing import TypeVar
+from typing import Any, Final, TypeVar
 
 T = TypeVar("T")
+
+_DONE: Final = object()
 
 
 async def prefetch(source: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
@@ -18,17 +20,28 @@ async def prefetch(source: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
     Callers that may stop iterating early - via ``break``, or an exception in
     the loop body - must wrap this in :func:`contextlib.aclosing`.
     """
-    upcoming = asyncio.ensure_future(anext(source))
+    queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=1)
+
+    async def _produce() -> None:
+        try:
+            async with contextlib.aclosing(source) as stream:
+                async for item in stream:
+                    await queue.put(item)
+        except Exception as exc:  # noqa: BLE001 - re-raised in the consumer
+            await queue.put(exc)
+        else:
+            await queue.put(_DONE)
+
+    producer = asyncio.create_task(_produce())
     try:
         while True:
-            try:
-                item = await upcoming
-            except StopAsyncIteration:
+            item = await queue.get()
+            if item is _DONE:
                 return
-            upcoming = asyncio.ensure_future(anext(source))
+            if isinstance(item, BaseException):
+                raise item
             yield item
     finally:
-        upcoming.cancel()
-        with contextlib.suppress(asyncio.CancelledError, StopAsyncIteration):
-            await upcoming
-        await source.aclose()
+        producer.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await producer

@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import contextvars
 
 import pytest
 
@@ -20,6 +21,46 @@ async def _closeable(closed):
             yield i
     finally:
         closed.set()
+
+
+@pytest.mark.asyncio
+async def test_prefetch_advances_source_in_one_context():
+    """The source must be resumed from a single task."""
+    var = contextvars.ContextVar("probe", default=0)
+
+    async def _instrumented():
+        token = var.set(1)
+        try:
+            for i in range(5):
+                yield i
+        finally:
+            var.reset(token)
+
+    assert [item async for item in prefetch(_instrumented())] == [0, 1, 2, 3, 4]
+
+
+@pytest.mark.asyncio
+async def test_prefetch_closes_source_in_one_context_on_early_break():
+    """The same holds when the close happens while the fetch is being cancelled."""
+    var = contextvars.ContextVar("probe", default=0)
+    closed = asyncio.Event()
+
+    async def _instrumented():
+        token = var.set(1)
+        try:
+            for i in range(100):
+                await asyncio.sleep(0)
+                yield i
+        finally:
+            var.reset(token)
+            closed.set()
+
+    async with contextlib.aclosing(prefetch(_instrumented())) as items:
+        async for item in items:
+            if item == 2:
+                break
+
+    assert closed.is_set()
 
 
 @pytest.mark.asyncio
