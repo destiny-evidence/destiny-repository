@@ -350,10 +350,18 @@ class TestPendingEnhancementSQLRepository:
         assert updated_pe1.status == PendingEnhancementStatus.PROCESSING
         assert updated_pe2.status == PendingEnhancementStatus.PROCESSING
 
-    async def test_add_bulk_ignore_conflicts_chunks_within_bind_param_limit(self):
-        """Each chunked insert stays under asyncpg's bind parameter ceiling."""
+    async def test_add_bulk_ignore_conflicts_passes_rows_as_executemany_params(self):
+        """
+        Rows go as executemany parameters rather than inlined VALUES.
+
+        Inlining would recompile a statement per call - the dominant cost at
+        these sizes - and reintroduce asyncpg's 32767 bind parameter ceiling.
+        """
+        n_records = 7000
         mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.execute.return_value = MagicMock(rowcount=1)
+        mock_session.execute.return_value = MagicMock(
+            all=MagicMock(return_value=[object()] * n_records)
+        )
         repo = PendingEnhancementSQLRepository(mock_session)
 
         records = [
@@ -363,19 +371,17 @@ class TestPendingEnhancementSQLRepository:
                 enhancement_request_id=uuid7(),
                 expires_at=utc_now() + datetime.timedelta(hours=1),
             )
-            for _ in range(7000)
+            for _ in range(n_records)
         ]
 
-        await repo.add_bulk_ignore_conflicts(records)
+        inserted = await repo.add_bulk_ignore_conflicts(records)
 
-        statements = [call.args[0] for call in mock_session.execute.await_args_list]
-        assert len(statements) > 1, "expected the insert to be chunked"
+        assert inserted == n_records
+        mock_session.execute.assert_awaited_once()
+        statement, params = mock_session.execute.await_args.args
+        assert len(params) == n_records
 
-        bound = 0
-        for statement in statements:
-            params = len(statement.compile(dialect=postgresql.dialect()).params)
-            assert params <= 2**15 - 1
-            bound += params
-
-        # Every row binds every column, including the ones left to their defaults.
-        assert bound == len(records) * len(SQLPendingEnhancement.__table__.columns)
+        # One row's worth of placeholders however many rows are inserted, so the
+        # bind parameter ceiling is unreachable.
+        compiled = statement.compile(dialect=postgresql.dialect())
+        assert len(compiled.params) == len(SQLPendingEnhancement.__table__.columns)
