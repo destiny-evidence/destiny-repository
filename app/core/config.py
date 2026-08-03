@@ -33,6 +33,7 @@ class DatabaseConfig(BaseModel):
     db_user: str | None = None
     db_pass: str | None = None
     db_name: str | None = None
+    db_port: int | None = None
     azure_db_resource_url: HttpUrl | None = None
     db_url: PostgresDsn | None = None
     ssl_mode: str = "prefer"
@@ -48,9 +49,19 @@ class DatabaseConfig(BaseModel):
         if self.db_url:
             url = str(self.db_url)
         elif self.passwordless:
-            url = f"postgresql+asyncpg://{self.db_user}@{self.db_fqdn}/{self.db_name}"
+            url = (
+                f"postgresql+asyncpg://"
+                f"{self.db_user}"
+                f"@{self.db_fqdn}:{self.db_port}"
+                f"/{self.db_name}"
+            )
         else:
-            url = f"postgresql+asyncpg://{self.db_user}:{self.db_pass}@{self.db_fqdn}/{self.db_name}"
+            url = (
+                f"postgresql+asyncpg://"
+                f"{self.db_user}:{self.db_pass}"
+                f"@{self.db_fqdn}:{self.db_port}"
+                f"/{self.db_name}"
+            )
 
         # ssl prefer allows us to connect locally without SSL, overwritable if needed
         return f"{url}?ssl={self.ssl_mode}"
@@ -66,6 +77,7 @@ class DatabaseConfig(BaseModel):
                     self.db_user,
                     self.db_pass,
                     self.db_name,
+                    self.db_port,
                     self.azure_db_resource_url,
                 )
             ):
@@ -73,7 +85,7 @@ class DatabaseConfig(BaseModel):
                 raise ValueError(msg)
         else:
             # DB URL not provided
-            if not all((self.db_fqdn, self.db_user, self.db_name)):
+            if not all((self.db_fqdn, self.db_user, self.db_name, self.db_port)):
                 msg = """
 If db_url is not provided, db_fqdn, db_user and db_name must be provided."""
                 raise ValueError(msg)
