@@ -29,7 +29,9 @@ async def prefetch(source: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
             async with contextlib.aclosing(source) as stream:
                 async for item in stream:
                     await queue.put(item)
-        except Exception as exc:  # noqa: BLE001 - re-raised in the consumer
+        except asyncio.CancelledError:
+            raise
+        except BaseException as exc:  # noqa: BLE001 - re-raised in the consumer
             await queue.put(exc)
         else:
             await queue.put(_DONE)
@@ -45,5 +47,9 @@ async def prefetch(source: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
             yield item
     finally:
         producer.cancel()
-        with contextlib.suppress(asyncio.CancelledError):
+        try:
             await producer
+        except asyncio.CancelledError:
+            consumer = asyncio.current_task()
+            if consumer is not None and consumer.cancelling():
+                raise

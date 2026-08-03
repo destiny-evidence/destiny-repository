@@ -105,6 +105,86 @@ async def test_prefetch_lookahead_is_bounded_at_two():
 
 
 @pytest.mark.asyncio
+async def test_prefetch_propagates_cancellation_of_the_consumer():
+    consuming = asyncio.Event()
+
+    async def _consume():
+        async with contextlib.aclosing(prefetch(_slow_source(100, 0.01))) as items:
+            async for _ in items:
+                consuming.set()
+                await asyncio.sleep(10)
+
+    task = asyncio.create_task(_consume())
+    await consuming.wait()
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert task.cancelled()
+
+
+@pytest.mark.asyncio
+async def test_prefetch_propagates_cancellation_arriving_during_cleanup():
+    """
+    Awaiting the producer must not absorb a cancellation of the consumer.
+
+    Tearing the producer down is expected to raise CancelledError, but that
+    same await is a delivery point for the consumer's own cancellation. If it
+    is swallowed, a worker asked to stop carries on to the next statement.
+    """
+    closing = asyncio.Event()
+
+    async def _slow_to_close():
+        try:
+            for i in range(100):
+                yield i
+        finally:
+            closing.set()
+            await asyncio.sleep(0.2)
+
+    async def _consume():
+        async with contextlib.aclosing(prefetch(_slow_to_close())) as items:
+            async for item in items:
+                if item == 0:
+                    break
+
+    task = asyncio.create_task(_consume())
+    await closing.wait()
+    await asyncio.sleep(0)  # let the consumer reach `await producer`
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert task.cancelled()
+
+
+class _Fatal(BaseException):
+    """Stands in for SystemExit/KeyboardInterrupt without tripping pytest."""
+
+
+@pytest.mark.asyncio
+async def test_prefetch_propagates_base_exception_from_source():
+    """A BaseException reaches the consumer instead of stranding it."""
+
+    async def _fatal():
+        yield 0
+        raise _Fatal
+
+    async def _drain():
+        async for _ in prefetch(_fatal()):
+            pass
+
+    # It must arrive promptly. A stranded consumer also surfaces _Fatal, but
+    # only once something else cancels it and the finally re-raises it off the
+    # dead producer - in production, nothing would.
+    start = asyncio.get_running_loop().time()
+    with pytest.raises(_Fatal):
+        await asyncio.wait_for(_drain(), timeout=2)
+
+    assert asyncio.get_running_loop().time() - start < 0.5
+
+
+@pytest.mark.asyncio
 async def test_prefetch_propagates_source_error():
     async def _failing():
         yield 0
