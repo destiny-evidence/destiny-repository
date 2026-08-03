@@ -177,8 +177,10 @@ locals {
     {
       name = "es-config"
       value = jsonencode({
-        cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
-        api_key  = elasticstack_elasticsearch_security_api_key.app.encoded
+        cloud_id        = ec_deployment.cluster.elasticsearch.cloud_id
+        api_key         = elasticstack_elasticsearch_security_api_key.app.encoded
+        timeout_seconds = var.es_timeout_seconds
+        max_retries     = var.es_max_retries
       })
     },
     {
@@ -759,8 +761,10 @@ resource "azurerm_container_app_job" "es_index_migrator" {
   secret {
     name = "es-config"
     value = jsonencode({
-      cloud_id = ec_deployment.cluster.elasticsearch.cloud_id
-      api_key  = elasticstack_elasticsearch_security_api_key.es_index_migrator.encoded
+      cloud_id        = ec_deployment.cluster.elasticsearch.cloud_id
+      api_key         = elasticstack_elasticsearch_security_api_key.es_index_migrator.encoded
+      timeout_seconds = var.es_timeout_seconds
+      max_retries     = var.es_max_retries
     })
   }
 

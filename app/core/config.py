@@ -114,8 +114,12 @@ class ESConfig(BaseModel):
 
     # Other configuration
     timeout_seconds: int = 30
-    retry_on_timeout: bool = True
     max_retries: int = 5
+
+    @property
+    def retry_on_timeout(self) -> bool:
+        """Return True if timed out requests should be retried."""
+        return bool(self.max_retries)
 
     @property
     def uses_api_key(self) -> bool:

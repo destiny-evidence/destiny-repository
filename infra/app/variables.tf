@@ -398,6 +398,18 @@ variable "es_aggregation_max_buckets" {
   default     = 1000
 }
 
+variable "es_timeout_seconds" {
+  description = "Request timeout for the Elasticsearch client in seconds"
+  type        = number
+  default     = 30
+}
+
+variable "es_max_retries" {
+  description = "Maximum retries per Elasticsearch request. Zero disables retries, including retry on timeout."
+  type        = number
+  default     = 5
+}
+
 variable "es_migrator_reindex_polling_interval" {
   description = "How frequently to poll the reindexing task when migrating indices"
   type        = number

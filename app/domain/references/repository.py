@@ -127,9 +127,6 @@ from app.persistence.sql.repository import GenericAsyncSqlRepository
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
 
-# asyncpg caps bind parameters per statement at a signed 16-bit maximum
-_MAX_BIND_PARAMS_PER_STATEMENT = 2**15 - 1
-
 
 class ReferenceRepositoryBase(
     GenericAsyncRepository[DomainReference, GenericPersistenceType],
@@ -1324,18 +1321,15 @@ class PendingEnhancementSQLRepository(
             for record in records
         ]
 
-        chunk_size = max(1, _MAX_BIND_PARAMS_PER_STATEMENT // len(rows[0]))
-        inserted = 0
-        for start in range(0, len(rows), chunk_size):
-            stmt = (
-                pg_insert(SQLPendingEnhancement)
-                .values(rows[start : start + chunk_size])
-                .on_conflict_do_nothing(
-                    constraint=SQLPendingEnhancement.non_retry_uniqueness_index
-                )
+        stmt = (
+            pg_insert(SQLPendingEnhancement)
+            .on_conflict_do_nothing(
+                constraint=SQLPendingEnhancement.non_retry_uniqueness_index
             )
-            result = await self._session.execute(stmt)
-            inserted += result.rowcount or 0
+            .returning(SQLPendingEnhancement.id)
+        )
+        result = await self._session.execute(stmt, rows)
+        inserted = len(result.all())
 
         await self._session.flush()
         return inserted
