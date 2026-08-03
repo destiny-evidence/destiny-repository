@@ -1,6 +1,6 @@
 ---
-name: EPIC
-about: Track a large body of work made up of multiple issues
+name: 🚜 EPIC
+about: Something big needs doing
 title: ""
 type: EPIC
 labels: []
@@ -23,6 +23,6 @@ High level scope of the epic, including high-level product requirements, known w
 
 Capture any scope-exclusion decisions.
 
-### Ordering (if needed)
+### Related (if needed)
 
-Does this relate to other work in ways that is difficult to communicate through blocking relationships?
+Does this relate to other work in ways that is difficult to communicate through blocking relationships? Are there issues that could be completed in parallel?

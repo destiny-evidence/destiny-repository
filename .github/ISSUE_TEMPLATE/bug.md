@@ -1,7 +1,7 @@
 ---
-name: Bug
-about: Report an unexpected problem or behavior
+name: 🐛 Bug
 title: ""
+about: Something is not right
 type: Bug
 labels: []
 assignees: []

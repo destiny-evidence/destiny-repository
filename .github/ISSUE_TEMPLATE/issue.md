@@ -1,6 +1,6 @@
 ---
-name: Issue
-about: A task, a feature request, or an untyped issue
+name: 🛠️ Issue
+about: Something needs doing
 title: ""
 labels: []
 assignees: []
@@ -17,3 +17,7 @@ Outline the issue scope, what work needs to be done. Optionally include implemen
 ### Acceptance Criteria
 
 When is this work complete?
+
+### Related (if needed)
+
+Does this relate to other work in ways that is difficult to communicate through blocking relationships?
