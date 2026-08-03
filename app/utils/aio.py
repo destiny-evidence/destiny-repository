@@ -15,7 +15,9 @@ async def prefetch(source: AsyncGenerator[T, None]) -> AsyncGenerator[T, None]:
     Yield from ``source`` with the next item already in flight.
 
     Overlaps a slow producer with a slow consumer: fetching item n+1 starts
-    before the caller has finished with item n.
+    before the caller has finished with item n. A slow consumer leaves the
+    source up to two items ahead - one queued, one fetched and waiting to be
+    queued - so three items can be alive at once.
 
     Callers that may stop iterating early - via ``break``, or an exception in
     the loop body - must wrap this in :func:`contextlib.aclosing`.

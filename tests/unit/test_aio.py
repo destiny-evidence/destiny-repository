@@ -84,17 +84,24 @@ async def test_prefetch_overlaps_producer_and_consumer():
 
 
 @pytest.mark.asyncio
-async def test_prefetch_reads_at_most_one_ahead():
+async def test_prefetch_lookahead_is_bounded_at_two():
+    """
+    A slow consumer leaves the source two items ahead, and no further.
+
+    One item waits in the queue while the producer holds a second, blocked on
+    putting it.
+    """
     produced: list[int] = []
     seen: list[int] = []
+    lookaheads: list[int] = []
 
-    async for item in prefetch(_slow_source(6, 0, produced)):
-        await asyncio.sleep(0)
+    async for item in prefetch(_slow_source(8, 0.001, produced)):
+        await asyncio.sleep(0.01)
         seen.append(item)
-        # Only the immediate successor may have been fetched.
-        assert len(produced) <= len(seen) + 1
+        lookaheads.append(len(produced) - len(seen))
 
-    assert seen == [0, 1, 2, 3, 4, 5]
+    assert seen == [0, 1, 2, 3, 4, 5, 6, 7]
+    assert max(lookaheads) == 2
 
 
 @pytest.mark.asyncio
