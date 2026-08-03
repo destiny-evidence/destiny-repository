@@ -401,6 +401,9 @@ class RobotEntitlement(StrEnum):
     FULL_TEXT = auto()
     """The robot is entitled to read full texts in order to derive enhancements."""
 
+    RAW_ENHANCEMENT_WRITER = auto()
+    """The robot is entitled to return raw enhancements."""
+
 
 class _RobotBase(BaseModel):
     """

@@ -12,7 +12,7 @@ RedactedReference = NewType("RedactedReference", Reference)
 
 
 class ReferenceAccessControlService(GenericAccessControlService):
-    """Redact references for a principal's entitlements."""
+    """Apply a principal's entitlements to reference reads and writes."""
 
     def redact_reference(self, reference: Reference) -> RedactedReference:
         """Return the principal's redacted view of a reference."""
@@ -25,6 +25,11 @@ class ReferenceAccessControlService(GenericAccessControlService):
                 }
             )
         )
+
+    @property
+    def may_write_raw_enhancements(self) -> bool:
+        """Whether the principal may contribute raw enhancements to a reference."""
+        return Entitlement.RAW_ENHANCEMENT_WRITER in self._entitlements
 
     def _redact_full_text(self, enhancements: list[Enhancement]) -> list[Enhancement]:
         """Drop full-text enhancements unless the principal is entitled to them."""

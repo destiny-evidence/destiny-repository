@@ -46,6 +46,18 @@ def test_redact_strips_full_text_when_principal_lacks_entitlement():
     assert redacted.enhancements[0].content.enhancement_type == EnhancementType.ABSTRACT
 
 
+def test_may_write_raw_enhancements_follows_entitlement():
+    entitled = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.RAW_ENHANCEMENT_WRITER})
+    )
+    unentitled = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.FULL_TEXT})
+    )
+
+    assert entitled.may_write_raw_enhancements
+    assert not unentitled.may_write_raw_enhancements
+
+
 def test_redact_returns_empty_list_when_only_full_text_present():
     acl = ReferenceAccessControlService(entitlements=frozenset())
     reference = ReferenceFactory(

@@ -35,6 +35,9 @@ from app.domain.references.models.models import (
 from app.domain.references.models.validators import (
     EnhancementResultValidator,
 )
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -535,12 +538,16 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             [Enhancement], Awaitable[tuple[PendingEnhancementStatus, str]]
         ],
         results: ProcessedResults,
+        access_control_service: ReferenceAccessControlService,
     ) -> AsyncGenerator[str, None]:
         """
         Validate the result of a robot enhancement batch.
 
         This generator yields validation messages which are streamed into the
         result file of the robot enhancement batch.
+
+        ``access_control_service`` carries the entitlements of the robot that
+        produced the result.
         """
         expected_reference_ids = {pe.reference_id for pe in pending_enhancements}
         successful_reference_ids: set[UUID] = set()
@@ -573,6 +580,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                             line_no,
                             expected_reference_ids,
                             processed_reference_ids,
+                            allow_raw_enhancements=access_control_service.may_write_raw_enhancements,
                         )
                         line_no += 1
 

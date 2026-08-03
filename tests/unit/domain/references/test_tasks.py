@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
+from app.core.entitlements import Entitlement
 from app.core.exceptions import SQLIntegrityError
 from app.domain.references.models.models import (
     DuplicateDetermination,
@@ -30,6 +31,7 @@ from app.domain.references.tasks import (
     run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
+from app.domain.robots.models.models import Robot
 from app.persistence.blob.models import BlobStorageFile
 from app.tasks import broker
 
@@ -148,6 +150,15 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     )
     mock_detect_and_dispatch.return_value = []
 
+    mock_robot_service = AsyncMock()
+    mock_robot_service.get_robot_standalone.return_value = Robot(
+        id=robot_id,
+        name="robot",
+        description="a robot",
+        owner="owner",
+        entitlements=frozenset({Entitlement.RAW_ENHANCEMENT_WRITER}),
+    )
+
     monkeypatch.setattr(
         "app.domain.references.tasks.get_blob_repository",
         AsyncMock(return_value=AsyncMock()),
@@ -155,6 +166,10 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     monkeypatch.setattr(
         "app.domain.references.tasks.get_reference_service",
         AsyncMock(return_value=mock_reference_service),
+    )
+    monkeypatch.setattr(
+        "app.domain.references.tasks.get_robot_service",
+        AsyncMock(return_value=mock_robot_service),
     )
 
     await validate_and_import_robot_enhancement_batch_result(robot_enhancement_batch_id)
@@ -164,6 +179,10 @@ async def test_validate_and_import_robot_enhancement_batch_result(monkeypatch):
     )
 
     validate_method.assert_awaited_once()
+    # The batch's robot supplies the entitlements gating the result file.
+    mock_robot_service.get_robot_standalone.assert_awaited_once_with(robot_id)
+    access_control_service = validate_method.call_args.kwargs["access_control_service"]
+    assert access_control_service.may_write_raw_enhancements
 
     mock_detect_and_dispatch.assert_awaited_once()
     call_kwargs = mock_detect_and_dispatch.call_args.kwargs
