@@ -5,6 +5,7 @@ from uuid import UUID, uuid7
 
 import pytest
 
+from app.core.entitlements import Entitlement
 from app.core.exceptions import (
     BlobSizeExceededError,
     FullTextDownloadError,
@@ -16,10 +17,14 @@ from app.core.exceptions import (
 from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestStatus,
+    EnhancementType,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
     RobotResultValidationEntry,
+)
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -234,6 +239,7 @@ async def test_process_robot_enhancement_batch_result_happy_path():
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 1
@@ -288,6 +294,7 @@ async def test_process_robot_enhancement_batch_result_handles_both_entry_types()
             [pending_enhancement_1, pending_enhancement_2],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 2
@@ -340,6 +347,7 @@ async def test_process_robot_enhancement_batch_result_missing_reference_id():
             [pending_enhancement_1, pending_enhancement_2],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 2
@@ -395,6 +403,7 @@ async def test_process_robot_enhancement_batch_result_surplus_reference_id(fake_
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     # Should process both entries but only categorize the expected one
@@ -442,6 +451,7 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     # Should have parse failure message + missing reference message
@@ -455,11 +465,30 @@ async def test_process_robot_enhancement_batch_result_parse_failure(fake_uow):
     assert {pending_enhancement.id} == results.failed_pending_enhancement_ids
 
 
+def make_raw_enhancement_result_entry(reference_id: UUID) -> str:
+    """Helper to create a raw enhancement EnhancementResultEntry jsonl line."""
+    return json.dumps(
+        {
+            "reference_id": str(reference_id),
+            "content": {
+                "enhancement_type": "raw",
+                "source_export_date": str(datetime.now(tz=UTC)),
+                "description": "nonsense",
+                "data": {"some": "data"},
+                "metadata": {},
+            },
+            "source": "test_source",
+            "visibility": "public",
+            "created_at": datetime.now(tz=UTC).isoformat(),
+        }
+    )
+
+
 @pytest.mark.asyncio
 async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
     """
-    Test that process_robot_enhancement_batch_result returns a robot error
-    if the enhancement type is a raw enhancement.
+    Test that process_robot_enhancement_batch_result returns a robot error if the
+    enhancement type is raw and the robot is not entitled to write raw enhancements.
     """
     reference_id = uuid7()
     pending_enhancement = create_pending_enhancement(reference_id)
@@ -467,26 +496,9 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
 
     uow = fake_uow()
     mock_blob_repo = MagicMock()
-    fake_stream = create_fake_stream(
-        [
-            json.dumps(
-                {
-                    "reference_id": str(reference_id),
-                    "content": {
-                        "enhancement_type": "raw",
-                        "source_export_date": str(datetime.now(tz=UTC)),
-                        "description": "nonsense",
-                        "data": {"some": "data"},
-                        "metadata": {},
-                    },
-                    "source": "test_source",
-                    "visibility": "public",
-                    "created_at": datetime.now(tz=UTC).isoformat(),
-                }
-            )
-        ]
+    mock_blob_repo.stream_file_from_blob_storage = create_fake_stream(
+        [make_raw_enhancement_result_entry(reference_id)]
     )
-    mock_blob_repo.stream_file_from_blob_storage = fake_stream
     service = EnhancementService(
         ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
     )
@@ -506,15 +518,70 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
 
     assert len(messages) == 1
     assert messages[0].reference_id == reference_id
-    assert messages[0].error == "Robot returned illegal raw enhancement type"
+    assert "not entitled to return raw enhancements" in messages[0].error
     assert len(results.imported_enhancement_ids) == 0
     assert len(results.successful_pending_enhancement_ids) == 0
     assert {pending_enhancement.id} == results.failed_pending_enhancement_ids
+
+
+@pytest.mark.asyncio
+async def test_process_robot_enhancement_batch_result_entitled_raw_enhancement(
+    fake_uow,
+):
+    """
+    Test that a raw enhancement is imported when the robot holds the
+    raw_enhancement_writer entitlement.
+    """
+    reference_id = uuid7()
+    pending_enhancement = create_pending_enhancement(reference_id)
+    result_file = create_result_file()
+
+    uow = fake_uow()
+    mock_blob_repo = MagicMock()
+    mock_blob_repo.stream_file_from_blob_storage = create_fake_stream(
+        [make_raw_enhancement_result_entry(reference_id)]
+    )
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
+
+    added_enhancements = []
+
+    async def fake_add_enhancement(enhancement):
+        added_enhancements.append(enhancement)
+        return (PendingEnhancementStatus.COMPLETED, "Enhancement added.")
+
+    results = create_processed_results()
+
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            pending_enhancement.robot_enhancement_batch_id,
+            mock_blob_repo,
+            result_file,
+            [pending_enhancement],
+            fake_add_enhancement,
+            results,
+            ReferenceAccessControlService(
+                entitlements=frozenset({Entitlement.RAW_ENHANCEMENT_WRITER})
+            ),
+        )
+    ]
+
+    assert len(messages) == 1
+    assert messages[0].reference_id == reference_id
+    assert not messages[0].error
+    assert len(added_enhancements) == 1
+    assert added_enhancements[0].content.enhancement_type == EnhancementType.RAW
+    assert len(results.imported_enhancement_ids) == 1
+    assert {pending_enhancement.id} == results.successful_pending_enhancement_ids
+    assert not results.failed_pending_enhancement_ids
 
 
 @pytest.mark.asyncio
@@ -554,6 +621,7 @@ async def test_process_robot_enhancement_batch_result_add_enhancement_fails(fake
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 1
@@ -595,6 +663,7 @@ async def test_process_robot_enhancement_batch_result_empty_result_file():
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 1
@@ -647,6 +716,7 @@ async def test_process_robot_enhancement_batch_result_duplicate_reference_ids():
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 2
@@ -709,6 +779,7 @@ async def test_process_robot_enhancement_batch_result_multiple_pending_enhanceme
             [pending_enhancement_1, pending_enhancement_2, pending_enhancement_3],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 3
@@ -762,6 +833,7 @@ async def test_process_robot_enhancement_batch_result_discarded_enhancements():
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
     assert len(messages) == 1
@@ -843,6 +915,7 @@ async def test_process_robot_result_stores_full_text_before_persistence():
             [pending_enhancement],
             fake_add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
 
@@ -886,6 +959,7 @@ async def test_process_robot_result_full_text_download_failure_skips_add():
             [pending_enhancement],
             add_enhancement,
             results,
+            ReferenceAccessControlService(),
         )
     ]
 

@@ -958,6 +958,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
         blob_repository: BlobRepository,
+        access_control_service: ReferenceAccessControlService,
     ) -> ProcessedResults:
         """
         Validate and import the result of a robot enhancement batch.
@@ -967,6 +968,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         - adds the enhancement to the database
         - streams the validation result to the blob storage service line-by-line
         - does some final validation of missing references and updates the request
+
+        ``access_control_service`` carries the entitlements of the robot the batch
+        belongs to.
         """
         if not robot_enhancement_batch.result_file:
             msg = "Robot enhancement batch has no result file. This should not happen."
@@ -995,6 +999,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     pending_enhancements=pending_enhancements,
                     add_enhancement=self.handle_enhancement_result_entry,
                     results=results,
+                    access_control_service=access_control_service,
                 )
             ),
             path="enhancement_result",

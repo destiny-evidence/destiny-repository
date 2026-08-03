@@ -268,6 +268,8 @@ class EnhancementResultValidator(BaseModel):
         entry_ref: int,
         expected_reference_ids: set[UUID],
         processed_reference_ids: set[UUID] | None = None,
+        *,
+        allow_raw_enhancements: bool = False,
     ) -> Self:
         """Create a EnhancementResult from a jsonl entry."""
         file_entry_validator: TypeAdapter[destiny_sdk.robots.EnhancementResultEntry] = (
@@ -302,12 +304,14 @@ class EnhancementResultValidator(BaseModel):
             )
 
         if isinstance(file_entry, destiny_sdk.enhancements.Enhancement):
-            # Do not allow raw enhancements to be created by robots
-            if file_entry.content.enhancement_type == EnhancementType.RAW:
+            if (
+                file_entry.content.enhancement_type == EnhancementType.RAW
+                and not allow_raw_enhancements
+            ):
                 return cls(
                     robot_error=destiny_sdk.robots.LinkedRobotError(
                         reference_id=file_entry.reference_id,
-                        message="Robot returned illegal raw enhancement type",
+                        message=("Robot is not entitled to return raw enhancements. "),
                     )
                 )
 

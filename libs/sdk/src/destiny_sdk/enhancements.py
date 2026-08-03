@@ -604,8 +604,8 @@ class RawEnhancement(BaseModel):
 
     Data in these enhancements is intended for future conversion into structured form.
 
-    This enhancement accepts any fields passed in to `data`. These enhancements cannot
-    be created by robots.
+    This enhancement accepts any fields passed in to `data`. These enhancements can
+    only be created by robots granted the ``raw_enhancement_writer`` entitlement.
     """
 
     enhancement_type: Literal[EnhancementType.RAW] = EnhancementType.RAW
