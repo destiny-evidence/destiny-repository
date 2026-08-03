@@ -116,6 +116,14 @@ async def validate_and_import_robot_enhancement_batch_result(
         )
         trace_attribute(Attributes.ROBOT_ID, str(robot_enhancement_batch.robot_id))
 
+        robot_service = await get_robot_service(RobotAntiCorruptionService(), sql_uow)
+        robot = await robot_service.get_robot_standalone(
+            robot_enhancement_batch.robot_id
+        )
+        access_control_service = ReferenceAccessControlService(
+            entitlements=robot.entitlements
+        )
+
         try:
             with bound_contextvars(
                 robot_id=str(robot_enhancement_batch.robot_id),
@@ -124,6 +132,7 @@ async def validate_and_import_robot_enhancement_batch_result(
                 results = await reference_service.validate_and_import_robot_enhancement_batch_result(  # noqa: E501
                     robot_enhancement_batch,
                     blob_repository,
+                    access_control_service=access_control_service,
                 )
         except Exception as exc:
             logger.exception(
