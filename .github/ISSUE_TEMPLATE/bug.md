@@ -13,7 +13,7 @@ Describe the bug, include reproduction steps or a demo if possible.
 
 ### Expected Behavior
 
-What will the behavior look like when the big is fixed? This doubles as the acceptance criteria for the ticket.
+What will the behavior look like when the bug is fixed? This doubles as the acceptance criteria for the ticket.
 
 ### Root cause (if known)
 

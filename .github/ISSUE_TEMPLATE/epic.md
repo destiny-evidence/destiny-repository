@@ -19,7 +19,7 @@ Any background needed to understand the goal of the epic. Useful to include curr
 
 High level scope of the epic, including high-level product requirements, known work required, known unknowns.
 
-### Excluded scope (If any)
+### Excluded scope (if any)
 
 Capture any scope-exclusion decisions.
 
