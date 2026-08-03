@@ -18,9 +18,13 @@ Any background needed to understand this issue. Useful to include notes on curre
 
 Outline the issue scope, what work needs to be done. Optionally include implementation recommendation.
 
+-
+
 ## Acceptance Criteria
 
 When is this work complete?
+
+-
 
 ## Related (if needed)
 
