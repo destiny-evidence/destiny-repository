@@ -1,0 +1,59 @@
+name: SDK Version Bump
+
+on:
+  pull_request:
+
+jobs:
+  check-sdk-version-bumped:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.9.22"
+
+      - name: Check version is bumped when SDK source changes
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet "$BASE_SHA...$HEAD_SHA" -- libs/sdk/src/destiny_sdk; then
+            echo "✅ No changes under libs/sdk/src/destiny_sdk, nothing to check."
+            exit 0
+          fi
+
+          echo "Changed SDK source files:"
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" -- libs/sdk/src/destiny_sdk
+
+          extract_version() {
+            grep '^version = ' | sed 's/version = "\(.*\)"/\1/'
+          }
+
+          HEAD_VERSION=$(git show "$HEAD_SHA:libs/sdk/pyproject.toml" | extract_version)
+          BASE_VERSION=$(git show "$BASE_SHA:libs/sdk/pyproject.toml" | extract_version)
+
+          echo "Base version: $BASE_VERSION"
+          echo "Head version: $HEAD_VERSION"
+
+          uv run --no-project --with packaging python - "$BASE_VERSION" "$HEAD_VERSION" <<'EOF'
+          import sys
+
+          from packaging.version import Version
+
+          base, head = Version(sys.argv[1]), Version(sys.argv[2])
+          if head <= base:
+              sys.exit(
+                  f"❌ libs/sdk/src/destiny_sdk changed but the SDK version was not "
+                  f"incremented: {base} -> {head}.\n"
+                  f"Bump `version` in libs/sdk/pyproject.toml (and refresh the "
+                  f"lockfiles with `uv lock`)."
+              )
+          print(f"✅ SDK version incremented: {base} -> {head}")
+          EOF
