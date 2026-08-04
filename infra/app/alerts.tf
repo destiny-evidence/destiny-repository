@@ -1,3 +1,8 @@
+data "azurerm_log_analytics_workspace" "container_apps" {
+  name                = module.container_app.container_app_env_name
+  resource_group_name = azurerm_resource_group.this.name
+}
+
 resource "azurerm_logic_app_workflow" "slack_alerts" {
   count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
 
@@ -353,6 +358,55 @@ resource "azurerm_monitor_metric_alert" "tasks_restart_count" {
 
   action {
     action_group_id = azurerm_monitor_action_group.alerts[0].id
+  }
+}
+
+# Scoped to the workspace rather than the jobs: _ResourceId is empty on
+# ContainerAppSystemLogs_CL rows, so a resource-scoped rule would match nothing.
+# Hooray.
+# "FailedMount" and "FailedToRetrieveImagePullSecret" are also purposefully excluded
+# from the alert as these do not appear to stop the container app job running successfully
+# and would be unactionable alert noise.
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
+  count = local.env.alerts_enabled ? 1 : 0
+
+  name                = "${local.name}-job-failure-events"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  scopes              = [data.azurerm_log_analytics_workspace.container_apps.id]
+  description         = "Alert when container app jobs emit warning or error system log events"
+  severity            = 1 # error
+
+  evaluation_frequency    = "PT15M"
+  window_duration         = "PT15M"
+  auto_mitigation_enabled = true
+
+  tags = local.minimum_resource_tags
+
+  criteria {
+    query = <<-KQL
+      ContainerAppSystemLogs_CL
+      | where Type_s != "Normal"
+        and JobName_s != ""
+        and Reason_s !in ("FailedMount", "FailedToRetrieveImagePullSecret")
+      | summarize AlertCount = count()
+    KQL
+
+    # Aggregating the measure column, not the row count: the query returns a row
+    # with AlertCount = 0 when nothing matches, so counting rows would always fire.
+    time_aggregation_method = "Total"
+    metric_measure_column   = "AlertCount"
+    operator                = "GreaterThan"
+    threshold               = 0
+
+    failing_periods {
+      number_of_evaluation_periods             = 1
+      minimum_failing_periods_to_trigger_alert = 1
+    }
+  }
+
+  action {
+    action_groups = [azurerm_monitor_action_group.alerts[0].id]
   }
 }
 
