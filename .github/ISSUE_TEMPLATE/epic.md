@@ -15,9 +15,9 @@ Brief summary (2-3 sentences max) of the purpose of the epic.
 
 Any background needed to understand the goal of the epic. Useful to include current state, priority of work, stakeholder or user problems or opportunities etc.
 
-## Epic Scope/Work Required
+## Epic Scope
 
-High level scope of the epic, including high-level product requirements, known work required, known unknowns.
+High level scope of the epic, including high-level product requirements.
 
 -
 
