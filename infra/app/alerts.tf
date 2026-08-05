@@ -377,7 +377,7 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
   description         = "Alert when container app jobs emit warning or error system log events"
   severity            = 1 # error
 
-  evaluation_frequency    = "PT15M"
+  evaluation_frequency    = "PT5M"
   window_duration         = "PT15M"
   auto_mitigation_enabled = true
 
