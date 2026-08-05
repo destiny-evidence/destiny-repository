@@ -12,7 +12,7 @@ assignees: []
 
 ## Context
 
-<!-- Any background needed to understand this issue. Useful to include notes on current state, the problem this issue is solving etc -->
+<!-- Any background needed to understand this issue. Useful to include notes on current state, the problem this issue is solving, a concrete example, etc -->
 
 ## Scope
 
