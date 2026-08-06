@@ -748,8 +748,7 @@ async def count_facets_for_search(
         "Both totals are exact: `totals.search` counts every matching reference, "
         "`totals.mapped` the subset with a value on both axes, so appearing in the "
         "matrix. Cells may sum to more than `totals.mapped` because a reference can "
-        "carry multiple values on an axis, but never to less. `total` is a deprecated "
-        "alias for `totals.mapped` and previously reported `totals.search`. A matrix "
+        "carry multiple values on an axis, but never to less. A matrix "
         f"whose bucket count would exceed {settings.es_cross_facet_max_cells:,} is "
         "rejected."
     ),
