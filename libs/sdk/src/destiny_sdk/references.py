@@ -3,7 +3,7 @@
 from enum import StrEnum, auto
 from typing import Self
 
-from pydantic import BaseModel, Field, HttpUrl, TypeAdapter
+from pydantic import BaseModel, Field, HttpUrl, TypeAdapter, computed_field
 
 from destiny_sdk.core import UUID, SearchResultMixIn, _JsonlFileInputMixIn
 from destiny_sdk.enhancements import Enhancement, EnhancementFileInput
@@ -165,23 +165,42 @@ class CrossFacetCell(BaseModel):
     )
 
 
+class CrossFacetTotals(BaseModel):
+    """The reference counts describing a cross-facet result."""
+
+    search: SearchResultTotal = Field(
+        description="References matching the search criteria.",
+    )
+    mapped: SearchResultTotal = Field(
+        description=(
+            "The subset with a value on both axes, so appearing in the matrix. Counts "
+            "each reference once, however many cells it occupies."
+        ),
+    )
+
+
 class ReferenceCrossFacetResult(BaseModel):
     """
     Cross-tabulation of two axes over the references matching a search.
 
     Each cell counts references at the strict intersection of its two axis values,
     all panel filters, and the query string. Only non-zero cells are returned.
-
-    Note: cells may sum to more than ``total`` because a reference can carry multiple
-    values on a single axis, so it contributes to multiple cells.
     """
 
-    total: SearchResultTotal = Field(
-        description="The total number of references matching the search criteria.",
+    totals: CrossFacetTotals = Field(
+        description="Reference counts for the search and for its mapped subset.",
     )
     cells: list[CrossFacetCell] = Field(
         description="The non-zero cells of the cross-facet matrix.",
     )
+
+    # Marked deprecated via the schema rather than `deprecated=`, which would warn on
+    # every serialization of a response, not just on consumer access.
+    @computed_field(json_schema_extra={"deprecated": True})  # type: ignore[prop-decorator]
+    @property
+    def total(self) -> SearchResultTotal:
+        """Deprecated alias for :attr:`CrossFacetTotals.mapped`."""
+        return self.totals.mapped
 
 
 class ExportFormat(StrEnum):
