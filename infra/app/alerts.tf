@@ -562,3 +562,52 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
     action_groups = [azurerm_monitor_action_group.log_alerts[0].id]
   }
 }
+
+resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_error_logs" {
+  count = local.env.alerts_enabled ? 1 : 0
+
+  name                = "${local.name}-job-error-logs"
+  resource_group_name = azurerm_resource_group.this.name
+  location            = azurerm_resource_group.this.location
+  scopes              = [data.azurerm_log_analytics_workspace.container_apps.id]
+  description         = "A container app job in ${var.environment} has logged an error."
+  severity            = 1 # error
+
+  evaluation_frequency    = "PT1M"
+  window_duration         = "PT5M"
+  auto_mitigation_enabled = true
+
+  tags = local.minimum_resource_tags
+
+  criteria {
+    query = <<-KQL
+      ContainerAppConsoleLogs_CL
+      | where ContainerJobName_s != ""
+      | extend Level = coalesce(extract(@"level=(\w+)", 1, Log_s), extract(@"\[(\w+)\s*\]", 1, Log_s))
+      | where Level in ("error", "critical")
+        or Log_s has "Traceback (most recent call last)"
+      | project TimeGenerated, ContainerJobName_s, Level, Log_s
+    KQL
+
+    time_aggregation_method = "Count"
+    operator                = "GreaterThan"
+    threshold               = 0
+
+    # Splitting on the job name gives each job its own alert instance, puts the name
+    # in the payload.
+    dimension {
+      name     = "ContainerJobName_s"
+      operator = "Include"
+      values   = ["*"]
+    }
+
+    failing_periods {
+      number_of_evaluation_periods             = 1
+      minimum_failing_periods_to_trigger_alert = 1
+    }
+  }
+
+  action {
+    action_groups = [azurerm_monitor_action_group.log_alerts[0].id]
+  }
+}
