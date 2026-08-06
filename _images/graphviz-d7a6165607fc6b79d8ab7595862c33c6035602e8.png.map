@@ -1,0 +1,20 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="destiny_sdk.search.SearchResultTotal
+
+Information about the total number of search results.
+" alt="" coords="371,5,537,89"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.references.CrossFacetCell
+
+A single non&#45;zero cell of a cross&#45;facet (cross&#45;tabulation) matrix.
+" alt="" coords="379,137,529,221"/>
+<area shape="rect" id="node3" title="libs.sdk.src.destiny_sdk.references.ReferenceCrossFacetResult
+
+Cross&#45;tabulation of two axes over the references matching a search.
+
+Each cell counts references at the strict intersection of its two axis values,
+all panel filters, and the query string. Only non&#45;zero cells are returned.
+
+Note: cells may sum to more than ``total`` because a reference can carry multiple
+values on a single axis, so it contributes to multiple cells.
+" alt="" coords="5,28,227,112"/>
+</map>

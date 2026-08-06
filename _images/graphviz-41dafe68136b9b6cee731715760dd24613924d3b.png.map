@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.identifiers.ERICIdentifier
+
+An external identifier representing an ERIC Number.
+
+An ERIC Number is defined as a unique identifying number preceded by
+ED (for a non&#45;journal document) or EJ (for a journal article).
+" alt="" coords="5,5,399,89"/>
+</map>
