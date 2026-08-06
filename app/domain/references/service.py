@@ -1289,18 +1289,25 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     )
                 return
 
-        # Carry on with normal processing
-        reference_duplicate_decision = (
-            await self._deduplication_service.nominate_candidate_canonicals(
-                reference_duplicate_decision
+        if settings.feature_flags.enable_canonical_candidate_search:
+            candidate_selection = (
+                await self._deduplication_service.select_candidate_canonicals(
+                    reference_duplicate_decision.reference_id
+                )
             )
-        )
-
-        reference_duplicate_decision = (
-            await self._deduplication_service.determine_canonical_from_candidates(
-                reference_duplicate_decision
+            reference_duplicate_decision = (
+                await self._deduplication_service.determine_canonical_from_candidates(
+                    reference_duplicate_decision,
+                    candidate_selection,
+                )
             )
-        )
+        else:
+            reference_duplicate_decision = reference_duplicate_decision.model_copy(
+                update={
+                    "duplicate_determination": DuplicateDetermination.UNSEARCHABLE,
+                    "detail": "Canonical candidate search is disabled.",
+                }
+            )
 
         (
             reference_duplicate_decision,

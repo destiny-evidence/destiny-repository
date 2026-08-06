@@ -3,7 +3,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.core.config import AzureBlobConfig, ESConfig, MinioConfig
+from app.core.config import (
+    AzureBlobConfig,
+    DedupCandidateScoringConfig,
+    ESConfig,
+    MinioConfig,
+)
+from app.domain.references.models.models import RetrievalPolicyName
 from app.persistence.blob.models import BlobContainer
 
 
@@ -62,3 +68,11 @@ def test_blob_backend_config_requires_all_containers():
             secret_key="s",
             containers={BlobContainer.OPERATIONS: "ops"},
         )
+
+
+def test_candidate_selection_config_defaults_to_production_policy_and_k():
+    """Candidate selection uses the deployed policy unless explicitly overridden."""
+    config = DedupCandidateScoringConfig()
+
+    assert config.retrieval_policy is RetrievalPolicyName.CANDIDATE_SELECTION_V1
+    assert config.candidate_k == 10
