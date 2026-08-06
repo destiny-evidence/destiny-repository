@@ -19,7 +19,10 @@ from pydantic import (
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.core.telemetry.logger import get_logger
-from app.domain.references.models.models import ExternalIdentifierType
+from app.domain.references.models.models import (
+    ExternalIdentifierType,
+    RetrievalPolicyName,
+)
 from app.persistence.blob.models import BlobContainer, BlobStorageLocation
 from app.utils.time_and_date import iso8601_duration_adapter
 
@@ -392,10 +395,14 @@ class DedupCandidateScoringConfig(BaseModel):
         description="Minimum token length for author name matching.",
     )
     candidate_k: int = Field(
-        default=100,
+        default=10,
         ge=1,
         le=1000,
         description="Default number of candidate references to retrieve.",
+    )
+    default_retrieval_policy: RetrievalPolicyName = Field(
+        default=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+        description="Candidate retrieval policy used when no override is supplied.",
     )
 
 

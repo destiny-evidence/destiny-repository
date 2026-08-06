@@ -213,6 +213,34 @@ async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service
 
 
 @pytest.mark.asyncio
+async def test_request_without_overrides_honours_rollback_policy_and_configured_k(
+    build_service, monkeypatch
+):
+    from app.domain.references.services import deduplication_service as dedup_module
+
+    service, es_refs, _, _ = build_service()
+    monkeypatch.setattr(
+        dedup_module.settings.dedup_scoring,
+        "default_retrieval_policy",
+        RetrievalPolicyName.CURRENT_FUZZY_V1,
+    )
+    monkeypatch.setattr(dedup_module.settings.dedup_scoring, "candidate_k", 17)
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="t", authors=["a"], publication_year=2020
+            ),
+            hydrate=False,
+        )
+    )
+
+    assert result.retrieval_policy is RetrievalPolicyName.CURRENT_FUZZY_V1
+    assert result.k_requested == 17
+    assert es_refs.search_for_candidate_canonicals.call_args.kwargs["k"] == 17
+
+
+@pytest.mark.asyncio
 async def test_year_optional_policy_searches_missing_year_input(build_service):
     service, es_refs, _, _ = build_service(
         es_result=_es_result(ESScoreResult(id=uuid7(), score=4.0))
@@ -264,7 +292,7 @@ async def test_inline_input_returns_ranked_es_candidates(build_service):
         )
     )
 
-    assert result.retrieval_policy == RetrievalPolicyName.CURRENT_FUZZY_V1
+    assert result.retrieval_policy == RetrievalPolicyName.CANDIDATE_SELECTION_V1
     assert result.index_version == "reference_v3"
     assert result.input_searchability.searchable is True
     assert [c.reference_id for c in result.candidates] == [id1, id2]
@@ -299,8 +327,8 @@ async def test_reference_id_input_self_excludes_and_defaults_k(build_service):
     query = es_refs.search_for_candidate_canonicals.call_args.args[0]
     kwargs = es_refs.search_for_candidate_canonicals.call_args.kwargs
     assert query.excluded_reference_id == reference.id
-    assert kwargs["k"] == 100  # configured default
-    assert result.k_requested == 100
+    assert kwargs["k"] == 10  # configured default
+    assert result.k_requested == 10
     assert [c.reference_id for c in result.candidates] == [hit]
 
 
@@ -337,9 +365,14 @@ async def test_identifier_only_match_ranks_ahead_of_es(build_service):
             "duplicate_decision": None,  # canonical-like
         }
     )
-    es_id = uuid7()
+    es_ids = [uuid7() for _ in range(10)]
     service, _, sql_refs, _ = build_service(
-        es_result=_es_result(ESScoreResult(id=es_id, score=5.0)),
+        es_result=_es_result(
+            *[
+                ESScoreResult(id=es_id, score=float(10 - rank))
+                for rank, es_id in enumerate(es_ids)
+            ]
+        ),
         found_references=[identifier_ref],
     )
 
@@ -361,14 +394,61 @@ async def test_identifier_only_match_ranks_ahead_of_es(build_service):
     )
 
     # Identifier-only match first, then the ES-scored candidate.
-    assert [c.reference_id for c in result.candidates] == [identifier_ref.id, es_id]
+    assert [candidate.reference_id for candidate in result.candidates] == [
+        identifier_ref.id,
+        *es_ids,
+    ]
     assert result.candidates[0].rank == 1
     id_route = result.candidates[0].routes[0]
     assert id_route.type == "identifier"
     assert id_route.matched_identifiers[0].identifier == str(doi.identifier)
     assert result.candidates[1].routes[0].type == "elasticsearch"
     assert result.diagnostics.identifier_returned == 1
-    assert result.diagnostics.candidate_count == 2
+    assert result.diagnostics.candidate_count == 11
+    assert result.diagnostics.candidate_count > result.k_requested
+
+
+@pytest.mark.asyncio
+async def test_same_canonical_from_both_routes_is_returned_once(build_service):
+    doi = DOIIdentifierFactory.build()
+    matched = ReferenceFactory.build(visibility="public")
+    matched = matched.model_copy(
+        update={
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    identifier=doi, reference_id=matched.id
+                )
+            ],
+            "duplicate_decision": None,
+        }
+    )
+    service, _, _, _ = build_service(
+        es_result=_es_result(ESScoreResult(id=matched.id, score=5.0)),
+        found_references=[matched],
+    )
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="A study",
+                authors=["Jane Doe"],
+                publication_year=2025,
+                identifiers=[
+                    CandidateIdentifier(
+                        identifier_type=ExternalIdentifierType.DOI,
+                        identifier=str(doi.identifier),
+                    )
+                ],
+            ),
+            hydrate=False,
+        )
+    )
+
+    assert [candidate.reference_id for candidate in result.candidates] == [matched.id]
+    assert {route.type for route in result.candidates[0].routes} == {
+        "elasticsearch",
+        "identifier",
+    }
 
 
 @pytest.mark.asyncio
@@ -411,6 +491,49 @@ async def test_identifier_match_on_duplicate_resolves_to_canonical(build_service
     )
 
     assert [c.reference_id for c in result.candidates] == [canonical_id]
+
+
+@pytest.mark.asyncio
+async def test_identifier_match_keeps_canonical_with_existing_duplicates_eligible(
+    build_service,
+):
+    doi = DOIIdentifierFactory.build()
+    canonical = ReferenceFactory.build(visibility="public")
+    canonical = canonical.model_copy(
+        update={
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    identifier=doi, reference_id=canonical.id
+                )
+            ],
+            "duplicate_decision": ReferenceDuplicateDecision(
+                reference_id=canonical.id,
+                active_decision=True,
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+            ),
+            "duplicate_references": [ReferenceFactory.build(visibility="public")],
+        }
+    )
+    service, _, _, _ = build_service(found_references=[canonical])
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="A study",
+                authors=["Jane Doe"],
+                publication_year=2025,
+                identifiers=[
+                    CandidateIdentifier(
+                        identifier_type=ExternalIdentifierType.DOI,
+                        identifier=str(doi.identifier),
+                    )
+                ],
+            ),
+            hydrate=False,
+        )
+    )
+
+    assert [candidate.reference_id for candidate in result.candidates] == [canonical.id]
 
 
 @pytest.mark.asyncio

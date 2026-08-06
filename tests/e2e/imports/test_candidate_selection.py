@@ -101,7 +101,7 @@ async def test_candidates_inline_unions_es_and_identifier_without_persisting(  #
 
     assert response.status_code == 200
     body = response.json()
-    assert body["retrieval_policy"] == "current_fuzzy_v1"
+    assert body["retrieval_policy"] == "candidate_selection_v1"
     assert body["index_version"].startswith("reference_v")
     assert body["k_requested"] == 50
     assert body["input_searchability"]["searchable"] is True
@@ -159,7 +159,7 @@ async def test_candidates_by_reference_id_is_searchable_and_read_only(
     assert response.status_code == 200
     body = response.json()
     assert body["input_searchability"]["searchable"] is True
-    assert body["k_requested"] == 100  # configured default
+    assert body["k_requested"] == 10  # configured default
     # The input reference excludes itself from its own candidates.
     assert all(c["reference_id"] != str(reference_id) for c in body["candidates"])
     assert await _count_duplicate_decisions(pg_session) == decisions_before
