@@ -95,6 +95,101 @@ resource "azurerm_logic_app_action_http" "post_to_slack" {
   BODY
 }
 
+# Log search alerts get their own logic app rather than sharing post_to_slack. The
+# payloads differ enough that one shared body would need conditionals on every field,
+# and keeping them apart means changes here can't break the metric alerts.
+resource "azurerm_logic_app_workflow" "slack_log_alerts" {
+  count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
+
+  name                = "${local.name}-slack-log-alerts"
+  location            = azurerm_resource_group.this.location
+  resource_group_name = azurerm_resource_group.this.name
+
+  tags = local.minimum_resource_tags
+}
+
+resource "azurerm_logic_app_trigger_http_request" "slack_log_alerts" {
+  count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
+
+  name         = "azure-monitor-webhook"
+  logic_app_id = azurerm_logic_app_workflow.slack_log_alerts[0].id
+
+  # schema: https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/alerts-common-schema
+  schema = <<-SCHEMA
+    {
+      "type": "object",
+      "properties": {
+        "schemaId": { "type": "string" },
+        "data": {
+          "type": "object",
+          "properties": {
+            "essentials": {
+              "type": "object",
+              "properties": {
+                "alertRule": { "type": "string" },
+                "severity": { "type": "string" },
+                "monitorCondition": { "type": "string" },
+                "description": { "type": "string" },
+                "firedDateTime": { "type": "string" }
+              }
+            },
+            "alertContext": { "type": "object" }
+          }
+        }
+      }
+    }
+  SCHEMA
+}
+
+resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
+  count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
+
+  name         = "post-log-alert-to-slack"
+  logic_app_id = azurerm_logic_app_workflow.slack_log_alerts[0].id
+  method       = "POST"
+  uri          = var.alert_slack_webhook_url
+
+  headers = {
+    "Content-Type" = "application/json"
+  }
+
+  # body: https://api.slack.com/block-kit
+  # expressions: https://learn.microsoft.com/en-us/azure/logic-apps/workflow-definition-language-functions-reference
+  body = <<-BODY
+    {
+      "blocks": [
+        {
+          "type": "header",
+          "text": {
+            "type": "plain_text",
+            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '✅ RESOLVED', '❌ JOB FAILURE')} @{first(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['dimensions'])?['value']}",
+            "emoji": true
+          }
+        },
+        {
+          "type": "section",
+          "fields": [
+            { "type": "mrkdwn", "text": "*Status:*\n@{triggerBody()?['data']?['essentials']?['monitorCondition']}" },
+            { "type": "mrkdwn", "text": "*Matching events:*\n@{triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['metricValue']}" }
+          ]
+        },
+        {
+          "type": "section",
+          "text": { "type": "mrkdwn", "text": "*Description:*\n@{triggerBody()?['data']?['essentials']?['description']}" }
+        },
+        {
+          "type": "section",
+          "text": { "type": "mrkdwn", "text": "<@{triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['linkToFilteredSearchResultsUI']}|🔍 View matching logs>    <https://portal.azure.com/#resource/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/${azurerm_resource_group.this.name}/providers/Microsoft.App/jobs/@{first(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['dimensions'])?['value']}|📋 Job execution history>" }
+        },
+        {
+          "type": "context",
+          "elements": [{ "type": "mrkdwn", "text": "@{triggerBody()?['data']?['essentials']?['alertRule']} · fired at @{triggerBody()?['data']?['essentials']?['firedDateTime']}" }]
+        }
+      ]
+    }
+  BODY
+}
+
 resource "azurerm_monitor_action_group" "alerts" {
   count = local.env.alerts_enabled ? 1 : 0
 
@@ -119,6 +214,37 @@ resource "azurerm_monitor_action_group" "alerts" {
       name                    = "slack-via-logic-app"
       resource_id             = azurerm_logic_app_workflow.slack_alerts[0].id
       callback_url            = azurerm_logic_app_trigger_http_request.slack_alerts[0].callback_url
+      use_common_alert_schema = true
+    }
+  }
+}
+
+# Routes to the log-alert logic app instead. Alert rules choose their Slack card by
+# choosing an action group, since an action group notifies every receiver it holds.
+resource "azurerm_monitor_action_group" "log_alerts" {
+  count = local.env.alerts_enabled ? 1 : 0
+
+  name                = "${local.name}-log-alerts-ag"
+  resource_group_name = azurerm_resource_group.this.name
+  short_name          = "logalerts"
+
+  tags = local.minimum_resource_tags
+
+  dynamic "email_receiver" {
+    for_each = var.alert_email_recipients
+    content {
+      name                    = "email-${email_receiver.key}"
+      email_address           = email_receiver.value
+      use_common_alert_schema = true
+    }
+  }
+
+  dynamic "logic_app_receiver" {
+    for_each = var.alert_slack_webhook_url != "" ? [1] : []
+    content {
+      name                    = "slack-via-logic-app"
+      resource_id             = azurerm_logic_app_workflow.slack_log_alerts[0].id
+      callback_url            = azurerm_logic_app_trigger_http_request.slack_log_alerts[0].callback_url
       use_common_alert_schema = true
     }
   }
@@ -389,15 +515,21 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
       | where Type_s != "Normal"
         and JobName_s != ""
         and Reason_s !in ("FailedMount", "FailedToRetrieveImagePullSecret")
-      | summarize AlertCount = count()
+      | summarize AlertCount = count() by JobName_s
     KQL
 
-    # Aggregating the measure column, not the row count: the query returns a row
-    # with AlertCount = 0 when nothing matches, so counting rows would always fire.
     time_aggregation_method = "Total"
     metric_measure_column   = "AlertCount"
     operator                = "GreaterThan"
     threshold               = 0
+
+    # Splitting on the job name gives each job its own alert instance and puts the
+    # name in the payload.
+    dimension {
+      name     = "JobName_s"
+      operator = "Include"
+      values   = ["*"]
+    }
 
     failing_periods {
       number_of_evaluation_periods             = 1
@@ -406,7 +538,7 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
   }
 
   action {
-    action_groups = [azurerm_monitor_action_group.alerts[0].id]
+    action_groups = [azurerm_monitor_action_group.log_alerts[0].id]
   }
 }
 
