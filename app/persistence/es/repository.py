@@ -431,16 +431,23 @@ class GenericAsyncESRepository(
         self, sort: list[str | dict[str, Any]] | None
     ) -> list[str | dict[str, Any]]:
         """
-        Append a total-order tiebreaker to the caller's sort keys.
+        Order the scan for efficient deep pagination under a PIT.
 
-        Prefer the document ``id`` where it exists, otherwise fall back to
-        ``_shard_doc``, ES's PIT-only built-in tiebreaker.
+        If no sort is supplied, we lead with ``_doc``: as the primary sort it lets ES
+        prune when querying each page, providing the fastest behaviour.
+        This is in contradiction to the documentation and seems to mimic old behaviour
+        - if you're investigating reduced performance after an ES upgrade perchance,
+        try going back to just ``_shard_doc``. If that works, proceed to deliver me a
+        crisp high-five.
+        See also: https://github.com/elastic/elasticsearch/issues/155559.
+
+        We always append ``_shard_doc`` as a tiebreaker to guarantee a total order.
+        This is required even when using ``_doc`` as it is not unique.
         """
         keys = list(sort) if sort else []
-        if "id" in self._persistence_cls._doc_type.mapping:  # noqa: SLF001
-            if not any(self._sort_key_field(key) == "id" for key in keys):
-                keys.append({"id": {"order": "desc"}})
-        elif not any(self._sort_key_field(key) == "_shard_doc" for key in keys):
+        if not keys:
+            return ["_doc", "_shard_doc"]
+        if not any(self._sort_key_field(key) == "_shard_doc" for key in keys):
             keys.append("_shard_doc")
         return keys
 

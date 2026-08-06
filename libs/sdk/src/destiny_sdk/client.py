@@ -4,7 +4,7 @@ import sys
 import time
 import warnings
 from collections.abc import Collection, Generator
-from typing import Literal
+from typing import Literal, overload
 
 import httpx
 from msal import (
@@ -30,8 +30,10 @@ from destiny_sdk.robots import (
     RobotEnhancementBatchRead,
     RobotEnhancementBatchResult,
     RobotResult,
+    SearchEnhancementRequestIn,
+    SearchEnhancementRequestRead,
 )
-from destiny_sdk.search import AnnotationFilter
+from destiny_sdk.search import AnnotationFilter, SearchResultTotal
 
 python_version = ".".join(map(str, sys.version_info[:3]))
 user_agent = f"python@{python_version}/destiny-sdk@{sdk_version}"
@@ -931,6 +933,106 @@ class OAuthClient:
         )
         self._raise_for_status(response)
         return TypeAdapter(list[Reference]).validate_python(response.json())
+
+    @overload
+    def request_search_enhancement(
+        self,
+        robot_id: UUID | str,
+        search_query: str,
+        source: str | None = None,
+        *,
+        dry_run: Literal[False] = False,
+        timeout: int | None = None,
+    ) -> SearchEnhancementRequestRead: ...
+
+    @overload
+    def request_search_enhancement(
+        self,
+        robot_id: UUID | str,
+        search_query: str,
+        source: str | None = None,
+        *,
+        dry_run: Literal[True],
+        timeout: int | None = None,
+    ) -> SearchResultTotal: ...
+
+    def request_search_enhancement(
+        self,
+        robot_id: UUID | str,
+        search_query: str,
+        source: str | None = None,
+        *,
+        dry_run: bool = False,
+        timeout: int | None = None,
+    ) -> SearchEnhancementRequestRead | SearchResultTotal:
+        """
+        Request enhancements for every reference matching a search.
+
+        The ``search_query`` uses the same Lucene syntax as :meth:`search`; see
+        :ref:`search-procedure`.
+
+        See also: :ref:`search-enhancement-procedure`.
+
+        :param robot_id: The robot to be used to create the enhancements.
+        :type robot_id: libs.sdk.src.destiny_sdk.core.UUID | str
+        :param search_query: The Lucene query string selecting references to enhance.
+        :type search_query: str
+        :param source: An optional source identifier for the enhancement request.
+        :type source: str | None
+        :param dry_run: If ``True``, synchronously return the number of matching
+            references without creating a request. Defaults to ``False``.
+        :type dry_run: bool
+        :param timeout: The timeout for the request, in seconds. If provided, this
+            will override the client timeout.
+        :type timeout: int | None
+        :return: The pollable request status, or the match count for a dry run.
+        :rtype: libs.sdk.src.destiny_sdk.robots.SearchEnhancementRequestRead | libs.sdk.src.destiny_sdk.search.SearchResultTotal
+        """  # noqa: E501
+        request_in = SearchEnhancementRequestIn(
+            robot_id=robot_id,
+            search_query=search_query,
+            source=source,
+        )
+        response = self._client.post(
+            "/enhancement-requests/search/",
+            params={"dry_run": dry_run},
+            json=request_in.model_dump(mode="json"),
+            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
+        )
+        self._raise_for_status(response)
+        if dry_run:
+            return SearchResultTotal.model_validate(response.json())
+        return SearchEnhancementRequestRead.model_validate(response.json())
+
+    def get_search_enhancement_request(
+        self,
+        enhancement_request_id: UUID | str,
+        timeout: int | None = None,
+    ) -> SearchEnhancementRequestRead:
+        """
+        Get the current status of a search-based enhancement request.
+
+        The returned model tracks two phases: ``search_status`` for scanning the
+        search and requesting enhancements, and ``request_status`` for the downstream
+        processing of those enhancements.
+
+        See also: :ref:`search-enhancement-procedure`.
+
+        :param enhancement_request_id: The ID of the search enhancement request, as
+            returned by :meth:`request_search_enhancement`.
+        :type enhancement_request_id: libs.sdk.src.destiny_sdk.core.UUID | str
+        :param timeout: The timeout for the request, in seconds. If provided, this
+            will override the client timeout.
+        :type timeout: int | None
+        :return: The current status of the search enhancement request.
+        :rtype: libs.sdk.src.destiny_sdk.robots.SearchEnhancementRequestRead
+        """
+        response = self._client.get(
+            f"/enhancement-requests/search/{enhancement_request_id}/",
+            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
+        )
+        self._raise_for_status(response)
+        return SearchEnhancementRequestRead.model_validate(response.json())
 
     def get_client(self) -> httpx.Client:
         """

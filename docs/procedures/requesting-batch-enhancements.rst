@@ -3,6 +3,10 @@ Requesting Enhancements
 
 .. note:: This document is best understood in conjunction with :ref:`Robots Schemas <sdk_schemas:Robots>`. The schemas here, cross-referenced in this document, have significant supplementary documentation.
 
+.. seealso::
+
+    To enhance every reference matching a search query rather than a known list of reference IDs, see :ref:`search-enhancement-procedure`.
+
 .. contents:: Table of Contents
     :depth: 2
     :local:

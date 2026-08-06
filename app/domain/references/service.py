@@ -1,5 +1,6 @@
 """The service for interacting with and managing references."""
 
+import contextlib
 import datetime
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Sequence
@@ -90,6 +91,7 @@ from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
+from app.utils.aio import prefetch
 from app.utils.lists import list_chunker
 from app.utils.time_and_date import apply_positive_timedelta
 
@@ -774,21 +776,28 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         search = enhancement_request.search
         total_count_recorded = False
         try:
-            async for page in self._search_service.scan(
-                search,
-                score=False,
-                page_size=settings.search_enhancement_scan_page_size,
-            ):
-                if not total_count_recorded:
-                    await self._enhancement_service.record_search_match_total(
-                        enhancement_request_id, page.total.value
+            # Prefetched so the next ES page is retrieved while the current page
+            # is being processed.
+            async with contextlib.aclosing(
+                prefetch(
+                    self._search_service.scan(
+                        search,
+                        score=False,
+                        page_size=settings.search_enhancement_scan_page_size,
                     )
-                    total_count_recorded = True
-                await self.create_pending_enhancements(
-                    robot_id=enhancement_request.robot_id,
-                    reference_ids=[hit.id for hit in page.hits],
-                    enhancement_request_id=enhancement_request_id,
                 )
+            ) as pages:
+                async for page in pages:
+                    if not total_count_recorded:
+                        await self._enhancement_service.record_search_match_total(
+                            enhancement_request_id, page.total.value
+                        )
+                        total_count_recorded = True
+                    await self.create_pending_enhancements(
+                        robot_id=enhancement_request.robot_id,
+                        reference_ids=[hit.id for hit in page.hits],
+                        enhancement_request_id=enhancement_request_id,
+                    )
             if not total_count_recorded:
                 await self._enhancement_service.record_search_match_total(
                     enhancement_request_id, 0
@@ -958,6 +967,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         robot_enhancement_batch: RobotEnhancementBatch,
         blob_repository: BlobRepository,
+        access_control_service: ReferenceAccessControlService,
     ) -> ProcessedResults:
         """
         Validate and import the result of a robot enhancement batch.
@@ -967,6 +977,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         - adds the enhancement to the database
         - streams the validation result to the blob storage service line-by-line
         - does some final validation of missing references and updates the request
+
+        ``access_control_service`` carries the entitlements of the robot the batch
+        belongs to.
         """
         if not robot_enhancement_batch.result_file:
             msg = "Robot enhancement batch has no result file. This should not happen."
@@ -995,6 +1008,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     pending_enhancements=pending_enhancements,
                     add_enhancement=self.handle_enhancement_result_entry,
                     results=results,
+                    access_control_service=access_control_service,
                 )
             ),
             path="enhancement_result",

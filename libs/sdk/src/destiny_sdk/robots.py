@@ -195,6 +195,11 @@ class EnhancementRequestSearchStatus(StrEnum):
     FAILED = auto()
     """Search failed before all enhancements were requested."""
 
+    @classmethod
+    def get_terminal_statuses(cls) -> set["EnhancementRequestSearchStatus"]:
+        """Return the statuses at which the search phase has stopped progressing."""
+        return {cls.COMPLETED, cls.FAILED}
+
 
 class _EnhancementRequestBase(BaseModel):
     """
@@ -395,6 +400,9 @@ class RobotEntitlement(StrEnum):
 
     FULL_TEXT = auto()
     """The robot is entitled to read full texts in order to derive enhancements."""
+
+    RAW_ENHANCEMENT_WRITER = auto()
+    """The robot is entitled to return raw enhancements."""
 
 
 class _RobotBase(BaseModel):

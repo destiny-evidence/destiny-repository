@@ -6,7 +6,6 @@ from fastapi import Request, Response
 from opentelemetry import trace
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.routing import Match
 from structlog.contextvars import (
     bind_contextvars,
     bound_contextvars,
@@ -63,21 +62,10 @@ class FastAPITracingMiddleware(BaseHTTPMiddleware):
             contextvars |= request.query_params.keys()
             bind_contextvars(**request.query_params)
 
-        # Can't access path parameters directly in middleware.
-        # This is what starlette does internally.
-        # https://github.com/fastapi/fastapi/issues/861
-        # https://github.com/encode/starlette/blob/5c43dde0ec0917673bb280bcd7ab0c37b78061b7/starlette/routing.py#L544
-        routes = request.app.router.routes
-        for route in routes:
-            match, scope = route.matches(request)
-            if match == Match.FULL:
-                if current_span.is_recording():
-                    for key, value in scope["path_params"].items():
-                        current_span.set_attribute(
-                            f"{Attributes.HTTP_REQUEST_PATH_PARAMS}.{key}", str(value)
-                        )
-                contextvars |= scope["path_params"].keys()
-                bind_contextvars(**scope["path_params"])
+        # Path parameters are NOT available here: Starlette runs routing after
+        # the middleware stack, so request.path_params is still empty at this
+        # point. They are attached instead via the trace_path_params dependency
+        # below, which runs after routing but before the route handler.
 
         try:
             result = await call_next(request)
@@ -87,6 +75,27 @@ class FastAPITracingMiddleware(BaseHTTPMiddleware):
         else:
             unbind_contextvars(*contextvars)
             return result
+
+
+async def trace_path_params(request: Request) -> AsyncGenerator[None, None]:
+    """
+    Attach request path parameters to the current span and log context.
+
+    Args:
+        request: The incoming request.
+
+    Yields:
+        None, after binding path parameters to the span and log context.
+
+    """
+    current_span = trace.get_current_span()
+    if current_span.is_recording():
+        for key, value in request.path_params.items():
+            current_span.set_attribute(
+                f"{Attributes.HTTP_REQUEST_PATH_PARAMS}.{key}", str(value)
+            )
+    with bound_contextvars(**request.path_params):
+        yield
 
 
 class PayloadAttributeTracer:

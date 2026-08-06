@@ -11,6 +11,7 @@ Procedures and guidelines for interacting with the DESTINY repository.
     search
     batch-importing
     requesting-batch-enhancements
+    requesting-search-enhancements
     deduplication
     robot-registration
     robot-automation
