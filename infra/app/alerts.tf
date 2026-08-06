@@ -423,8 +423,7 @@ resource "azurerm_logic_app_trigger_http_request" "slack_log_alerts" {
                 "severity": { "type": "string" },
                 "monitorCondition": { "type": "string" },
                 "description": { "type": "string" },
-                "firedDateTime": { "type": "string" },
-                "alertTargetIDs": { "type": "array" }
+                "firedDateTime": { "type": "string" }
               }
             },
             "alertContext": { "type": "object" }
@@ -473,7 +472,7 @@ resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
         },
         {
           "type": "section",
-          "text": { "type": "mrkdwn", "text": "<@{triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['linkToFilteredSearchResultsUI']}|🔍 View matching logs>    <https://portal.azure.com/#@${data.azurerm_subscription.current.tenant_id}/resource@{first(triggerBody()?['data']?['essentials']?['alertTargetIDs'])}|📋 View resource>" }
+          "text": { "type": "mrkdwn", "text": "<@{triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['linkToFilteredSearchResultsUI']}|🔍 View matching logs>" }
         },
         {
           "type": "context",
@@ -533,22 +532,17 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
   tags = local.minimum_resource_tags
 
   criteria {
-    # The rows carry no _ResourceId, so rebuild the job's ARM ID and hand it to
-    # resource_id_column. Retargets the alert from the workspace onto
-    # the job itself.
     query = <<-KQL
       ContainerAppSystemLogs_CL
       | where Type_s != "Normal"
         and JobName_s != ""
         and Reason_s !in ("FailedMount", "FailedToRetrieveImagePullSecret")
-      | extend ResourceId = tolower(strcat("/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/${azurerm_resource_group.this.name}/providers/Microsoft.App/jobs/", JobName_s))
-      | project TimeGenerated, JobName_s, Reason_s, Log_s, ResourceId
+      | project TimeGenerated, JobName_s, Reason_s, Log_s
     KQL
 
     time_aggregation_method = "Count"
     operator                = "GreaterThan"
     threshold               = 0
-    resource_id_column      = "ResourceId"
 
     # Splitting on the job name gives each job its own alert instance, puts the name
     # in the payload.
