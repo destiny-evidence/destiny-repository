@@ -1,5 +1,5 @@
 ---
-name: 🚜 EPIC
+name: 🚜 Epic
 about: Something big needs doing
 title: ""
 type: EPIC
