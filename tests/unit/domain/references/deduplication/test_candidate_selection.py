@@ -221,7 +221,7 @@ async def test_request_without_overrides_honours_rollback_policy_and_configured_
     service, es_refs, _, _ = build_service()
     monkeypatch.setattr(
         dedup_module.settings.dedup_scoring,
-        "retrieval_policy",
+        "default_retrieval_policy",
         RetrievalPolicyName.CURRENT_FUZZY_V1,
     )
     monkeypatch.setattr(dedup_module.settings.dedup_scoring, "candidate_k", 17)

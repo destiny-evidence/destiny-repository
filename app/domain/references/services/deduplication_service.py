@@ -202,7 +202,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """Return ranked candidates with provenance, without persisting state."""
         k = request.k or settings.dedup_scoring.candidate_k
         policy_name = (
-            request.retrieval_policy or settings.dedup_scoring.retrieval_policy
+            request.retrieval_policy or settings.dedup_scoring.default_retrieval_policy
         )
         policy = resolve_retrieval_policy(policy_name)
 

@@ -1302,11 +1302,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 )
             )
         else:
-            reference_duplicate_decision = reference_duplicate_decision.model_copy(
-                update={
-                    "duplicate_determination": DuplicateDetermination.UNSEARCHABLE,
-                    "detail": "Canonical candidate search is disabled.",
-                }
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.UNSEARCHABLE
+            )
+            reference_duplicate_decision.detail = (
+                "Canonical candidate search is disabled."
             )
 
         (

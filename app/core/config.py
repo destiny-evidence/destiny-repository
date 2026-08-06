@@ -400,7 +400,7 @@ class DedupCandidateScoringConfig(BaseModel):
         le=1000,
         description="Default number of candidate references to retrieve.",
     )
-    retrieval_policy: RetrievalPolicyName = Field(
+    default_retrieval_policy: RetrievalPolicyName = Field(
         default=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
         description="Candidate retrieval policy used when no override is supplied.",
     )
