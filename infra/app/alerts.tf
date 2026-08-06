@@ -95,9 +95,6 @@ resource "azurerm_logic_app_action_http" "post_to_slack" {
   BODY
 }
 
-# Log search alerts get their own logic app rather than sharing post_to_slack. The
-# payloads differ enough that one shared body would need conditionals on every field,
-# and keeping them apart means changes here can't break the metric alerts.
 resource "azurerm_logic_app_workflow" "slack_log_alerts" {
   count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
 
@@ -130,7 +127,8 @@ resource "azurerm_logic_app_trigger_http_request" "slack_log_alerts" {
                 "severity": { "type": "string" },
                 "monitorCondition": { "type": "string" },
                 "description": { "type": "string" },
-                "firedDateTime": { "type": "string" }
+                "firedDateTime": { "type": "string" },
+                "alertTargetIDs": { "type": "array" }
               }
             },
             "alertContext": { "type": "object" }
@@ -162,7 +160,7 @@ resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
           "type": "header",
           "text": {
             "type": "plain_text",
-            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '✅ RESOLVED', '❌ JOB FAILURE')} @{first(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['dimensions'])?['value']}",
+            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '✅ RESOLVED', '❌ FAILURE')} @{first(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['dimensions'])?['value']}",
             "emoji": true
           }
         },
@@ -179,7 +177,7 @@ resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
         },
         {
           "type": "section",
-          "text": { "type": "mrkdwn", "text": "<@{triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['linkToFilteredSearchResultsUI']}|🔍 View matching logs>    <https://portal.azure.com/#resource/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/${azurerm_resource_group.this.name}/providers/Microsoft.App/jobs/@{first(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['dimensions'])?['value']}|📋 Job execution history>" }
+          "text": { "type": "mrkdwn", "text": "<@{triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['linkToFilteredSearchResultsUI']}|🔍 View matching logs>    <https://portal.azure.com/#@${data.azurerm_subscription.current.tenant_id}/resource@{first(triggerBody()?['data']?['essentials']?['alertTargetIDs'])}|📋 View resource>" }
         },
         {
           "type": "context",
@@ -219,8 +217,6 @@ resource "azurerm_monitor_action_group" "alerts" {
   }
 }
 
-# Routes to the log-alert logic app instead. Alert rules choose their Slack card by
-# choosing an action group, since an action group notifies every receiver it holds.
 resource "azurerm_monitor_action_group" "log_alerts" {
   count = local.env.alerts_enabled ? 1 : 0
 
@@ -500,7 +496,7 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
   resource_group_name = azurerm_resource_group.this.name
   location            = azurerm_resource_group.this.location
   scopes              = [data.azurerm_log_analytics_workspace.container_apps.id]
-  description         = "Alert when container app jobs emit warning or error system log events"
+  description         = "A container app job in ${var.environment} has failed."
   severity            = 1 # error
 
   evaluation_frequency    = "PT5M"
@@ -510,21 +506,25 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
   tags = local.minimum_resource_tags
 
   criteria {
+    # The rows carry no _ResourceId, so rebuild the job's ARM ID and hand it to
+    # resource_id_column. Retargets the alert from the workspace onto
+    # the job itself.
     query = <<-KQL
       ContainerAppSystemLogs_CL
       | where Type_s != "Normal"
         and JobName_s != ""
         and Reason_s !in ("FailedMount", "FailedToRetrieveImagePullSecret")
-      | summarize AlertCount = count() by JobName_s
+      | extend ResourceId = tolower(strcat("/subscriptions/${data.azurerm_subscription.current.subscription_id}/resourceGroups/${azurerm_resource_group.this.name}/providers/Microsoft.App/jobs/", JobName_s))
+      | project TimeGenerated, JobName_s, Reason_s, Log_s, ResourceId
     KQL
 
-    time_aggregation_method = "Total"
-    metric_measure_column   = "AlertCount"
+    time_aggregation_method = "Count"
     operator                = "GreaterThan"
     threshold               = 0
+    resource_id_column      = "ResourceId"
 
-    # Splitting on the job name gives each job its own alert instance and puts the
-    # name in the payload.
+    # Splitting on the job name gives each job its own alert instance, puts the name
+    # in the payload.
     dimension {
       name     = "JobName_s"
       operator = "Include"
