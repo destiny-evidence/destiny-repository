@@ -525,8 +525,8 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_failure_events" {
   description         = "A container app job in ${var.environment} has failed."
   severity            = 1 # error
 
-  evaluation_frequency    = "PT5M"
-  window_duration         = "PT15M"
+  evaluation_frequency    = "PT1M"
+  window_duration         = "PT5M"
   auto_mitigation_enabled = true
 
   tags = local.minimum_resource_tags
