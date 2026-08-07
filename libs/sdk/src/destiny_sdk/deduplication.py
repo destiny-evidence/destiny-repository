@@ -17,6 +17,34 @@ class ManualDuplicateDetermination(StrEnum):
     """The reference is not a duplicate of another reference."""
 
 
+class DuplicateDecisionAuthority(StrEnum):
+    """Who had authority for a duplicate decision."""
+
+    UNCLASSIFIED = auto()
+    """The authority of a historical decision has not been established."""
+    PERSON = auto()
+    """A person made the decision."""
+    SYSTEM = auto()
+    """The repository made the decision automatically."""
+
+
+class DuplicateDecisionTrigger(StrEnum):
+    """The event that caused a duplicate decision."""
+
+    UNCLASSIFIED = auto()
+    """The trigger for a historical decision has not been established."""
+    MANUAL_API = auto()
+    """The manual duplicate-decision API created the decision."""
+    IMPORT = auto()
+    """Reference import processing created the decision."""
+    ENHANCEMENT = auto()
+    """Reserved. No path creates enhancement-triggered decisions yet."""
+    EXPLICIT_RERUN = auto()
+    """An explicit deduplication rerun caused the decision."""
+    MIGRATION = auto()
+    """A data migration classified or created the decision."""
+
+
 class MakeDuplicateDecision(BaseModel):
     """Model for making a duplicate decision."""
 
@@ -77,6 +105,15 @@ class MakeDuplicateDecisionResult(BaseModel):
     )
     active_decision: bool = Field(
         description="Whether this decision is the active decision for the reference.",
+    )
+    # Defaulted so a newer SDK can still parse a server that predates these fields.
+    decision_authority: DuplicateDecisionAuthority = Field(
+        default=DuplicateDecisionAuthority.UNCLASSIFIED,
+        description="Whether a person or the system made the decision.",
+    )
+    decision_trigger: DuplicateDecisionTrigger = Field(
+        default=DuplicateDecisionTrigger.UNCLASSIFIED,
+        description="The event that caused the decision.",
     )
     detail: str | None = Field(
         default=None,

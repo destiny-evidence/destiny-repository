@@ -282,3 +282,190 @@ async def test_pending_enhancement_unique_index_fails_fast_on_duplicates(
         await run_migration(db_url, "9b2f1c4d7e83")
 
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["9b2f1c4d7e83"])
+async def test_duplicate_decision_provenance_migration_classifies_known_manual_eef(
+    db_at_migration: str,
+) -> None:
+    """Classify verified EEF manual decisions without guessing other history."""
+    engine = create_async_engine(db_at_migration, future=True)
+    now = datetime.datetime.now(datetime.UTC)
+    eef_record_id, other_record_id = str(uuid7()), str(uuid7())
+    eef_batch_id, other_batch_id = str(uuid7()), str(uuid7())
+    canonical_target_id = str(uuid7())
+    (
+        manual_eef_canonical_id,
+        manual_eef_duplicate_id,
+        manual_eef_inactive_id,
+        automatic_eef_id,
+        unsearchable_eef_id,
+        other_id,
+    ) = (str(uuid7()) for _ in range(6))
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO reference (id, visibility, created_at, updated_at) "
+                "VALUES (:id, 'public', :now, :now)"
+            ),
+            {"id": canonical_target_id, "now": now},
+        )
+        for record_id, source_name in (
+            (eef_record_id, "eef-eppi-review-export-2026"),
+            (other_record_id, "openalex"),
+        ):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO import_record "
+                    "(id, searched_at, processor_name, processor_version, "
+                    "expected_reference_count, source_name, status, created_at, "
+                    "updated_at) VALUES "
+                    "(:id, :now, 'test', '1', 1, :source, 'completed', :now, :now)"
+                ),
+                {"id": record_id, "source": source_name, "now": now},
+            )
+        for batch_id, record_id in (
+            (eef_batch_id, eef_record_id),
+            (other_batch_id, other_record_id),
+        ):
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO import_batch "
+                    "(id, import_record_id, storage_url, created_at, updated_at) "
+                    "VALUES (:id, :record_id, :url, :now, :now)"
+                ),
+                {
+                    "id": batch_id,
+                    "record_id": record_id,
+                    "url": f"https://example.com/{batch_id}",
+                    "now": now,
+                },
+            )
+
+        # (decision id, batch, detail, determination, canonical, active)
+        decisions = (
+            (manual_eef_canonical_id, eef_batch_id, None, "canonical", None, True),
+            (
+                manual_eef_duplicate_id,
+                eef_batch_id,
+                None,
+                "duplicate",
+                canonical_target_id,
+                True,
+            ),
+            (manual_eef_inactive_id, eef_batch_id, None, "canonical", None, False),
+            (
+                automatic_eef_id,
+                eef_batch_id,
+                "Automatic decision",
+                "canonical",
+                None,
+                True,
+            ),
+            (unsearchable_eef_id, eef_batch_id, None, "unsearchable", None, True),
+            (other_id, other_batch_id, None, "canonical", None, True),
+        )
+        for (
+            decision_id,
+            batch_id,
+            detail,
+            determination,
+            canonical_id,
+            active,
+        ) in decisions:
+            reference_id = str(uuid7())
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO import_result "
+                    "(id, import_batch_id, status, reference_id, created_at, "
+                    "updated_at) "
+                    "VALUES (:id, :batch_id, 'imported', :reference_id, :now, :now)"
+                ),
+                {
+                    "id": str(uuid7()),
+                    "batch_id": batch_id,
+                    "reference_id": reference_id,
+                    "now": now,
+                },
+            )
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO reference_duplicate_decision "
+                    "(id, reference_id, active_decision, candidate_canonical_ids, "
+                    "duplicate_determination, canonical_reference_id, detail, "
+                    "created_at, updated_at) "
+                    "VALUES (:id, :reference_id, :active, '{}', :determination, "
+                    ":canonical_id, :detail, :now, :now)"
+                ),
+                {
+                    "id": decision_id,
+                    "reference_id": reference_id,
+                    "active": active,
+                    "determination": determination,
+                    "canonical_id": canonical_id,
+                    "detail": detail,
+                    "now": now,
+                },
+            )
+
+    await run_migration(db_at_migration, "6df1b2b092ed")
+
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            sa.text(
+                "SELECT id, decision_authority, decision_trigger "
+                "FROM reference_duplicate_decision"
+            )
+        )
+        provenance = {
+            str(row.id): (row.decision_authority, row.decision_trigger)
+            for row in result
+        }
+
+    classified, untouched = ("person", "migration"), ("unclassified", "unclassified")
+    # Both determinations in the predicate, and activeness is deliberately ignored.
+    assert provenance[manual_eef_canonical_id] == classified
+    assert provenance[manual_eef_duplicate_id] == classified
+    assert provenance[manual_eef_inactive_id] == classified
+    # Each excluded for a different clause: detail, determination, source.
+    assert provenance[automatic_eef_id] == untouched
+    assert provenance[unsearchable_eef_id] == untouched
+    assert provenance[other_id] == untouched
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["9b2f1c4d7e83"])
+async def test_duplicate_decision_provenance_accepts_pre_migration_inserts(
+    db_at_migration: str,
+) -> None:
+    """A rolling deploy keeps the old revision inserting without the new columns."""
+    engine = create_async_engine(db_at_migration, future=True)
+    await run_migration(db_at_migration, "6df1b2b092ed")
+
+    now = datetime.datetime.now(datetime.UTC)
+    decision_id = str(uuid7())
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO reference_duplicate_decision "
+                "(id, reference_id, active_decision, candidate_canonical_ids, "
+                "duplicate_determination, created_at, updated_at) "
+                "VALUES (:id, :reference_id, true, '{}', 'canonical', :now, :now)"
+            ),
+            {"id": decision_id, "reference_id": str(uuid7()), "now": now},
+        )
+        provenance = (
+            await conn.execute(
+                sa.text(
+                    "SELECT decision_authority, decision_trigger "
+                    "FROM reference_duplicate_decision WHERE id = :id"
+                ),
+                {"id": decision_id},
+            )
+        ).one()
+
+    assert provenance == ("unclassified", "unclassified")
+    await engine.dispose()

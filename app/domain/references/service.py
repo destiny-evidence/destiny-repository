@@ -27,6 +27,8 @@ from app.domain.references.models.models import (
     CandidateSelectionRequest,
     CandidateSelectionResult,
     CrossFacetCell,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
@@ -659,15 +661,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_id=str(reference.id),
                 canonical_reference_id=str(canonical_reference.id),
             )
-            await self._deduplication_service.register_duplicate_decision_for_reference(
+            await self._deduplication_service.register_exact_duplicate_import_decision(
                 reference_id=reference.id,
-                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
                 canonical_reference_id=canonical_reference.id,
             )
             return reference_create_result
 
         duplicate_decision = (
-            await self._deduplication_service.register_duplicate_decision_for_reference(
+            await self._deduplication_service.register_pending_import_decision(
                 reference_id=reference.id
             )
         )
@@ -1420,6 +1421,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             [
                 ReferenceDuplicateDecision(
                     reference_id=reference_id,
+                    decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                    decision_trigger=DuplicateDecisionTrigger.EXPLICIT_RERUN,
                     duplicate_determination=DuplicateDetermination.PENDING,
                 )
                 for reference_id in reference_ids.reference_ids

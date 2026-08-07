@@ -180,6 +180,34 @@ class DuplicateDetermination(StrEnum):
         }
 
 
+class DuplicateDecisionAuthority(StrEnum):
+    """Who had authority for a duplicate decision."""
+
+    UNCLASSIFIED = auto()
+    """The authority of a historical decision has not been established."""
+    PERSON = auto()
+    """A person made the decision."""
+    SYSTEM = auto()
+    """The repository made the decision automatically."""
+
+
+class DuplicateDecisionTrigger(StrEnum):
+    """The event that caused a duplicate decision to be created."""
+
+    UNCLASSIFIED = auto()
+    """The trigger for a historical decision has not been established."""
+    MANUAL_API = auto()
+    """The manual duplicate-decision API created the decision."""
+    IMPORT = auto()
+    """Reference import processing created the decision."""
+    ENHANCEMENT = auto()
+    """Reserved. No path creates enhancement-triggered decisions yet."""
+    EXPLICIT_RERUN = auto()
+    """An explicit deduplication rerun caused the decision."""
+    MIGRATION = auto()
+    """A data migration classified or created the decision."""
+
+
 class Reference(
     DomainBaseModel,
     ProjectedBaseModel,  # References can self-project to the same structure
@@ -1142,6 +1170,14 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
     reference_id: UUID = Field(description="The ID of the reference being evaluated.")
+    decision_authority: DuplicateDecisionAuthority = Field(
+        default=DuplicateDecisionAuthority.UNCLASSIFIED,
+        description="Whether a person or the system made the decision.",
+    )
+    decision_trigger: DuplicateDecisionTrigger = Field(
+        default=DuplicateDecisionTrigger.UNCLASSIFIED,
+        description="The event that caused the decision.",
+    )
     enhancement_id: UUID | None = Field(
         default=None,
         description=(
@@ -1168,6 +1204,20 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Optional additional detail about the decision.",
     )
+
+    @model_validator(mode="after")
+    def check_provenance_is_classified_together(self) -> Self:
+        """Require authority and trigger to be classified together."""
+        authority_unclassified = (
+            self.decision_authority == DuplicateDecisionAuthority.UNCLASSIFIED
+        )
+        trigger_unclassified = (
+            self.decision_trigger == DuplicateDecisionTrigger.UNCLASSIFIED
+        )
+        if authority_unclassified != trigger_unclassified:
+            msg = "decision_authority and decision_trigger must be classified together"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:

@@ -176,7 +176,7 @@ If candidate canonicals are found, each is compared in detail against the incomi
 
 This algorithm is still being built out. For now, we have a placeholder that we will update in the future:
 
-.. automethod:: app.domain.references.services.deduplication_service.DeduplicationService.__placeholder_duplicate_determinator
+.. automethod:: app.domain.references.services.deduplication_service.DeduplicationService._placeholder_duplicate_determinator
 
 
 Manual Resolution
@@ -185,6 +185,39 @@ Manual Resolution
 The ``POST /references/duplicate-decisions/`` endpoint provides an interface to manually make duplicate decisions.
 
 This may be useful if the automated process raises a reference for manual review, or if a user simply wants to manually deduplicate references.
+
+
+Decision authority and precedence
+---------------------------------
+
+Every duplicate decision records both its authority and its trigger. Authority is
+``person``, ``system``, or ``unclassified``; historical decisions remain
+``unclassified`` unless their authority can be established. Triggers distinguish the
+manual API, import processing, explicit reruns, and migrations. The ``enhancement``
+trigger is reserved: no path creates enhancement-triggered decisions today.
+
+An automatic proposal never replaces an active ``person`` decision, even when the
+proposed result is identical. The active decision is left unchanged and the proposal is
+stored as an inactive ``DECOUPLED`` decision for review. Its detail records the proposed
+determination and reason, while its proposed canonical ID is retained. A person can
+still replace the active decision through the manual endpoint.
+
+Only ``person`` decisions are protected. ``unclassified`` means the authority of a
+decision has not been established, not that a person made it, so automatic decisions
+may replace it. Treating unclassified history as person-made would freeze the corpus
+against reprocessing, and it would misrepresent decisions the system itself made before
+provenance was recorded. Manual decisions that can be reliably identified are
+reclassified to ``person`` by migration before automatic operation resumes.
+
+This matters most for ``UNSEARCHABLE``. That determination records that a processing
+attempt could not reach a duplicate verdict with the route and evidence available, not
+that the reference was judged unique. It is terminal so the task can complete, and it
+remains replaceable when later evidence arrives, which is why the trusted-identifier
+shortcut deliberately pulls unsearchable references into a duplicate graph.
+
+This protection applies to the reference whose active decision would change. A
+person-made canonical remains an eligible target for another reference's automatic
+``DUPLICATE`` decision because the canonical's own decision is not being replaced.
 
 
 Action Decision
@@ -202,39 +235,45 @@ The bold lines in the flowchart indicate what we expect to be nominal flow.
     flowchart LR
 
         N["New Decision (N)"]
+        C0{"N names a non-canonical reference?"}
         C1{"Active Decision Exists? (A)"}
+        CA{"N System & A Person?"}
         C2{A == N?}
         C3{A Canonical & N Duplicate?}
         C4{N is Canonical?}
-        C5{N's Canonical is Canonical?}
         C6{Reference has duplicates?}
         T[[Activate New Decision]]
         M([Mark for Manual Handling])
+        E["Reject with an error"]
 
-        N ==> C1
-        C1 ==>|Yes| C2
+        N ==> C0
+        C0 -->|Yes| E
+        C0 ==>|No| C1
+        C1 ==>|Yes| CA
         C1 -->|No| C4
+        CA -->|Yes| M
+        CA ==>|No| C2
         C2 ==>|Yes| T
         C2 -->|No| C3
         C3 ==>|Yes| T
         C3 -->|No| M
-        C4 -->|No| C5
         C4 ==>|Yes| T
-        C5 -->|No| M
-        C5 ==>|Yes| C6
+        C4 -->|No| C6
         C6 -->|Yes| M
         C6 ==>|No| T
         M ~~~ T
 
 There are three cases where the new decision is not automatically activated:
 
-1. The active decision is duplicate and the new decision is canonical or a duplicate of a different reference. This is a destructive change to the existing canonical reference, which may have implications for its enhancements, and needs to be reviewed in context.
+1. An automatic proposal would replace a person-made active decision. This applies even when the proposed result is identical.
 
-2. The proposed canonical reference is not actually canonical.
+2. The active decision is duplicate and the new decision is canonical or a duplicate of a different reference. This is a destructive change to the existing canonical reference, which may have implications for its enhancements, and needs to be reviewed in context.
 
 3. The reference being marked as a duplicate already has duplicates pointing to it (which would create a chaining situation).
 
-These are marked as ``DECOUPLED`` for manual review via the ``POST /references/duplicate-decisions/`` endpoint.
+These are marked as ``DECOUPLED`` for manual review via the ``POST /references/duplicate-decisions/`` endpoint. The decoupled decision is stored inactive, so the reference keeps whichever decision was already active.
+
+A proposal naming a canonical reference that is not itself canonical is not decoupled. It is rejected outright, and the manual endpoint returns ``422``.
 
 .. _deduplicated-projection:
 
