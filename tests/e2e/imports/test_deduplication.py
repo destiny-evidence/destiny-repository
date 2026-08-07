@@ -136,15 +136,26 @@ def duplicate_reference(
 def non_duplicate_reference(
     canonical_reference: Reference,
 ) -> Reference:
-    """Get a slightly mutated canonical reference to definitely not be a duplicate."""
-    duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid7()})
-    assert duplicate.enhancements
+    """Get a reference with no candidate-level overlap with the canonical."""
+    non_duplicate = canonical_reference.model_copy(deep=True, update={"id": uuid7()})
+    assert non_duplicate.enhancements
     assert isinstance(
-        duplicate.enhancements[0].content, BibliographicMetadataEnhancement
+        non_duplicate.enhancements[0].content, BibliographicMetadataEnhancement
     )
-    assert duplicate.enhancements[0].content.publication_year
-    duplicate.enhancements[0].content.publication_year -= 10
-    return duplicate
+    bibliographic = non_duplicate.enhancements[0].content
+    assert bibliographic.publication_year
+    bibliographic.title = "An Unrelated Study of Marine Ecosystems"
+    bibliographic.authorship = [
+        Authorship(display_name="Alex Morgan", position="first")
+    ]
+    bibliographic.publication_year -= 10
+    non_duplicate.identifiers = [
+        LinkedExternalIdentifierFactory.build(
+            identifier=OpenAlexIdentifierFactory.build(),
+            reference_id=non_duplicate.id,
+        )
+    ]
+    return non_duplicate
 
 
 @pytest.fixture

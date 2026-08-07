@@ -105,6 +105,13 @@ RETRIEVAL_POLICIES: Mapping[RetrievalPolicyName, RetrievalPolicy] = MappingProxy
                 year_decay=YearDecayConfig(),
                 title_fuzziness="0",
             ),
+            RetrievalPolicy(
+                name=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+                union_identifiers=True,
+                year_strategy=YearStrategy.SOFT_DECAY,
+                year_decay=YearDecayConfig(),
+                title_fuzziness="0",
+            ),
         )
     }
 )
