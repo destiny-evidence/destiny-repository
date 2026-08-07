@@ -26,7 +26,8 @@ Tag those same references, reusing a robot::
             "scheme": "domain-inclusion", "label": "your-project", "value": true}]}}' \
         --robot-id 019ec8b0-9173-76f0-9d09-b7bdf4e31047
 
-The caller must have robot.writer and enhancement_request.writer permissions.
+The caller must have robot.writer and enhancement_request.writer permissions. It also
+may require robot.entitlement.writer if creating a robot to write raw enhancements.
 """
 
 # ruff: noqa: T201
@@ -34,7 +35,9 @@ import argparse
 import json
 import sys
 import time
+from collections import Counter
 from collections.abc import Iterable
+from math import ceil
 from pathlib import Path
 from uuid import UUID
 
@@ -54,6 +57,7 @@ from destiny_sdk.robots import (
 )
 from pydantic import HttpUrl, ValidationError
 
+from app.utils.lists import list_chunker
 from cli.client import ApiArgumentParser
 from cli.register_robot import register_robot
 
@@ -67,6 +71,9 @@ ROBOT_DESCRIPTION = (
 )
 
 BATCH_SIZE = 10_000
+
+# Give up waiting for the repository to import and index, and report where it got to.
+POLL_TIMEOUT = 600
 
 
 def enhancement_input(value: str) -> EnhancementFileInput:
@@ -120,6 +127,31 @@ def required_entitlements(enhancements: Iterable[Enhancement]) -> set[RobotEntit
     }
 
 
+def claim_robot(
+    client: httpx.Client,
+    robot_id: UUID | None,
+    entitlements: set[RobotEntitlement],
+) -> Robot:
+    """Fetch an existing robot and check this utility may write as it."""
+    response = client.get(f"/robots/{robot_id}/")
+    response.raise_for_status()
+    existing = Robot.model_validate(response.json())
+
+    if existing.owner != ROBOT_OWNER_MARKER:
+        msg = (
+            f"Robot {existing.id} ({existing.name!r}, owned by {existing.owner!r}) was "
+            "not provisioned by this utility. Use --create-robot instead."
+        )
+        raise ValueError(msg)
+    if missing := entitlements - existing.entitlements:
+        msg = (
+            f"Robot {existing.id} is not entitled to {', '.join(sorted(missing))}, so "
+            "it cannot write these enhancements."
+        )
+        raise ValueError(msg)
+    return existing
+
+
 def resolve_robot(
     client: httpx.Client,
     robot_id: UUID | None,
@@ -140,23 +172,7 @@ def resolve_robot(
         print(f"Registered robot {robot.id}. Reuse it with --robot-id {robot.id}.")
         return robot
 
-    response = client.get(f"/robots/{robot_id}/")
-    response.raise_for_status()
-    existing = Robot.model_validate(response.json())
-
-    if existing.owner != ROBOT_OWNER_MARKER:
-        msg = (
-            f"Robot {existing.id} ({existing.name!r}, owned by {existing.owner!r}) was "
-            "not provisioned by this utility. Use --create-robot instead."
-        )
-        raise ValueError(msg)
-    if missing := entitlements - existing.entitlements:
-        msg = (
-            f"Robot {existing.id} is not entitled to {', '.join(sorted(missing))}, so "
-            "it cannot write these enhancements."
-        )
-        raise ValueError(msg)
-
+    existing = claim_robot(client, robot_id, entitlements)
     # No secret is passed in, so take a fresh one. The owner marker makes this safe.
     print(f"Cycling the secret for robot {existing.id} ({existing.name!r}).")
     response = client.post(f"/robots/{existing.id}/secret/")
@@ -164,29 +180,50 @@ def resolve_robot(
     return ProvisionedRobot.model_validate(response.json())
 
 
+def describe_robot(
+    client: httpx.Client,
+    robot_id: UUID | None,
+    name: str | None,
+    entitlements: set[RobotEntitlement],
+) -> None:
+    """Report the robot a real run would use, provisioning nothing."""
+    granted = ", ".join(sorted(entitlements)) or "no entitlements"
+    if name:
+        print(
+            f"Would register robot {name!r} owned by {ROBOT_OWNER_MARKER}, {granted}."
+        )
+        return
+
+    existing = claim_robot(client, robot_id, entitlements)
+    print(f"Would cycle the secret for robot {existing.id} ({existing.name!r}).")
+
+
 def request_enhancements(
     client: httpx.Client,
     robot_id: UUID,
     reference_ids: set[UUID],
     source: str | None,
-) -> EnhancementRequestRead:
-    """Request an enhancement from the repository for each reference."""
-    response = client.post(
-        "/enhancement-requests/",
-        json=EnhancementRequestIn(
-            robot_id=robot_id,
-            reference_ids=list(reference_ids),
-            source=source,
-        ).model_dump(mode="json"),
-        timeout=120,
-    )
-    response.raise_for_status()
-    request = EnhancementRequestRead.model_validate(response.json())
-    print(
-        f"Enhancement request {request.id} created for {len(reference_ids)} "
-        f"references ({request.request_status})."
-    )
-    return request
+) -> set[UUID]:
+    """Request an enhancement from the repository for each reference in chunks."""
+    request_ids: set[UUID] = set()
+    for chunk in list_chunker(sorted(reference_ids), BATCH_SIZE):
+        response = client.post(
+            "/enhancement-requests/",
+            json=EnhancementRequestIn(
+                robot_id=robot_id,
+                reference_ids=chunk,
+                source=source,
+            ).model_dump(mode="json"),
+            timeout=120,
+        )
+        response.raise_for_status()
+        request = EnhancementRequestRead.model_validate(response.json())
+        print(
+            f"Enhancement request {request.id} created for {len(chunk)} "
+            f"references ({request.request_status})."
+        )
+        request_ids.add(request.id)
+    return request_ids
 
 
 def fulfil_enhancements(
@@ -257,19 +294,39 @@ def _batch_reference_ids(
 
 def poll_until_complete(
     client: httpx.Client,
-    request_id: UUID,
-    poll_interval: float = 5,
-) -> EnhancementRequestRead:
-    """Poll the enhancement request until it stops progressing."""
-    print(f"Polling enhancement request {request_id}...")
-    while True:
-        response = client.get(f"/enhancement-requests/{request_id}/")
-        response.raise_for_status()
-        request = EnhancementRequestRead.model_validate(response.json())
-        print(f"request_status={request.request_status}")
-        if request.request_status in EnhancementRequestStatus.get_terminal_statuses():
-            return request
+    request_ids: set[UUID],
+    poll_interval: float = 10,
+) -> dict[UUID, EnhancementRequestRead]:
+    """
+    Poll the enhancement requests until each stops progressing.
+
+    Every outstanding request is polled each round rather than one at a time, since
+    the repository imports them concurrently. Returns whatever has settled within
+    ``POLL_TIMEOUT``, which may be less than was asked for.
+    """
+    print(f"Polling {len(request_ids)} enhancement request(s)...")
+    terminal = EnhancementRequestStatus.get_terminal_statuses()
+    settled: dict[UUID, EnhancementRequestRead] = {}
+
+    deadline = time.monotonic() + POLL_TIMEOUT
+    while time.monotonic() < deadline:
+        for request_id in request_ids - settled.keys():
+            response = client.get(f"/enhancement-requests/{request_id}/")
+            response.raise_for_status()
+            request = EnhancementRequestRead.model_validate(response.json())
+            if request.request_status in terminal:
+                settled[request_id] = request
+
+        print(f"{len(settled)}/{len(request_ids)} request(s) settled.")
+        if len(settled) == len(request_ids):
+            return settled
         time.sleep(poll_interval)
+
+    print(
+        f"Gave up after {POLL_TIMEOUT}s with "
+        f"{len(request_ids) - len(settled)} request(s) still in progress."
+    )
+    return settled
 
 
 def add_static_enhancements(
@@ -277,10 +334,10 @@ def add_static_enhancements(
     robot: ProvisionedRobot,
     enhancements: dict[UUID, Enhancement],
     source: str | None = None,
-    poll_interval: float = 5,
+    poll_interval: float = 10,
 ) -> None:
     """Request the enhancements, then write them to the repository as the robot."""
-    request = request_enhancements(
+    request_ids = request_enhancements(
         client=client,
         robot_id=robot.id,
         reference_ids=set(enhancements),
@@ -300,14 +357,17 @@ def add_static_enhancements(
     if missing := enhancements.keys() - enhanced:
         print(f"{len(missing)} enhancement(s) were never offered in a batch.")
 
-    request = poll_until_complete(client, request.id, poll_interval)
-    if request.request_status is EnhancementRequestStatus.PARTIAL_FAILED:
+    settled = poll_until_complete(client, request_ids, poll_interval)
+    statuses = Counter(request.request_status for request in settled.values())
+    print(", ".join(f"{status}={n}" for status, n in sorted(statuses.items())))
+    if EnhancementRequestStatus.PARTIAL_FAILED in statuses:
         print(
             "Enhancements already on their reference are discarded, which also "
             "reports as partial_failed."
         )
-    if request.error:
-        print(f"Error: {request.error}")
+    for request in settled.values():
+        if request.error:
+            print(f"Request {request.id} error: {request.error}")
 
 
 def argument_parser() -> ApiArgumentParser:
@@ -364,13 +424,13 @@ def argument_parser() -> ApiArgumentParser:
     parser.add_argument(
         "--poll-interval",
         type=float,
-        default=5,
+        default=10,
         help="Seconds to wait between enhancement request status checks.",
     )
     parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="Report what would be written without calling the repository.",
+        help="Report what would be written and by which robot, changing nothing.",
     )
 
     return parser
@@ -392,13 +452,22 @@ if __name__ == "__main__":
             enhancement=args.enhancement,
         )
         entitlements = required_entitlements(enhancements.values())
-        print(f"{len(enhancements)} enhancements to add.")
-
-        if args.dry_run:
-            print("[DRY RUN] Nothing created.")
-            sys.exit(0)
+        print(
+            f"{len(enhancements)} enhancements to add across "
+            f"{ceil(len(enhancements) / BATCH_SIZE)} enhancement request(s)."
+        )
 
         with args.client as client:
+            if args.dry_run:
+                describe_robot(
+                    client=client,
+                    robot_id=args.robot_id,
+                    name=args.create_robot,
+                    entitlements=entitlements,
+                )
+                print("[DRY RUN] Nothing created.")
+                sys.exit(0)
+
             robot = resolve_robot(
                 client=client,
                 robot_id=args.robot_id,

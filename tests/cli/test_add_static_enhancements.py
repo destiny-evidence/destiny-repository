@@ -29,6 +29,7 @@ from app.core.config import Environment
 from cli.add_static_enhancements import (
     ROBOT_OWNER_MARKER,
     _fulfil_batch,
+    describe_robot,
     enhancement_input,
     load_enhancements,
     required_entitlements,
@@ -187,6 +188,24 @@ def test_our_own_robot_has_its_secret_cycled(httpx_mock: HTTPXMock) -> None:
 
     assert provisioned.id == robot.id
     assert provisioned.client_secret == "a-fresh-secret"
+
+
+def test_dry_run_checks_the_robot_without_cycling_its_secret(
+    httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A dry run resolves the robot for real but must not provision anything."""
+    robot = _robot(owner=ROBOT_OWNER_MARKER)
+    httpx_mock.add_response(
+        method="GET",
+        url=f"http://127.0.0.1:8000/v1/robots/{robot.id}/",
+        json=robot.model_dump(mode="json"),
+    )
+
+    # No secret cycle is registered, so httpx_mock fails the test if one is sent.
+    with get_client(Environment.LOCAL) as client:
+        describe_robot(client, robot.id, None, set())
+
+    assert "Would cycle the secret" in capsys.readouterr().out
 
 
 def test_batch_holding_another_requesters_reference_is_abandoned(
