@@ -202,10 +202,8 @@ class DuplicateDecisionTrigger(StrEnum):
     """Reference import processing created the decision."""
     ENHANCEMENT = auto()
     """Reserved. No path creates enhancement-triggered decisions yet."""
-    EXPLICIT_RERUN = auto()
-    """An explicit deduplication rerun caused the decision."""
-    MIGRATION = auto()
-    """A data migration classified or created the decision."""
+    INVOKE_API = auto()
+    """The duplicate-decisions invoke API created the decision."""
 
 
 class Reference(

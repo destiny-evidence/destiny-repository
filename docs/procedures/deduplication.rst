@@ -193,8 +193,8 @@ Decision authority and precedence
 Every duplicate decision records both its authority and its trigger. Authority is
 ``person``, ``system``, or ``unclassified``; historical decisions remain
 ``unclassified`` unless their authority can be established. Triggers distinguish the
-manual API, import processing, explicit reruns, and migrations. The ``enhancement``
-trigger is reserved: no path creates enhancement-triggered decisions today.
+manual API, import processing, and invoke API requests. The ``enhancement`` trigger is
+reserved: no path creates enhancement-triggered decisions today.
 
 An automatic proposal never replaces an active ``person`` decision, even when the
 proposed result is identical. The active decision is left unchanged and the proposal is
@@ -202,22 +202,9 @@ stored as an inactive ``DECOUPLED`` decision for review. Its detail records the 
 determination and reason, while its proposed canonical ID is retained. A person can
 still replace the active decision through the manual endpoint.
 
-Only ``person`` decisions are protected. ``unclassified`` means the authority of a
-decision has not been established, not that a person made it, so automatic decisions
-may replace it. Treating unclassified history as person-made would freeze the corpus
-against reprocessing, and it would misrepresent decisions the system itself made before
-provenance was recorded. Manual decisions that can be reliably identified are
-reclassified to ``person`` by migration before automatic operation resumes.
-
-This matters most for ``UNSEARCHABLE``. That determination records that a processing
-attempt could not reach a duplicate verdict with the route and evidence available, not
-that the reference was judged unique. It is terminal so the task can complete, and it
-remains replaceable when later evidence arrives, which is why the trusted-identifier
-shortcut deliberately pulls unsearchable references into a duplicate graph.
-
-This protection applies to the reference whose active decision would change. A
-person-made canonical remains an eligible target for another reference's automatic
-``DUPLICATE`` decision because the canonical's own decision is not being replaced.
+The protection covers only the reference whose own active decision would change. A
+person-made canonical can still become the target of another reference's automatic
+``DUPLICATE`` decision, because that leaves the canonical's own decision untouched.
 
 
 Action Decision

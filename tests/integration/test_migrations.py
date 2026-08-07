@@ -424,7 +424,8 @@ async def test_duplicate_decision_provenance_migration_classifies_known_manual_e
             for row in result
         }
 
-    classified, untouched = ("person", "migration"), ("unclassified", "unclassified")
+    classified = ("person", "manual_api")
+    untouched = ("unclassified", "unclassified")
     # Both determinations in the predicate, and activeness is deliberately ignored.
     assert provenance[manual_eef_canonical_id] == classified
     assert provenance[manual_eef_duplicate_id] == classified

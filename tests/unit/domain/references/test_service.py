@@ -91,7 +91,7 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_add_pending_duplicate_decisions_records_explicit_rerun(
+async def test_register_pending_invoke_api_decisions_records_provenance(
     fake_repository, fake_uow
 ):
     decision_repo = fake_repository()
@@ -102,7 +102,7 @@ async def test_add_pending_duplicate_decisions_records_explicit_rerun(
     )
     reference_ids = [uuid7(), uuid7()]
 
-    decisions = await service.add_pending_duplicate_decisions_for_reference_ids(
+    decisions = await service.register_pending_invoke_api_decisions(
         ReferenceIds(reference_ids=reference_ids)
     )
 
@@ -112,7 +112,7 @@ async def test_add_pending_duplicate_decisions_records_explicit_rerun(
         for decision in decisions
     )
     assert all(
-        decision.decision_trigger == DuplicateDecisionTrigger.EXPLICIT_RERUN
+        decision.decision_trigger == DuplicateDecisionTrigger.INVOKE_API
         for decision in decisions
     )
 

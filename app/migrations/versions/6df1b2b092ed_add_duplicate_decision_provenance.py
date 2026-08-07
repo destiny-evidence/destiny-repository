@@ -63,7 +63,7 @@ def upgrade() -> None:
     result = connection.execute(
         sa.text(
             "UPDATE reference_duplicate_decision "
-            "SET decision_authority = 'person', decision_trigger = 'migration' "
+            "SET decision_authority = 'person', decision_trigger = 'manual_api' "
             "WHERE "
             + _MANUAL_EEF_DECISIONS
         )

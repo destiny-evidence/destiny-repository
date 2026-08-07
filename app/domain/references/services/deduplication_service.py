@@ -737,7 +737,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         Deduplicate the given reference using trusted unique identifiers.
 
         This shortcuts the regular deduplication flow. It runs whenever a pending
-        decision is processed, which is on import and on explicit rerun.
+        decision is processed, which is on import and through the invoke API.
 
         This is a very powerful operation and should only be used with identifier types
         that are certain to be unique and reliable. Misuse can lead to incorrect

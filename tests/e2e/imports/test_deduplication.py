@@ -20,6 +20,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import (
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     Enhancement,
     ExternalIdentifierType,
@@ -51,6 +53,38 @@ from tests.factories import (
     OpenAlexIdentifierFactory,
     ReferenceFactory,
 )
+
+
+async def _make_unclassified_active_decision(
+    destiny_client_v1: httpx.AsyncClient,
+    pg_session: AsyncSession,
+    *,
+    reference_id: UUID,
+    determination: DuplicateDetermination,
+    canonical_reference_id: UUID | None = None,
+) -> UUID:
+    """Create projected decision state, then mark its provenance as historical."""
+    payload = {
+        "reference_id": str(reference_id),
+        "duplicate_determination": determination.value,
+    }
+    if canonical_reference_id:
+        payload["canonical_reference_id"] = str(canonical_reference_id)
+
+    response = await destiny_client_v1.post(
+        "/references/duplicate-decisions/",
+        json=[payload],
+    )
+    assert response.status_code == 201
+    decision_id = UUID(response.json()[0]["id"])
+
+    pg_session.expire_all()
+    decision = await pg_session.get(SQLReferenceDuplicateDecision, decision_id)
+    assert decision
+    decision.decision_authority = DuplicateDecisionAuthority.UNCLASSIFIED
+    decision.decision_trigger = DuplicateDecisionTrigger.UNCLASSIFIED
+    await pg_session.commit()
+    return decision_id
 
 
 @pytest.fixture
@@ -399,7 +433,7 @@ async def test_import_non_duplicate(  # noqa: PLR0913
 # NB tests below this line are probably best placed in `enhancements.test_deduplication.py`,
 # with new enhancements triggering the changes, but at time of writing the enhancement->dedup
 # trigger is not yet implemented.
-async def test_manual_canonical_survives_automatic_duplicate(  # noqa: PLR0913
+async def test_canonical_becomes_duplicate(  # noqa: PLR0913
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
@@ -409,7 +443,7 @@ async def test_manual_canonical_survives_automatic_duplicate(  # noqa: PLR0913
     canonical_reference: Reference,
     duplicate_reference: Reference,
 ):
-    """Verify a person's canonical decision is not replaced by an automatic duplicate."""
+    """Verify behaviour when a canonical-like reference becomes a duplicate."""
     canonical_reference_id = (
         await import_references(
             destiny_client_v1,
@@ -423,17 +457,18 @@ async def test_manual_canonical_survives_automatic_duplicate(  # noqa: PLR0913
     pg_session.add(SQLReference.from_domain(duplicate_reference))
     await pg_session.commit()
 
-    make_response = await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
-        json=[
-            {
-                "reference_id": str(duplicate_reference.id),
-                "duplicate_determination": "canonical",
-            }
-        ],
+    canonical_decision_id = await _make_unclassified_active_decision(
+        destiny_client_v1,
+        pg_session,
+        reference_id=duplicate_reference.id,
+        determination=DuplicateDetermination.CANONICAL,
     )
-    assert make_response.status_code == 201
-    canonical_decision_id = UUID(make_response.json()[0]["id"])
+
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    assert await es_client.exists(
+        index=ReferenceDocument.Index.name,
+        id=str(duplicate_reference.id),
+    )
 
     # Now deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
@@ -447,25 +482,19 @@ async def test_manual_canonical_survives_automatic_duplicate(  # noqa: PLR0913
     duplicate_decision = await poll_duplicate_process(
         pg_session,
         duplicate_reference.id,
-        required_state=DuplicateDetermination.DECOUPLED,
+        required_state=DuplicateDetermination.DUPLICATE,
     )
-    assert duplicate_decision.detail
     assert (
-        "Automatic decisions cannot replace a person-made active decision"
-        in duplicate_decision.detail
+        duplicate_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
     )
-    assert "Proposed determination: duplicate" in duplicate_decision.detail
     assert duplicate_decision.canonical_reference_id == canonical_reference_id
-    assert not duplicate_decision.active_decision
-
     old_decision = await pg_session.get(
         SQLReferenceDuplicateDecision, canonical_decision_id
     )
     assert old_decision
-    assert old_decision.active_decision
-    assert old_decision.duplicate_determination == DuplicateDetermination.CANONICAL
+    assert not old_decision.active_decision
 
-    # The protected reference keeps its canonical decision, so it stays searchable.
+    # Check that the Elasticsearch index contains only the canonical.
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
     es_result = await es_client.search(
         index=ReferenceDocument.Index.name,
@@ -478,13 +507,10 @@ async def test_manual_canonical_survives_automatic_duplicate(  # noqa: PLR0913
             }
         },
     )
-    assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
-        str(canonical_reference_id),
-        str(duplicate_reference.id),
-    }
-    assert {
-        hit["_source"]["duplicate_determination"] for hit in es_result["hits"]["hits"]
-    } == {DuplicateDetermination.CANONICAL}
+    assert es_result["hits"]["total"]["value"] == 1
+    assert es_result["hits"]["hits"][0]["_id"] == str(canonical_reference_id)
+    es_source = es_result["hits"]["hits"][0]["_source"]
+    assert es_source["duplicate_determination"] == DuplicateDetermination.CANONICAL
 
 
 async def test_duplicate_becomes_canonical(  # noqa: PLR0913
@@ -512,18 +538,13 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
     pg_session.add(SQLReference.from_domain(non_duplicate_reference))
     await pg_session.commit()
 
-    make_response = await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
-        json=[
-            {
-                "reference_id": str(non_duplicate_reference.id),
-                "duplicate_determination": "duplicate",
-                "canonical_reference_id": str(canonical_reference_id),
-            }
-        ],
+    non_canonical_decision_id = await _make_unclassified_active_decision(
+        destiny_client_v1,
+        pg_session,
+        reference_id=non_duplicate_reference.id,
+        determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical_reference_id,
     )
-    assert make_response.status_code == 201
-    non_canonical_decision_id = UUID(make_response.json()[0]["id"])
 
     # Now deduplicate the non-duplicate again and check downstream
     await destiny_client_v1.post(
@@ -543,10 +564,7 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
         duplicate_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     )
     assert duplicate_decision.detail
-    assert (
-        "Automatic decisions cannot replace a person-made active decision"
-        in duplicate_decision.detail
-    )
+    assert "Existing duplicate decision changed" in duplicate_decision.detail
     assert not duplicate_decision.canonical_reference_id
     assert not duplicate_decision.active_decision
 
@@ -591,18 +609,13 @@ async def test_duplicate_change(  # noqa: PLR0913
     pg_session.add(SQLReference.from_domain(duplicate_reference))
     await pg_session.commit()
 
-    make_response = await destiny_client_v1.post(
-        "/references/duplicate-decisions/",
-        json=[
-            {
-                "reference_id": str(duplicate_reference.id),
-                "duplicate_determination": "duplicate",
-                "canonical_reference_id": str(non_duplicate_reference_id),
-            }
-        ],
+    duplicate_decision_id = await _make_unclassified_active_decision(
+        destiny_client_v1,
+        pg_session,
+        reference_id=duplicate_reference.id,
+        determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=non_duplicate_reference_id,
     )
-    assert make_response.status_code == 201
-    duplicate_decision_id = UUID(make_response.json()[0]["id"])
 
     # Deduplicate the duplicate again and check downstream
     await destiny_client_v1.post(
@@ -619,10 +632,7 @@ async def test_duplicate_change(  # noqa: PLR0913
         required_state=DuplicateDetermination.DECOUPLED,
     )
     assert duplicate_decision.detail
-    assert (
-        "Automatic decisions cannot replace a person-made active decision"
-        in duplicate_decision.detail
-    )
+    assert "Existing duplicate decision changed" in duplicate_decision.detail
     assert duplicate_decision.canonical_reference_id == canonical_reference_id
     assert not duplicate_decision.active_decision
 
@@ -631,6 +641,16 @@ async def test_duplicate_change(  # noqa: PLR0913
     )
     assert old_decision
     assert old_decision.active_decision
+
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+    canonical_before = await es_client.get(
+        index=ReferenceDocument.Index.name,
+        id=str(canonical_reference_id),
+    )
+    assert not any(
+        "test-robot-automation" in annotation
+        for annotation in canonical_before["_source"].get("annotations", [])
+    )
 
     # Now resolve the decouple via the manual endpoint: point to the real canonical.
     resolve_response = await destiny_client_v1.post(
@@ -678,6 +698,11 @@ async def test_duplicate_change(  # noqa: PLR0913
     assert str(duplicate_reference.id) not in es_ids
     assert str(canonical_reference_id) in es_ids
     assert str(non_duplicate_reference_id) in es_ids
+    es_sources = {hit["_id"]: hit["_source"] for hit in es_result["hits"]["hits"]}
+    assert any(
+        "test-robot-automation" in annotation
+        for annotation in es_sources[str(canonical_reference_id)]["annotations"]
+    )
 
 
 async def test_deduplication_shortcut(  # noqa: PLR0913

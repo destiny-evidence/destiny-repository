@@ -569,7 +569,7 @@ async def test_map_duplicate_decision_retains_person_active_decision(
         canonical_reference_id=canonical.id,
         detail="Automatic assessment reason.",
         decision_authority=DuplicateDecisionAuthority.SYSTEM,
-        decision_trigger=DuplicateDecisionTrigger.EXPLICIT_RERUN,
+        decision_trigger=DuplicateDecisionTrigger.INVOKE_API,
     )
 
     decision_repo = fake_repository([active_decision, proposal])
