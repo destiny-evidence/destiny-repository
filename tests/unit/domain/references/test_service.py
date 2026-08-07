@@ -16,17 +16,21 @@ from app.core.exceptions import (
     SQLNotFoundError,
 )
 from app.domain.references.models.models import (
+    CandidateSelectionDiagnostics,
+    CandidateSelectionResult,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestSearchStatus,
     ExternalIdentifierAdapter,
+    InputSearchability,
     LinkedExternalIdentifier,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
     ReferenceWithChangeset,
+    RetrievalPolicyName,
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
     SearchQuery,
@@ -81,6 +85,107 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
     dummy_id = uuid7()
     with pytest.raises(SQLNotFoundError):
         await service.get_reference(dummy_id)
+
+
+@pytest.fixture
+def duplicate_processing_service(
+    fake_repository, fake_uow, monkeypatch
+) -> tuple[ReferenceService, ReferenceDuplicateDecision]:
+    """Build duplicate-processing collaborators shared by orchestration tests."""
+    from app.domain.references import service as reference_service_module
+
+    monkeypatch.setattr(
+        reference_service_module.settings, "trusted_unique_identifier_types", []
+    )
+    decision = ReferenceDuplicateDecision(
+        reference_id=uuid7(),
+        duplicate_determination=DuplicateDetermination.PENDING,
+    )
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), fake_uow(), fake_uow()
+    )
+    service._deduplication_service.select_candidate_canonicals = AsyncMock()  # type: ignore[method-assign]  # noqa: SLF001
+    service._deduplication_service.determine_canonical_from_candidates = (  # type: ignore[method-assign]  # noqa: SLF001
+        AsyncMock()
+    )
+    service._deduplication_service.map_duplicate_decision = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+        return_value=(decision, False, None)
+    )
+    service.apply_reference_duplicate_decision_side_effects = AsyncMock()  # type: ignore[method-assign]
+    return service, decision
+
+
+@pytest.mark.asyncio
+async def test_process_duplicate_decision_passes_full_candidate_selection(
+    duplicate_processing_service, monkeypatch
+):
+    from app.domain.references import service as reference_service_module
+
+    monkeypatch.setattr(
+        reference_service_module.settings.feature_flags,
+        "enable_canonical_candidate_search",
+        True,
+    )
+    service, decision = duplicate_processing_service
+    determined = decision.model_copy(
+        update={"duplicate_determination": DuplicateDetermination.UNSEARCHABLE}
+    )
+    candidate_selection = CandidateSelectionResult(
+        retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+        index_version="reference_v3",
+        k_requested=10,
+        input_searchability=InputSearchability(searchable=True, reason="ok"),
+        diagnostics=CandidateSelectionDiagnostics(candidate_count=0),
+        candidates=[],
+    )
+    service._deduplication_service.select_candidate_canonicals = AsyncMock(  # noqa: SLF001
+        return_value=candidate_selection
+    )
+    service._deduplication_service.determine_canonical_from_candidates = (  # noqa: SLF001
+        AsyncMock(return_value=determined)
+    )
+    service._deduplication_service.map_duplicate_decision = AsyncMock(  # noqa: SLF001
+        return_value=(determined, False, None)
+    )
+    service.apply_reference_duplicate_decision_side_effects = AsyncMock()  # type: ignore[method-assign]
+
+    await service.process_reference_duplicate_decision(decision)
+
+    service._deduplication_service.select_candidate_canonicals.assert_awaited_once_with(  # noqa: SLF001
+        decision.reference_id
+    )
+    service._deduplication_service.determine_canonical_from_candidates.assert_awaited_once_with(  # noqa: SLF001
+        decision,
+        candidate_selection,
+    )
+
+
+@pytest.mark.asyncio
+async def test_process_duplicate_decision_skips_selection_when_disabled(
+    duplicate_processing_service, monkeypatch
+):
+    from app.domain.references import service as reference_service_module
+
+    monkeypatch.setattr(
+        reference_service_module.settings.feature_flags,
+        "enable_canonical_candidate_search",
+        False,
+    )
+    service, decision = duplicate_processing_service
+
+    await service.process_reference_duplicate_decision(decision)
+
+    service._deduplication_service.select_candidate_canonicals.assert_not_awaited()  # noqa: SLF001
+    service._deduplication_service.determine_canonical_from_candidates.assert_not_awaited()  # noqa: SLF001
+    mapped_decision = (
+        service._deduplication_service.map_duplicate_decision.await_args.args[  # noqa: SLF001
+            0
+        ]
+    )
+    assert (
+        mapped_decision.duplicate_determination is DuplicateDetermination.UNSEARCHABLE
+    )
+    assert mapped_decision.detail == "Canonical candidate search is disabled."
 
 
 @pytest.mark.asyncio

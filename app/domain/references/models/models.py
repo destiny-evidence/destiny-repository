@@ -885,6 +885,9 @@ class RetrievalPolicyName(StrEnum):
     """Evaluation-only probe: soft_year_decay_v1 with zero edit-distance title
     matching. Used to measure the recall and latency impact of disabling fuzzy
     title matching for this query shape. Not for production nomination."""
+    CANDIDATE_SELECTION_V1 = "candidate_selection_v1"
+    """First production policy: soft year decay and non-fuzzy title matching;
+    requires publication year and unions exact identifier candidates."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):
@@ -948,12 +951,12 @@ class CandidateSelectionRequest(BaseModel):
     input: CandidateSelectionInput = Field(
         description="The reference to find candidates for."
     )
-    retrieval_policy: RetrievalPolicyName = Field(
-        default=RetrievalPolicyName.CURRENT_FUZZY_V1,
+    retrieval_policy: RetrievalPolicyName | None = Field(
+        default=None,
         description=(
             "Named, server-side retrieval policy fixing the full candidate regime "
             "(query shape, year strategy, identifier union). Defaults to the "
-            "current fuzzy baseline."
+            "server's configured candidate-selection policy."
         ),
     )
     k: int | None = Field(
@@ -1054,7 +1057,7 @@ class CandidateSelectionDiagnostics(BaseModel):
 class CandidateSelectionResult(BaseModel):
     """Ranked candidates and diagnostics for a candidate-selection request."""
 
-    retrieval_policy: RetrievalPolicyName = RetrievalPolicyName.CURRENT_FUZZY_V1
+    retrieval_policy: RetrievalPolicyName
     index_version: str | None = Field(
         default=None,
         description="The reference index version the candidates were drawn from.",
