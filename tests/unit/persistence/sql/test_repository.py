@@ -4,10 +4,19 @@ from unittest.mock import AsyncMock, patch
 from uuid import uuid7
 
 import pytest
+from sqlalchemy.dialects.postgresql.asyncpg import PGDialect_asyncpg
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLNotFoundError
-from tests.persistence_models import SimpleDomainModel, SimpleSQLRepository
+from app.persistence.sql.repository import (
+    BIND_PARAM_FORK_THRESHOLD,
+    GenericAsyncSqlRepository,
+)
+from tests.persistence_models import (
+    SimpleDomainModel,
+    SimpleSQLModel,
+    SimpleSQLRepository,
+)
 
 
 @pytest.fixture
@@ -78,3 +87,34 @@ async def test_get_by_pks_raises_on_missing(
 
     with pytest.raises(SQLNotFoundError, match=str(missing_id)):
         await repository.get_by_pks([record.id, missing_id])
+
+
+@pytest.mark.parametrize(
+    ("n_values", "expect_array"),
+    [
+        (1, False),
+        (BIND_PARAM_FORK_THRESHOLD, False),
+        (BIND_PARAM_FORK_THRESHOLD + 1, True),
+    ],
+)
+def test_any_of_forks_on_collection_size(n_values, expect_array):
+    """any_of binds one parameter per value until doing so would exceed the limit."""
+    values = [uuid7() for _ in range(n_values)]
+    compiled = GenericAsyncSqlRepository.any_of(SimpleSQLModel.id, values).compile(
+        dialect=PGDialect_asyncpg(), compile_kwargs={"render_postcompile": True}
+    )
+
+    if expect_array:
+        assert "= ANY" in str(compiled)
+        assert len(compiled.params) == 1
+    else:
+        assert "IN" in str(compiled)
+        assert len(compiled.params) == n_values
+
+
+def test_any_of_empty_collection_matches_nothing():
+    """An empty collection compiles to an always-false predicate."""
+    compiled = GenericAsyncSqlRepository.any_of(SimpleSQLModel.id, []).compile(
+        dialect=PGDialect_asyncpg(), compile_kwargs={"render_postcompile": True}
+    )
+    assert "1 != 1" in str(compiled)
