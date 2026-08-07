@@ -10,6 +10,8 @@ from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
     AnnotationFilter,
     CrossFacetCell,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestSearchStatus,
@@ -682,6 +684,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             reference_duplicate_decision = ReferenceDuplicateDecision(
                 reference_id=make_duplicate_decision.reference_id,
+                decision_authority=DuplicateDecisionAuthority.PERSON,
+                decision_trigger=DuplicateDecisionTrigger.MANUAL_API,
                 duplicate_determination=make_duplicate_decision.duplicate_determination,
                 canonical_reference_id=make_duplicate_decision.canonical_reference_id,
                 detail=make_duplicate_decision.detail,
@@ -702,5 +706,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             outcome=decision.duplicate_determination,
             canonical_reference_id=decision.canonical_reference_id,
             active_decision=decision.active_decision,
+            decision_authority=decision.decision_authority,
+            decision_trigger=decision.decision_trigger,
             detail=decision.detail,
         )

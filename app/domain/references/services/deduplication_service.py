@@ -1,6 +1,6 @@
 """Service for managing reference duplicate detection."""
 
-from typing import Literal, assert_never
+from typing import assert_never
 from uuid import UUID
 
 from opentelemetry import trace
@@ -19,6 +19,8 @@ from app.domain.references.models.models import (
     CandidateSelectionInput,
     CandidateSelectionRequest,
     CandidateSelectionResult,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     EnhancementType,
     ExternalIdentifierType,
@@ -459,56 +461,57 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 return candidate
         return None
 
-    async def register_duplicate_decision_for_reference(
+    async def register_pending_import_decision(
         self,
         reference_id: UUID,
-        enhancement_id: UUID | None = None,
-        duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
-        | None = None,
-        canonical_reference_id: UUID | None = None,
     ) -> ReferenceDuplicateDecision:
         """
-        Register a duplicate decision for a reference.
+        Register the initial PENDING decision for a newly ingested reference.
 
-        :param reference: The reference to register the duplicate decision for.
-        :type reference: app.domain.references.models.models.Reference
-        :param enhancement_id: The enhancement ID triggering with the duplicate
-            decision, defaults to None
-        :type enhancement_id: UUID | None, optional
-        :param duplicate_determination: Flag indicating if a reference was an exact
-            duplicate and not imported, defaults to None
-        :type duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
-            | None, optional
-        :param canonical_reference_id: The canonical reference ID this reference is an
-            exact duplicate of, defaults to None
-        :type canonical_reference_id: UUID | None, optional
+        Inserted directly because :meth:`map_duplicate_decision` takes only terminal
+        determinations. Safe to bypass the guard: an inactive row displaces nothing.
+
+        :param reference_id: The reference being ingested.
+        :type reference_id: UUID
         :return: The registered duplicate decision
         :rtype: ReferenceDuplicateDecision
         """
-        if (duplicate_determination is not None) != (
-            canonical_reference_id is not None
-        ):
-            msg = (
-                "Both or neither of duplicate_determination and "
-                "canonical_reference_id must be provided."
-            )
-            raise DeduplicationValueError(msg)
-        _duplicate_determination = (
-            duplicate_determination
-            if duplicate_determination
-            else DuplicateDetermination.PENDING
-        )
-        reference_duplicate_decision = ReferenceDuplicateDecision(
-            reference_id=reference_id,
-            enhancement_id=enhancement_id,
-            duplicate_determination=_duplicate_determination,
-            canonical_reference_id=canonical_reference_id,
-            # If exact duplicate passed in, the decision is terminal and hence active
-            active_decision=_duplicate_determination
-            == DuplicateDetermination.EXACT_DUPLICATE,
-        )
         return await self.sql_uow.reference_duplicate_decisions.add(
-            reference_duplicate_decision
+            ReferenceDuplicateDecision(
+                reference_id=reference_id,
+                decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                decision_trigger=DuplicateDecisionTrigger.IMPORT,
+                duplicate_determination=DuplicateDetermination.PENDING,
+            )
+        )
+
+    async def register_exact_duplicate_import_decision(
+        self,
+        reference_id: UUID,
+        canonical_reference_id: UUID,
+    ) -> ReferenceDuplicateDecision:
+        """
+        Register a terminal EXACT_DUPLICATE decision for a reference not imported.
+
+        Safe to bypass :meth:`map_duplicate_decision`: the reference is never stored
+        as a row of its own, so it cannot already carry a decision to replace.
+
+        :param reference_id: The reference that was not imported.
+        :type reference_id: UUID
+        :param canonical_reference_id: The reference it exactly duplicates.
+        :type canonical_reference_id: UUID
+        :return: The registered duplicate decision
+        :rtype: ReferenceDuplicateDecision
+        """
+        return await self.sql_uow.reference_duplicate_decisions.add(
+            ReferenceDuplicateDecision(
+                reference_id=reference_id,
+                decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                decision_trigger=DuplicateDecisionTrigger.IMPORT,
+                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
+                canonical_reference_id=canonical_reference_id,
+                active_decision=True,
+            )
         )
 
     async def select_candidate_canonicals(
@@ -642,11 +645,31 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             preload=["duplicate_decision", "duplicate_references"],
         )
         active_decision = reference.duplicate_decision
+        deactivated_decision = None
 
         # Preset to True, will be flipped if not changed
         decision_changed = True
 
+        # Only the resolving branch reactivates: a decoupled proposal left active
+        # would collide with the retained decision on the one-active-decision index.
+        new_decision.active_decision = False
+
         if (
+            active_decision
+            and active_decision.decision_authority == DuplicateDecisionAuthority.PERSON
+            and new_decision.decision_authority == DuplicateDecisionAuthority.SYSTEM
+            and not allow_destructive_decision
+        ):
+            proposed_determination = new_decision.duplicate_determination
+            new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
+            new_decision.detail = (
+                "Decouple reason: Automatic decisions cannot replace a person-made "
+                "active decision. "
+                f"Proposed determination: {proposed_determination.value}. "
+                + (new_decision.detail if new_decision.detail else "")
+            )
+            decision_changed = False
+        elif (
             active_decision
             and active_decision.duplicate_determination
             == DuplicateDetermination.DUPLICATE
@@ -693,6 +716,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 ):
                     decision_changed = False
                 active_decision.active_decision = False
+                deactivated_decision = active_decision
             new_decision.active_decision = True
 
         # Update in-place, it's just easier
@@ -702,7 +726,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             new_decision
         )
 
-        return new_decision, decision_changed, active_decision
+        return new_decision, decision_changed, deactivated_decision
 
     async def shortcut_deduplication_using_identifiers(  # noqa: PLR0912
         self,
@@ -712,7 +736,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """
         Deduplicate the given reference using trusted unique identifiers.
 
-        This shortcuts the regular deduplication flow and is only run on import.
+        This shortcuts the regular deduplication flow. It runs whenever a pending
+        decision is processed, which is on import and through the invoke API.
 
         This is a very powerful operation and should only be used with identifier types
         that are certain to be unique and reliable. Misuse can lead to incorrect
@@ -884,9 +909,17 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             decision, _, _ = await self.map_duplicate_decision(
                 ReferenceDuplicateDecision(
                     reference_id=candidate_id,
+                    decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                    # Same processing run as the proxy reference's decision, so the
+                    # same trigger. Legacy decisions have no trigger to copy.
+                    decision_trigger=(
+                        reference_duplicate_decision.decision_trigger
+                        if reference_duplicate_decision.decision_trigger
+                        != DuplicateDecisionTrigger.UNCLASSIFIED
+                        else DuplicateDecisionTrigger.IMPORT
+                    ),
                     duplicate_determination=DuplicateDetermination.DUPLICATE,
                     canonical_reference_id=canonical_id,
-                    active_decision=True,
                     detail=(
                         f"Shortcutted via proxy reference {reference.id} "
                         "with trusted identifier(s)"
