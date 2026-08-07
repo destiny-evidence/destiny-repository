@@ -9,7 +9,7 @@ from pydantic import ValidationError
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
     AnnotationFilter,
-    CrossFacetCell,
+    CrossFacetResult,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestSearchStatus,
@@ -545,26 +545,35 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def cross_facet_to_sdk(
         self,
-        cells: Sequence[CrossFacetCell],
-        total: ESSearchTotal,
+        result: CrossFacetResult,
     ) -> destiny_sdk.references.ReferenceCrossFacetResult:
         """Convert a cross-facet result into the SDK response model."""
         try:
             return destiny_sdk.references.ReferenceCrossFacetResult(
-                total={
-                    "count": total.value,
-                    "is_lower_bound": total.relation == "gte",
-                },
+                totals=destiny_sdk.references.CrossFacetTotals(
+                    search=self._search_total_to_sdk(result.search_total),
+                    mapped=self._search_total_to_sdk(result.mapped_total),
+                ),
                 cells=[
                     destiny_sdk.references.CrossFacetCell(
                         axes=cell.axes,
                         count=cell.count,
                     )
-                    for cell in cells
+                    for cell in result.cells
                 ],
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
+
+    @staticmethod
+    def _search_total_to_sdk(
+        total: ESSearchTotal,
+    ) -> destiny_sdk.search.SearchResultTotal:
+        """Convert an ES total into the SDK's total model."""
+        return destiny_sdk.search.SearchResultTotal(
+            count=total.value,
+            is_lower_bound=total.relation == "gte",
+        )
 
     async def two_stage_reference_search_result_to_sdk(
         self,

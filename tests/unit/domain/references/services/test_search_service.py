@@ -10,6 +10,7 @@ from app.core.exceptions import ParseError, SiblingGroupingError
 from app.domain.references.models.models import (
     AnnotationFilter,
     CrossFacetAxis,
+    CrossFacetResult,
     FacetType,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
@@ -25,6 +26,7 @@ from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
+from app.persistence.es.persistence import ESSearchTotal
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import (
@@ -481,6 +483,11 @@ MEMBERS_FIXTURE: dict[str, frozenset[str]] = {
     TOPICS_SCHEME: _TOPICS,
     REGION_SCHEME: _REGIONS,
 }
+_EMPTY_CROSS_FACET_RESULT = CrossFacetResult(
+    cells=[],
+    search_total=ESSearchTotal(value=0, relation="eq"),
+    mapped_total=ESSearchTotal(value=0, relation="eq"),
+)
 
 
 @pytest.fixture
@@ -539,7 +546,9 @@ async def test_aggregate_cross_facet_literal_axes_skip_vocab_fetch(
     """Two literal axes need no vocabulary lookup and pass resolved axes to the repo."""
     service = _service(vocab_client_with_members)
     service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_cross_facet = AsyncMock(  # type: ignore[union-attr]
+        return_value=_EMPTY_CROSS_FACET_RESULT
+    )
     await service.aggregate_cross_facet(
         SearchQuery(query_string="*"), ("countries", "country_wb_regions"), None
     )
@@ -555,7 +564,9 @@ async def test_aggregate_cross_facet_scheme_axis_fetches_members_once(
     """A scheme axis triggers a single vocabulary fetch shared across both axes."""
     service = _service(vocab_client_with_members)
     service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_cross_facet = AsyncMock(return_value=([], None))  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_cross_facet = AsyncMock(  # type: ignore[union-attr]
+        return_value=_EMPTY_CROSS_FACET_RESULT
+    )
     await service.aggregate_cross_facet(
         SearchQuery(query_string="*"), (TOPICS_SCHEME, REGION_SCHEME), VOCAB_URI
     )

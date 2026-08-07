@@ -303,7 +303,7 @@ Counting is simpler than the facets endpoint: each returned cell is a strict int
 Returns
 """"""""""
 
-Returns a :class:`ReferenceCrossFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceCrossFacetResult>`: an exact ``total`` plus the non-zero ``{axes, count}`` cells (``axes`` is a 2-tuple in the requested order), sorted by descending count. Cells may sum to more than ``total`` because a reference can carry multiple values on an axis, and to less because a reference matching the filters need not have a value on either axis.
+Returns a :class:`ReferenceCrossFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceCrossFacetResult>`: two exact ``totals`` plus the non-zero ``{axes, count}`` cells (``axes`` is a 2-tuple in the requested order), sorted by descending count. ``totals.search`` counts every reference matching the search; ``totals.mapped`` counts the subset with a value on both axes. Cells may sum to more than ``totals.mapped`` because a reference can carry multiple values on an axis, but never to less.
 
 Restrictions (400 on violation):
 
