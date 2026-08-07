@@ -580,13 +580,18 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_error_logs" {
   tags = local.minimum_resource_tags
 
   criteria {
+    # Returning the lines within 10s of a failure
     query = <<-KQL
+      let failures = ContainerAppConsoleLogs_CL
+        | where ContainerJobName_s != ""
+        | extend Level = coalesce(extract(@"level=(\w+)", 1, Log_s), extract(@"\[(\w+)\s*\]", 1, Log_s))
+        | where Level in ("error", "critical")
+          or Log_s has "Traceback (most recent call last)"
+        | summarize FirstFailure = min(TimeGenerated), LastFailure = max(TimeGenerated) by ContainerGroupName_s;
       ContainerAppConsoleLogs_CL
-      | where ContainerJobName_s != ""
-      | extend Level = coalesce(extract(@"level=(\w+)", 1, Log_s), extract(@"\[(\w+)\s*\]", 1, Log_s))
-      | where Level in ("error", "critical")
-        or Log_s has "Traceback (most recent call last)"
-      | project TimeGenerated, ContainerJobName_s, Level, Log_s
+      | join kind=inner failures on ContainerGroupName_s
+      | where TimeGenerated between (FirstFailure - 10s .. LastFailure + 10s)
+      | project TimeGenerated, ContainerJobName_s, ContainerGroupName_s, Log_s
     KQL
 
     time_aggregation_method = "Count"
