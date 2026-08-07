@@ -399,7 +399,7 @@ async def test_import_non_duplicate(  # noqa: PLR0913
 # NB tests below this line are probably best placed in `enhancements.test_deduplication.py`,
 # with new enhancements triggering the changes, but at time of writing the enhancement->dedup
 # trigger is not yet implemented.
-async def test_canonical_becomes_duplicate(  # noqa: PLR0913
+async def test_manual_canonical_survives_automatic_duplicate(  # noqa: PLR0913
     destiny_client_v1: httpx.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
@@ -409,7 +409,7 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
     canonical_reference: Reference,
     duplicate_reference: Reference,
 ):
-    """Verify behaviour when a canonical-like reference becomes a duplicate."""
+    """Verify a person's canonical decision is not replaced by an automatic duplicate."""
     canonical_reference_id = (
         await import_references(
             destiny_client_v1,
@@ -447,19 +447,25 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
     duplicate_decision = await poll_duplicate_process(
         pg_session,
         duplicate_reference.id,
-        required_state=DuplicateDetermination.DUPLICATE,
+        required_state=DuplicateDetermination.DECOUPLED,
     )
+    assert duplicate_decision.detail
     assert (
-        duplicate_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+        "Automatic decisions cannot replace a person-made active decision"
+        in duplicate_decision.detail
     )
+    assert "Proposed determination: duplicate" in duplicate_decision.detail
     assert duplicate_decision.canonical_reference_id == canonical_reference_id
+    assert not duplicate_decision.active_decision
+
     old_decision = await pg_session.get(
         SQLReferenceDuplicateDecision, canonical_decision_id
     )
     assert old_decision
-    assert not old_decision.active_decision
+    assert old_decision.active_decision
+    assert old_decision.duplicate_determination == DuplicateDetermination.CANONICAL
 
-    # Check that the Elasticsearch index contains only the canonical.
+    # The protected reference keeps its canonical decision, so it stays searchable.
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
     es_result = await es_client.search(
         index=ReferenceDocument.Index.name,
@@ -472,10 +478,13 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
             }
         },
     )
-    assert es_result["hits"]["total"]["value"] == 1
-    assert es_result["hits"]["hits"][0]["_id"] == str(canonical_reference_id)
-    es_source = es_result["hits"]["hits"][0]["_source"]
-    assert es_source["duplicate_determination"] == DuplicateDetermination.CANONICAL
+    assert {hit["_id"] for hit in es_result["hits"]["hits"]} == {
+        str(canonical_reference_id),
+        str(duplicate_reference.id),
+    }
+    assert {
+        hit["_source"]["duplicate_determination"] for hit in es_result["hits"]["hits"]
+    } == {DuplicateDetermination.CANONICAL}
 
 
 async def test_duplicate_becomes_canonical(  # noqa: PLR0913
@@ -534,7 +543,10 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
         duplicate_decision.duplicate_determination == DuplicateDetermination.DECOUPLED
     )
     assert duplicate_decision.detail
-    assert "Existing duplicate decision changed" in duplicate_decision.detail
+    assert (
+        "Automatic decisions cannot replace a person-made active decision"
+        in duplicate_decision.detail
+    )
     assert not duplicate_decision.canonical_reference_id
     assert not duplicate_decision.active_decision
 
@@ -607,7 +619,10 @@ async def test_duplicate_change(  # noqa: PLR0913
         required_state=DuplicateDetermination.DECOUPLED,
     )
     assert duplicate_decision.detail
-    assert "Existing duplicate decision changed" in duplicate_decision.detail
+    assert (
+        "Automatic decisions cannot replace a person-made active decision"
+        in duplicate_decision.detail
+    )
     assert duplicate_decision.canonical_reference_id == canonical_reference_id
     assert not duplicate_decision.active_decision
 
