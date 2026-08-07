@@ -202,7 +202,7 @@ class RobotClient:
             use a default lease duration.
         :type lease_duration: str | None
         """
-        response = self.session.post(
+        response = self.session.patch(
             f"/robot-enhancement-batches/{robot_enhancement_batch_id}/renew-lease/",
             params={"lease": lease_duration} if lease_duration else None,
         )
