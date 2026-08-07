@@ -1,8 +1,11 @@
 """Tests for GenericAsyncSqlRepository methods."""
 
+from uuid import uuid7
+
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import SQLNotFoundError
 from tests.persistence_models import SimpleSQLModel, SimpleSQLRepository
 
 
@@ -136,3 +139,35 @@ async def test_partition_and_retrieve_all_ids(
 
     # Verify we got all IDs exactly once
     assert retrieved_ids == all_record_ids
+
+
+@pytest.mark.parametrize(
+    "method",
+    ["get_by_pks", "verify_pk_existence", "bulk_update"],
+)
+async def test_pk_filters_exceed_asyncpg_parameter_limit(
+    repository: SimpleSQLRepository, session: AsyncSession, method: str
+) -> None:
+    """
+    Primary key filters accept more pks than asyncpg allows bind parameters.
+
+    asyncpg rejects statements with more than 32767 bind parameters, so these
+    filters must bind the pk collection as a single array rather than one
+    parameter per pk.
+    """
+    record = SimpleSQLModel(title="needle")
+    session.add(record)
+    await session.commit()
+
+    pks = [uuid7() for _ in range(40_000)]
+    pks[20_000] = record.id
+
+    if method == "get_by_pks":
+        found = await repository.get_by_pks(pks, fail_on_missing=False)
+        assert [r.id for r in found] == [record.id]
+    elif method == "verify_pk_existence":
+        with pytest.raises(SQLNotFoundError):
+            await repository.verify_pk_existence(pks)
+        await repository.verify_pk_existence([record.id])
+    else:
+        assert await repository.bulk_update(pks, title="updated") == 1

@@ -3,12 +3,21 @@
 import math
 from abc import ABC
 from collections.abc import Collection
-from typing import Generic
+from typing import Any, Generic
 from uuid import UUID
 
 import tenacity
 from opentelemetry import trace
-from sqlalchemy import func, inspect, select, update
+from sqlalchemy import (
+    ARRAY,
+    ColumnElement,
+    any_,
+    func,
+    inspect,
+    literal,
+    select,
+    update,
+)
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import (
@@ -40,6 +49,10 @@ from app.persistence.sql.persistence import RelationshipLoadType
 
 tracer = trace.get_tracer(__name__)
 settings = get_settings()
+
+# asyncpg rejects any statement carrying more than 32767 bind parameters. Leave headroom
+# for the other parameters a statement may carry alongside the matched collection.
+BIND_PARAM_FORK_THRESHOLD = 32_000
 
 
 class GenericAsyncSqlRepository(
@@ -74,6 +87,33 @@ class GenericAsyncSqlRepository(
         self._persistence_cls = persistence_cls
         self._domain_cls = domain_cls
         self.system = "SQL"
+
+    @classmethod
+    def any_of(
+        cls,
+        column: InstrumentedAttribute[Any],
+        values: Collection[Any],
+    ) -> ColumnElement[bool]:
+        """
+        Match ``column`` against ``values``, however many there are.
+
+        Up to ``BIND_PARAM_FORK_THRESHOLD`` values this is a plain ``IN``, binding one
+        parameter per value. Above it, where ``IN`` would exceed asyncpg's limit and
+        raise, the values are bound as a single array and matched with ``= ANY``.
+
+        Args:
+            column: The column to match on.
+            values: The values to match. An empty collection matches nothing.
+
+        Returns:
+            A boolean expression for use in ``where()``.
+
+        """
+        matched = list(values)
+        if len(matched) <= BIND_PARAM_FORK_THRESHOLD:
+            # We prefer in_ as it gives length hints to the query planner
+            return column.in_(matched)
+        return column == any_(literal(matched, ARRAY(column.type)))
 
     def _get_relationship_loads(
         self,
@@ -278,7 +318,7 @@ class GenericAsyncSqlRepository(
         options = self._get_relationship_loads(preload, force_selectin=True)
         query = (
             select(self._persistence_cls)
-            .where(self._persistence_cls.id.in_(pks))
+            .where(self.any_of(self._persistence_cls.id, pks))
             .options(*options)
         )
         result = await self._session.execute(query)
@@ -356,7 +396,7 @@ class GenericAsyncSqlRepository(
 
         """
         query = select(self._persistence_cls.id).where(
-            self._persistence_cls.id.in_(pks)
+            self.any_of(self._persistence_cls.id, pks)
         )
         result = await self._session.execute(query)
         found_pks = set(result.scalars().all())
@@ -621,7 +661,7 @@ class GenericAsyncSqlRepository(
         try:
             stmt = (
                 update(self._persistence_cls)
-                .where(self._persistence_cls.id.in_(pks))
+                .where(self.any_of(self._persistence_cls.id, pks))
                 .values(**kwargs)
             )
             result = await self._session.execute(stmt)

@@ -174,7 +174,7 @@ class ReferenceSQLRepository(
         only those types will be included in the results. Otherwise all
         enhancements and identifiers will be included.
         """
-        query = select(SQLReference).where(SQLReference.id.in_(reference_ids))
+        query = select(SQLReference).where(self.any_of(SQLReference.id, reference_ids))
         if enhancement_types:
             query = query.options(
                 selectinload(
@@ -1174,7 +1174,7 @@ class ReferenceDuplicateDecisionSQLRepository(
                 SQLReferenceDuplicateDecision.reference_id,
                 SQLReferenceDuplicateDecision.duplicate_determination,
             ).where(
-                SQLReferenceDuplicateDecision.reference_id.in_(reference_ids),
+                self.any_of(SQLReferenceDuplicateDecision.reference_id, reference_ids),
                 SQLReferenceDuplicateDecision.active_decision.is_(True),
             )
         )
@@ -1255,7 +1255,7 @@ class PendingEnhancementSQLRepository(
             new_status = PendingEnhancementStatus(kwargs["status"])  # type: ignore[arg-type]
 
             stmt = select(SQLPendingEnhancement.id, SQLPendingEnhancement.status).where(
-                SQLPendingEnhancement.id.in_(pks)
+                self.any_of(SQLPendingEnhancement.id, pks)
             )
             result = await self._session.execute(stmt)
             entities = result.all()
@@ -1382,7 +1382,7 @@ class PendingEnhancementSQLRepository(
                 SQLPendingEnhancement.retry_of,
                 literal(0).label("depth"),
             )
-            .where(SQLPendingEnhancement.id.in_(ids))
+            .where(self.any_of(SQLPendingEnhancement.id, ids))
             .cte("retry_chain", recursive=True)
         )
         recursive = select(

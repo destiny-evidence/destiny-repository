@@ -141,7 +141,7 @@ class ImportBatchSQLRepository(
                 SQLImportResult.import_batch_id,
                 SQLImportResult.status,
             )
-            .where(SQLImportResult.import_batch_id.in_(import_batch_ids))
+            .where(self.any_of(SQLImportResult.import_batch_id, import_batch_ids))
             .distinct()
         )
         results = await self._session.execute(query)
