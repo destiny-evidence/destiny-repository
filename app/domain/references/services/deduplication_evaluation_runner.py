@@ -1,7 +1,9 @@
 """Run read-only deduplication assessments over supplied evaluation records."""
 
-from collections.abc import Sequence
+import json
+from collections.abc import AsyncIterable, AsyncIterator, Sequence
 from enum import StrEnum, auto
+from json import JSONDecodeError
 from typing import Literal, Protocol
 from uuid import UUID, uuid7
 
@@ -20,6 +22,7 @@ class EvaluationRecordStatus(StrEnum):
     """Result status for one non-blank evaluation input line."""
 
     ASSESSED = auto()
+    INPUT_INVALID = auto()
 
 
 class EvaluationInputReference(BaseModel):
@@ -37,22 +40,29 @@ class EvaluationInputRecord(BaseModel):
     input_reference: EvaluationInputReference
     input_identifiers: list[str]
     route_applicability: list[Literal["identifier", "fuzzy"]]
-    excluded_reference_ids: list[UUID] = Field(default_factory=list)
+    excluded_reference_ids: list[UUID] = Field(default_factory=list, max_length=1)
     dataset_version: str
 
     model_config = ConfigDict(extra="allow")
+
+
+class EvaluationRecordError(BaseModel):
+    """Stable machine code and reviewable detail for one failed record."""
+
+    code: Literal["invalid_json", "invalid_record"]
+    message: str
 
 
 class EvaluationRecordResult(BaseModel):
     """Assessment or structured failure for one non-blank input line."""
 
     run_id: UUID
-    query_id: str
+    query_id: str | None
     line_number: int
     status: EvaluationRecordStatus
-    incoming_reference_id: UUID
-    assessment: DeduplicationAssessment
-    error: None = None
+    incoming_reference_id: UUID | None = None
+    assessment: DeduplicationAssessment | None = None
+    error: EvaluationRecordError | None = None
 
 
 class SuppliedReferenceAssessor(Protocol):
@@ -77,6 +87,27 @@ class DeduplicationEvaluationRunner:
         """Initialize the runner with its read-only assessment dependency."""
         self._assessor = assessor
 
+    async def evaluate_lines(
+        self,
+        *,
+        run_id: UUID,
+        lines: AsyncIterable[str],
+        retrieval_policy: RetrievalPolicyName,
+        k: int,
+    ) -> AsyncIterator[EvaluationRecordResult]:
+        """Evaluate each non-blank line in physical input order."""
+        line_number = 0
+        async for line in lines:
+            line_number += 1
+            if line.strip():
+                yield await self.evaluate_line(
+                    run_id=run_id,
+                    line=line,
+                    line_number=line_number,
+                    retrieval_policy=retrieval_policy,
+                    k=k,
+                )
+
     async def evaluate_line(
         self,
         *,
@@ -87,8 +118,42 @@ class DeduplicationEvaluationRunner:
         k: int,
     ) -> EvaluationRecordResult:
         """Evaluate one supplied JSONL record."""
-        record = EvaluationInputRecord.model_validate_json(line)
-        incoming, selection_input = self._build_assessment_inputs(record)
+        try:
+            payload = json.loads(line)
+        except JSONDecodeError as exc:
+            return self._invalid_result(
+                run_id=run_id,
+                query_id=None,
+                line_number=line_number,
+                code="invalid_json",
+                message=(
+                    f"Invalid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}."
+                ),
+            )
+
+        if not isinstance(payload, dict):
+            return self._invalid_result(
+                run_id=run_id,
+                query_id=None,
+                line_number=line_number,
+                code="invalid_record",
+                message="Invalid evaluation record: expected a JSON object.",
+            )
+
+        raw_query_id = payload.get("query_id")
+        query_id = raw_query_id if isinstance(raw_query_id, str) else None
+        try:
+            record = EvaluationInputRecord.model_validate(payload)
+            incoming, selection_input = self._build_assessment_inputs(record)
+        except ValueError as exc:
+            return self._invalid_result(
+                run_id=run_id,
+                query_id=query_id,
+                line_number=line_number,
+                code="invalid_record",
+                message=f"Invalid evaluation record: {exc}",
+            )
+
         assessment = await self._assessor.evaluate_supplied(
             incoming,
             selection_input,
@@ -102,6 +167,24 @@ class DeduplicationEvaluationRunner:
             status=EvaluationRecordStatus.ASSESSED,
             incoming_reference_id=incoming.id,
             assessment=assessment,
+        )
+
+    @staticmethod
+    def _invalid_result(
+        *,
+        run_id: UUID,
+        query_id: str | None,
+        line_number: int,
+        code: Literal["invalid_json", "invalid_record"],
+        message: str,
+    ) -> EvaluationRecordResult:
+        """Build one input failure envelope without invoking the assessor."""
+        return EvaluationRecordResult(
+            run_id=run_id,
+            query_id=query_id,
+            line_number=line_number,
+            status=EvaluationRecordStatus.INPUT_INVALID,
+            error=EvaluationRecordError(code=code, message=message),
         )
 
     @classmethod
