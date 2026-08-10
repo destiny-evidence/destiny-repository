@@ -79,7 +79,7 @@ def migrate_references(  # noqa: PLR0913
     reference_ids: list[str],
     notes: str,
     export_chunk_size: int = _DEFAULT_EXPORT_CHUNK_SIZE,
-    poll_interval: float = 5,
+    poll_interval: float = 10,
     max_polls: int = 60,
     *,
     dry_run: bool = False,
@@ -157,8 +157,8 @@ def argument_parser() -> ApiArgumentParser:
     parser.add_argument(
         "--poll-interval",
         type=float,
-        default=5,
-        help="Seconds to wait between status checks (default 5).",
+        default=10,
+        help="Seconds to wait between status checks (default 10).",
     )
     parser.add_argument(
         "--max-polls",
