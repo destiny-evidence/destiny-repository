@@ -461,10 +461,7 @@ resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
         },
         {
           "type": "section",
-          "fields": [
-            { "type": "mrkdwn", "text": "*Status:*\n@{triggerBody()?['data']?['essentials']?['monitorCondition']}" },
-            { "type": "mrkdwn", "text": "*Alert Events:*\n@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '0', string(triggerBody()?['data']?['alertContext']?['condition']?['allOf']?[0]?['metricValue']))}" }
-          ]
+          "fields": [{ "type": "mrkdwn", "text": "*Status:*\n@{triggerBody()?['data']?['essentials']?['monitorCondition']}" }]
         },
         {
           "type": "section",
