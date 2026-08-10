@@ -4,6 +4,7 @@ import codecs
 import hashlib
 import json
 from collections.abc import AsyncIterable, AsyncIterator, Sequence
+from datetime import datetime
 from enum import StrEnum, auto
 from io import BytesIO
 from json import JSONDecodeError
@@ -19,7 +20,9 @@ from app.domain.references.models.models import (
     CandidateIdentifier,
     CandidateRoute,
     CandidateSelectionInput,
+    DeduperMetadata,
     DeduplicationAssessment,
+    DeduplicationAssessmentOutcome,
     DeduplicationPairResult,
     RetrievalPolicyName,
 )
@@ -102,6 +105,69 @@ class EvaluationRunArtifacts(BaseModel):
     record_results_file: BlobStorageFile
     pair_results_file: BlobStorageFile
     summary_file: BlobStorageFile
+    manifest_file: BlobStorageFile
+
+
+class EvaluationRunConfiguration(BaseModel):
+    """Fixed dataset, corpus, retrieval and scorer identity for one run."""
+
+    dataset_version: str
+    environment: str
+    corpus_observed_at: datetime
+    elasticsearch_index_version: str
+    code_commit: str
+    retrieval_policy: RetrievalPolicyName
+    k: int = Field(ge=1)
+    deduper: DeduperMetadata
+
+
+class EvaluationManifestInput(BaseModel):
+    """Immutable input identity recorded in the completion manifest."""
+
+    uri: str
+    dataset_version: str
+    byte_size: int
+    sha256: str
+
+
+class EvaluationManifestArtifact(BaseModel):
+    """Identity and digest of one artifact written before the manifest."""
+
+    uri: str
+    schema_version: str
+    byte_size: int
+    sha256: str
+
+
+class EvaluationManifestCounts(BaseModel):
+    """Record and pair totals for one completed evaluation run."""
+
+    record_statuses: dict[EvaluationRecordStatus, int]
+    pair_rows: int
+
+
+class EvaluationManifest(BaseModel):
+    """Completion marker for one immutable evaluation artifact bundle."""
+
+    schema_version: Literal["deduplication-evaluation-manifest/v1"] = (
+        "deduplication-evaluation-manifest/v1"
+    )
+    run_id: UUID
+    input: EvaluationManifestInput
+    configuration: EvaluationRunConfiguration
+    counts: EvaluationManifestCounts
+    artifacts: dict[str, EvaluationManifestArtifact]
+
+
+class _EvaluationSummaryCounts(BaseModel):
+    """Aggregate record decisions and pair evidence for the summary."""
+
+    record_statuses: dict[EvaluationRecordStatus, int]
+    assessment_outcomes: dict[DeduplicationAssessmentOutcome, int]
+    pair_rows: int
+    threshold_clearing_pairs: int
+    below_threshold_pairs: int
+    unscorable_pairs: int
 
 
 class SuppliedReferenceAssessor(Protocol):
@@ -160,10 +226,16 @@ class DeduplicationEvaluationRunner:
         run_id: UUID,
         input_file: BlobStorageFile,
         blob_repository: BlobRepository,
-        retrieval_policy: RetrievalPolicyName,
-        k: int,
+        configuration: EvaluationRunConfiguration,
     ) -> EvaluationRunArtifacts:
         """Evaluate an immutable JSONL blob and write run-scoped artifacts."""
+        path = f"deduplication_evaluation/{run_id}"
+        await blob_repository.upload_file_to_blob_storage(
+            content=BytesIO(),
+            path=path,
+            filename="record-results.jsonl",
+            content_type="application/jsonl",
+        )
         hasher = hashlib.sha256()
         input_byte_size = 0
         decoder = codecs.getincrementaldecoder("utf-8")()
@@ -189,8 +261,8 @@ class DeduplicationEvaluationRunner:
             async for result in self.evaluate_lines(
                 run_id=run_id,
                 lines=input_lines(),
-                retrieval_policy=retrieval_policy,
-                k=k,
+                retrieval_policy=configuration.retrieval_policy,
+                k=configuration.k,
             )
         ]
         pair_results = [
@@ -198,44 +270,82 @@ class DeduplicationEvaluationRunner:
             for record_result in record_results
             for pair in self.project_pair_results(record_result)
         ]
-        path = f"deduplication_evaluation/{run_id}"
+        input_sha256 = hasher.hexdigest()
+        summary_counts = self._summary_counts(record_results, pair_results)
+        record_results_buffer = self._jsonl_buffer(record_results)
+        record_results_bytes = record_results_buffer.getvalue()
         record_results_file = await blob_repository.upload_file_to_blob_storage(
-            content=self._jsonl_buffer(record_results),
+            content=record_results_buffer,
             path=path,
             filename="record-results.jsonl",
             content_type="application/jsonl",
         )
+        pair_results_buffer = self._jsonl_buffer(pair_results)
+        pair_results_bytes = pair_results_buffer.getvalue()
         pair_results_file = await blob_repository.upload_file_to_blob_storage(
-            content=self._jsonl_buffer(pair_results),
+            content=pair_results_buffer,
             path=path,
             filename="pair-results.jsonl",
             content_type="application/jsonl",
         )
+        summary_bytes = self._summary(
+            run_id=run_id,
+            input_details=(input_file, input_byte_size, input_sha256),
+            record_count=len(record_results),
+            counts=summary_counts,
+        ).encode()
         summary_file = await blob_repository.upload_file_to_blob_storage(
-            content=BytesIO(
-                self._summary(
-                    run_id=run_id,
-                    input_details=(
-                        input_file,
-                        input_byte_size,
-                        hasher.hexdigest(),
-                    ),
-                    record_results=record_results,
-                    pair_count=len(pair_results),
-                ).encode()
-            ),
+            content=BytesIO(summary_bytes),
             path=path,
             filename="summary.md",
             content_type="text/markdown",
+        )
+        manifest = EvaluationManifest(
+            run_id=run_id,
+            input=EvaluationManifestInput(
+                uri=input_file.to_uri(),
+                dataset_version=configuration.dataset_version,
+                byte_size=input_byte_size,
+                sha256=input_sha256,
+            ),
+            configuration=configuration,
+            counts=EvaluationManifestCounts(
+                record_statuses=summary_counts.record_statuses,
+                pair_rows=len(pair_results),
+            ),
+            artifacts={
+                "record-results.jsonl": self._artifact_metadata(
+                    record_results_file,
+                    record_results_bytes,
+                    "evaluation-record-result/v1",
+                ),
+                "pair-results.jsonl": self._artifact_metadata(
+                    pair_results_file,
+                    pair_results_bytes,
+                    "evaluation-pair-result/v1",
+                ),
+                "summary.md": self._artifact_metadata(
+                    summary_file,
+                    summary_bytes,
+                    "deduplication-evaluation-summary/v1",
+                ),
+            },
+        )
+        manifest_file = await blob_repository.upload_file_to_blob_storage(
+            content=BytesIO(manifest.model_dump_json(indent=2).encode()),
+            path=path,
+            filename="manifest.json",
+            content_type="application/json",
         )
         return EvaluationRunArtifacts(
             run_id=run_id,
             input_file=input_file,
             input_byte_size=input_byte_size,
-            input_sha256=hasher.hexdigest(),
+            input_sha256=input_sha256,
             record_results_file=record_results_file,
             pair_results_file=pair_results_file,
             summary_file=summary_file,
+            manifest_file=manifest_file,
         )
 
     @staticmethod
@@ -244,32 +354,93 @@ class DeduplicationEvaluationRunner:
         return BytesIO("".join(f"{row.model_dump_json()}\n" for row in rows).encode())
 
     @staticmethod
+    def _artifact_metadata(
+        file: BlobStorageFile,
+        content: bytes,
+        schema_version: str,
+    ) -> EvaluationManifestArtifact:
+        """Describe the exact bytes uploaded for one pre-manifest artifact."""
+        return EvaluationManifestArtifact(
+            uri=file.to_uri(),
+            schema_version=schema_version,
+            byte_size=len(content),
+            sha256=hashlib.sha256(content).hexdigest(),
+        )
+
+    @staticmethod
+    def _status_counts(
+        record_results: Sequence[EvaluationRecordResult],
+    ) -> dict[EvaluationRecordStatus, int]:
+        """Count every stable record status, including zero-count statuses."""
+        return {
+            status: sum(result.status is status for result in record_results)
+            for status in EvaluationRecordStatus
+        }
+
+    @classmethod
+    def _summary_counts(
+        cls,
+        record_results: Sequence[EvaluationRecordResult],
+        pair_results: Sequence[EvaluationPairResult],
+    ) -> _EvaluationSummaryCounts:
+        """Aggregate all stable summary categories, including zero counts."""
+        return _EvaluationSummaryCounts(
+            record_statuses=cls._status_counts(record_results),
+            assessment_outcomes={
+                outcome: sum(
+                    result.assessment is not None
+                    and result.assessment.outcome is outcome
+                    for result in record_results
+                )
+                for outcome in DeduplicationAssessmentOutcome
+            },
+            pair_rows=len(pair_results),
+            threshold_clearing_pairs=sum(
+                pair.clears_threshold is True for pair in pair_results
+            ),
+            below_threshold_pairs=sum(
+                pair.clears_threshold is False for pair in pair_results
+            ),
+            unscorable_pairs=sum(
+                pair.clears_threshold is None for pair in pair_results
+            ),
+        )
+
+    @staticmethod
     def _summary(
         *,
         run_id: UUID,
         input_details: tuple[BlobStorageFile, int, str],
-        record_results: Sequence[EvaluationRecordResult],
-        pair_count: int,
+        record_count: int,
+        counts: _EvaluationSummaryCounts,
     ) -> str:
         """Render the human-readable summary written before the manifest."""
         input_file, input_byte_size, input_sha256 = input_details
-        status_counts = {
-            status: sum(result.status is status for result in record_results)
-            for status in EvaluationRecordStatus
-        }
         return (
             "# Deduplication evaluation summary\n\n"
             f"Run ID: `{run_id}`\n\n"
             f"Input: `{input_file.to_uri()}`\n\n"
             f"Input bytes: {input_byte_size}\n\n"
             f"Input SHA-256: `{input_sha256}`\n\n"
-            f"Records: {len(record_results)}\n\n"
-            f"Assessed records: {status_counts[EvaluationRecordStatus.ASSESSED]}\n\n"
+            f"Records: {record_count}\n\n"
+            "Assessed records: "
+            f"{counts.record_statuses[EvaluationRecordStatus.ASSESSED]}\n\n"
             "Invalid input records: "
-            f"{status_counts[EvaluationRecordStatus.INPUT_INVALID]}\n\n"
+            f"{counts.record_statuses[EvaluationRecordStatus.INPUT_INVALID]}\n\n"
             "Evaluation-failed records: "
-            f"{status_counts[EvaluationRecordStatus.EVALUATION_FAILED]}\n\n"
-            f"Pair rows: {pair_count}\n"
+            f"{counts.record_statuses[EvaluationRecordStatus.EVALUATION_FAILED]}\n\n"
+            f"Pair rows: {counts.pair_rows}\n\n"
+            "## Assessment outcomes\n\n"
+            "- `propose_canonical`: "
+            f"{counts.assessment_outcomes[DeduplicationAssessmentOutcome.PROPOSE_CANONICAL]}\n"
+            "- `propose_duplicate`: "
+            f"{counts.assessment_outcomes[DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE]}\n"
+            "- `no_proposal`: "
+            f"{counts.assessment_outcomes[DeduplicationAssessmentOutcome.NO_PROPOSAL]}\n\n"
+            "## Pair evidence\n\n"
+            f"- Clears threshold: {counts.threshold_clearing_pairs}\n"
+            f"- Below threshold: {counts.below_threshold_pairs}\n"
+            f"- Unscorable: {counts.unscorable_pairs}\n"
         )
 
     async def evaluate_lines(
