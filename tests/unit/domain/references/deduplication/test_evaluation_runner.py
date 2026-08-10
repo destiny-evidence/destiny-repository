@@ -456,20 +456,46 @@ async def test_run_records_expected_failures_and_continues():
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "error",
-    [
-        pytest.param(ValueError("unexpected scorer defect"), id="unexpected"),
-        pytest.param(asyncio.CancelledError(), id="cancelled"),
-    ],
-)
-async def test_run_propagates_non_record_failures(error):
-    """Programming errors and cancellation abort the run."""
+async def test_run_preserves_completed_records_when_it_aborts():
+    """An abort keeps finished work; the absent manifest marks the bundle incomplete."""
+    source = "\n".join([_line("first"), _line("boom"), _line("never")]).encode()
+    repository, uploaded = _blob_repository(source)
+    call_count = 0
+
+    async def assess(incoming, *_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            message = "unexpected scorer defect"
+            raise ValueError(message)
+        return _assessment(incoming.id)
+
+    assessor = AsyncMock()
+    assessor.evaluate_supplied = AsyncMock(side_effect=assess)
+
+    with pytest.raises(ValueError, match="unexpected scorer defect"):
+        await DeduplicationEvaluationRunner(assessor=assessor).run(
+            run_id=uuid7(),
+            input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+            blob_repository=repository,
+            configuration=_configuration(),
+        )
+
+    assert set(uploaded) == {"record-results.jsonl"}
+    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    assert [(row["query_id"], row["status"]) for row in records] == [
+        ("first", "assessed")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_writes_nothing_when_cancelled():
+    """Cancellation unwinds without further blob I/O."""
     repository, uploaded = _blob_repository(_line("failed").encode())
     assessor = AsyncMock()
-    assessor.evaluate_supplied.side_effect = error
+    assessor.evaluate_supplied.side_effect = asyncio.CancelledError()
 
-    with pytest.raises(type(error)):
+    with pytest.raises(asyncio.CancelledError):
         await DeduplicationEvaluationRunner(assessor=assessor).run(
             run_id=uuid7(),
             input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),

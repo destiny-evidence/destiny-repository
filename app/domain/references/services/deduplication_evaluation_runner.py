@@ -165,28 +165,42 @@ class DeduplicationEvaluationRunner:
             digest.update(chunk)
             byte_size += len(chunk)
 
+        path = f"deduplication_evaluation/{run_id}"
         record_results: list[EvaluationRecordResult] = []
         line_number = 0
-        async with blob_repository.stream_file_from_blob_storage(input_file) as lines:
-            async for line in lines:
-                line_number += 1
-                if not line.strip():
-                    continue
-                record_results.append(
-                    await self._evaluate_line(
-                        run_id=run_id,
-                        line=line,
-                        line_number=line_number,
-                        configuration=configuration,
+        try:
+            async with blob_repository.stream_file_from_blob_storage(
+                input_file
+            ) as lines:
+                async for line in lines:
+                    line_number += 1
+                    if not line.strip():
+                        continue
+                    record_results.append(
+                        await self._evaluate_line(
+                            run_id=run_id,
+                            line=line,
+                            line_number=line_number,
+                            configuration=configuration,
+                        )
                     )
-                )
+        except Exception:
+            # A run costs hours of retrieval, so keep whatever completed. Writing no
+            # manifest is what marks the bundle incomplete.
+            await self._upload(
+                blob_repository,
+                path,
+                "record-results.jsonl",
+                self._jsonl(record_results),
+            )
+            raise
+
         pair_results = [
             pair
             for record_result in record_results
             for pair in self._pair_results(record_result)
         ]
         input_sha256 = digest.hexdigest()
-        path = f"deduplication_evaluation/{run_id}"
 
         record_bytes = self._jsonl(record_results)
         record_file = await self._upload(
