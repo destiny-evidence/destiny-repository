@@ -55,6 +55,7 @@ class EvaluationInputRecord(BaseModel):
     input_reference: EvaluationInputReference
     input_identifiers: list[str]
     route_applicability: list[Literal["identifier", "fuzzy"]]
+    """Analysis label for the row; deliberately does not shape the candidate query."""
     excluded_reference_ids: list[UUID] = Field(default_factory=list, max_length=1)
     dataset_version: str
 
@@ -407,11 +408,9 @@ class DeduplicationEvaluationRunner:
             title=record.input_reference.title,
             authors=record.input_reference.authors,
             publication_year=record.input_reference.year,
-            identifiers=(
-                [CandidateIdentifier.from_specific(item) for item in identifiers]
-                if "identifier" in record.route_applicability
-                else []
-            ),
+            identifiers=[
+                CandidateIdentifier.from_specific(item) for item in identifiers
+            ],
             excluded_reference_id=(
                 record.excluded_reference_ids[0]
                 if record.excluded_reference_ids

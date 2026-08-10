@@ -258,8 +258,8 @@ async def test_run_writes_complete_reviewable_bundle():
 
 
 @pytest.mark.asyncio
-async def test_run_builds_yearless_and_fuzzy_only_assessment_inputs():
-    """Frozen inputs preserve scoring data while controlling retrieval routes."""
+async def test_run_builds_yearless_and_union_assessment_inputs():
+    """Frozen inputs preserve scoring data and query the production route union."""
     held_reference_id = uuid7()
     source = (
         _line(
@@ -269,7 +269,7 @@ async def test_run_builds_yearless_and_fuzzy_only_assessment_inputs():
             excluded_reference_ids=[str(held_reference_id)],
         )
         + "\n"
-        + _line("fuzzy-only")
+        + _line("labelled-fuzzy")
     ).encode()
     repository, _uploaded = _blob_repository(source)
     assessor = AsyncMock()
@@ -306,7 +306,14 @@ async def test_run_builds_yearless_and_fuzzy_only_assessment_inputs():
         is ExternalIdentifierType.OPEN_ALEX
     )
     assert second_incoming.identifiers[0].identifier == "W1"
-    assert second_selection.identifiers == []
+    # route_applicability is analysis metadata, not query-shaping input.
+    # The runner sends full input so production policy records real provenance.
+    assert (
+        second_selection.identifiers[0].identifier_type
+        is ExternalIdentifierType.OPEN_ALEX
+    )
+    assert second_selection.title == "Study labelled-fuzzy"
+    assert second_selection.publication_year == 2024
     assert all(
         call.kwargs == {"retrieval_policy": policy, "k": 10}
         for call in assessor.evaluate_supplied.await_args_list
