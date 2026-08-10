@@ -11,6 +11,7 @@ import httpx
 import pytest
 from aiohttp import web
 from destiny_sdk.enhancements import EnhancementFileInput
+from destiny_sdk.identifiers import OpenAlexIdentifier
 from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
 
@@ -36,7 +37,8 @@ def generate_sdk_reference_file_inputs() -> Callable[[int], list[ReferenceFileIn
                 enhancements=[
                     EnhancementFileInput(**e.model_dump()) for e in r.enhancements or []
                 ],
-                identifiers=[i.identifier for i in r.identifiers or []],
+                # Avoid accidental identifier candidates between unrelated records.
+                identifiers=[OpenAlexIdentifier(identifier=f"W{uuid7().int}")],
             )
             for r in references
         ]

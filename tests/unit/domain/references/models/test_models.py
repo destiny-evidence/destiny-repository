@@ -6,13 +6,16 @@ from uuid import uuid7
 
 import destiny_sdk
 import pytest
+from pydantic import ValidationError
 
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    DuplicateDetermination,
     Enhancement,
     FullTextEnhancement,
     GenericExternalIdentifier,
+    ReferenceDuplicateDecision,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
@@ -193,3 +196,42 @@ async def test_canonical_search_fields_searchable():
     search_fields.publication_year = None
 
     assert not search_fields.is_searchable
+
+
+@pytest.mark.parametrize(
+    ("duplicate_determination", "canonical_reference_id"),
+    [
+        (DuplicateDetermination.EXACT_DUPLICATE, None),
+        (DuplicateDetermination.DUPLICATE, None),
+        (DuplicateDetermination.PENDING, uuid7()),
+        (DuplicateDetermination.CANONICAL, uuid7()),
+    ],
+)
+def test_duplicate_decision_rejects_mismatched_canonical_reference(
+    duplicate_determination, canonical_reference_id
+):
+    """The model is the only guard left on this pairing after the registrars split."""
+    with pytest.raises(ValidationError, match="canonical_reference_id must be"):
+        ReferenceDuplicateDecision(
+            reference_id=uuid7(),
+            duplicate_determination=duplicate_determination,
+            canonical_reference_id=canonical_reference_id,
+        )
+
+
+def test_duplicate_decision_allows_decoupled_with_or_without_canonical():
+    """DECOUPLED may retain a proposed canonical for later review."""
+    canonical_id = uuid7()
+
+    with_canonical = ReferenceDuplicateDecision(
+        reference_id=uuid7(),
+        duplicate_determination=DuplicateDetermination.DECOUPLED,
+        canonical_reference_id=canonical_id,
+    )
+    without_canonical = ReferenceDuplicateDecision(
+        reference_id=uuid7(),
+        duplicate_determination=DuplicateDetermination.DECOUPLED,
+    )
+
+    assert with_canonical.canonical_reference_id == canonical_id
+    assert without_canonical.canonical_reference_id is None
