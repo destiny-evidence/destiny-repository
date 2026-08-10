@@ -1,9 +1,9 @@
-"""Run read-only deduplication assessments over supplied evaluation records."""
+"""Run read-only deduplication assessments over a supplied JSONL blob."""
 
-import codecs
 import hashlib
 import json
-from collections.abc import AsyncIterable, AsyncIterator, Sequence
+from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime
 from enum import StrEnum, auto
 from io import BytesIO
@@ -33,7 +33,7 @@ logger = get_logger(__name__)
 
 
 class EvaluationRecordStatus(StrEnum):
-    """Result status for one non-blank evaluation input line."""
+    """Status of one non-blank input line."""
 
     ASSESSED = auto()
     INPUT_INVALID = auto()
@@ -41,7 +41,7 @@ class EvaluationRecordStatus(StrEnum):
 
 
 class EvaluationInputReference(BaseModel):
-    """Bibliographic fields frozen into one retrieval-evaluation row."""
+    """Bibliographic fields frozen into one evaluation row."""
 
     title: str | None
     authors: list[str]
@@ -49,7 +49,7 @@ class EvaluationInputReference(BaseModel):
 
 
 class EvaluationInputRecord(BaseModel):
-    """Fields needed to assess one retrieval-evaluation dataset row."""
+    """Dataset fields needed for one assessment."""
 
     query_id: str
     input_reference: EvaluationInputReference
@@ -62,14 +62,14 @@ class EvaluationInputRecord(BaseModel):
 
 
 class EvaluationRecordError(BaseModel):
-    """Stable machine code and reviewable detail for one failed record."""
+    """Stable code and reviewable detail for one failed record."""
 
     code: Literal["invalid_json", "invalid_record", "evaluation_failed"]
     message: str
 
 
 class EvaluationRecordResult(BaseModel):
-    """Assessment or structured failure for one non-blank input line."""
+    """Assessment or structured failure for one input line."""
 
     run_id: UUID
     query_id: str | None
@@ -81,7 +81,7 @@ class EvaluationRecordResult(BaseModel):
 
 
 class EvaluationPairResult(BaseModel):
-    """One analysis-friendly row projected from an assessment candidate."""
+    """Analysis row projected from one assessed candidate."""
 
     run_id: UUID
     query_id: str
@@ -95,21 +95,8 @@ class EvaluationPairResult(BaseModel):
     clears_threshold: bool | None
 
 
-class EvaluationRunArtifacts(BaseModel):
-    """Run-scoped artifacts written before the completion manifest."""
-
-    run_id: UUID
-    input_file: BlobStorageFile
-    input_byte_size: int
-    input_sha256: str
-    record_results_file: BlobStorageFile
-    pair_results_file: BlobStorageFile
-    summary_file: BlobStorageFile
-    manifest_file: BlobStorageFile
-
-
 class EvaluationRunConfiguration(BaseModel):
-    """Fixed dataset, corpus, retrieval and scorer identity for one run."""
+    """Dataset, corpus, retrieval and scorer identity for one run."""
 
     dataset_version: str
     environment: str
@@ -121,53 +108,17 @@ class EvaluationRunConfiguration(BaseModel):
     deduper: DeduperMetadata
 
 
-class EvaluationManifestInput(BaseModel):
-    """Immutable input identity recorded in the completion manifest."""
+class EvaluationRunArtifacts(BaseModel):
+    """Files and immutable input identity produced by a completed run."""
 
-    uri: str
-    dataset_version: str
-    byte_size: int
-    sha256: str
-
-
-class EvaluationManifestArtifact(BaseModel):
-    """Identity and digest of one artifact written before the manifest."""
-
-    uri: str
-    schema_version: str
-    byte_size: int
-    sha256: str
-
-
-class EvaluationManifestCounts(BaseModel):
-    """Record and pair totals for one completed evaluation run."""
-
-    record_statuses: dict[EvaluationRecordStatus, int]
-    pair_rows: int
-
-
-class EvaluationManifest(BaseModel):
-    """Completion marker for one immutable evaluation artifact bundle."""
-
-    schema_version: Literal["deduplication-evaluation-manifest/v1"] = (
-        "deduplication-evaluation-manifest/v1"
-    )
     run_id: UUID
-    input: EvaluationManifestInput
-    configuration: EvaluationRunConfiguration
-    counts: EvaluationManifestCounts
-    artifacts: dict[str, EvaluationManifestArtifact]
-
-
-class _EvaluationSummaryCounts(BaseModel):
-    """Aggregate record decisions and pair evidence for the summary."""
-
-    record_statuses: dict[EvaluationRecordStatus, int]
-    assessment_outcomes: dict[DeduplicationAssessmentOutcome, int]
-    pair_rows: int
-    threshold_clearing_pairs: int
-    below_threshold_pairs: int
-    unscorable_pairs: int
+    input_file: BlobStorageFile
+    input_byte_size: int
+    input_sha256: str
+    record_results_file: BlobStorageFile
+    pair_results_file: BlobStorageFile
+    summary_file: BlobStorageFile
+    manifest_file: BlobStorageFile
 
 
 class SuppliedReferenceAssessor(Protocol):
@@ -190,35 +141,11 @@ class SuppliedReferenceAssessor(Protocol):
 
 
 class DeduplicationEvaluationRunner:
-    """Convert supplied records and pass them to the read-only assessor."""
+    """Assess supplied records and write a reviewable artifact bundle."""
 
     def __init__(self, *, assessor: SuppliedReferenceAssessor) -> None:
-        """Initialize the runner with its read-only assessment dependency."""
+        """Keep the read-only assessor used by each record."""
         self._assessor = assessor
-
-    @staticmethod
-    def project_pair_results(
-        result: EvaluationRecordResult,
-    ) -> list[EvaluationPairResult]:
-        """Project analysis rows from one completed record assessment."""
-        if result.status is not EvaluationRecordStatus.ASSESSED:
-            return []
-        assessment = cast(DeduplicationAssessment, result.assessment)
-        return [
-            EvaluationPairResult(
-                run_id=result.run_id,
-                query_id=cast(str, result.query_id),
-                line_number=result.line_number,
-                incoming_reference_id=cast(UUID, result.incoming_reference_id),
-                candidate_reference_id=scored.candidate.reference_id,
-                retrieval_rank=scored.candidate.rank,
-                retrieval_routes=scored.candidate.routes,
-                pair_result=scored.pair_result,
-                threshold=assessment.deduper.threshold,
-                clears_threshold=scored.clears_threshold,
-            )
-            for scored in assessment.scored_candidates
-        ]
 
     async def run(
         self,
@@ -228,294 +155,148 @@ class DeduplicationEvaluationRunner:
         blob_repository: BlobRepository,
         configuration: EvaluationRunConfiguration,
     ) -> EvaluationRunArtifacts:
-        """Evaluate an immutable JSONL blob and write run-scoped artifacts."""
-        path = f"deduplication_evaluation/{run_id}"
-        await blob_repository.upload_file_to_blob_storage(
-            content=BytesIO(),
-            path=path,
-            filename="record-results.jsonl",
-            content_type="application/jsonl",
+        """Evaluate a JSONL blob and write its run-scoped artifact bundle."""
+        source_bytes = b"".join(
+            [
+                chunk
+                async for chunk in blob_repository.stream_chunks_from_blob_storage(
+                    input_file
+                )
+            ]
         )
-        hasher = hashlib.sha256()
-        input_byte_size = 0
-        decoder = codecs.getincrementaldecoder("utf-8")()
-
-        async def input_lines() -> AsyncIterator[str]:
-            nonlocal input_byte_size
-            buffer = ""
-            async for chunk in blob_repository.stream_chunks_from_blob_storage(
-                input_file
-            ):
-                hasher.update(chunk)
-                input_byte_size += len(chunk)
-                buffer += decoder.decode(chunk)
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    yield line
-            buffer += decoder.decode(b"", final=True)
-            if buffer:
-                yield buffer
-
         record_results = [
-            result
-            async for result in self.evaluate_lines(
+            await self._evaluate_line(
                 run_id=run_id,
-                lines=input_lines(),
-                retrieval_policy=configuration.retrieval_policy,
-                k=configuration.k,
+                line=line,
+                line_number=line_number,
+                configuration=configuration,
             )
+            for line_number, line in enumerate(source_bytes.decode().splitlines(), 1)
+            if line.strip()
         ]
         pair_results = [
             pair
             for record_result in record_results
-            for pair in self.project_pair_results(record_result)
+            for pair in self._pair_results(record_result)
         ]
-        input_sha256 = hasher.hexdigest()
-        summary_counts = self._summary_counts(record_results, pair_results)
-        record_results_buffer = self._jsonl_buffer(record_results)
-        record_results_bytes = record_results_buffer.getvalue()
-        record_results_file = await blob_repository.upload_file_to_blob_storage(
-            content=record_results_buffer,
-            path=path,
-            filename="record-results.jsonl",
-            content_type="application/jsonl",
+        input_sha256 = hashlib.sha256(source_bytes).hexdigest()
+        path = f"deduplication_evaluation/{run_id}"
+
+        record_bytes = self._jsonl(record_results)
+        record_file = await self._upload(
+            blob_repository, path, "record-results.jsonl", record_bytes
         )
-        pair_results_buffer = self._jsonl_buffer(pair_results)
-        pair_results_bytes = pair_results_buffer.getvalue()
-        pair_results_file = await blob_repository.upload_file_to_blob_storage(
-            content=pair_results_buffer,
-            path=path,
-            filename="pair-results.jsonl",
-            content_type="application/jsonl",
+        pair_bytes = self._jsonl(pair_results)
+        pair_file = await self._upload(
+            blob_repository, path, "pair-results.jsonl", pair_bytes
         )
         summary_bytes = self._summary(
             run_id=run_id,
-            input_details=(input_file, input_byte_size, input_sha256),
-            record_count=len(record_results),
-            counts=summary_counts,
+            input_file=input_file,
+            input_bytes=source_bytes,
+            records=record_results,
+            pairs=pair_results,
         ).encode()
-        summary_file = await blob_repository.upload_file_to_blob_storage(
-            content=BytesIO(summary_bytes),
-            path=path,
-            filename="summary.md",
-            content_type="text/markdown",
+        summary_file = await self._upload(
+            blob_repository, path, "summary.md", summary_bytes
         )
-        manifest = EvaluationManifest(
-            run_id=run_id,
-            input=EvaluationManifestInput(
-                uri=input_file.to_uri(),
-                dataset_version=configuration.dataset_version,
-                byte_size=input_byte_size,
-                sha256=input_sha256,
-            ),
-            configuration=configuration,
-            counts=EvaluationManifestCounts(
-                record_statuses=summary_counts.record_statuses,
-                pair_rows=len(pair_results),
-            ),
-            artifacts={
-                "record-results.jsonl": self._artifact_metadata(
-                    record_results_file,
-                    record_results_bytes,
-                    "evaluation-record-result/v1",
+
+        status_counts = Counter(result.status for result in record_results)
+        manifest = {
+            "schema_version": "deduplication-evaluation-manifest/v1",
+            "run_id": str(run_id),
+            "input": {
+                "uri": input_file.to_uri(),
+                "dataset_version": configuration.dataset_version,
+                "byte_size": len(source_bytes),
+                "sha256": input_sha256,
+            },
+            "configuration": configuration.model_dump(mode="json"),
+            "counts": {
+                "record_statuses": {
+                    status.value: status_counts[status]
+                    for status in EvaluationRecordStatus
+                },
+                "pair_rows": len(pair_results),
+            },
+            "artifacts": {
+                "record-results.jsonl": self._artifact(
+                    record_file, record_bytes, "evaluation-record-result/v1"
                 ),
-                "pair-results.jsonl": self._artifact_metadata(
-                    pair_results_file,
-                    pair_results_bytes,
-                    "evaluation-pair-result/v1",
+                "pair-results.jsonl": self._artifact(
+                    pair_file, pair_bytes, "evaluation-pair-result/v1"
                 ),
-                "summary.md": self._artifact_metadata(
+                "summary.md": self._artifact(
                     summary_file,
                     summary_bytes,
                     "deduplication-evaluation-summary/v1",
                 ),
             },
-        )
-        manifest_file = await blob_repository.upload_file_to_blob_storage(
-            content=BytesIO(manifest.model_dump_json(indent=2).encode()),
-            path=path,
-            filename="manifest.json",
-            content_type="application/json",
+        }
+        manifest_file = await self._upload(
+            blob_repository,
+            path,
+            "manifest.json",
+            json.dumps(manifest, indent=2).encode(),
         )
         return EvaluationRunArtifacts(
             run_id=run_id,
             input_file=input_file,
-            input_byte_size=input_byte_size,
+            input_byte_size=len(source_bytes),
             input_sha256=input_sha256,
-            record_results_file=record_results_file,
-            pair_results_file=pair_results_file,
+            record_results_file=record_file,
+            pair_results_file=pair_file,
             summary_file=summary_file,
             manifest_file=manifest_file,
         )
 
-    @staticmethod
-    def _jsonl_buffer(rows: Sequence[BaseModel]) -> BytesIO:
-        """Serialize model rows as newline-terminated JSONL bytes."""
-        return BytesIO("".join(f"{row.model_dump_json()}\n" for row in rows).encode())
-
-    @staticmethod
-    def _artifact_metadata(
-        file: BlobStorageFile,
-        content: bytes,
-        schema_version: str,
-    ) -> EvaluationManifestArtifact:
-        """Describe the exact bytes uploaded for one pre-manifest artifact."""
-        return EvaluationManifestArtifact(
-            uri=file.to_uri(),
-            schema_version=schema_version,
-            byte_size=len(content),
-            sha256=hashlib.sha256(content).hexdigest(),
-        )
-
-    @staticmethod
-    def _status_counts(
-        record_results: Sequence[EvaluationRecordResult],
-    ) -> dict[EvaluationRecordStatus, int]:
-        """Count every stable record status, including zero-count statuses."""
-        return {
-            status: sum(result.status is status for result in record_results)
-            for status in EvaluationRecordStatus
-        }
-
-    @classmethod
-    def _summary_counts(
-        cls,
-        record_results: Sequence[EvaluationRecordResult],
-        pair_results: Sequence[EvaluationPairResult],
-    ) -> _EvaluationSummaryCounts:
-        """Aggregate all stable summary categories, including zero counts."""
-        return _EvaluationSummaryCounts(
-            record_statuses=cls._status_counts(record_results),
-            assessment_outcomes={
-                outcome: sum(
-                    result.assessment is not None
-                    and result.assessment.outcome is outcome
-                    for result in record_results
-                )
-                for outcome in DeduplicationAssessmentOutcome
-            },
-            pair_rows=len(pair_results),
-            threshold_clearing_pairs=sum(
-                pair.clears_threshold is True for pair in pair_results
-            ),
-            below_threshold_pairs=sum(
-                pair.clears_threshold is False for pair in pair_results
-            ),
-            unscorable_pairs=sum(
-                pair.clears_threshold is None for pair in pair_results
-            ),
-        )
-
-    @staticmethod
-    def _summary(
-        *,
-        run_id: UUID,
-        input_details: tuple[BlobStorageFile, int, str],
-        record_count: int,
-        counts: _EvaluationSummaryCounts,
-    ) -> str:
-        """Render the human-readable summary written before the manifest."""
-        input_file, input_byte_size, input_sha256 = input_details
-        return (
-            "# Deduplication evaluation summary\n\n"
-            f"Run ID: `{run_id}`\n\n"
-            f"Input: `{input_file.to_uri()}`\n\n"
-            f"Input bytes: {input_byte_size}\n\n"
-            f"Input SHA-256: `{input_sha256}`\n\n"
-            f"Records: {record_count}\n\n"
-            "Assessed records: "
-            f"{counts.record_statuses[EvaluationRecordStatus.ASSESSED]}\n\n"
-            "Invalid input records: "
-            f"{counts.record_statuses[EvaluationRecordStatus.INPUT_INVALID]}\n\n"
-            "Evaluation-failed records: "
-            f"{counts.record_statuses[EvaluationRecordStatus.EVALUATION_FAILED]}\n\n"
-            f"Pair rows: {counts.pair_rows}\n\n"
-            "## Assessment outcomes\n\n"
-            "- `propose_canonical`: "
-            f"{counts.assessment_outcomes[DeduplicationAssessmentOutcome.PROPOSE_CANONICAL]}\n"
-            "- `propose_duplicate`: "
-            f"{counts.assessment_outcomes[DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE]}\n"
-            "- `no_proposal`: "
-            f"{counts.assessment_outcomes[DeduplicationAssessmentOutcome.NO_PROPOSAL]}\n\n"
-            "## Pair evidence\n\n"
-            f"- Clears threshold: {counts.threshold_clearing_pairs}\n"
-            f"- Below threshold: {counts.below_threshold_pairs}\n"
-            f"- Unscorable: {counts.unscorable_pairs}\n"
-        )
-
-    async def evaluate_lines(
-        self,
-        *,
-        run_id: UUID,
-        lines: AsyncIterable[str],
-        retrieval_policy: RetrievalPolicyName,
-        k: int,
-    ) -> AsyncIterator[EvaluationRecordResult]:
-        """Evaluate each non-blank line in physical input order."""
-        line_number = 0
-        async for line in lines:
-            line_number += 1
-            if line.strip():
-                yield await self.evaluate_line(
-                    run_id=run_id,
-                    line=line,
-                    line_number=line_number,
-                    retrieval_policy=retrieval_policy,
-                    k=k,
-                )
-
-    async def evaluate_line(
+    async def _evaluate_line(
         self,
         *,
         run_id: UUID,
         line: str,
         line_number: int,
-        retrieval_policy: RetrievalPolicyName,
-        k: int,
+        configuration: EvaluationRunConfiguration,
     ) -> EvaluationRecordResult:
-        """Evaluate one supplied JSONL record."""
         try:
             payload = json.loads(line)
         except JSONDecodeError as exc:
             return self._invalid_result(
-                run_id=run_id,
-                query_id=None,
-                line_number=line_number,
-                code="invalid_json",
-                message=(
-                    f"Invalid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}."
-                ),
+                run_id,
+                None,
+                line_number,
+                "invalid_json",
+                f"Invalid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}.",
             )
-
         if not isinstance(payload, dict):
             return self._invalid_result(
-                run_id=run_id,
-                query_id=None,
-                line_number=line_number,
-                code="invalid_record",
-                message="Invalid evaluation record: expected a JSON object.",
+                run_id,
+                None,
+                line_number,
+                "invalid_record",
+                "Invalid evaluation record: expected a JSON object.",
             )
 
         raw_query_id = payload.get("query_id")
         query_id = raw_query_id if isinstance(raw_query_id, str) else None
         try:
             record = EvaluationInputRecord.model_validate(payload)
-            incoming, selection_input = self._build_assessment_inputs(record)
+            incoming, selection_input = self._assessment_inputs(record)
         except ValueError as exc:
             return self._invalid_result(
-                run_id=run_id,
-                query_id=query_id,
-                line_number=line_number,
-                code="invalid_record",
-                message=f"Invalid evaluation record: {exc}",
+                run_id,
+                query_id,
+                line_number,
+                "invalid_record",
+                f"Invalid evaluation record: {exc}",
             )
 
         try:
             assessment = await self._assessor.evaluate_supplied(
                 incoming,
                 selection_input,
-                retrieval_policy=retrieval_policy,
-                k=k,
+                retrieval_policy=configuration.retrieval_policy,
+                k=configuration.k,
             )
         except DeduplicationError as exc:
             logger.exception(
@@ -545,14 +326,12 @@ class DeduplicationEvaluationRunner:
 
     @staticmethod
     def _invalid_result(
-        *,
         run_id: UUID,
         query_id: str | None,
         line_number: int,
         code: Literal["invalid_json", "invalid_record"],
         message: str,
     ) -> EvaluationRecordResult:
-        """Build one input failure envelope without invoking the assessor."""
         return EvaluationRecordResult(
             run_id=run_id,
             query_id=query_id,
@@ -561,16 +340,53 @@ class DeduplicationEvaluationRunner:
             error=EvaluationRecordError(code=code, message=message),
         )
 
-    @classmethod
-    def _build_assessment_inputs(
-        cls, record: EvaluationInputRecord
+    @staticmethod
+    def _pair_results(result: EvaluationRecordResult) -> list[EvaluationPairResult]:
+        if result.assessment is None:
+            return []
+        return [
+            EvaluationPairResult(
+                run_id=result.run_id,
+                query_id=cast(str, result.query_id),
+                line_number=result.line_number,
+                incoming_reference_id=cast(UUID, result.incoming_reference_id),
+                candidate_reference_id=scored.candidate.reference_id,
+                retrieval_rank=scored.candidate.rank,
+                retrieval_routes=scored.candidate.routes,
+                pair_result=scored.pair_result,
+                threshold=result.assessment.deduper.threshold,
+                clears_threshold=scored.clears_threshold,
+            )
+            for scored in result.assessment.scored_candidates
+        ]
+
+    @staticmethod
+    def _assessment_inputs(
+        record: EvaluationInputRecord,
     ) -> tuple[destiny_sdk.references.Reference, CandidateSelectionInput]:
-        """Build the frozen scorer input and independently controlled query."""
         reference_id = uuid7()
         identifiers = [
-            cls._parse_identifier(identifier) for identifier in record.input_identifiers
+            destiny_sdk.identifiers.ExternalIdentifierAdapter.validate_python(
+                destiny_sdk.identifiers.IdentifierLookup.parse(value).model_dump()
+            )
+            for value in record.input_identifiers
         ]
-        authorship = cls._build_authorship(record.input_reference.authors)
+        last_author = len(record.input_reference.authors) - 1
+        authorship = [
+            destiny_sdk.enhancements.Authorship(
+                display_name=name,
+                position=(
+                    destiny_sdk.enhancements.AuthorPosition.FIRST
+                    if index == 0
+                    else (
+                        destiny_sdk.enhancements.AuthorPosition.LAST
+                        if index == last_author
+                        else destiny_sdk.enhancements.AuthorPosition.MIDDLE
+                    )
+                ),
+            )
+            for index, name in enumerate(record.input_reference.authors)
+        ]
         incoming = destiny_sdk.references.Reference(
             id=reference_id,
             identifiers=identifiers,
@@ -579,29 +395,23 @@ class DeduplicationEvaluationRunner:
                     reference_id=reference_id,
                     source=record.dataset_version,
                     visibility=destiny_sdk.visibility.Visibility.PUBLIC,
-                    content=(
-                        destiny_sdk.enhancements.BibliographicMetadataEnhancement(
-                            title=record.input_reference.title,
-                            authorship=authorship,
-                            publication_year=record.input_reference.year,
-                        )
+                    content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
+                        title=record.input_reference.title,
+                        authorship=authorship,
+                        publication_year=record.input_reference.year,
                     ),
                 )
             ],
-        )
-        query_identifiers = (
-            [
-                CandidateIdentifier.from_specific(identifier)
-                for identifier in identifiers
-            ]
-            if "identifier" in record.route_applicability
-            else []
         )
         selection_input = CandidateSelectionInput(
             title=record.input_reference.title,
             authors=record.input_reference.authors,
             publication_year=record.input_reference.year,
-            identifiers=query_identifiers,
+            identifiers=(
+                [CandidateIdentifier.from_specific(item) for item in identifiers]
+                if "identifier" in record.route_applicability
+                else []
+            ),
             excluded_reference_id=(
                 record.excluded_reference_ids[0]
                 if record.excluded_reference_ids
@@ -611,33 +421,80 @@ class DeduplicationEvaluationRunner:
         return incoming, selection_input
 
     @staticmethod
-    def _parse_identifier(
-        value: str,
-    ) -> destiny_sdk.identifiers.ExternalIdentifier:
-        """Parse one dataset identifier through the SDK's import identifier types."""
-        lookup = destiny_sdk.identifiers.IdentifierLookup.parse(value)
-        return destiny_sdk.identifiers.ExternalIdentifierAdapter.validate_python(
-            lookup.model_dump()
+    def _jsonl(rows: Sequence[BaseModel]) -> bytes:
+        return "".join(f"{row.model_dump_json()}\n" for row in rows).encode()
+
+    @staticmethod
+    async def _upload(
+        repository: BlobRepository,
+        path: str,
+        filename: str,
+        content: bytes,
+    ) -> BlobStorageFile:
+        return await repository.upload_file_to_blob_storage(
+            content=BytesIO(content),
+            path=path,
+            filename=filename,
+            content_type=(
+                "text/markdown"
+                if filename.endswith(".md")
+                else "application/jsonl"
+                if filename.endswith(".jsonl")
+                else "application/json"
+            ),
         )
 
     @staticmethod
-    def _build_authorship(
-        authors: Sequence[str],
-    ) -> list[destiny_sdk.enhancements.Authorship]:
-        """Convert ordered display names to the SDK bibliographic shape."""
-        last_index = len(authors) - 1
-        return [
-            destiny_sdk.enhancements.Authorship(
-                display_name=display_name,
-                position=(
-                    destiny_sdk.enhancements.AuthorPosition.FIRST
-                    if index == 0
-                    else (
-                        destiny_sdk.enhancements.AuthorPosition.LAST
-                        if index == last_index
-                        else destiny_sdk.enhancements.AuthorPosition.MIDDLE
-                    )
-                ),
-            )
-            for index, display_name in enumerate(authors)
-        ]
+    def _artifact(
+        file: BlobStorageFile, content: bytes, schema_version: str
+    ) -> dict[str, str | int]:
+        return {
+            "uri": file.to_uri(),
+            "schema_version": schema_version,
+            "byte_size": len(content),
+            "sha256": hashlib.sha256(content).hexdigest(),
+        }
+
+    @staticmethod
+    def _summary(
+        *,
+        run_id: UUID,
+        input_file: BlobStorageFile,
+        input_bytes: bytes,
+        records: Sequence[EvaluationRecordResult],
+        pairs: Sequence[EvaluationPairResult],
+    ) -> str:
+        statuses = Counter(result.status for result in records)
+        outcomes = Counter(
+            result.assessment.outcome
+            for result in records
+            if result.assessment is not None
+        )
+        clears = sum(pair.clears_threshold is True for pair in pairs)
+        below = sum(pair.clears_threshold is False for pair in pairs)
+        unscorable = sum(pair.clears_threshold is None for pair in pairs)
+        return (
+            "# Deduplication evaluation summary\n\n"
+            f"Run ID: `{run_id}`\n\n"
+            f"Input: `{input_file.to_uri()}`\n\n"
+            f"Input bytes: {len(input_bytes)}\n\n"
+            f"Input SHA-256: `{hashlib.sha256(input_bytes).hexdigest()}`\n\n"
+            f"Records: {len(records)}\n\n"
+            f"Assessed records: {statuses[EvaluationRecordStatus.ASSESSED]}\n\n"
+            "Invalid input records: "
+            f"{statuses[EvaluationRecordStatus.INPUT_INVALID]}\n\n"
+            "Evaluation-failed records: "
+            f"{statuses[EvaluationRecordStatus.EVALUATION_FAILED]}\n\n"
+            f"Pair rows: {len(pairs)}\n\n"
+            "## Assessment outcomes\n\n"
+            "- `propose_canonical`: "
+            f"{outcomes[DeduplicationAssessmentOutcome.PROPOSE_CANONICAL]}\n"
+            "- `propose_duplicate`: "
+            f"{outcomes[DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE]}\n"
+            "- `no_proposal`: "
+            f"{outcomes[DeduplicationAssessmentOutcome.NO_PROPOSAL]}\n\n"
+            "## Pair evidence\n\n"
+            f"- Clears threshold: {clears}\n"
+            f"- Below threshold: {below}\n"
+            f"- Unscorable: {unscorable}\n"
+        )
