@@ -648,6 +648,10 @@ class DeduplicationError(DestinyRepositoryError):
         super().__init__(detail)
 
 
+class DeduplicationNotFoundError(NotFoundError, DeduplicationError):
+    """A deduplication input could not be found or hydrated."""
+
+
 class DeduplicationValueError(DeduplicationError, ValueError):
     """An exception for when a value provided to deduplication is invalid."""
 

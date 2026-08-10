@@ -6,7 +6,7 @@ from uuid import UUID
 from opentelemetry import trace
 
 from app.core.config import DedupCandidateScoringConfig, Environment, get_settings
-from app.core.exceptions import DeduplicationValueError
+from app.core.exceptions import DeduplicationError, DeduplicationValueError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     Candidate,
@@ -313,12 +313,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def _resolve_candidate_selection_input(
-        self, input_: CandidateSelectionInput
+        self, selection_input: CandidateSelectionInput
     ) -> tuple[CandidateCanonicalSearchFields, UUID | None, list[IdentifierLookup]]:
         """Resolve request input into search fields, a self-id, and id lookups."""
-        if input_.reference_id is not None:
+        if selection_input.reference_id is not None:
             reference = await self.sql_uow.references.get_by_pk(
-                input_.reference_id, preload=["enhancements", "identifiers"]
+                selection_input.reference_id,
+                preload=["enhancements", "identifiers"],
             )
             search_fields = (
                 ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
@@ -333,16 +334,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             return search_fields, reference.id, lookups
 
         search_fields = CandidateCanonicalSearchFields(
-            title=input_.title,
-            authors=input_.authors,
-            publication_year=input_.publication_year,
+            title=selection_input.title,
+            authors=selection_input.authors,
+            publication_year=selection_input.publication_year,
         )
         lookups = [
             self._identifier_lookup_from_candidate(identifier)
-            for identifier in input_.identifiers
+            for identifier in selection_input.identifiers
             if identifier.identifier_type in _UNIONABLE_IDENTIFIER_TYPES
         ]
-        return search_fields, None, lookups
+        return search_fields, selection_input.excluded_reference_id, lookups
 
     @staticmethod
     def _identifier_lookup_from_candidate(
@@ -386,7 +387,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                     "Identifier match is a determined duplicate without a canonical "
                     "reference id. This should not happen."
                 )
-                raise RuntimeError(msg)
+                raise DeduplicationError(msg)
             if canonical_id == self_id:
                 continue
             bucket = matches.setdefault(canonical_id, {})

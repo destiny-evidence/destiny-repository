@@ -11,6 +11,10 @@ from pydantic import ValidationError
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
     CandidateCanonicalSearchFields,
+    DeduperMetadata,
+    DeduplicationFieldComparison,
+    DeduplicationFieldStatus,
+    DeduplicationPairResult,
     DuplicateDetermination,
     Enhancement,
     FullTextEnhancement,
@@ -27,6 +31,49 @@ from tests.factories import (
     EnhancementFactory,
     FullTextEnhancementFactory,
 )
+
+
+def test_deduplication_pair_result_accepts_unscorable_reason_without_probability():
+    result = DeduplicationPairResult(unscorable_reason="insufficient comparable fields")
+
+    assert result.probability is None
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        pytest.param({}, id="neither"),
+        pytest.param(
+            {
+                "probability": 0.4,
+                "unscorable_reason": "insufficient comparable fields",
+            },
+            id="both",
+        ),
+    ],
+)
+def test_deduplication_pair_result_rejects_ambiguous_scoring_state(data):
+    with pytest.raises(ValueError, match="probability or unscorable_reason"):
+        DeduplicationPairResult(**data)
+
+
+@pytest.mark.parametrize("field_name", ["incoming_value", "candidate_value"])
+def test_deduplication_field_comparison_rejects_non_json_values(field_name):
+    with pytest.raises(ValidationError):
+        DeduplicationFieldComparison(
+            status=DeduplicationFieldStatus.MATCH,
+            **{field_name: object()},
+        )
+
+
+def test_deduper_metadata_rejects_non_json_configuration():
+    with pytest.raises(ValidationError):
+        DeduperMetadata(
+            package_version="fake-1",
+            configuration_hash="test-config",
+            threshold=0.85,
+            effective_configuration={"opaque": object()},
+        )
 
 
 async def test_generic_external_identifier_from_specific_without_other():
