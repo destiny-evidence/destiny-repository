@@ -13,6 +13,8 @@ from app.domain.references.models.models import (
     Candidate,
     CandidateSelectionDiagnostics,
     CandidateSelectionResult,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     ExternalIdentifierType,
     InputSearchability,
@@ -257,7 +259,7 @@ async def test_find_exact_duplicate_updated_enhancement(
 
 
 @pytest.mark.asyncio
-async def test_register_duplicate_decision_for_reference_happy_path(
+async def test_register_pending_import_decision(
     reference, anti_corruption_service, fake_uow, fake_repository
 ):
     service = DeduplicationService(
@@ -265,13 +267,18 @@ async def test_register_duplicate_decision_for_reference_happy_path(
         fake_uow(reference_duplicate_decisions=fake_repository()),
         fake_uow(),
     )
-    result = await service.register_duplicate_decision_for_reference(reference.id)
+    result = await service.register_pending_import_decision(reference.id)
     assert result.reference_id == reference.id
     assert result.duplicate_determination == DuplicateDetermination.PENDING
+    assert result.decision_authority == DuplicateDecisionAuthority.SYSTEM
+    assert result.decision_trigger == DuplicateDecisionTrigger.IMPORT
+    assert result.canonical_reference_id is None
+    # Inactive is what makes the direct insert safe: it displaces nothing.
+    assert not result.active_decision
 
 
 @pytest.mark.asyncio
-async def test_register_duplicate_decision_invalid_combination(
+async def test_register_exact_duplicate_import_decision(
     reference, anti_corruption_service, fake_uow, fake_repository
 ):
     service = DeduplicationService(
@@ -279,12 +286,18 @@ async def test_register_duplicate_decision_invalid_combination(
         fake_uow(reference_duplicate_decisions=fake_repository()),
         fake_uow(),
     )
-    with pytest.raises(DeduplicationValueError):
-        await service.register_duplicate_decision_for_reference(
-            reference.id,
-            duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
-            canonical_reference_id=None,
-        )
+    canonical_id = uuid7()
+
+    result = await service.register_exact_duplicate_import_decision(
+        reference.id, canonical_id
+    )
+
+    assert result.reference_id == reference.id
+    assert result.duplicate_determination == DuplicateDetermination.EXACT_DUPLICATE
+    assert result.canonical_reference_id == canonical_id
+    assert result.decision_authority == DuplicateDecisionAuthority.SYSTEM
+    assert result.decision_trigger == DuplicateDecisionTrigger.IMPORT
+    assert result.active_decision
 
 
 @pytest.mark.asyncio
@@ -529,6 +542,192 @@ async def test_map_duplicate_decision_reports_matching_active_decision_unchanged
     out_decision = await dec_repo.get_by_pk(out_decision.id)
     assert out_decision.active_decision
     assert out_decision.duplicate_determination == DuplicateDetermination.DUPLICATE
+
+
+@pytest.mark.asyncio
+async def test_map_duplicate_decision_retains_person_active_decision(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    canonical = MagicMock(spec=Reference)
+    canonical.id = uuid7()
+    canonical.is_canonical = True
+
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    reference.has_duplicates = False
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        active_decision=True,
+        decision_authority=DuplicateDecisionAuthority.PERSON,
+        decision_trigger=DuplicateDecisionTrigger.MANUAL_API,
+    )
+    reference.duplicate_decision = active_decision
+    proposal = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical.id,
+        detail="Automatic assessment reason.",
+        decision_authority=DuplicateDecisionAuthority.SYSTEM,
+        decision_trigger=DuplicateDecisionTrigger.INVOKE_API,
+    )
+
+    decision_repo = fake_repository([active_decision, proposal])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=fake_repository([reference, canonical]),
+            reference_duplicate_decisions=decision_repo,
+        ),
+        fake_uow(),
+    )
+
+    result, decision_changed, previous = await service.map_duplicate_decision(proposal)
+
+    assert result.duplicate_determination == DuplicateDetermination.DECOUPLED
+    assert result.canonical_reference_id == canonical.id
+    assert "Proposed determination: duplicate." in result.detail
+    assert "Automatic assessment reason." in result.detail
+    assert not result.active_decision
+    assert active_decision.active_decision
+    assert decision_changed is False
+    assert previous is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "unclassified_determination",
+    [
+        DuplicateDetermination.CANONICAL,
+        DuplicateDetermination.UNSEARCHABLE,
+    ],
+)
+async def test_map_duplicate_decision_replaces_unclassified_active_decision(
+    unclassified_determination, fake_uow, fake_repository, anti_corruption_service
+):
+    canonical = MagicMock(spec=Reference)
+    canonical.id = uuid7()
+    canonical.is_canonical = True
+
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    reference.has_duplicates = False
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=unclassified_determination,
+        active_decision=True,
+    )
+    reference.duplicate_decision = active_decision
+    proposal = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical.id,
+        decision_authority=DuplicateDecisionAuthority.SYSTEM,
+        decision_trigger=DuplicateDecisionTrigger.IMPORT,
+    )
+
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=fake_repository([reference, canonical]),
+            reference_duplicate_decisions=fake_repository([active_decision, proposal]),
+        ),
+        fake_uow(),
+    )
+
+    result, decision_changed, previous = await service.map_duplicate_decision(proposal)
+
+    assert result.duplicate_determination == DuplicateDetermination.DUPLICATE
+    assert result.active_decision
+    assert not active_decision.active_decision
+    assert decision_changed is True
+    assert previous is active_decision
+
+
+@pytest.mark.asyncio
+async def test_map_duplicate_decision_deactivates_blocked_proposal(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    """A proposal built active must not stay active once decoupled, or it
+    collides with the retained decision on the one-active-decision index.
+    """
+    canonical = MagicMock(spec=Reference)
+    canonical.id = uuid7()
+    canonical.is_canonical = True
+
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    reference.has_duplicates = False
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        active_decision=True,
+        decision_authority=DuplicateDecisionAuthority.PERSON,
+        decision_trigger=DuplicateDecisionTrigger.MANUAL_API,
+    )
+    reference.duplicate_decision = active_decision
+    proposal = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.DUPLICATE,
+        canonical_reference_id=canonical.id,
+        active_decision=True,
+        decision_authority=DuplicateDecisionAuthority.SYSTEM,
+        decision_trigger=DuplicateDecisionTrigger.IMPORT,
+    )
+
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=fake_repository([reference, canonical]),
+            reference_duplicate_decisions=fake_repository([active_decision, proposal]),
+        ),
+        fake_uow(),
+    )
+
+    result, _, _ = await service.map_duplicate_decision(proposal)
+
+    assert result.duplicate_determination == DuplicateDetermination.DECOUPLED
+    assert not result.active_decision
+    assert active_decision.active_decision
+
+
+@pytest.mark.asyncio
+async def test_map_duplicate_decision_blocks_identical_automatic_result(
+    fake_uow, fake_repository, anti_corruption_service
+):
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    reference.has_duplicates = False
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        active_decision=True,
+        decision_authority=DuplicateDecisionAuthority.PERSON,
+        decision_trigger=DuplicateDecisionTrigger.MANUAL_API,
+    )
+    reference.duplicate_decision = active_decision
+    proposal = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        decision_authority=DuplicateDecisionAuthority.SYSTEM,
+        decision_trigger=DuplicateDecisionTrigger.IMPORT,
+    )
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=fake_repository([reference]),
+            reference_duplicate_decisions=fake_repository([active_decision, proposal]),
+        ),
+        fake_uow(),
+    )
+
+    result, decision_changed, previous = await service.map_duplicate_decision(proposal)
+
+    assert result.duplicate_determination == DuplicateDetermination.DECOUPLED
+    assert active_decision.active_decision
+    assert not result.active_decision
+    assert decision_changed is False
+    assert previous is None
 
 
 @pytest.mark.asyncio
