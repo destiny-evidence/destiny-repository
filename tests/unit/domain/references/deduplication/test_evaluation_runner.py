@@ -1,11 +1,13 @@
 """Tests for the deduplication evaluation runner."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import pytest
 
+from app.core.exceptions import DeduplicationError
 from app.domain.references.models.models import (
     CandidateSelectionDiagnostics,
     CandidateSelectionResult,
@@ -282,3 +284,87 @@ async def test_evaluate_line_records_uncorrelatable_schema_failure(line):
     assert result.error is not None
     assert result.error.code == "invalid_record"
     assessor.evaluate_supplied.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_lines_records_assessor_failure_and_continues():
+    """A retrieval, hydration or scoring failure must remain local to its record."""
+    call_count = 0
+
+    async def assess(incoming, _selection, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            msg = "candidate hydration failed"
+            raise DeduplicationError(msg)
+        return _assessment(incoming.id)
+
+    assessor = AsyncMock()
+    assessor.evaluate_supplied.side_effect = assess
+    runner = DeduplicationEvaluationRunner(assessor=assessor)
+    lines = AsyncMock()
+    lines.__aiter__.return_value = [
+        _valid_line("first"),
+        _valid_line("failed"),
+        _valid_line("last"),
+    ]
+
+    results = [
+        result
+        async for result in runner.evaluate_lines(
+            run_id=uuid7(),
+            lines=lines,
+            retrieval_policy=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+            k=10,
+        )
+    ]
+
+    assert [result.status for result in results] == [
+        "assessed",
+        "evaluation_failed",
+        "assessed",
+    ]
+    failed = results[1]
+    assert failed.query_id == "failed"
+    assert failed.incoming_reference_id is not None
+    assert failed.assessment is None
+    assert failed.error is not None
+    assert failed.error.code == "evaluation_failed"
+    assert failed.error.message == (
+        "Evaluation failed (DeduplicationError): candidate hydration failed"
+    )
+    assert assessor.evaluate_supplied.await_count == 3
+
+
+@pytest.mark.asyncio
+async def test_evaluate_line_propagates_unexpected_assessor_failure():
+    """Systemic failures and programming errors must fail the run."""
+    assessor = AsyncMock()
+    assessor.evaluate_supplied.side_effect = ValueError("unexpected scorer defect")
+    runner = DeduplicationEvaluationRunner(assessor=assessor)
+
+    with pytest.raises(ValueError, match="unexpected scorer defect"):
+        await runner.evaluate_line(
+            run_id=uuid7(),
+            line=_valid_line("unexpected-failure"),
+            line_number=1,
+            retrieval_policy=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+            k=10,
+        )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_line_does_not_turn_cancellation_into_a_record_failure():
+    """Run cancellation must still stop evaluation immediately."""
+    assessor = AsyncMock()
+    assessor.evaluate_supplied.side_effect = asyncio.CancelledError
+    runner = DeduplicationEvaluationRunner(assessor=assessor)
+
+    with pytest.raises(asyncio.CancelledError):
+        await runner.evaluate_line(
+            run_id=uuid7(),
+            line=_valid_line("cancelled"),
+            line_number=1,
+            retrieval_policy=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+            k=10,
+        )

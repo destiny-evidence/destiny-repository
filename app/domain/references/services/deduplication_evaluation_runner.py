@@ -10,6 +10,8 @@ from uuid import UUID, uuid7
 import destiny_sdk
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.exceptions import DeduplicationError
+from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     CandidateIdentifier,
     CandidateSelectionInput,
@@ -17,12 +19,15 @@ from app.domain.references.models.models import (
     RetrievalPolicyName,
 )
 
+logger = get_logger(__name__)
+
 
 class EvaluationRecordStatus(StrEnum):
     """Result status for one non-blank evaluation input line."""
 
     ASSESSED = auto()
     INPUT_INVALID = auto()
+    EVALUATION_FAILED = auto()
 
 
 class EvaluationInputReference(BaseModel):
@@ -49,7 +54,7 @@ class EvaluationInputRecord(BaseModel):
 class EvaluationRecordError(BaseModel):
     """Stable machine code and reviewable detail for one failed record."""
 
-    code: Literal["invalid_json", "invalid_record"]
+    code: Literal["invalid_json", "invalid_record", "evaluation_failed"]
     message: str
 
 
@@ -76,7 +81,11 @@ class SuppliedReferenceAssessor(Protocol):
         retrieval_policy: RetrievalPolicyName | None = None,
         k: int | None = None,
     ) -> DeduplicationAssessment:
-        """Assess one supplied reference without writing repository state."""
+        """
+        Assess one supplied reference without writing repository state.
+
+        :raises DeduplicationError: If this record cannot be assessed.
+        """
         ...
 
 
@@ -154,12 +163,30 @@ class DeduplicationEvaluationRunner:
                 message=f"Invalid evaluation record: {exc}",
             )
 
-        assessment = await self._assessor.evaluate_supplied(
-            incoming,
-            selection_input,
-            retrieval_policy=retrieval_policy,
-            k=k,
-        )
+        try:
+            assessment = await self._assessor.evaluate_supplied(
+                incoming,
+                selection_input,
+                retrieval_policy=retrieval_policy,
+                k=k,
+            )
+        except DeduplicationError as exc:
+            logger.exception(
+                "Failed to assess supplied evaluation record",
+                query_id=record.query_id,
+                line_number=line_number,
+            )
+            return EvaluationRecordResult(
+                run_id=run_id,
+                query_id=record.query_id,
+                line_number=line_number,
+                status=EvaluationRecordStatus.EVALUATION_FAILED,
+                incoming_reference_id=incoming.id,
+                error=EvaluationRecordError(
+                    code="evaluation_failed",
+                    message=f"Evaluation failed ({type(exc).__name__}): {exc}",
+                ),
+            )
         return EvaluationRecordResult(
             run_id=run_id,
             query_id=record.query_id,
