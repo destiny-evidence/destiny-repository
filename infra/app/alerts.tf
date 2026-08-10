@@ -455,7 +455,7 @@ resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
           "type": "header",
           "text": {
             "type": "plain_text",
-            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '✅ RESOLVED', '❌ FAILURE')} @{first(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['dimensions'])?['value']}",
+            "text": "@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '✅ RESOLVED', '❌ FAILURE')} @{first(triggerBody()?['data']?['alertContext']?['condition']?['allOf']?[0]?['dimensions'])?['value']}",
             "emoji": true
           }
         },
@@ -463,7 +463,7 @@ resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
           "type": "section",
           "fields": [
             { "type": "mrkdwn", "text": "*Status:*\n@{triggerBody()?['data']?['essentials']?['monitorCondition']}" },
-            { "type": "mrkdwn", "text": "*Alert Events:*\n@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '0', string(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['metricValue']))}" }
+            { "type": "mrkdwn", "text": "*Alert Events:*\n@{if(equals(triggerBody()?['data']?['essentials']?['monitorCondition'], 'Resolved'), '0', string(triggerBody()?['data']?['alertContext']?['condition']?['allOf']?[0]?['metricValue']))}" }
           ]
         },
         {
@@ -472,7 +472,7 @@ resource "azurerm_logic_app_action_http" "post_log_alert_to_slack" {
         },
         {
           "type": "section",
-          "text": { "type": "mrkdwn", "text": "<@{triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['linkToFilteredSearchResultsUI']}|🔍 View matching logs>" }
+          "text": { "type": "mrkdwn", "text": "<@{triggerBody()?['data']?['alertContext']?['condition']?['allOf']?[0]?['linkToFilteredSearchResultsUI']}|🔍 View matching logs>" }
         },
         {
           "type": "context",
@@ -639,7 +639,7 @@ resource "azurerm_logic_app_action_custom" "filter_execution_name" {
       "type": "Query",
       "runAfter": {},
       "inputs": {
-        "from": "@coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf'][0]?['dimensions'], json('[]'))",
+        "from": "@coalesce(triggerBody()?['data']?['alertContext']?['condition']?['allOf']?[0]?['dimensions'], json('[]'))",
         "where": "@equals(item()?['name'], 'executionName')"
       }
     }
