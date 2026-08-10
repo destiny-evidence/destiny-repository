@@ -4,7 +4,7 @@ import json
 from collections.abc import AsyncIterable, AsyncIterator, Sequence
 from enum import StrEnum, auto
 from json import JSONDecodeError
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 from uuid import UUID, uuid7
 
 import destiny_sdk
@@ -14,8 +14,10 @@ from app.core.exceptions import DeduplicationError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     CandidateIdentifier,
+    CandidateRoute,
     CandidateSelectionInput,
     DeduplicationAssessment,
+    DeduplicationPairResult,
     RetrievalPolicyName,
 )
 
@@ -70,6 +72,21 @@ class EvaluationRecordResult(BaseModel):
     error: EvaluationRecordError | None = None
 
 
+class EvaluationPairResult(BaseModel):
+    """One analysis-friendly row projected from an assessment candidate."""
+
+    run_id: UUID
+    query_id: str
+    line_number: int
+    incoming_reference_id: UUID
+    candidate_reference_id: UUID
+    retrieval_rank: int
+    retrieval_routes: list[CandidateRoute]
+    pair_result: DeduplicationPairResult
+    threshold: float
+    clears_threshold: bool | None
+
+
 class SuppliedReferenceAssessor(Protocol):
     """Read-only supplied-reference assessment operation used by the runner."""
 
@@ -95,6 +112,30 @@ class DeduplicationEvaluationRunner:
     def __init__(self, *, assessor: SuppliedReferenceAssessor) -> None:
         """Initialize the runner with its read-only assessment dependency."""
         self._assessor = assessor
+
+    @staticmethod
+    def project_pair_results(
+        result: EvaluationRecordResult,
+    ) -> list[EvaluationPairResult]:
+        """Project analysis rows from one completed record assessment."""
+        if result.status is not EvaluationRecordStatus.ASSESSED:
+            return []
+        assessment = cast(DeduplicationAssessment, result.assessment)
+        return [
+            EvaluationPairResult(
+                run_id=result.run_id,
+                query_id=cast(str, result.query_id),
+                line_number=result.line_number,
+                incoming_reference_id=cast(UUID, result.incoming_reference_id),
+                candidate_reference_id=scored.candidate.reference_id,
+                retrieval_rank=scored.candidate.rank,
+                retrieval_routes=scored.candidate.routes,
+                pair_result=scored.pair_result,
+                threshold=assessment.deduper.threshold,
+                clears_threshold=scored.clears_threshold,
+            )
+            for scored in assessment.scored_candidates
+        ]
 
     async def evaluate_lines(
         self,

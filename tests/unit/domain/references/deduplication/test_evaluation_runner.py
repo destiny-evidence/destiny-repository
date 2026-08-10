@@ -9,14 +9,22 @@ import pytest
 
 from app.core.exceptions import DeduplicationError
 from app.domain.references.models.models import (
+    Candidate,
+    CandidateElasticsearchRoute,
+    CandidateIdentifier,
+    CandidateIdentifierRoute,
     CandidateSelectionDiagnostics,
     CandidateSelectionResult,
     DeduperMetadata,
     DeduplicationAssessment,
     DeduplicationAssessmentOutcome,
+    DeduplicationFieldComparison,
+    DeduplicationFieldStatus,
+    DeduplicationPairResult,
     ExternalIdentifierType,
     InputSearchability,
     RetrievalPolicyName,
+    ScoredDeduplicationCandidate,
 )
 from app.domain.references.services.deduplication_evaluation_runner import (
     DeduplicationEvaluationRunner,
@@ -368,3 +376,123 @@ async def test_evaluate_line_does_not_turn_cancellation_into_a_record_failure():
             retrieval_policy=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
             k=10,
         )
+
+
+@pytest.mark.asyncio
+async def test_project_pair_results_preserves_correlation_routes_and_evidence():
+    """Pair rows are a pure projection of the completed assessment."""
+    es_candidate_id = uuid7()
+    identifier_candidate_id = uuid7()
+    candidates = [
+        ScoredDeduplicationCandidate(
+            candidate=Candidate(
+                reference_id=es_candidate_id,
+                rank=1,
+                routes=[
+                    CandidateElasticsearchRoute(
+                        policy="soft_year_decay_year_optional_v1",
+                        rank=2,
+                        score=8.5,
+                    )
+                ],
+            ),
+            pair_result=DeduplicationPairResult(
+                probability=0.91,
+                field_comparisons={
+                    "title": DeduplicationFieldComparison(
+                        incoming_value="A study",
+                        candidate_value="A Study",
+                        status=DeduplicationFieldStatus.MATCH,
+                        score=0.98,
+                    )
+                },
+                suggested_label="duplicate",
+            ),
+            clears_threshold=True,
+        ),
+        ScoredDeduplicationCandidate(
+            candidate=Candidate(
+                reference_id=identifier_candidate_id,
+                rank=2,
+                routes=[
+                    CandidateIdentifierRoute(
+                        matched_identifiers=[
+                            CandidateIdentifier(
+                                identifier="W1",
+                                identifier_type=ExternalIdentifierType.OPEN_ALEX,
+                            )
+                        ]
+                    )
+                ],
+            ),
+            pair_result=DeduplicationPairResult(
+                unscorable_reason="insufficient comparable fields"
+            ),
+            clears_threshold=None,
+        ),
+    ]
+    assessor = AsyncMock()
+
+    def assess(incoming, _selection, **_kwargs):
+        assessment = _assessment(incoming.id)
+        return assessment.model_copy(
+            update={
+                "candidate_selection": assessment.candidate_selection.model_copy(
+                    update={"candidates": [item.candidate for item in candidates]}
+                ),
+                "scored_candidates": candidates,
+                "unscorable_candidate_ids": [identifier_candidate_id],
+            }
+        )
+
+    assessor.evaluate_supplied.side_effect = assess
+    runner = DeduplicationEvaluationRunner(assessor=assessor)
+    record_result = await runner.evaluate_line(
+        run_id=uuid7(),
+        line=_valid_line("pair-projection"),
+        line_number=42,
+        retrieval_policy=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+        k=10,
+    )
+
+    pair_results = runner.project_pair_results(record_result)
+
+    assert [row.run_id for row in pair_results] == [record_result.run_id] * 2
+    assert [row.query_id for row in pair_results] == ["pair-projection"] * 2
+    assert [row.line_number for row in pair_results] == [42, 42]
+    assert [row.incoming_reference_id for row in pair_results] == [
+        record_result.incoming_reference_id
+    ] * 2
+    assert [row.candidate_reference_id for row in pair_results] == [
+        es_candidate_id,
+        identifier_candidate_id,
+    ]
+    assert [row.retrieval_rank for row in pair_results] == [1, 2]
+    assert [row.retrieval_routes for row in pair_results] == [
+        candidates[0].candidate.routes,
+        candidates[1].candidate.routes,
+    ]
+    assert [row.pair_result for row in pair_results] == [
+        candidates[0].pair_result,
+        candidates[1].pair_result,
+    ]
+    assert [row.threshold for row in pair_results] == [0.85, 0.85]
+    assert [row.clears_threshold for row in pair_results] == [True, None]
+    assessor.evaluate_supplied.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_project_pair_results_ignores_non_assessed_record():
+    """Input failures do not contribute rows to the pair artifact."""
+    assessor = AsyncMock()
+    runner = DeduplicationEvaluationRunner(assessor=assessor)
+    record_result = await runner.evaluate_line(
+        run_id=uuid7(),
+        line="not json",
+        line_number=7,
+        retrieval_policy=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+        k=10,
+    )
+
+    assert runner.project_pair_results(record_result) == []
+    assessor.evaluate_supplied.assert_not_awaited()
