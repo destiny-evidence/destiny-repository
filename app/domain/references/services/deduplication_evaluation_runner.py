@@ -1,8 +1,11 @@
 """Run read-only deduplication assessments over supplied evaluation records."""
 
+import codecs
+import hashlib
 import json
 from collections.abc import AsyncIterable, AsyncIterator, Sequence
 from enum import StrEnum, auto
+from io import BytesIO
 from json import JSONDecodeError
 from typing import Literal, Protocol, cast
 from uuid import UUID, uuid7
@@ -20,6 +23,8 @@ from app.domain.references.models.models import (
     DeduplicationPairResult,
     RetrievalPolicyName,
 )
+from app.persistence.blob.models import BlobStorageFile
+from app.persistence.blob.repository import BlobRepository
 
 logger = get_logger(__name__)
 
@@ -87,6 +92,18 @@ class EvaluationPairResult(BaseModel):
     clears_threshold: bool | None
 
 
+class EvaluationRunArtifacts(BaseModel):
+    """Run-scoped artifacts written before the completion manifest."""
+
+    run_id: UUID
+    input_file: BlobStorageFile
+    input_byte_size: int
+    input_sha256: str
+    record_results_file: BlobStorageFile
+    pair_results_file: BlobStorageFile
+    summary_file: BlobStorageFile
+
+
 class SuppliedReferenceAssessor(Protocol):
     """Read-only supplied-reference assessment operation used by the runner."""
 
@@ -136,6 +153,124 @@ class DeduplicationEvaluationRunner:
             )
             for scored in assessment.scored_candidates
         ]
+
+    async def run(
+        self,
+        *,
+        run_id: UUID,
+        input_file: BlobStorageFile,
+        blob_repository: BlobRepository,
+        retrieval_policy: RetrievalPolicyName,
+        k: int,
+    ) -> EvaluationRunArtifacts:
+        """Evaluate an immutable JSONL blob and write run-scoped artifacts."""
+        hasher = hashlib.sha256()
+        input_byte_size = 0
+        decoder = codecs.getincrementaldecoder("utf-8")()
+
+        async def input_lines() -> AsyncIterator[str]:
+            nonlocal input_byte_size
+            buffer = ""
+            async for chunk in blob_repository.stream_chunks_from_blob_storage(
+                input_file
+            ):
+                hasher.update(chunk)
+                input_byte_size += len(chunk)
+                buffer += decoder.decode(chunk)
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    yield line
+            buffer += decoder.decode(b"", final=True)
+            if buffer:
+                yield buffer
+
+        record_results = [
+            result
+            async for result in self.evaluate_lines(
+                run_id=run_id,
+                lines=input_lines(),
+                retrieval_policy=retrieval_policy,
+                k=k,
+            )
+        ]
+        pair_results = [
+            pair
+            for record_result in record_results
+            for pair in self.project_pair_results(record_result)
+        ]
+        path = f"deduplication_evaluation/{run_id}"
+        record_results_file = await blob_repository.upload_file_to_blob_storage(
+            content=self._jsonl_buffer(record_results),
+            path=path,
+            filename="record-results.jsonl",
+            content_type="application/jsonl",
+        )
+        pair_results_file = await blob_repository.upload_file_to_blob_storage(
+            content=self._jsonl_buffer(pair_results),
+            path=path,
+            filename="pair-results.jsonl",
+            content_type="application/jsonl",
+        )
+        summary_file = await blob_repository.upload_file_to_blob_storage(
+            content=BytesIO(
+                self._summary(
+                    run_id=run_id,
+                    input_details=(
+                        input_file,
+                        input_byte_size,
+                        hasher.hexdigest(),
+                    ),
+                    record_results=record_results,
+                    pair_count=len(pair_results),
+                ).encode()
+            ),
+            path=path,
+            filename="summary.md",
+            content_type="text/markdown",
+        )
+        return EvaluationRunArtifacts(
+            run_id=run_id,
+            input_file=input_file,
+            input_byte_size=input_byte_size,
+            input_sha256=hasher.hexdigest(),
+            record_results_file=record_results_file,
+            pair_results_file=pair_results_file,
+            summary_file=summary_file,
+        )
+
+    @staticmethod
+    def _jsonl_buffer(rows: Sequence[BaseModel]) -> BytesIO:
+        """Serialize model rows as newline-terminated JSONL bytes."""
+        return BytesIO("".join(f"{row.model_dump_json()}\n" for row in rows).encode())
+
+    @staticmethod
+    def _summary(
+        *,
+        run_id: UUID,
+        input_details: tuple[BlobStorageFile, int, str],
+        record_results: Sequence[EvaluationRecordResult],
+        pair_count: int,
+    ) -> str:
+        """Render the human-readable summary written before the manifest."""
+        input_file, input_byte_size, input_sha256 = input_details
+        status_counts = {
+            status: sum(result.status is status for result in record_results)
+            for status in EvaluationRecordStatus
+        }
+        return (
+            "# Deduplication evaluation summary\n\n"
+            f"Run ID: `{run_id}`\n\n"
+            f"Input: `{input_file.to_uri()}`\n\n"
+            f"Input bytes: {input_byte_size}\n\n"
+            f"Input SHA-256: `{input_sha256}`\n\n"
+            f"Records: {len(record_results)}\n\n"
+            f"Assessed records: {status_counts[EvaluationRecordStatus.ASSESSED]}\n\n"
+            "Invalid input records: "
+            f"{status_counts[EvaluationRecordStatus.INPUT_INVALID]}\n\n"
+            "Evaluation-failed records: "
+            f"{status_counts[EvaluationRecordStatus.EVALUATION_FAILED]}\n\n"
+            f"Pair rows: {pair_count}\n"
+        )
 
     async def evaluate_lines(
         self,

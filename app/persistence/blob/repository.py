@@ -226,6 +226,15 @@ class BlobRepository:
         client = await self._preload_config(file)
         yield client.stream_file(file)
 
+    async def stream_chunks_from_blob_storage(
+        self,
+        file: BlobStorageFile,
+    ) -> AsyncIterator[bytes]:
+        """Stream a file as raw bytes from Blob Storage."""
+        client = await self._preload_config(file)
+        async for chunk in client.stream_chunks(file):
+            yield chunk
+
     async def get_signed_url(
         self,
         file: BlobStorageFile,

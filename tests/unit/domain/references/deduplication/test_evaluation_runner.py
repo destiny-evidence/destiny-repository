@@ -1,8 +1,10 @@
 """Tests for the deduplication evaluation runner."""
 
 import asyncio
+import hashlib
 import json
-from unittest.mock import AsyncMock
+from io import BytesIO
+from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid7
 
 import pytest
@@ -30,6 +32,8 @@ from app.domain.references.services.deduplication_evaluation_runner import (
     DeduplicationEvaluationRunner,
     EvaluationRecordStatus,
 )
+from app.persistence.blob.models import BlobStorageFile, BlobStorageLocation
+from app.persistence.blob.repository import BlobRepository
 
 
 def _assessment(incoming_reference_id):
@@ -496,3 +500,78 @@ async def test_project_pair_results_ignores_non_assessed_record():
 
     assert runner.project_pair_results(record_result) == []
     assessor.evaluate_supplied.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_run_preserves_input_and_writes_run_scoped_artifacts(monkeypatch):
+    """A blob run hashes exact input bytes and writes only result artifacts."""
+    run_id = uuid7()
+    input_file = BlobStorageFile.from_uri(
+        "azure://dedup-evals/datasets/retrieval-query-set/v1/records.jsonl"
+    )
+    source_bytes = (_valid_line("assessed") + "\nnot json").encode()
+    chunks = AsyncMock()
+    chunks.__aiter__.return_value = [source_bytes[:17], source_bytes[17:]]
+    client = MagicMock()
+    client.stream_chunks.return_value = chunks
+    blob_repository = BlobRepository()
+    monkeypatch.setattr(
+        blob_repository, "_preload_config", AsyncMock(return_value=client)
+    )
+    uploaded: dict[str, bytes] = {}
+
+    async def upload(content, path, filename, **_kwargs):
+        assert isinstance(content, BytesIO)
+        uploaded[filename] = content.getvalue()
+        return BlobStorageFile(
+            location=BlobStorageLocation.MINIO,
+            container="test",
+            path=path,
+            filename=filename,
+        )
+
+    blob_repository.upload_file_to_blob_storage = AsyncMock(side_effect=upload)
+    assessor = AsyncMock()
+    assessor.evaluate_supplied.side_effect = lambda incoming, *_args, **_kwargs: (
+        _assessment(incoming.id)
+    )
+    runner = DeduplicationEvaluationRunner(assessor=assessor)
+
+    artifacts = await runner.run(
+        run_id=run_id,
+        input_file=input_file,
+        blob_repository=blob_repository,
+        retrieval_policy=RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+        k=10,
+    )
+
+    assert artifacts.run_id == run_id
+    assert artifacts.input_file == input_file
+    assert artifacts.input_byte_size == len(source_bytes)
+    assert artifacts.input_sha256 == hashlib.sha256(source_bytes).hexdigest()
+    assert set(uploaded) == {
+        "record-results.jsonl",
+        "pair-results.jsonl",
+        "summary.md",
+    }
+    assert all(
+        file.path == f"deduplication_evaluation/{run_id}"
+        for file in (
+            artifacts.record_results_file,
+            artifacts.pair_results_file,
+            artifacts.summary_file,
+        )
+    )
+    record_rows = [
+        json.loads(line) for line in uploaded["record-results.jsonl"].splitlines()
+    ]
+    assert [row["status"] for row in record_rows] == ["assessed", "input_invalid"]
+    assert uploaded["pair-results.jsonl"] == b""
+    summary = uploaded["summary.md"].decode()
+    assert f"Run ID: `{run_id}`" in summary
+    assert f"Input: `{input_file.to_uri()}`" in summary
+    assert "Assessed records: 1" in summary
+    assert "Invalid input records: 1" in summary
+    assert "Pair rows: 0" in summary
+    client.stream_chunks.assert_called_once_with(input_file)
+    assessor.evaluate_supplied.assert_awaited_once()
