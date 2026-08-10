@@ -16,13 +16,7 @@ locals {
       db_ha_enabled   = false
       db_sku_name     = "GP_Standard_D2ds_v4"
 
-      alerts_enabled          = true
-      db_storage_warning_pct  = 70
-      db_storage_critical_pct = 85
-      db_cpu_warning_pct      = 80
-      db_cpu_critical_pct     = 90
-      db_memory_warning_pct   = 80
-      db_memory_critical_pct  = 90
+      alerts_enabled = false
 
       db_log_retention_days         = 30
       db_logfiles_retention_days    = 3
