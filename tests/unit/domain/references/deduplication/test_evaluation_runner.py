@@ -3,6 +3,7 @@
 import asyncio
 import hashlib
 import json
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from io import BytesIO
 from typing import cast
@@ -30,6 +31,7 @@ from app.domain.references.services.deduplication_evaluation_runner import (
     DeduplicationEvaluationRunner,
     EvaluationRunConfiguration,
 )
+from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.models import BlobStorageFile, BlobStorageLocation
 from app.persistence.blob.repository import BlobRepository
 
@@ -136,11 +138,34 @@ def _assessment(incoming_id, *, with_pairs: bool = False):
     )
 
 
-def _blob_repository(source: bytes) -> tuple[BlobRepository, dict[str, bytes]]:
-    async def chunks():
-        midpoint = len(source) // 2
-        for chunk in (source[:midpoint], source[midpoint:]):
+class _ChunkClient(GenericBlobStorageClient):
+    """Canned chunks behind the real line reader, so tests exercise the shared one."""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = chunks
+
+    async def upload_file(self, content, file, content_type=None):
+        raise NotImplementedError
+
+    async def stream_chunks(self, file):
+        for chunk in self._chunks:
             yield chunk
+
+    async def generate_signed_url(self, file, interaction_type, content_disposition):
+        raise NotImplementedError
+
+
+def _blob_repository(source: bytes) -> tuple[BlobRepository, dict[str, bytes]]:
+    midpoint = len(source) // 2
+    chunks = [source[:midpoint], source[midpoint:]]
+
+    async def stream_chunks(_file):
+        for chunk in chunks:
+            yield chunk
+
+    @asynccontextmanager
+    async def stream_lines(file):
+        yield _ChunkClient(chunks).stream_file(file)
 
     uploaded: dict[str, bytes] = {}
 
@@ -155,7 +180,8 @@ def _blob_repository(source: bytes) -> tuple[BlobRepository, dict[str, bytes]]:
         )
 
     repository = MagicMock(spec=BlobRepository)
-    repository.stream_chunks_from_blob_storage.return_value = chunks()
+    repository.stream_chunks_from_blob_storage = stream_chunks
+    repository.stream_file_from_blob_storage = stream_lines
     repository.upload_file_to_blob_storage = AsyncMock(side_effect=upload)
     return repository, uploaded
 
@@ -318,6 +344,55 @@ async def test_run_builds_yearless_and_union_assessment_inputs():
         call.kwargs == {"retrieval_policy": policy, "k": 10}
         for call in assessor.evaluate_supplied.await_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_run_splits_records_only_on_newline():
+    """Unicode line separators are legal inside a JSON string, not record boundaries."""
+    separator_line = json.dumps(
+        {
+            "query_id": "line-separator",
+            "input_reference": {
+                "title": "Effects of X\u2028on Y",
+                "authors": ["First Author"],
+                "year": 2024,
+            },
+            "input_identifiers": ["open_alex:W1"],
+            "route_applicability": ["fuzzy"],
+            "excluded_reference_ids": [],
+            "dataset_version": "retrieval-query-set/v1",
+        },
+        ensure_ascii=False,
+    )
+    source = (separator_line + "\n" + _line("after") + "\n").encode()
+    repository, uploaded = _blob_repository(source)
+    assessor = AsyncMock()
+    assessor.evaluate_supplied.side_effect = lambda incoming, *_args, **_kwargs: (
+        _assessment(incoming.id)
+    )
+
+    artifacts = await DeduplicationEvaluationRunner(assessor=assessor).run(
+        run_id=uuid7(),
+        input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+        blob_repository=repository,
+        configuration=_configuration(),
+    )
+
+    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    assert [
+        (row["query_id"], row["line_number"], row["status"]) for row in records
+    ] == [
+        ("line-separator", 1, "assessed"),
+        ("after", 2, "assessed"),
+    ]
+    manifest = json.loads(uploaded["manifest.json"])
+    assert manifest["counts"]["record_statuses"] == {
+        "assessed": 2,
+        "input_invalid": 0,
+        "evaluation_failed": 0,
+    }
+    assert artifacts.input_byte_size == len(source)
+    assert artifacts.input_sha256 == hashlib.sha256(source).hexdigest()
 
 
 @pytest.mark.asyncio

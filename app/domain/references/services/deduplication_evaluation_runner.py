@@ -157,30 +157,35 @@ class DeduplicationEvaluationRunner:
         configuration: EvaluationRunConfiguration,
     ) -> EvaluationRunArtifacts:
         """Evaluate a JSONL blob and write its run-scoped artifact bundle."""
-        source_bytes = b"".join(
-            [
-                chunk
-                async for chunk in blob_repository.stream_chunks_from_blob_storage(
-                    input_file
+        # Two passes over the immutable input: the manifest digest must cover the
+        # exact bytes, which the line reader cannot yield once it has decoded them.
+        digest = hashlib.sha256()
+        byte_size = 0
+        async for chunk in blob_repository.stream_chunks_from_blob_storage(input_file):
+            digest.update(chunk)
+            byte_size += len(chunk)
+
+        record_results: list[EvaluationRecordResult] = []
+        line_number = 0
+        async with blob_repository.stream_file_from_blob_storage(input_file) as lines:
+            async for line in lines:
+                line_number += 1
+                if not line.strip():
+                    continue
+                record_results.append(
+                    await self._evaluate_line(
+                        run_id=run_id,
+                        line=line,
+                        line_number=line_number,
+                        configuration=configuration,
+                    )
                 )
-            ]
-        )
-        record_results = [
-            await self._evaluate_line(
-                run_id=run_id,
-                line=line,
-                line_number=line_number,
-                configuration=configuration,
-            )
-            for line_number, line in enumerate(source_bytes.decode().splitlines(), 1)
-            if line.strip()
-        ]
         pair_results = [
             pair
             for record_result in record_results
             for pair in self._pair_results(record_result)
         ]
-        input_sha256 = hashlib.sha256(source_bytes).hexdigest()
+        input_sha256 = digest.hexdigest()
         path = f"deduplication_evaluation/{run_id}"
 
         record_bytes = self._jsonl(record_results)
@@ -194,7 +199,8 @@ class DeduplicationEvaluationRunner:
         summary_bytes = self._summary(
             run_id=run_id,
             input_file=input_file,
-            input_bytes=source_bytes,
+            input_byte_size=byte_size,
+            input_sha256=input_sha256,
             records=record_results,
             pairs=pair_results,
         ).encode()
@@ -209,7 +215,7 @@ class DeduplicationEvaluationRunner:
             "input": {
                 "uri": input_file.to_uri(),
                 "dataset_version": configuration.dataset_version,
-                "byte_size": len(source_bytes),
+                "byte_size": byte_size,
                 "sha256": input_sha256,
             },
             "configuration": configuration.model_dump(mode="json"),
@@ -243,7 +249,7 @@ class DeduplicationEvaluationRunner:
         return EvaluationRunArtifacts(
             run_id=run_id,
             input_file=input_file,
-            input_byte_size=len(source_bytes),
+            input_byte_size=byte_size,
             input_sha256=input_sha256,
             record_results_file=record_file,
             pair_results_file=pair_file,
@@ -455,11 +461,12 @@ class DeduplicationEvaluationRunner:
         }
 
     @staticmethod
-    def _summary(
+    def _summary(  # noqa: PLR0913
         *,
         run_id: UUID,
         input_file: BlobStorageFile,
-        input_bytes: bytes,
+        input_byte_size: int,
+        input_sha256: str,
         records: Sequence[EvaluationRecordResult],
         pairs: Sequence[EvaluationPairResult],
     ) -> str:
@@ -476,8 +483,8 @@ class DeduplicationEvaluationRunner:
             "# Deduplication evaluation summary\n\n"
             f"Run ID: `{run_id}`\n\n"
             f"Input: `{input_file.to_uri()}`\n\n"
-            f"Input bytes: {len(input_bytes)}\n\n"
-            f"Input SHA-256: `{hashlib.sha256(input_bytes).hexdigest()}`\n\n"
+            f"Input bytes: {input_byte_size}\n\n"
+            f"Input SHA-256: `{input_sha256}`\n\n"
             f"Records: {len(records)}\n\n"
             f"Assessed records: {statuses[EvaluationRecordStatus.ASSESSED]}\n\n"
             "Invalid input records: "
