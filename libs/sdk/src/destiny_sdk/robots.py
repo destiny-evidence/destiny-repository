@@ -182,6 +182,17 @@ class EnhancementRequestStatus(StrEnum):
     COMPLETED = auto()
     """All enhancements have been created."""
 
+    @classmethod
+    def get_terminal_statuses(cls) -> set["EnhancementRequestStatus"]:
+        """Return the statuses at which an enhancement request has stopped moving."""
+        return {
+            cls.REJECTED,
+            cls.PARTIAL_FAILED,
+            cls.FAILED,
+            cls.INDEXING_FAILED,
+            cls.COMPLETED,
+        }
+
 
 class EnhancementRequestSearchStatus(StrEnum):
     """Progress of the search phase of a search-based enhancement request."""

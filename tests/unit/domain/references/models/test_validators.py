@@ -1,10 +1,14 @@
 from uuid import uuid7
 
+import destiny_sdk
 import pytest
 
 from app.core.exceptions import ParseError
 from app.domain.references.models.models import ExternalIdentifierType
-from app.domain.references.models.validators import parse_identifier_lookup_from_string
+from app.domain.references.models.validators import (
+    ReferenceCreateResult,
+    parse_identifier_lookup_from_string,
+)
 
 
 @pytest.mark.parametrize(
@@ -81,3 +85,46 @@ def test_parse_identifier_lookup_from_string_cases(input_str, expected):
         assert res.identifier == identifier
         assert res.identifier_type == expected["identifier_type"]
         assert res.other_identifier_name == expected["other_identifier_name"]
+
+
+def test_exported_reference_imports_without_rewriting():
+    """A JSONL line straight from an export endpoint parses, ignoring its id."""
+    reference_id = uuid7()
+    exported = destiny_sdk.references.Reference(
+        id=reference_id,
+        identifiers=[{"identifier_type": "doi", "identifier": "10.1000/xyz"}],
+        enhancements=[
+            destiny_sdk.enhancements.Enhancement(
+                id=uuid7(),
+                reference_id=reference_id,
+                source="test-source",
+                visibility="public",
+                content={
+                    "enhancement_type": "abstract",
+                    "process": "closed_api",
+                    "abstract": "hello",
+                },
+            )
+        ],
+    ).to_jsonl()
+
+    result = ReferenceCreateResult.from_raw(exported, 1)
+
+    assert result.errors == []
+    assert result.reference is not None
+    assert result.reference.identifiers[0].identifier == "10.1000/xyz"
+    assert result.reference.enhancements[0].source == "test-source"
+    # ReferenceFileInput carries no id, so the exported one cannot be adopted.
+    assert "id" not in result.reference.model_dump()
+
+
+def test_unknown_top_level_field_is_still_rejected():
+    """Accepting `id` must not open the schema up to arbitrary fields."""
+    result = ReferenceCreateResult.from_raw(
+        '{"identifiers": [{"identifier_type": "doi", "identifier": "10.1/a"}],'
+        ' "nonsense": 1}',
+        1,
+    )
+
+    assert result.reference is None
+    assert "nonsense" in result.error_str
