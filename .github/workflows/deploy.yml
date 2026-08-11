@@ -147,3 +147,45 @@ jobs:
             az containerapp job start \
               --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
               --resource-group ${{vars.RESOURCE_GROUP}}
+
+  notify-production:
+    # TESTING - revert to 'production' before merging.
+    if: ${{ always() && inputs.environment == 'development' }}
+    needs:
+      - deploy-application
+      - deploy-container-apps-jobs
+      - deploy-ui
+      - migrate-database
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      STATUS: >-
+        ${{ (contains(needs.*.result, 'failure') && '🚨 PRODUCTION DEPLOY FAILED')
+        || (contains(needs.*.result, 'cancelled') && '⚠️ Production deploy cancelled')
+        || '✅ Production deployed' }}
+    steps:
+      - name: Notify Slack of production deploy result
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          webhook: ${{ secrets.CI_SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          # The action swallows delivery errors by default; fail loudly instead.
+          errors: true
+          # github.workflow distinguishes a promotion from a rollback.
+          payload: |
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  emoji: true
+                  text: "${{ env.STATUS }} - ${{ vars.APP_NAME }}"
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*Image tag:*\n${{ inputs.image_tag }}"
+                  - type: mrkdwn
+                    text: "*Triggered by:*\n${{ github.triggering_actor }}"
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: "${{ github.workflow }} · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"
