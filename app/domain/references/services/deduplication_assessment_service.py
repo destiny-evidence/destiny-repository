@@ -5,11 +5,13 @@ from typing import Protocol
 from uuid import UUID
 
 import destiny_sdk
+from sqlalchemy.exc import InterfaceError, OperationalError
 
 from app.core.exceptions import (
     DeduplicationError,
     DeduplicationNotFoundError,
     DeduplicationValueError,
+    ESError,
 )
 from app.domain.references.models.models import (
     CandidateSelectionInput,
@@ -32,6 +34,10 @@ from app.domain.references.services.anti_corruption_service import (
 CandidateSelector = Callable[
     [CandidateSelectionRequest], Awaitable[CandidateSelectionResult]
 ]
+
+# Repository errors and connectivity DBAPI failures are per-record infrastructure.
+# Malformed queries and programming defects stay fatal, not one failed row per input.
+INFRASTRUCTURE_ERRORS = (ESError, OperationalError, InterfaceError)
 
 
 class ReferenceReader(Protocol):
@@ -144,14 +150,18 @@ class DeduplicationAssessmentService:
         k: int | None,
     ) -> DeduplicationAssessment:
         """Find, hydrate and score every candidate under one assessment."""
-        candidate_selection = await self._candidate_selector(
-            CandidateSelectionRequest(
-                input=selection_input,
-                retrieval_policy=retrieval_policy,
-                k=k,
-                hydrate=False,
+        try:
+            candidate_selection = await self._candidate_selector(
+                CandidateSelectionRequest(
+                    input=selection_input,
+                    retrieval_policy=retrieval_policy,
+                    k=k,
+                    hydrate=False,
+                )
             )
-        )
+        except INFRASTRUCTURE_ERRORS as exc:
+            msg = f"Candidate retrieval failed ({type(exc).__name__}): {exc}"
+            raise DeduplicationError(msg) from exc
 
         if any(
             candidate.reference_id == incoming.id
@@ -167,9 +177,13 @@ class DeduplicationAssessmentService:
         if candidate_ids:
             # Only the fields the scorer compares. Loading every type would also
             # sign a URL per full-text enhancement, on a path that never reads one.
-            hydrated = await self._reference_reader.get_hydrated(
-                candidate_ids, enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
-            )
+            try:
+                hydrated = await self._reference_reader.get_hydrated(
+                    candidate_ids, enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
+                )
+            except INFRASTRUCTURE_ERRORS as exc:
+                msg = f"Candidate hydration failed ({type(exc).__name__}): {exc}"
+                raise DeduplicationError(msg) from exc
             candidates_by_id = {candidate.id: candidate for candidate in hydrated}
             missing_ids = [
                 candidate_id

@@ -4,10 +4,12 @@ from uuid import UUID, uuid7
 import destiny_sdk
 import pytest
 from destiny_sdk.visibility import Visibility
+from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.core.exceptions import (
     DeduplicationError,
     DeduplicationValueError,
+    ESError,
     NotFoundError,
 )
 from app.domain.references.models.models import (
@@ -552,6 +554,71 @@ async def test_evaluate_supplied_passes_the_callers_exclusion_through(
     request_input = selector.await_args.args[0].input
     assert request_input.reference_id is None
     assert request_input.excluded_reference_id == held_reference_id
+
+
+@pytest.mark.asyncio
+async def test_evaluate_supplied_reports_retrieval_infrastructure_failure_per_record(
+    anti_corruption_service,
+):
+    """A retrieval blip the repository already translated is one record's failure."""
+    incoming = _supplied_reference()
+    service, selector, _, pair_scorer = _build_service(
+        anti_corruption_service, _selection(), [], {}
+    )
+    selector.side_effect = ESError("candidate search unavailable (503)")
+
+    with pytest.raises(DeduplicationError):
+        await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+    assert pair_scorer.calls == []
+
+
+@pytest.mark.asyncio
+async def test_evaluate_supplied_reports_hydration_infrastructure_failure_per_record(
+    anti_corruption_service,
+):
+    """A database blip while hydrating candidates is also one record's failure."""
+    incoming = _supplied_reference()
+    candidate = _reference()
+    service, _, reader, pair_scorer = _build_service(
+        anti_corruption_service,
+        _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
+        [candidate],
+        {candidate.id: 0.9},
+    )
+    reader.get_hydrated = AsyncMock(
+        side_effect=OperationalError("SELECT 1", {}, Exception("connection lost"))
+    )
+
+    with pytest.raises(DeduplicationError):
+        await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+    assert pair_scorer.calls == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(TypeError("selector called with the wrong shape"), id="type"),
+        # A DBAPIError sibling of OperationalError. Catching DBAPIError wholesale
+        # would bury a malformed query as a per-record failure on every input.
+        pytest.param(
+            ProgrammingError("SELECT nope", {}, Exception("column does not exist")),
+            id="malformed-query",
+        ),
+    ],
+)
+async def test_evaluate_supplied_propagates_defects(anti_corruption_service, error):
+    """Only infrastructure failures are localised; a defect still aborts the caller."""
+    incoming = _supplied_reference()
+    service, selector, _, _ = _build_service(
+        anti_corruption_service, _selection(), [], {}
+    )
+    selector.side_effect = error
+
+    with pytest.raises(type(error)):
+        await service.evaluate_supplied(incoming, _supplied_input(incoming))
 
 
 @pytest.mark.asyncio
