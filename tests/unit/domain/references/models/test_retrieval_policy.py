@@ -186,6 +186,16 @@ def test_soft_year_decay_nonfuzzy_probe_v1_regime():
     assert policy.title_fuzziness == "0"
 
 
+def test_candidate_selection_v1_matches_selected_probe_parameters():
+    automatic = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V1)
+    probe = resolve_retrieval_policy(
+        RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1
+    )
+
+    assert automatic.name is RetrievalPolicyName.CANDIDATE_SELECTION_V1
+    assert automatic.model_dump(exclude={"name"}) == probe.model_dump(exclude={"name"})
+
+
 def test_fuzzy_policies_default_to_auto_fuzziness():
     for name in (
         RetrievalPolicyName.CURRENT_FUZZY_V1,

@@ -178,8 +178,59 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
 
 
+@pytest.fixture
+async def partly_tagged_references(es_client: AsyncElasticsearch) -> None:
+    """
+    Index references carrying a value on only some of the facet fields.
+
+    - doc 1: Botany;  KE
+    - doc 2: Botany;  -
+    - doc 3: -;       KE
+    - doc 4: Zoology; KE
+    """
+    docs = [
+        ReferenceDocument(
+            meta={"id": uuid7()},
+            id=uuid7(),
+            visibility=Visibility.PUBLIC,
+            title="Tagged both ways",
+            linked_data_concepts=[BOTANY],
+            linked_data_countries=[COUNTRY_KE],
+        ),
+        ReferenceDocument(
+            meta={"id": uuid7()},
+            id=uuid7(),
+            visibility=Visibility.PUBLIC,
+            title="Concepts only",
+            linked_data_concepts=[BOTANY],
+        ),
+        ReferenceDocument(
+            meta={"id": uuid7()},
+            id=uuid7(),
+            visibility=Visibility.PUBLIC,
+            title="Countries only",
+            linked_data_countries=[COUNTRY_KE],
+        ),
+        ReferenceDocument(
+            meta={"id": uuid7()},
+            id=uuid7(),
+            visibility=Visibility.PUBLIC,
+            title="Tagged both ways too",
+            linked_data_concepts=[ZOOLOGY],
+            linked_data_countries=[COUNTRY_KE],
+        ),
+    ]
+    for doc in docs:
+        await doc.save(using=es_client)
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+
+
 def _cells(body: dict) -> set[tuple[str, str, int]]:
     return {(c["axes"][0], c["axes"][1], c["count"]) for c in body["cells"]}
+
+
+def _totals(body: dict) -> tuple[int, int]:
+    return body["totals"]["search"]["count"], body["totals"]["mapped"]["count"]
 
 
 async def test_scheme_by_scheme_cross_tab(
@@ -198,7 +249,8 @@ async def test_scheme_by_scheme_cross_tab(
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     body = response.json()
-    assert body["total"] == {"count": 6, "is_lower_bound": False}
+    assert _totals(body) == (6, 6)
+    assert body["total"] == body["totals"]["mapped"]
     assert body["cells"] == [
         {"axes": [BOTANY, AFRICA], "count": 4},
         {"axes": [ZOOLOGY, AFRICA], "count": 2},
@@ -261,7 +313,7 @@ async def test_query_string_and_empty_result(
         params={"q": "title:Asia", "axes": ["countries", "country_wb_regions"]},
     )
     assert response.status_code == status.HTTP_200_OK, response.text
-    assert response.json()["total"] == {"count": 1, "is_lower_bound": False}
+    assert _totals(response.json()) == (1, 1)
     assert _cells(response.json()) == {(COUNTRY_US, REGION_NAC, 1)}
 
     response = await client.get(
@@ -269,10 +321,8 @@ async def test_query_string_and_empty_result(
         params={"q": "title:nope_xyz", "axes": ["countries", "country_wb_regions"]},
     )
     assert response.status_code == status.HTTP_200_OK, response.text
-    assert response.json() == {
-        "total": {"count": 0, "is_lower_bound": False},
-        "cells": [],
-    }
+    assert _totals(response.json()) == (0, 0)
+    assert response.json()["cells"] == []
 
 
 async def test_panel_filter_narrows_whole_matrix(
@@ -291,7 +341,7 @@ async def test_panel_filter_narrows_whole_matrix(
     assert response.status_code == status.HTTP_200_OK, response.text
     # Only KE docs (1, 2, 5, 6) survive, all SSF — the country filter overlaps the
     # country axis and still applies, leaving KE as the only row.
-    assert response.json()["total"] == {"count": 4, "is_lower_bound": False}
+    assert _totals(response.json()) == (4, 4)
     assert _cells(response.json()) == {(COUNTRY_KE, REGION_SSF, 4)}
 
 
@@ -309,10 +359,8 @@ async def test_multiple_andd_filters_narrow(
         },
     )
     assert response.status_code == status.HTTP_200_OK, response.text
-    assert response.json() == {
-        "total": {"count": 0, "is_lower_bound": False},
-        "cells": [],
-    }
+    assert _totals(response.json()) == (0, 0)
+    assert response.json()["cells"] == []
 
 
 async def test_filter_overlapping_a_scheme_axis_still_applies(
@@ -333,11 +381,75 @@ async def test_filter_overlapping_a_scheme_axis_still_applies(
     assert response.status_code == status.HTTP_200_OK, response.text
     # Restricted to Botany docs (1, 2, 5, 6); Zoology still surfaces because docs 5/6
     # carry it too — the overlapping filter narrows the matrix, not the axis.
-    assert response.json()["total"] == {"count": 4, "is_lower_bound": False}
+    assert _totals(response.json()) == (4, 4)
     assert _cells(response.json()) == {
         (BOTANY, REGION_SSF, 4),
         (ZOOLOGY, REGION_SSF, 2),
     }
+
+
+async def test_mapped_total_excludes_references_off_the_matrix(
+    client: AsyncClient,
+    partly_tagged_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """`mapped` counts only references with an in-scope value on both axes."""
+    response = await client.get(
+        "/v1/references/search/cross-facets/",
+        params={
+            "q": "*",
+            "axes": [TOPICS_SCHEME, "countries"],
+            "vocabulary": primed_vocab,
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # Docs 2 and 3 each lack an axis, so they match the search but not the matrix.
+    assert _totals(response.json()) == (4, 2)
+    assert _cells(response.json()) == {
+        (BOTANY, COUNTRY_KE, 1),
+        (ZOOLOGY, COUNTRY_KE, 1),
+    }
+
+
+async def test_mapped_total_excludes_concepts_outside_the_scheme(
+    client: AsyncClient,
+    partly_tagged_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """A value outside a scheme axis's members isn't presence on that axis."""
+    response = await client.get(
+        "/v1/references/search/cross-facets/",
+        params={
+            "q": "*",
+            "axes": [REGION_SCHEME, "countries"],
+            "vocabulary": primed_vocab,
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # No doc carries a Region concept, so nothing is mapped despite 4 search matches.
+    assert _totals(response.json()) == (4, 0)
+    assert response.json()["cells"] == []
+
+
+async def test_mapped_total_dedupes_multi_valued_references(
+    client: AsyncClient,
+    cross_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """A reference spanning several cells is counted once in `mapped`."""
+    response = await client.get(
+        "/v1/references/search/cross-facets/",
+        params={
+            "q": "*",
+            "axes": [TOPICS_SCHEME, REGION_SCHEME],
+            "vocabulary": primed_vocab,
+        },
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    body = response.json()
+    # Docs 5 and 6 carry two Topics each, so cells over-count them; `mapped` doesn't.
+    assert sum(c["count"] for c in body["cells"]) == 8
+    assert _totals(body) == (6, 6)
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,6 @@
 """Service for managing reference duplicate detection."""
 
-from typing import Literal, assert_never
+from typing import assert_never
 from uuid import UUID
 
 from opentelemetry import trace
@@ -19,6 +19,8 @@ from app.domain.references.models.models import (
     CandidateSelectionInput,
     CandidateSelectionRequest,
     CandidateSelectionResult,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     EnhancementType,
     ExternalIdentifierType,
@@ -28,7 +30,6 @@ from app.domain.references.models.models import (
     Reference,
     ReferenceDuplicateDecision,
     ReferenceDuplicateDeterminationResult,
-    RetrievalPolicyName,
     YearDecay,
 )
 from app.domain.references.models.projections import (
@@ -200,16 +201,12 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     async def get_deduplication_candidates(
         self, request: CandidateSelectionRequest
     ) -> CandidateSelectionResult:
-        """
-        Retrieve ranked candidate canonicals for a reference, without persisting.
-
-        Read-only evaluation surface for deduplication candidate retrieval: it runs
-        the shared Elasticsearch candidate query and, optionally, unions exact
-        identifier matches from Postgres, returning route provenance and retrieval
-        diagnostics. It writes no duplicate-decision or candidate state.
-        """
+        """Return ranked candidates with provenance, without persisting state."""
         k = request.k or settings.dedup_scoring.candidate_k
-        policy = resolve_retrieval_policy(request.retrieval_policy)
+        policy_name = (
+            request.retrieval_policy or settings.dedup_scoring.default_retrieval_policy
+        )
+        policy = resolve_retrieval_policy(policy_name)
 
         (
             search_fields,
@@ -217,17 +214,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             identifier_lookups,
         ) = await self._resolve_candidate_selection_input(request.input)
 
-        # Exact identifier matching does not depend on bibliographic searchability;
-        # it is the route for records that fail the ES searchability gate, so it runs
-        # regardless of it.
+        # Identifier matching remains available when bibliographic input cannot
+        # pass the Elasticsearch searchability gate.
         identifier_matches: dict[UUID, dict[tuple, CandidateIdentifier]] = {}
         if policy.union_identifiers and identifier_lookups:
             identifier_matches = await self._union_identifier_matches(
                 identifier_lookups, self_id=self_id
             )
 
-        # The ES candidate query and its index-version stamp are only meaningful for
-        # searchable inputs.
+        # The ES query and index-version stamp only apply to searchable input.
         searchable = policy.is_input_searchable(search_fields)
         es_result = None
         index_version = None
@@ -377,11 +372,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         for reference in matched_references:
             if reference.id == self_id:
                 continue
-            # Unlike the ES query, this read-only path does not restrict to
-            # CANONICAL-at-rest references: that filter guards a nomination write
-            # race we don't have, so an exact identifier match is surfaced whatever
-            # its dedup state. A match on a duplicate resolves to its canonical,
-            # which may be a different, older reference outside the queried set.
+            # Identifier matches are not restricted to canonical-at-rest records.
+            # A duplicate match resolves to its canonical reference.
             if reference.is_canonical_like:
                 canonical_id = reference.id
             elif (
@@ -469,171 +461,114 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 return candidate
         return None
 
-    async def register_duplicate_decision_for_reference(
+    async def register_pending_import_decision(
         self,
         reference_id: UUID,
-        enhancement_id: UUID | None = None,
-        duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
-        | None = None,
-        canonical_reference_id: UUID | None = None,
     ) -> ReferenceDuplicateDecision:
         """
-        Register a duplicate decision for a reference.
+        Register the initial PENDING decision for a newly ingested reference.
 
-        :param reference: The reference to register the duplicate decision for.
-        :type reference: app.domain.references.models.models.Reference
-        :param enhancement_id: The enhancement ID triggering with the duplicate
-            decision, defaults to None
-        :type enhancement_id: UUID | None, optional
-        :param duplicate_determination: Flag indicating if a reference was an exact
-            duplicate and not imported, defaults to None
-        :type duplicate_determination: Literal[DuplicateDetermination.EXACT_DUPLICATE]
-            | None, optional
-        :param canonical_reference_id: The canonical reference ID this reference is an
-            exact duplicate of, defaults to None
-        :type canonical_reference_id: UUID | None, optional
+        Inserted directly because :meth:`map_duplicate_decision` takes only terminal
+        determinations. Safe to bypass the guard: an inactive row displaces nothing.
+
+        :param reference_id: The reference being ingested.
+        :type reference_id: UUID
         :return: The registered duplicate decision
         :rtype: ReferenceDuplicateDecision
         """
-        if (duplicate_determination is not None) != (
-            canonical_reference_id is not None
-        ):
-            msg = (
-                "Both or neither of duplicate_determination and "
-                "canonical_reference_id must be provided."
-            )
-            raise DeduplicationValueError(msg)
-        _duplicate_determination = (
-            duplicate_determination
-            if duplicate_determination
-            else DuplicateDetermination.PENDING
-        )
-        reference_duplicate_decision = ReferenceDuplicateDecision(
-            reference_id=reference_id,
-            enhancement_id=enhancement_id,
-            duplicate_determination=_duplicate_determination,
-            canonical_reference_id=canonical_reference_id,
-            # If exact duplicate passed in, the decision is terminal and hence active
-            active_decision=_duplicate_determination
-            == DuplicateDetermination.EXACT_DUPLICATE,
-        )
         return await self.sql_uow.reference_duplicate_decisions.add(
-            reference_duplicate_decision
+            ReferenceDuplicateDecision(
+                reference_id=reference_id,
+                decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                decision_trigger=DuplicateDecisionTrigger.IMPORT,
+                duplicate_determination=DuplicateDetermination.PENDING,
+            )
         )
 
-    async def nominate_candidate_canonicals(
-        self, reference_duplicate_decision: ReferenceDuplicateDecision
+    async def register_exact_duplicate_import_decision(
+        self,
+        reference_id: UUID,
+        canonical_reference_id: UUID,
     ) -> ReferenceDuplicateDecision:
         """
-        Nominate candidate canonical references for the given decision.
+        Register a terminal EXACT_DUPLICATE decision for a reference not imported.
 
-        This uses the control retrieval policy's search strategy.
+        Safe to bypass :meth:`map_duplicate_decision`: the reference is never stored
+        as a row of its own, so it cannot already carry a decision to replace.
 
-        :param reference_duplicate_decision: The decision to find candidates for.
-        :type reference_duplicate_decision: ReferenceDuplicateDecision
-        :return: The updated decision with candidate IDs and status.
+        :param reference_id: The reference that was not imported.
+        :type reference_id: UUID
+        :param canonical_reference_id: The reference it exactly duplicates.
+        :type canonical_reference_id: UUID
+        :return: The registered duplicate decision
         :rtype: ReferenceDuplicateDecision
         """
-        if not settings.feature_flags.enable_canonical_candidate_search:
-            return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
-                reference_duplicate_decision.id,
-                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
-                detail="Canonical candidate search is disabled.",
-            )
-
-        reference = await self.sql_uow.references.get_by_pk(
-            reference_duplicate_decision.reference_id,
-            preload=["enhancements", "identifiers"],
-        )
-
-        search_fields = (
-            ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
-                reference
+        return await self.sql_uow.reference_duplicate_decisions.add(
+            ReferenceDuplicateDecision(
+                reference_id=reference_id,
+                decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                decision_trigger=DuplicateDecisionTrigger.IMPORT,
+                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
+                canonical_reference_id=canonical_reference_id,
+                active_decision=True,
             )
         )
 
-        if not search_fields.is_searchable:
-            return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
-                reference_duplicate_decision.id,
-                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+    async def select_candidate_canonicals(
+        self, reference_id: UUID
+    ) -> CandidateSelectionResult:
+        """Select candidates and return their complete retrieval provenance."""
+        return await self.get_deduplication_candidates(
+            CandidateSelectionRequest(
+                input=CandidateSelectionInput(reference_id=reference_id),
+                hydrate=False,
             )
-        # The candidate depth here preserves this path's historical behaviour; the
-        # production K is chosen by the recall@K evaluation, not this path.
-        query = build_candidate_canonical_search_query(
-            search_fields,
-            scoring_config=settings.dedup_scoring,
-            policy=resolve_retrieval_policy(RetrievalPolicyName.CURRENT_FUZZY_V1),
-            reference_id=reference.id,
-        )
-        search_result = await self.es_uow.references.search_for_candidate_canonicals(
-            query,
-            k=10,
         )
 
-        if not search_result.hits:
-            reference_duplicate_decision = (
-                await self.sql_uow.reference_duplicate_decisions.update_by_pk(
-                    reference_duplicate_decision.id,
-                    # This should simplify to CANONICAL only once the search strategy is
-                    # implemented and evaluated.
-                    duplicate_determination=DuplicateDetermination.CANONICAL
-                    if settings.env == Environment.TEST
-                    else DuplicateDetermination.UNSEARCHABLE,
-                )
-            )
-        else:
-            # Is there a search result score that would be enough for us to mark as
-            # duplicate without proceeding to the next step?
-            reference_duplicate_decision = (
-                await self.sql_uow.reference_duplicate_decisions.update_by_pk(
-                    reference_duplicate_decision.id,
-                    candidate_canonical_ids=[
-                        result.id for result in search_result.hits
-                    ],
-                    duplicate_determination=DuplicateDetermination.NOMINATED,
-                )
-            )
-
-        return reference_duplicate_decision
-
-    async def __placeholder_duplicate_determinator(
-        self, reference_duplicate_decision: ReferenceDuplicateDecision
+    async def _placeholder_duplicate_determinator(
+        self, candidate_selection: CandidateSelectionResult
     ) -> ReferenceDuplicateDeterminationResult:
         """
-        Implement a basic placeholder duplicate determinator.
+        Choose the first candidate only in tests; production returns unsearchable.
 
-        Temporary implementation: takes the first candidate as the duplicate.
-        This is the one with the highest score in the candidate nomination stage.
-        This completes the flow but should not be used in production.
+        This temporary behaviour is replaced by the deep-deduplication adjudicator.
 
-        :param reference_duplicate_decision: The decision to determine duplicates for.
-        :type reference_duplicate_decision: ReferenceDuplicateDecision
+        :param candidate_selection: Full candidate retrieval result.
+        :type candidate_selection: CandidateSelectionResult
         :return: The result of the duplicate determination.
         :rtype: ReferenceDuplicateDeterminationResult
         """
-        return (
-            ReferenceDuplicateDeterminationResult(
+        if candidate_selection.candidates and settings.env == Environment.TEST:
+            return ReferenceDuplicateDeterminationResult(
                 duplicate_determination=DuplicateDetermination.DUPLICATE,
-                canonical_reference_id=reference_duplicate_decision.candidate_canonical_ids[
-                    0
-                ],
+                canonical_reference_id=candidate_selection.candidates[0].reference_id,
             )
-            if settings.env == Environment.TEST
-            and reference_duplicate_decision.candidate_canonical_ids
-            else ReferenceDuplicateDeterminationResult(
-                duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
-                detail="Placeholder duplicate determinator used.",
+
+        if (
+            settings.env == Environment.TEST
+            and candidate_selection.input_searchability.searchable
+        ):
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.CANONICAL,
             )
+
+        return ReferenceDuplicateDeterminationResult(
+            duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+            detail="Placeholder duplicate determinator used.",
         )
 
     async def determine_canonical_from_candidates(
-        self, reference_duplicate_decision: ReferenceDuplicateDecision
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+        candidate_selection: CandidateSelectionResult,
     ) -> ReferenceDuplicateDecision:
         """
         Determine a canonical reference from its candidates.
 
         :param reference_duplicate_decision: The decision to determine duplicates for.
         :type reference_duplicate_decision: ReferenceDuplicateDecision
+        :param candidate_selection: Full retrieval result for the scoring path.
+        :type candidate_selection: CandidateSelectionResult
         :return: The updated decision with the determination result.
         :rtype: ReferenceDuplicateDecision
         """
@@ -643,10 +578,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         ):
             return reference_duplicate_decision
 
-        duplicate_determination_result = (
-            await self.__placeholder_duplicate_determinator(
-                reference_duplicate_decision
-            )
+        duplicate_determination_result = await self._placeholder_duplicate_determinator(
+            candidate_selection
         )
 
         return await self.sql_uow.reference_duplicate_decisions.update_by_pk(
@@ -712,11 +645,31 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             preload=["duplicate_decision", "duplicate_references"],
         )
         active_decision = reference.duplicate_decision
+        deactivated_decision = None
 
         # Preset to True, will be flipped if not changed
         decision_changed = True
 
+        # Only the resolving branch reactivates: a decoupled proposal left active
+        # would collide with the retained decision on the one-active-decision index.
+        new_decision.active_decision = False
+
         if (
+            active_decision
+            and active_decision.decision_authority == DuplicateDecisionAuthority.PERSON
+            and new_decision.decision_authority == DuplicateDecisionAuthority.SYSTEM
+            and not allow_destructive_decision
+        ):
+            proposed_determination = new_decision.duplicate_determination
+            new_decision.duplicate_determination = DuplicateDetermination.DECOUPLED
+            new_decision.detail = (
+                "Decouple reason: Automatic decisions cannot replace a person-made "
+                "active decision. "
+                f"Proposed determination: {proposed_determination.value}. "
+                + (new_decision.detail if new_decision.detail else "")
+            )
+            decision_changed = False
+        elif (
             active_decision
             and active_decision.duplicate_determination
             == DuplicateDetermination.DUPLICATE
@@ -763,6 +716,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 ):
                     decision_changed = False
                 active_decision.active_decision = False
+                deactivated_decision = active_decision
             new_decision.active_decision = True
 
         # Update in-place, it's just easier
@@ -772,7 +726,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             new_decision
         )
 
-        return new_decision, decision_changed, active_decision
+        return new_decision, decision_changed, deactivated_decision
 
     async def shortcut_deduplication_using_identifiers(  # noqa: PLR0912
         self,
@@ -782,7 +736,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """
         Deduplicate the given reference using trusted unique identifiers.
 
-        This shortcuts the regular deduplication flow and is only run on import.
+        This shortcuts the regular deduplication flow. It runs whenever a pending
+        decision is processed, which is on import and through the invoke API.
 
         This is a very powerful operation and should only be used with identifier types
         that are certain to be unique and reliable. Misuse can lead to incorrect
@@ -954,9 +909,17 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             decision, _, _ = await self.map_duplicate_decision(
                 ReferenceDuplicateDecision(
                     reference_id=candidate_id,
+                    decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                    # Same processing run as the proxy reference's decision, so the
+                    # same trigger. Legacy decisions have no trigger to copy.
+                    decision_trigger=(
+                        reference_duplicate_decision.decision_trigger
+                        if reference_duplicate_decision.decision_trigger
+                        != DuplicateDecisionTrigger.UNCLASSIFIED
+                        else DuplicateDecisionTrigger.IMPORT
+                    ),
                     duplicate_determination=DuplicateDetermination.DUPLICATE,
                     canonical_reference_id=canonical_id,
-                    active_decision=True,
                     detail=(
                         f"Shortcutted via proxy reference {reference.id} "
                         "with trusted identifier(s)"

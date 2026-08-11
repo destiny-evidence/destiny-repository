@@ -24,6 +24,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
 from app.domain.references.models.models import (
     AnnotationFilter,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
@@ -683,6 +685,20 @@ class ReferenceDuplicateDecision(
     # NB not foreign keys as can also refer to a reference that is not
     # imported, for instance an exact duplicate.
     reference_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
+    # server_default is permanent: a rolling deploy serves the old revision, whose
+    # inserts omit these columns, while the migration has already run.
+    decision_authority: Mapped[DuplicateDecisionAuthority] = mapped_column(
+        String,
+        nullable=False,
+        default=DuplicateDecisionAuthority.UNCLASSIFIED,
+        server_default=DuplicateDecisionAuthority.UNCLASSIFIED,
+    )
+    decision_trigger: Mapped[DuplicateDecisionTrigger] = mapped_column(
+        String,
+        nullable=False,
+        default=DuplicateDecisionTrigger.UNCLASSIFIED,
+        server_default=DuplicateDecisionTrigger.UNCLASSIFIED,
+    )
     enhancement_id: Mapped[UUID | None] = mapped_column(
         SQL_UUID, ForeignKey("enhancement.id"), nullable=True
     )
@@ -733,6 +749,8 @@ class ReferenceDuplicateDecision(
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
+            decision_authority=domain_obj.decision_authority,
+            decision_trigger=domain_obj.decision_trigger,
             enhancement_id=domain_obj.enhancement_id,
             active_decision=domain_obj.active_decision,
             candidate_canonical_ids=domain_obj.candidate_canonical_ids,
@@ -749,6 +767,8 @@ class ReferenceDuplicateDecision(
         return DomainReferenceDuplicateDecision(
             id=self.id,
             reference_id=self.reference_id,
+            decision_authority=self.decision_authority,
+            decision_trigger=self.decision_trigger,
             enhancement_id=self.enhancement_id,
             active_decision=self.active_decision,
             candidate_canonical_ids=self.candidate_canonical_ids,

@@ -8,7 +8,16 @@ from uuid import UUID
 
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
-from elasticsearch.dsl.query import Bool, MatchAll, Prefix, Query, Range, Term, Terms
+from elasticsearch.dsl.query import (
+    Bool,
+    Exists,
+    MatchAll,
+    Prefix,
+    Query,
+    Range,
+    Term,
+    Terms,
+)
 from elasticsearch.dsl.response import Response
 from opentelemetry import trace
 from sqlalchemy import (
@@ -41,6 +50,7 @@ from app.domain.references.models.models import (
     CandidateCanonicalSearchQuery,
     CrossFacetAxis,
     CrossFacetCell,
+    CrossFacetResult,
     DuplicateDetermination,
     EnhancementRequestSearchStatus,
     FacetType,
@@ -640,12 +650,12 @@ class ReferenceESRepository(
         self,
         query: SearchQuery,
         axes: Sequence[CrossFacetAxis],
-    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+    ) -> CrossFacetResult:
         """
         Cross-tabulate two axes over references matching ``query``.
 
-        Returns the non-zero cells plus the exact grand total (``track_total_hits`` is
-        enabled so the count isn't capped at the result window).
+        Returns the non-zero cells plus two exact totals: every reference matching the
+        query, and the ``in_map`` subset with a value on both axes.
         """
         axis_0, axis_1 = axes
         search = self._build_aggregation_search(
@@ -653,17 +663,32 @@ class ReferenceESRepository(
             self.default_search_fields,
             self._build_filter_clauses(query),
         ).extra(track_total_hits=True)
-        outer = search.aggs.bucket("axis_0", "terms", **self._facet_agg_params(axis_0))
+        in_map = search.aggs.bucket(
+            "in_map",
+            "filter",
+            filter=Bool(filter=[self._axis_presence_clause(axis) for axis in axes]),
+        )
+        outer = in_map.bucket("axis_0", "terms", **self._facet_agg_params(axis_0))
         outer.bucket("axis_1", "terms", **self._facet_agg_params(axis_1))
 
         response = await self._execute_search(search)
-        return (
-            self._parse_cross_facet_cells(response),
-            ESSearchTotal(
+        return CrossFacetResult(
+            cells=self._parse_cross_facet_cells(response),
+            search_total=ESSearchTotal(
                 value=response.hits.total.value,  # type: ignore[attr-defined]
                 relation=response.hits.total.relation,  # type: ignore[attr-defined]
             ),
+            mapped_total=ESSearchTotal(
+                value=response.aggregations.in_map.doc_count, relation="eq"
+            ),
         )
+
+    def _axis_presence_clause(self, axis: CrossFacetAxis) -> Query:
+        """Match references with a value on ``axis``, in scope of its ``include``."""
+        field = self._FACET_FIELDS[axis.facet_type]
+        if axis.include:
+            return Terms(**{field: sorted(axis.include)})
+        return Exists(field=field)
 
     def _facet_agg_params(self, axis: CrossFacetAxis) -> dict[str, object]:
         """``terms`` agg params for an axis: field, size, and (for schemes) include."""
@@ -677,13 +702,13 @@ class ReferenceESRepository(
 
     @staticmethod
     def _parse_cross_facet_cells(response: Response) -> list[CrossFacetCell]:
-        """Flatten nested ``axis_0 > axis_1`` buckets into deterministic cells."""
+        """Flatten nested ``in_map > axis_0 > axis_1`` buckets into ordered cells."""
         cells = [
             CrossFacetCell(
                 axes=(str(bucket_0.key), str(bucket_1.key)),
                 count=bucket_1.doc_count,
             )
-            for bucket_0 in response.aggregations.axis_0.buckets
+            for bucket_0 in response.aggregations.in_map.axis_0.buckets
             for bucket_1 in bucket_0.axis_1.buckets
         ]
         cells.sort(key=lambda cell: (-cell.count, cell.axes))

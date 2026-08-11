@@ -26,7 +26,9 @@ from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     CandidateSelectionRequest,
     CandidateSelectionResult,
-    CrossFacetCell,
+    CrossFacetResult,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
@@ -659,15 +661,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_id=str(reference.id),
                 canonical_reference_id=str(canonical_reference.id),
             )
-            await self._deduplication_service.register_duplicate_decision_for_reference(
+            await self._deduplication_service.register_exact_duplicate_import_decision(
                 reference_id=reference.id,
-                duplicate_determination=DuplicateDetermination.EXACT_DUPLICATE,
                 canonical_reference_id=canonical_reference.id,
             )
             return reference_create_result
 
         duplicate_decision = (
-            await self._deduplication_service.register_duplicate_decision_for_reference(
+            await self._deduplication_service.register_pending_import_decision(
                 reference_id=reference.id
             )
         )
@@ -1289,18 +1290,25 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     )
                 return
 
-        # Carry on with normal processing
-        reference_duplicate_decision = (
-            await self._deduplication_service.nominate_candidate_canonicals(
-                reference_duplicate_decision
+        if settings.feature_flags.enable_canonical_candidate_search:
+            candidate_selection = (
+                await self._deduplication_service.select_candidate_canonicals(
+                    reference_duplicate_decision.reference_id
+                )
             )
-        )
-
-        reference_duplicate_decision = (
-            await self._deduplication_service.determine_canonical_from_candidates(
-                reference_duplicate_decision
+            reference_duplicate_decision = (
+                await self._deduplication_service.determine_canonical_from_candidates(
+                    reference_duplicate_decision,
+                    candidate_selection,
+                )
             )
-        )
+        else:
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.UNSEARCHABLE
+            )
+            reference_duplicate_decision.detail = (
+                "Canonical candidate search is disabled."
+            )
 
         (
             reference_duplicate_decision,
@@ -1404,15 +1412,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return updated, expiry
 
     @sql_unit_of_work
-    async def add_pending_duplicate_decisions_for_reference_ids(
+    async def register_pending_invoke_api_decisions(
         self,
         reference_ids: ReferenceIds,
     ) -> list[ReferenceDuplicateDecision]:
-        """Add a reference duplicate decision."""
+        """Register system decisions created through the invoke API."""
         return await self.sql_uow.reference_duplicate_decisions.add_bulk(
             [
                 ReferenceDuplicateDecision(
                     reference_id=reference_id,
+                    decision_authority=DuplicateDecisionAuthority.SYSTEM,
+                    decision_trigger=DuplicateDecisionTrigger.INVOKE_API,
                     duplicate_determination=DuplicateDetermination.PENDING,
                 )
                 for reference_id in reference_ids.reference_ids
@@ -1425,7 +1435,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Invoke deduplication for a list of references."""
         reference_duplicate_decisions = (
-            await self.add_pending_duplicate_decisions_for_reference_ids(
+            await self.register_pending_invoke_api_decisions(
                 reference_ids,
             )
         )
@@ -1470,7 +1480,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         axes: tuple[str, str],
         vocabulary_uri: str | None = None,
-    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+    ) -> CrossFacetResult:
         """Cross-tabulate two axes across references matching the query."""
         return await self._search_service.aggregate_cross_facet(
             query, axes, vocabulary_uri
