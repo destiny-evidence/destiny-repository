@@ -192,6 +192,32 @@ class TestPendingEnhancementSQLRepository:
         depths = await repo.get_retry_depths([created_pending_enhancement.id, uuid7()])
         assert depths == {created_pending_enhancement.id: 0}
 
+    async def test_get_retry_depths_above_bind_param_limit(
+        self, session: AsyncSession, pending_enhancement_factory
+    ):
+        """Retry chains still resolve when the id list exceeds asyncpg's limit.
+
+        The expiry sweep feeding this method is unbounded, so the seed list can
+        outgrow the number of bind parameters a single statement may carry.
+        """
+        repo = PendingEnhancementSQLRepository(session)
+
+        pe1 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.EXPIRED,
+            expires_at=utc_now() - datetime.timedelta(hours=1),
+        )
+        pe2 = await pending_enhancement_factory(
+            status=PendingEnhancementStatus.PENDING,
+            expires_at=utc_now() + datetime.timedelta(hours=1),
+            retry_of=pe1.id,
+        )
+        await session.commit()
+
+        padding = [uuid7() for _ in range(2**15 - 1)]
+        depths = await repo.get_retry_depths([pe1.id, *padding, pe2.id])
+
+        assert depths == {pe1.id: 0, pe2.id: 1}
+
     async def test_expire_pending_enhancements_past_expiry(
         self, session: AsyncSession, pending_enhancement_factory
     ):
