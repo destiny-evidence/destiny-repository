@@ -35,6 +35,7 @@ from app.domain.base import (
 )
 from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
+from app.persistence.es.persistence import ESSearchTotal
 from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
@@ -1617,6 +1618,18 @@ class CrossFacetCell(BaseModel):
         description="The cell's value on each axis, in requested axis order.",
     )
     count: int = Field(description="References matching both axis values together.")
+
+
+class CrossFacetResult(BaseModel):
+    """The cells of a cross-facet matrix and the two totals that bound it."""
+
+    cells: list[CrossFacetCell] = Field(description="The non-zero cells of the matrix.")
+    search_total: ESSearchTotal = Field(
+        description="References matching the query string and all filters.",
+    )
+    mapped_total: ESSearchTotal = Field(
+        description="The subset of those with a value on both axes, counted once each.",
+    )
 
 
 class ReferenceSearchResult(BaseModel):

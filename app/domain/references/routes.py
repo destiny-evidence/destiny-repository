@@ -745,10 +745,12 @@ async def count_facets_for_search(
         "**Counting.** Each returned cell is a strict intersection: references "
         "matching both its axis values, all panel filters and the query string. "
         "Only non-zero cells are returned, sorted by descending count.\n\n"
-        "Cells may sum to more than `total` because a reference can carry multiple "
-        "values on an axis (and to less, as a reference matching the filters need "
-        "not have a value on either axis). `total` is exact. A matrix whose bucket "
-        f"count would exceed {settings.es_cross_facet_max_cells:,} is rejected."
+        "Both totals are exact: `totals.search` counts every matching reference, "
+        "`totals.mapped` the subset with a value on both axes, so appearing in the "
+        "matrix. Cells may sum to more than `totals.mapped` because a reference can "
+        "carry multiple values on an axis, but never to less. A matrix "
+        f"whose bucket count would exceed {settings.es_cross_facet_max_cells:,} is "
+        "rejected."
     ),
 )
 async def cross_tabulate_facets(
@@ -792,12 +794,12 @@ async def cross_tabulate_facets(
     ] = None,
 ) -> destiny_sdk.references.ReferenceCrossFacetResult:
     """Cross-tabulate two axes for references matching the query."""
-    cells, total = await reference_service.aggregate_cross_facet(
+    result = await reference_service.aggregate_cross_facet(
         query,
         axes,
         vocabulary_uri=str(vocabulary) if vocabulary else None,
     )
-    return anti_corruption_service.cross_facet_to_sdk(cells, total)
+    return anti_corruption_service.cross_facet_to_sdk(result)
 
 
 async def _enqueue_export_task(

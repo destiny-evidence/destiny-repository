@@ -26,7 +26,7 @@ from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     CandidateSelectionRequest,
     CandidateSelectionResult,
-    CrossFacetCell,
+    CrossFacetResult,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -1480,7 +1480,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         axes: tuple[str, str],
         vocabulary_uri: str | None = None,
-    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+    ) -> CrossFacetResult:
         """Cross-tabulate two axes across references matching the query."""
         return await self._search_service.aggregate_cross_facet(
             query, axes, vocabulary_uri
