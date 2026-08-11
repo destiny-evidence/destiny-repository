@@ -12,7 +12,10 @@ from uuid import uuid7
 
 import pytest
 
-from app.core.exceptions import DeduplicationError
+from app.core.exceptions import (
+    DeduplicationError,
+    EvaluationConfigurationMismatchError,
+)
 from app.domain.references.models.models import (
     Candidate,
     CandidateElasticsearchRoute,
@@ -79,7 +82,15 @@ def _line(
     )
 
 
-def _assessment(incoming_id, *, with_pairs: bool = False):
+def _assessment(
+    incoming_id,
+    *,
+    with_pairs: bool = False,
+    policy: RetrievalPolicyName = RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+    k: int = 10,
+    index_version: str | None = "reference_v3",
+    deduper: DeduperMetadata | None = None,
+):
     candidates = []
     scored_candidates = []
     if with_pairs:
@@ -114,17 +125,18 @@ def _assessment(incoming_id, *, with_pairs: bool = False):
     return DeduplicationAssessment(
         incoming_reference_id=incoming_id,
         candidate_selection=CandidateSelectionResult(
-            retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
-            index_version="reference_v3",
-            k_requested=10,
+            retrieval_policy=policy,
+            index_version=index_version,
+            k_requested=k,
             input_searchability=InputSearchability(
-                searchable=True,
+                searchable=index_version is not None,
                 reason="The input has a title and authors.",
             ),
             candidates=candidates,
             diagnostics=CandidateSelectionDiagnostics(),
         ),
-        deduper=DeduperMetadata(
+        deduper=deduper
+        or DeduperMetadata(
             package_version="fake-1",
             configuration_hash="fake-config",
             threshold=0.85,
@@ -136,6 +148,19 @@ def _assessment(incoming_id, *, with_pairs: bool = False):
             else DeduplicationAssessmentOutcome.PROPOSE_CANONICAL
         ),
     )
+
+
+def _assessor(*, with_pairs: bool = False) -> AsyncMock:
+    """Assessor reporting back the retrieval configuration it was asked to run."""
+
+    async def evaluate(incoming, _selection, *, retrieval_policy, k):
+        return _assessment(
+            incoming.id, with_pairs=with_pairs, policy=retrieval_policy, k=k
+        )
+
+    assessor = AsyncMock()
+    assessor.evaluate_supplied = AsyncMock(side_effect=evaluate)
+    return assessor
 
 
 class _ChunkClient(GenericBlobStorageClient):
@@ -195,10 +220,7 @@ async def test_run_writes_complete_reviewable_bundle():
     )
     source = (_line("assessed") + "\nnot json\n").encode()
     repository, uploaded = _blob_repository(source)
-    assessor = AsyncMock()
-    assessor.evaluate_supplied.side_effect = lambda incoming, *_args, **_kwargs: (
-        _assessment(incoming.id, with_pairs=True)
-    )
+    assessor = _assessor(with_pairs=True)
 
     artifacts = await DeduplicationEvaluationRunner(assessor=assessor).run(
         run_id=run_id,
@@ -298,10 +320,7 @@ async def test_run_builds_yearless_and_union_assessment_inputs():
         + _line("labelled-fuzzy")
     ).encode()
     repository, _uploaded = _blob_repository(source)
-    assessor = AsyncMock()
-    assessor.evaluate_supplied.side_effect = lambda incoming, *_args, **_kwargs: (
-        _assessment(incoming.id)
-    )
+    assessor = _assessor()
     policy = RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1
 
     await DeduplicationEvaluationRunner(assessor=assessor).run(
@@ -366,10 +385,7 @@ async def test_run_splits_records_only_on_newline():
     )
     source = (separator_line + "\n" + _line("after") + "\n").encode()
     repository, uploaded = _blob_repository(source)
-    assessor = AsyncMock()
-    assessor.evaluate_supplied.side_effect = lambda incoming, *_args, **_kwargs: (
-        _assessment(incoming.id)
-    )
+    assessor = _assessor()
 
     artifacts = await DeduplicationEvaluationRunner(assessor=assessor).run(
         run_id=uuid7(),
@@ -486,6 +502,105 @@ async def test_run_preserves_completed_records_when_it_aborts():
     assert [(row["query_id"], row["status"]) for row in records] == [
         ("first", "assessed")
     ]
+
+
+_CONFIGURATION_FIELDS = (
+    "retrieval_policy",
+    "k",
+    "deduper",
+    "elasticsearch_index_version",
+)
+
+
+@pytest.mark.parametrize(
+    ("observed", "reported"),
+    [
+        (
+            {"policy": RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1},
+            ["retrieval_policy"],
+        ),
+        ({"k": 25}, ["k"]),
+        ({"index_version": "reference_v4"}, ["elasticsearch_index_version"]),
+        (
+            {
+                "deduper": DeduperMetadata(
+                    package_version="fake-2",
+                    configuration_hash="fake-config",
+                    threshold=0.85,
+                )
+            },
+            ["deduper"],
+        ),
+        (
+            {
+                "policy": RetrievalPolicyName.SOFT_YEAR_DECAY_YEAR_OPTIONAL_V1,
+                "index_version": "reference_v4",
+            },
+            ["retrieval_policy", "elasticsearch_index_version"],
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_run_aborts_when_a_record_contradicts_the_published_configuration(
+    observed, reported
+):
+    """Published provenance is checked against the run, not taken on the caller."""
+    source = "\n".join([_line("first"), _line("drifted")]).encode()
+    repository, uploaded = _blob_repository(source)
+    call_count = 0
+
+    async def evaluate(incoming, _selection, *, retrieval_policy, k):
+        nonlocal call_count
+        call_count += 1
+        asked = {"policy": retrieval_policy, "k": k}
+        return _assessment(
+            incoming.id, **(asked | observed if call_count == 2 else asked)
+        )
+
+    assessor = AsyncMock()
+    assessor.evaluate_supplied = AsyncMock(side_effect=evaluate)
+
+    with pytest.raises(EvaluationConfigurationMismatchError) as mismatch:
+        await DeduplicationEvaluationRunner(assessor=assessor).run(
+            run_id=uuid7(),
+            input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+            blob_repository=repository,
+            configuration=_configuration(),
+        )
+
+    message = str(mismatch.value)
+    assert [
+        field for field in _CONFIGURATION_FIELDS if f"{field} asserted" in message
+    ] == reported
+    assert set(uploaded) == {"record-results.jsonl"}
+    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    assert [(row["query_id"], row["status"]) for row in records] == [
+        ("first", "assessed")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_accepts_a_record_the_corpus_was_never_searched_for():
+    """An absent index version means the record was not searched, not a mismatch."""
+    repository, uploaded = _blob_repository(_line("unsearchable").encode())
+
+    async def evaluate(incoming, _selection, *, retrieval_policy, k):
+        return _assessment(
+            incoming.id, policy=retrieval_policy, k=k, index_version=None
+        )
+
+    assessor = AsyncMock()
+    assessor.evaluate_supplied = AsyncMock(side_effect=evaluate)
+
+    await DeduplicationEvaluationRunner(assessor=assessor).run(
+        run_id=uuid7(),
+        input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+        blob_repository=repository,
+        configuration=_configuration(),
+    )
+
+    manifest = json.loads(uploaded["manifest.json"])
+    assert manifest["counts"]["record_statuses"]["assessed"] == 1
 
 
 @pytest.mark.asyncio

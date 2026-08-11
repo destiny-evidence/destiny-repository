@@ -14,7 +14,10 @@ from uuid import UUID, uuid7
 import destiny_sdk
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.core.exceptions import DeduplicationError
+from app.core.exceptions import (
+    DeduplicationError,
+    EvaluationConfigurationMismatchError,
+)
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     CandidateIdentifier,
@@ -336,6 +339,7 @@ class DeduplicationEvaluationRunner:
                     message=f"Evaluation failed ({type(exc).__name__}): {exc}",
                 ),
             )
+        self._verify_configuration(assessment, configuration, line_number)
         return EvaluationRecordResult(
             run_id=run_id,
             query_id=record.query_id,
@@ -344,6 +348,44 @@ class DeduplicationEvaluationRunner:
             incoming_reference_id=incoming.id,
             assessment=assessment,
         )
+
+    @staticmethod
+    def _verify_configuration(
+        assessment: DeduplicationAssessment,
+        configuration: EvaluationRunConfiguration,
+        line_number: int,
+    ) -> None:
+        """Fail the run rather than publish a manifest the run contradicts."""
+        selection = assessment.candidate_selection
+        asserted: list[tuple[str, object, object]] = [
+            (
+                "retrieval_policy",
+                configuration.retrieval_policy,
+                selection.retrieval_policy,
+            ),
+            ("k", configuration.k, selection.k_requested),
+            ("deduper", configuration.deduper, assessment.deduper),
+        ]
+        if selection.index_version is not None:
+            # An absent index version means this record was never searched.
+            asserted.append(
+                (
+                    "elasticsearch_index_version",
+                    configuration.elasticsearch_index_version,
+                    selection.index_version,
+                )
+            )
+        mismatches = [
+            f"{name} asserted {claimed!r}, ran {observed!r}"
+            for name, claimed, observed in asserted
+            if claimed != observed
+        ]
+        if mismatches:
+            msg = (
+                f"Evaluation run contradicts its configuration at line {line_number}: "
+                + "; ".join(mismatches)
+            )
+            raise EvaluationConfigurationMismatchError(msg)
 
     @staticmethod
     def _invalid_result(
