@@ -33,6 +33,8 @@ from app.core.exceptions import (
 )
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
@@ -1338,6 +1340,8 @@ async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
     assert results[0]["outcome"] == "canonical"
     assert results[0]["active_decision"] is True
     assert results[0]["canonical_reference_id"] is None
+    assert results[0]["decision_authority"] == DuplicateDecisionAuthority.PERSON
+    assert results[0]["decision_trigger"] == DuplicateDecisionTrigger.MANUAL_API
 
     response = await client.post(
         "/v1/references/duplicate-decisions/",

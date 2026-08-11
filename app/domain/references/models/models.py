@@ -35,6 +35,7 @@ from app.domain.base import (
 )
 from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
+from app.persistence.es.persistence import ESSearchTotal
 from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
@@ -178,6 +179,32 @@ class DuplicateDetermination(StrEnum):
             cls.CANONICAL,
             cls.UNSEARCHABLE,
         }
+
+
+class DuplicateDecisionAuthority(StrEnum):
+    """Who had authority for a duplicate decision."""
+
+    UNCLASSIFIED = auto()
+    """The authority of a historical decision has not been established."""
+    PERSON = auto()
+    """A person made the decision."""
+    SYSTEM = auto()
+    """The repository made the decision automatically."""
+
+
+class DuplicateDecisionTrigger(StrEnum):
+    """The event that caused a duplicate decision to be created."""
+
+    UNCLASSIFIED = auto()
+    """The trigger for a historical decision has not been established."""
+    MANUAL_API = auto()
+    """The manual duplicate-decision API created the decision."""
+    IMPORT = auto()
+    """Reference import processing created the decision."""
+    ENHANCEMENT = auto()
+    """Reserved. No path creates enhancement-triggered decisions yet."""
+    INVOKE_API = auto()
+    """The duplicate-decisions invoke API created the decision."""
 
 
 class Reference(
@@ -1142,6 +1169,14 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     """Model representing a decision on whether a reference is a duplicate."""
 
     reference_id: UUID = Field(description="The ID of the reference being evaluated.")
+    decision_authority: DuplicateDecisionAuthority = Field(
+        default=DuplicateDecisionAuthority.UNCLASSIFIED,
+        description="Whether a person or the system made the decision.",
+    )
+    decision_trigger: DuplicateDecisionTrigger = Field(
+        default=DuplicateDecisionTrigger.UNCLASSIFIED,
+        description="The event that caused the decision.",
+    )
     enhancement_id: UUID | None = Field(
         default=None,
         description=(
@@ -1168,6 +1203,20 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Optional additional detail about the decision.",
     )
+
+    @model_validator(mode="after")
+    def check_provenance_is_classified_together(self) -> Self:
+        """Require authority and trigger to be classified together."""
+        authority_unclassified = (
+            self.decision_authority == DuplicateDecisionAuthority.UNCLASSIFIED
+        )
+        trigger_unclassified = (
+            self.decision_trigger == DuplicateDecisionTrigger.UNCLASSIFIED
+        )
+        if authority_unclassified != trigger_unclassified:
+            msg = "decision_authority and decision_trigger must be classified together"
+            raise ValueError(msg)
+        return self
 
     @model_validator(mode="after")
     def check_canonical_reference_id_populated_iff_duplicate(self) -> Self:
@@ -1569,6 +1618,18 @@ class CrossFacetCell(BaseModel):
         description="The cell's value on each axis, in requested axis order.",
     )
     count: int = Field(description="References matching both axis values together.")
+
+
+class CrossFacetResult(BaseModel):
+    """The cells of a cross-facet matrix and the two totals that bound it."""
+
+    cells: list[CrossFacetCell] = Field(description="The non-zero cells of the matrix.")
+    search_total: ESSearchTotal = Field(
+        description="References matching the query string and all filters.",
+    )
+    mapped_total: ESSearchTotal = Field(
+        description="The subset of those with a value on both axes, counted once each.",
+    )
 
 
 class ReferenceSearchResult(BaseModel):

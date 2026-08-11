@@ -10,7 +10,7 @@ from app.core.exceptions import ParseError, SiblingGroupingError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     CrossFacetAxis,
-    CrossFacetCell,
+    CrossFacetResult,
     FacetType,
     LinkedDataConceptFilter,
     SearchQuery,
@@ -147,13 +147,13 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         axes: tuple[str, str],
         vocabulary_uri: str | None,
-    ) -> tuple[list[CrossFacetCell], ESSearchTotal]:
+    ) -> CrossFacetResult:
         """
         Cross-tabulate two axes over references matching ``query``.
 
         Each axis is a literal axis or a concept-scheme URI (scoped to its members
         via ``vocabulary_uri``). Cells are reported in the given axis order. Returns
-        the non-zero cells and the exact grand total.
+        the non-zero cells and both exact totals.
         """
         scheme_members: dict[str, frozenset[str]] | None = None
         if vocabulary_uri and any(self._is_concept_scheme(token) for token in axes):

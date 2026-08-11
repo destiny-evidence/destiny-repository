@@ -42,6 +42,10 @@ class ReferenceFileInputValidator(BaseModel):
     )
     identifiers: list[JSON] = Field(min_length=1)
     enhancements: list[JSON] = Field(default_factory=list)
+    id: UUID | None = Field(
+        default=None,
+        description="Accepted but ignored.",
+    )
 
     model_config = ConfigDict(extra="forbid")
 

@@ -18,6 +18,8 @@ from app.core.exceptions import (
 from app.domain.references.models.models import (
     CandidateSelectionDiagnostics,
     CandidateSelectionResult,
+    DuplicateDecisionAuthority,
+    DuplicateDecisionTrigger,
     DuplicateDetermination,
     Enhancement,
     EnhancementRequest,
@@ -29,6 +31,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceIds,
     ReferenceWithChangeset,
     RetrievalPolicyName,
     RobotAutomationPercolationResult,
@@ -85,6 +88,33 @@ async def test_get_reference_not_found(fake_repository, fake_uow):
     dummy_id = uuid7()
     with pytest.raises(SQLNotFoundError):
         await service.get_reference(dummy_id)
+
+
+@pytest.mark.asyncio
+async def test_register_pending_invoke_api_decisions_records_provenance(
+    fake_repository, fake_uow
+):
+    decision_repo = fake_repository()
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()),
+        fake_uow(reference_duplicate_decisions=decision_repo),
+        fake_uow(),
+    )
+    reference_ids = [uuid7(), uuid7()]
+
+    decisions = await service.register_pending_invoke_api_decisions(
+        ReferenceIds(reference_ids=reference_ids)
+    )
+
+    assert {decision.reference_id for decision in decisions} == set(reference_ids)
+    assert all(
+        decision.decision_authority == DuplicateDecisionAuthority.SYSTEM
+        for decision in decisions
+    )
+    assert all(
+        decision.decision_trigger == DuplicateDecisionTrigger.INVOKE_API
+        for decision in decisions
+    )
 
 
 @pytest.fixture
@@ -493,9 +523,14 @@ async def test_ingest_reference(
     with (
         patch.object(
             service._deduplication_service,  # noqa: SLF001
-            "register_duplicate_decision_for_reference",
+            "register_pending_import_decision",
             AsyncMock(return_value=dummy_decision),
-        ) as mock_register,
+        ) as mock_register_pending,
+        patch.object(
+            service._deduplication_service,  # noqa: SLF001
+            "register_exact_duplicate_import_decision",
+            AsyncMock(return_value=dummy_decision),
+        ) as mock_register_exact,
         patch.object(service, "_merge_reference", AsyncMock()) as mock_merge,
         patch.object(
             service._anti_corruption_service,  # noqa: SLF001
@@ -513,10 +548,18 @@ async def test_ingest_reference(
     ):
         result = await service.ingest_reference("{}", 1, AsyncMock())
         mock_find.assert_awaited_once()
-        mock_register.assert_awaited_once()
         if should_merge:
+            mock_register_pending.assert_awaited_once_with(
+                reference_id=mock_reference.id
+            )
+            mock_register_exact.assert_not_awaited()
             mock_merge.assert_awaited_once_with(mock_reference)
         else:
+            mock_register_exact.assert_awaited_once_with(
+                reference_id=mock_reference.id,
+                canonical_reference_id=find_exact_duplicate_return.id,
+            )
+            mock_register_pending.assert_not_awaited()
             mock_merge.assert_not_awaited()
         assert getattr(result, "duplicate_decision_id", None) == expected_decision_id
 
