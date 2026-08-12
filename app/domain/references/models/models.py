@@ -1226,6 +1226,65 @@ class DeduplicationPaper(ProjectedBaseModel):
         return self
 
 
+class DeduplicationAssessmentPurpose(StrEnum):
+    """Why an assessment was run, fixed when it is recorded."""
+
+    DEDUPLICATION = auto()
+    """Normal path; the record may later be applied as a duplicate decision."""
+    PERFORMANCE_SHADOW = auto()
+    """Measurement only; never applied, because applying needs a fresh assessment."""
+
+
+class AssessmentPayloadState(StrEnum):
+    """Whether the full evidence payload for an assessment was stored."""
+
+    NOT_RETAINED = auto()
+    """Nothing cleared the threshold and every candidate scored, so none was kept."""
+    STORED = auto()
+    """The payload was written and its location is on the record."""
+    FAILED = auto()
+    """The payload was worth keeping but could not be written."""
+
+
+class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
+    """Durable summary of one assessment, whether or not it becomes a decision."""
+
+    incoming_reference_id: UUID = Field(
+        description="The assessed reference. Not a foreign key: supplied records "
+        "under evaluation need not be held.",
+    )
+    purpose: DeduplicationAssessmentPurpose
+    policy_generation: str = Field(
+        description="The acting-policy generation this assessment was run under."
+    )
+    retrieval_policy: RetrievalPolicyName
+    k: int = Field(description="The configured candidate count requested.")
+    candidate_count: int = Field(description="Candidates actually returned.")
+    es_route_ran: bool
+    es_index_name: str | None = Field(
+        default=None,
+        description="The concrete index searched, absent when the route did not run.",
+    )
+    deduper_version: str
+    deduper_config_hash: str
+    threshold: float = Field(ge=0, le=1)
+    outcome: DeduplicationAssessmentOutcome
+    proposed_duplicate_of_id: UUID | None = None
+    best_score: float | None = Field(
+        default=None, description="Highest probability across all scored pairs."
+    )
+    best_non_winning_score: float | None = Field(
+        default=None,
+        description="Runner-up behind a proposal, or the top score where none cleared.",
+    )
+    scored_candidates: list[ScoredDeduplicationCandidate] = Field(default_factory=list)
+    payload_state: AssessmentPayloadState
+    payload_blob_url: str | None = None
+    payload_reason: str | None = Field(
+        default=None, description="Why the payload is absent when it was wanted."
+    )
+
+
 class LinkedDataProjection(ProjectedBaseModel):
     """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
 
