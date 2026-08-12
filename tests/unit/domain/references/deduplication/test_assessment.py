@@ -47,6 +47,7 @@ from tests.factories import (
     BibliographicMetadataEnhancementFactory,
     BooleanAnnotationFactory,
     EnhancementFactory,
+    FullTextEnhancementFactory,
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
     ReferenceFactory,
@@ -91,6 +92,17 @@ def _reference(*, community_bound: bool = False) -> Reference:
         enhancement.reference_id = reference.id
     for identifier in reference.identifiers or []:
         identifier.reference_id = reference.id
+    return reference
+
+
+def _with_full_text(reference: Reference) -> Reference:
+    """Add a full-text enhancement, which no assessment input should carry."""
+    reference.enhancements = [
+        *(reference.enhancements or []),
+        EnhancementFactory.build(
+            content=FullTextEnhancementFactory.build(), reference_id=reference.id
+        ),
+    ]
     return reference
 
 
@@ -505,7 +517,7 @@ async def test_evaluate_empty_unsearchable_union_makes_no_proposal(
 async def test_evaluate_supplied_scores_the_exact_sdk_reference(
     anti_corruption_service,
 ):
-    """The runner's frozen SDK reference reaches the scorer unchanged."""
+    """The runner's SDK reference reaches the scorer without a domain round-trip."""
     incoming = _supplied_reference()
     candidate = _reference()
     supplied_input = CandidateSelectionInput(
@@ -523,9 +535,14 @@ async def test_evaluate_supplied_scores_the_exact_sdk_reference(
     assessment = await service.evaluate_supplied(incoming, supplied_input)
 
     assert assessment.incoming_reference_id == incoming.id
-    assert incoming.enhancements
-    assert incoming.enhancements[0].created_at is None
-    assert pair_scorer.calls[0][0] is incoming
+    scored_incoming = pair_scorer.calls[0][0]
+    assert scored_incoming.id == incoming.id
+    assert scored_incoming.identifiers == incoming.identifiers
+    assert scored_incoming.enhancements == incoming.enhancements
+    # A hydrated reference carries a database timestamp, so a null one here is
+    # what shows the record never went through the domain model.
+    assert scored_incoming.enhancements
+    assert scored_incoming.enhancements[0].created_at is None
     assert selector.await_args.args[0].input == supplied_input
     reader.get_hydrated.assert_awaited_once_with(
         [candidate.id], enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
@@ -656,6 +673,95 @@ async def test_evaluate_fails_when_stored_incoming_cannot_be_hydrated(
         await service.evaluate(reference_id)
 
     assert isinstance(exc_info.value, DeduplicationError)
+    selector.assert_not_awaited()
+    assert pair_scorer.calls == []
+
+
+@pytest.mark.asyncio
+async def test_evaluate_supplied_presents_only_scored_enhancements(
+    anti_corruption_service,
+):
+    """Both entrypoints must show the scorer the same enhancement types."""
+    incoming = _supplied_reference()
+    incoming.enhancements = [
+        *(incoming.enhancements or []),
+        destiny_sdk.enhancements.Enhancement(
+            reference_id=incoming.id,
+            source="evaluation-benchmark",
+            visibility=Visibility.PUBLIC,
+            content=destiny_sdk.enhancements.AbstractContentEnhancement(
+                process=destiny_sdk.enhancements.AbstractProcessType.OTHER,
+                abstract="An abstract the Deduper does not score on.",
+            ),
+        ),
+    ]
+    candidate = _reference()
+    service, _, _, pair_scorer = _build_service(
+        anti_corruption_service,
+        _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
+        [candidate],
+        {candidate.id: 0.1},
+    )
+
+    await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+    scored_incoming, _ = pair_scorer.calls[0]
+    assert [
+        enhancement.content.enhancement_type
+        for enhancement in scored_incoming.enhancements or []
+    ] == [EnhancementType.BIBLIOGRAPHIC]
+
+
+@pytest.mark.asyncio
+async def test_evaluate_withholds_full_text_from_the_scorer():
+    """Redaction, not the hydration filter, is what keeps full text off this path."""
+    sign_url = AsyncMock()
+    anti_corruption_service = ReferenceAntiCorruptionService(sign_url=sign_url)
+    # Community-bound adds an annotation, which redaction keeps and the scored
+    # view drops, so this covers both filters rather than only redaction.
+    incoming = _with_full_text(_reference(community_bound=True))
+    candidate = _with_full_text(_reference(community_bound=True))
+    service, _, reader, pair_scorer = _build_service(
+        anti_corruption_service,
+        _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
+        [incoming, candidate],
+        {candidate.id: 0.9},
+    )
+    by_id = {incoming.id: incoming, candidate.id: candidate}
+    # Stand in for a widened hydration filter: return every enhancement regardless.
+    reader.get_hydrated = AsyncMock(
+        side_effect=lambda ids, **_: [by_id[id_] for id_ in ids]
+    )
+
+    await service.evaluate(incoming.id)
+
+    scored_incoming, scored_candidate = pair_scorer.calls[0]
+    for scored in (scored_incoming, scored_candidate):
+        assert [
+            enhancement.content.enhancement_type
+            for enhancement in scored.enhancements or []
+        ] == [EnhancementType.BIBLIOGRAPHIC]
+    sign_url.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_evaluate_fails_when_stored_incoming_has_no_search_fields(
+    anti_corruption_service,
+):
+    # Empty-list kwargs do not stick through the factory, which regenerates both.
+    reference = ReferenceFactory.build(visibility="public").model_copy(
+        update={"enhancements": [], "identifiers": []}
+    )
+    service, selector, _, pair_scorer = _build_service(
+        anti_corruption_service,
+        _selection(),
+        [reference],
+        {},
+    )
+
+    with pytest.raises(DeduplicationError, match=str(reference.id)):
+        await service.evaluate(reference.id)
+
     selector.assert_not_awaited()
     assert pair_scorer.calls == []
 

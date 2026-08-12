@@ -95,17 +95,6 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         self, reference: RedactedReference
     ) -> destiny_sdk.references.Reference:
         """Convert the reference to a Reference SDK model."""
-        return await self._reference_to_sdk(reference)
-
-    async def internal_reference_to_sdk(
-        self, reference: Reference
-    ) -> destiny_sdk.references.Reference:
-        """Convert an unredacted reference for internal use, never an API response."""
-        return await self._reference_to_sdk(reference)
-
-    async def _reference_to_sdk(
-        self, reference: Reference
-    ) -> destiny_sdk.references.Reference:
         try:
             enhancements = [
                 await self.enhancement_to_sdk(enhancement)

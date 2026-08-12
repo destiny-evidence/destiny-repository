@@ -5,6 +5,7 @@ from typing import Protocol
 from uuid import UUID
 
 import destiny_sdk
+from pydantic import ValidationError
 from sqlalchemy.exc import InterfaceError, OperationalError
 
 from app.core.exceptions import (
@@ -27,6 +28,9 @@ from app.domain.references.models.models import (
     ScoredDeduplicationCandidate,
 )
 from app.domain.references.models.projections import CandidateReferenceProjection
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -38,6 +42,10 @@ CandidateSelector = Callable[
 # Repository errors and connectivity DBAPI failures are per-record infrastructure.
 # Malformed queries and programming defects stay fatal, not one failed row per input.
 INFRASTRUCTURE_ERRORS = (ESError, OperationalError, InterfaceError)
+
+# The enhancement types the Deduper compares. Abstracts are excluded because its
+# scoring weights are configured without them, so sending one is wasted payload.
+SCORED_ENHANCEMENT_TYPES = (EnhancementType.BIBLIOGRAPHIC,)
 
 
 class ReferenceReader(Protocol):
@@ -86,6 +94,32 @@ class DeduplicationAssessmentService:
         self._reference_reader = reference_reader
         self._anti_corruption_service = anti_corruption_service
         self._pair_scorer = pair_scorer
+        # Entitlements are deliberately empty: the scorer compares bibliographic
+        # fields, so nothing here may reach full text.
+        self._access_control_service = ReferenceAccessControlService()
+
+    async def _to_scorer_view(
+        self, reference: Reference
+    ) -> destiny_sdk.references.Reference:
+        """Convert a reference to the least-privileged SDK view the scorer sees."""
+        return await self._anti_corruption_service.reference_to_sdk(
+            self._access_control_service.redact_reference(reference)
+        )
+
+    @staticmethod
+    def _scored_view(
+        reference: destiny_sdk.references.Reference,
+    ) -> destiny_sdk.references.Reference:
+        """Present only the enhancement types the Deduper compares."""
+        return reference.model_copy(
+            update={
+                "enhancements": [
+                    enhancement
+                    for enhancement in reference.enhancements or []
+                    if enhancement.content.enhancement_type in SCORED_ENHANCEMENT_TYPES
+                ]
+            }
+        )
 
     async def evaluate(
         self,
@@ -96,25 +130,30 @@ class DeduplicationAssessmentService:
     ) -> DeduplicationAssessment:
         """Assess a stored reference from one hydrated input snapshot."""
         hydrated = await self._reference_reader.get_hydrated(
-            [reference_id], enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
+            [reference_id], enhancement_types=list(SCORED_ENHANCEMENT_TYPES)
         )
         if not hydrated:
             msg = f"Could not hydrate incoming deduplication reference: {reference_id}"
             raise DeduplicationNotFoundError(msg)
         reference = hydrated[0]
-        incoming = await self._anti_corruption_service.internal_reference_to_sdk(
-            reference
-        )
+        incoming = await self._to_scorer_view(reference)
         candidate_reference = CandidateReferenceProjection.get_from_reference(reference)
-        return await self._assess(
-            incoming,
-            CandidateSelectionInput(
+        # A reference can project to nothing searchable, which the input model
+        # rejects. Convert it rather than let a bare ValidationError escape.
+        try:
+            selection_input = CandidateSelectionInput(
                 title=candidate_reference.title,
                 authors=candidate_reference.authors,
                 publication_year=candidate_reference.publication_year,
                 identifiers=candidate_reference.identifiers,
                 excluded_reference_id=reference_id,
-            ),
+            )
+        except ValidationError as exc:
+            msg = f"Cannot build a candidate query for {reference_id}: {exc}"
+            raise DeduplicationValueError(msg) from exc
+        return await self._assess(
+            incoming,
+            selection_input,
             retrieval_policy=retrieval_policy,
             k=k,
         )
@@ -150,6 +189,9 @@ class DeduplicationAssessmentService:
         k: int | None,
     ) -> DeduplicationAssessment:
         """Find, hydrate and score every candidate under one assessment."""
+        # Filter here rather than per entrypoint: a supplied record carries whatever
+        # its dataset held, and both sides must reach the scorer alike.
+        incoming = self._scored_view(incoming)
         try:
             candidate_selection = await self._candidate_selector(
                 CandidateSelectionRequest(
@@ -179,7 +221,7 @@ class DeduplicationAssessmentService:
             # sign a URL per full-text enhancement, on a path that never reads one.
             try:
                 hydrated = await self._reference_reader.get_hydrated(
-                    candidate_ids, enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
+                    candidate_ids, enhancement_types=list(SCORED_ENHANCEMENT_TYPES)
                 )
             except INFRASTRUCTURE_ERRORS as exc:
                 msg = f"Candidate hydration failed ({type(exc).__name__}): {exc}"
@@ -201,10 +243,8 @@ class DeduplicationAssessmentService:
         scorer_metadata = self._pair_scorer.metadata.model_copy(deep=True)
         threshold = scorer_metadata.threshold
         for candidate in candidate_selection.candidates:
-            candidate_sdk = (
-                await self._anti_corruption_service.internal_reference_to_sdk(
-                    candidates_by_id[candidate.reference_id]
-                )
+            candidate_sdk = self._scored_view(
+                await self._to_scorer_view(candidates_by_id[candidate.reference_id])
             )
             pair_result = await self._pair_scorer.score_pair(
                 incoming=incoming, candidate=candidate_sdk
