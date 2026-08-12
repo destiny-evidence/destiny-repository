@@ -28,9 +28,6 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
     steps:
-      # TESTING - remove. Forces the failure notification path.
-      - run: exit 1
-
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
         with:
