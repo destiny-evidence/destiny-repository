@@ -148,7 +148,7 @@ jobs:
               --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
               --resource-group ${{vars.RESOURCE_GROUP}}
 
-  notify-production:
+  notify:
     # TESTING - revert to 'production' before merging.
     if: ${{ always() && inputs.environment == 'development' }}
     needs:
@@ -160,11 +160,11 @@ jobs:
     environment: ${{ inputs.environment }}
     env:
       STATUS: >-
-        ${{ (contains(needs.*.result, 'failure') && '🚨 PRODUCTION DEPLOY FAILED')
-        || (contains(needs.*.result, 'cancelled') && '⚠️ Production deploy cancelled')
-        || '✅ Production deployed' }}
+        ${{ (contains(needs.*.result, 'failure') && '🚨 DEPLOY FAILED')
+        || (contains(needs.*.result, 'cancelled') && '⚠️ Deploy cancelled')
+        || '✅ Deployed' }}
     steps:
-      - name: Notify Slack of production deploy result
+      - name: Notify Slack of deploy result
         uses: slackapi/slack-github-action@v4.0.0
         with:
           webhook: ${{ secrets.CI_SLACK_WEBHOOK_URL }}
@@ -178,11 +178,11 @@ jobs:
                 text:
                   type: plain_text
                   emoji: true
-                  text: "${{ env.STATUS }} - ${{ vars.APP_NAME }}"
+                  text: "${{ env.STATUS }} - ${{ vars.APP_NAME }} (${{ inputs.environment }})"
               - type: section
                 fields:
                   - type: mrkdwn
-                    text: "*Image tag:*\n${{ inputs.image_tag }}"
+                    text: "*Image tag:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ inputs.image_tag }}|${{ inputs.image_tag }}>"
                   - type: mrkdwn
                     text: "*Triggered by:*\n${{ github.triggering_actor }}"
               - type: context
