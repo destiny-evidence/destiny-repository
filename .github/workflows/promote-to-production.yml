@@ -32,6 +32,7 @@ jobs:
     if: github.ref == 'refs/heads/main' # Only run on main, not strictly necessary but for safety
     uses: ./.github/workflows/deploy.yml
     needs: get-image-tag
+    secrets: inherit
     with:
       environment: production
       image_tag: ${{ needs.get-image-tag.outputs.image_tag }}

@@ -22,6 +22,7 @@ jobs:
   deploy:
     needs: build
     uses: ./.github/workflows/deploy.yml
+    secrets: inherit
     with:
       environment: development
       image_tag: ${{ needs.build.outputs.image_tag }}

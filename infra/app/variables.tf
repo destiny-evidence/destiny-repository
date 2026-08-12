@@ -519,8 +519,7 @@ variable "alert_slack_webhook_url" {
 }
 
 variable "ci_slack_webhook_url" {
-  description = "Slack webhook URL for deploy notifications (optional)"
+  description = "Slack webhook URL for deploy notifications"
   type        = string
-  default     = ""
   sensitive   = true
 }
