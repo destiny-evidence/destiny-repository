@@ -1174,9 +1174,9 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
     all_enhancements = [*expired_enhancements, non_expired, pending_past_expiry]
 
     class FakePendingEnhancementRepo(fake_repository):
-        async def count_retry_depth(self, pending_enhancement_id):
-            """Return 0 for all (no previous retries)."""
-            return 0
+        async def get_retry_depths(self, ids):
+            """No previous retries, so depth is 0 for all."""
+            return {pe_id: 0 for pe_id in ids}
 
         async def expire_pending_enhancements_past_expiry(self, now, statuses):
             """Atomically find and expire pending enhancements."""
@@ -1381,13 +1381,14 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
 
     # Create repository that returns different retry depths
     class FakePendingEnhancementRepo(fake_repository):
-        async def count_retry_depth(self, pending_enhancement_id):
+        async def get_retry_depths(self, ids):
             """Return different depths based on ID."""
-            if pending_enhancement_id == expired_low_depth.id:
-                return 1  # Below limit
-            if pending_enhancement_id == expired_at_limit.id:
-                return 3  # At limit
-            return 4  # Over limit
+            depth_by_id = {
+                expired_low_depth.id: 1,  # Below limit
+                expired_at_limit.id: 3,  # At limit
+                expired_over_limit.id: 4,  # Over limit
+            }
+            return {pe_id: depth_by_id[pe_id] for pe_id in ids}
 
         async def expire_pending_enhancements_past_expiry(self, now, statuses):
             """Atomically find and expire pending enhancements."""
