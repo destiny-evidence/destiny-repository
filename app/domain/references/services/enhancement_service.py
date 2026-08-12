@@ -244,12 +244,14 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             List of newly created retry pending enhancements
 
         """
+        retry_depths = await self.sql_uow.pending_enhancements.get_retry_depths(
+            [expired.id for expired in expired_enhancements]
+        )
+
         enhancements_to_retry = []
 
         for expired_enhancement in expired_enhancements:
-            retry_depth = await self.sql_uow.pending_enhancements.count_retry_depth(
-                expired_enhancement.id
-            )
+            retry_depth = retry_depths.get(expired_enhancement.id, 0)
 
             if retry_depth < max_retry_count:
                 new_pending_enhancement = PendingEnhancement(
