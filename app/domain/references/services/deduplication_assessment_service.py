@@ -121,6 +121,16 @@ class DeduplicationAssessmentService:
             }
         )
 
+    async def _hydrate_one(self, reference_id: UUID) -> Reference:
+        """Read one stored reference, treating an empty result as not-found."""
+        hydrated = await self._reference_reader.get_hydrated(
+            [reference_id], enhancement_types=list(SCORED_ENHANCEMENT_TYPES)
+        )
+        if not hydrated:
+            msg = f"Could not hydrate incoming deduplication reference: {reference_id}"
+            raise DeduplicationNotFoundError(msg)
+        return hydrated[0]
+
     async def evaluate(
         self,
         reference_id: UUID,
@@ -129,13 +139,7 @@ class DeduplicationAssessmentService:
         k: int | None = None,
     ) -> DeduplicationAssessment:
         """Assess a stored reference from one hydrated input snapshot."""
-        hydrated = await self._reference_reader.get_hydrated(
-            [reference_id], enhancement_types=list(SCORED_ENHANCEMENT_TYPES)
-        )
-        if not hydrated:
-            msg = f"Could not hydrate incoming deduplication reference: {reference_id}"
-            raise DeduplicationNotFoundError(msg)
-        reference = hydrated[0]
+        reference = await self._hydrate_one(reference_id)
         incoming = await self._to_scorer_view(reference)
         candidate_reference = CandidateReferenceProjection.get_from_reference(reference)
         # A reference can project to nothing searchable, which the input model
