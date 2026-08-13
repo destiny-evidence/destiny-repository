@@ -1,9 +1,7 @@
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
-import destiny_sdk
 import pytest
-from destiny_sdk.visibility import Visibility
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.core.exceptions import (
@@ -30,6 +28,7 @@ from app.domain.references.models.models import (
     Reference,
     RetrievalPolicyName,
 )
+from app.domain.references.services.access_control_service import RedactedReference
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -43,6 +42,7 @@ from app.persistence.es.persistence import (
     ESSearchTotal,
 )
 from tests.factories import (
+    AbstractContentEnhancementFactory,
     AnnotationEnhancementFactory,
     BibliographicMetadataEnhancementFactory,
     BooleanAnnotationFactory,
@@ -106,28 +106,34 @@ def _with_full_text(reference: Reference) -> Reference:
     return reference
 
 
-def _supplied_reference() -> destiny_sdk.references.Reference:
-    """Build the frozen SDK shape supplied by an evaluation runner."""
-    reference_id = uuid7()
-    return destiny_sdk.references.Reference(
-        id=reference_id,
-        visibility=Visibility.PUBLIC,
-        identifiers=[OpenAlexIdentifierFactory.build()],
-        enhancements=[
-            destiny_sdk.enhancements.Enhancement(
-                reference_id=reference_id,
-                source="evaluation-benchmark",
-                visibility=Visibility.PUBLIC,
-                content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
-                    title="A supplied reference",
-                ),
-            )
-        ],
+def _supplied_reference() -> Reference:
+    """Build the unimported record an evaluation runner supplies."""
+    reference = ReferenceFactory.build(visibility="public")
+    # Children carry the parent id, matching what reference_from_sdk_file_input
+    # produces for a supplied record.
+    return reference.model_copy(
+        update={
+            "enhancements": [
+                EnhancementFactory.build(
+                    reference_id=reference.id,
+                    source="evaluation-benchmark",
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="A supplied reference",
+                    ),
+                )
+            ],
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    reference_id=reference.id,
+                    identifier=OpenAlexIdentifierFactory.build(),
+                )
+            ],
+        }
     )
 
 
 def _supplied_input(
-    reference: destiny_sdk.references.Reference,
+    reference: Reference,
     *,
     excluded_reference_id: UUID | None = None,
 ) -> CandidateSelectionInput:
@@ -137,8 +143,8 @@ def _supplied_input(
         authors=["Jane Doe"],
         publication_year=2025,
         identifiers=[
-            CandidateIdentifier.from_specific(identifier)
-            for identifier in (reference.identifiers or [])
+            CandidateIdentifier.from_specific(linked.identifier)
+            for linked in (reference.identifiers or [])
         ],
         excluded_reference_id=excluded_reference_id,
     )
@@ -180,17 +186,12 @@ class FakePairScorer:
             effective_configuration={"weights": "test"},
         )
         self.probabilities = probabilities
-        self.calls: list[
-            tuple[
-                destiny_sdk.references.Reference,
-                destiny_sdk.references.Reference,
-            ]
-        ] = []
+        self.calls: list[tuple[Reference, Reference]] = []
 
     async def score_pair(
         self,
-        incoming: destiny_sdk.references.Reference,
-        candidate: destiny_sdk.references.Reference,
+        incoming: RedactedReference,
+        candidate: RedactedReference,
     ) -> DeduplicationPairResult:
         self.calls.append((incoming, candidate))
         probability = self.probabilities[candidate.id]
@@ -236,7 +237,6 @@ def _forbid_async_methods(target, method_names: tuple[str, ...]):
 
 
 def _build_service(
-    anti_corruption_service,
     selection: CandidateSelectionResult,
     references: list[Reference],
     probabilities: dict[UUID, float | None],
@@ -268,16 +268,13 @@ def _build_service(
     service = DeduplicationAssessmentService(
         candidate_selector=selector,
         reference_reader=reader,
-        anti_corruption_service=anti_corruption_service,
         pair_scorer=pair_scorer,
     )
     return service, selector, reader, pair_scorer
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_scores_identifier_candidate_and_proposes_it(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_scores_identifier_candidate_and_proposes_it():
     incoming = _supplied_reference()
     candidate = _reference(community_bound=True)
     identifier = candidate.identifiers[0].identifier
@@ -296,7 +293,6 @@ async def test_evaluate_supplied_scores_identifier_candidate_and_proposes_it(
         ],
     )
     service, selector, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(selected, searchable=False),
         [candidate],
         {candidate.id: 0.91},
@@ -336,9 +332,7 @@ async def test_evaluate_supplied_scores_identifier_candidate_and_proposes_it(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_scores_all_candidates_and_retains_every_threshold_match(
-    anti_corruption_service,
-):
+async def test_evaluate_scores_all_candidates_and_retains_every_threshold_match():
     incoming = _reference()
     candidates = [_reference(), _reference(), _reference()]
     selected = [
@@ -351,7 +345,6 @@ async def test_evaluate_scores_all_candidates_and_retains_every_threshold_match(
         candidates[2].id: 0.85,
     }
     service, selector, _, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(*selected),
         [incoming, *candidates],
         probabilities,
@@ -377,13 +370,10 @@ async def test_evaluate_scores_all_candidates_and_retains_every_threshold_match(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_stored_reuses_one_snapshot_for_selection_and_scoring(
-    anti_corruption_service,
-):
+async def test_evaluate_stored_reuses_one_snapshot_for_selection_and_scoring():
     incoming = _reference(community_bound=True)
     candidate = _reference()
     service, selector, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
         [incoming, candidate],
         {candidate.id: 0.1},
@@ -407,9 +397,7 @@ async def test_evaluate_stored_reuses_one_snapshot_for_selection_and_scoring(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_rejects_a_candidate_with_the_incoming_id(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_rejects_a_candidate_with_the_incoming_id():
     incoming = _supplied_reference()
     candidate = _reference()
     candidate.id = incoming.id
@@ -418,7 +406,6 @@ async def test_evaluate_supplied_rejects_a_candidate_with_the_incoming_id(
     for identifier in candidate.identifiers or []:
         identifier.reference_id = incoming.id
     service, _, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(Candidate(reference_id=incoming.id, rank=1, routes=[])),
         [candidate],
         {incoming.id: 1.0},
@@ -432,9 +419,7 @@ async def test_evaluate_supplied_rejects_a_candidate_with_the_incoming_id(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_makes_no_proposal_for_any_unscorable_candidate(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_makes_no_proposal_for_any_unscorable_candidate():
     incoming = _supplied_reference()
     scored_candidate = _reference()
     unscorable_candidate = _reference()
@@ -444,7 +429,6 @@ async def test_evaluate_supplied_makes_no_proposal_for_any_unscorable_candidate(
         for rank, candidate in enumerate(candidates, start=1)
     ]
     service, _, _, _ = _build_service(
-        anti_corruption_service,
         _selection(*selected),
         candidates,
         {
@@ -464,12 +448,9 @@ async def test_evaluate_supplied_makes_no_proposal_for_any_unscorable_candidate(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_empty_searchable_union_proposes_canonical(
-    anti_corruption_service,
-):
+async def test_evaluate_empty_searchable_union_proposes_canonical():
     incoming = _reference()
     service, _, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(searchable=True),
         [incoming],
         {},
@@ -489,12 +470,9 @@ async def test_evaluate_empty_searchable_union_proposes_canonical(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_empty_unsearchable_union_makes_no_proposal(
-    anti_corruption_service,
-):
+async def test_evaluate_empty_unsearchable_union_makes_no_proposal():
     incoming = _reference()
     service, _, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(searchable=False),
         [incoming],
         {},
@@ -514,10 +492,8 @@ async def test_evaluate_empty_unsearchable_union_makes_no_proposal(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_scores_the_exact_sdk_reference(
-    anti_corruption_service,
-):
-    """The runner's SDK reference reaches the scorer without a domain round-trip."""
+async def test_evaluate_supplied_scores_the_runners_own_record():
+    """The runner's own record reaches the scorer without a database read."""
     incoming = _supplied_reference()
     candidate = _reference()
     supplied_input = CandidateSelectionInput(
@@ -526,7 +502,6 @@ async def test_evaluate_supplied_scores_the_exact_sdk_reference(
         publication_year=2025,
     )
     service, selector, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
         [candidate],
         {candidate.id: 0.1},
@@ -539,25 +514,19 @@ async def test_evaluate_supplied_scores_the_exact_sdk_reference(
     assert scored_incoming.id == incoming.id
     assert scored_incoming.identifiers == incoming.identifiers
     assert scored_incoming.enhancements == incoming.enhancements
-    # A hydrated reference carries a database timestamp, so a null one here is
-    # what shows the record never went through the domain model.
-    assert scored_incoming.enhancements
-    assert scored_incoming.enhancements[0].created_at is None
     assert selector.await_args.args[0].input == supplied_input
+    # Awaited only for the candidate: the supplied record is never read back.
     reader.get_hydrated.assert_awaited_once_with(
         [candidate.id], enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
     )
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_passes_the_callers_exclusion_through(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_passes_the_callers_exclusion_through():
     """A held record must not be retrieved as its own candidate."""
     incoming = _supplied_reference()
     held_reference_id = uuid7()
     service, selector, _, _ = _build_service(
-        anti_corruption_service,
         _selection(),
         [],
         {},
@@ -574,14 +543,10 @@ async def test_evaluate_supplied_passes_the_callers_exclusion_through(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_reports_retrieval_infrastructure_failure_per_record(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_reports_retrieval_infrastructure_failure_per_record():
     """A retrieval blip the repository already translated is one record's failure."""
     incoming = _supplied_reference()
-    service, selector, _, pair_scorer = _build_service(
-        anti_corruption_service, _selection(), [], {}
-    )
+    service, selector, _, pair_scorer = _build_service(_selection(), [], {})
     selector.side_effect = ESError("candidate search unavailable (503)")
 
     with pytest.raises(DeduplicationError):
@@ -591,14 +556,11 @@ async def test_evaluate_supplied_reports_retrieval_infrastructure_failure_per_re
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_reports_hydration_infrastructure_failure_per_record(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_reports_hydration_infrastructure_failure_per_record():
     """A database blip while hydrating candidates is also one record's failure."""
     incoming = _supplied_reference()
     candidate = _reference()
     service, _, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
         [candidate],
         {candidate.id: 0.9},
@@ -626,12 +588,10 @@ async def test_evaluate_supplied_reports_hydration_infrastructure_failure_per_re
         ),
     ],
 )
-async def test_evaluate_supplied_propagates_defects(anti_corruption_service, error):
+async def test_evaluate_supplied_propagates_defects(error):
     """Only infrastructure failures are localised; a defect still aborts the caller."""
     incoming = _supplied_reference()
-    service, selector, _, _ = _build_service(
-        anti_corruption_service, _selection(), [], {}
-    )
+    service, selector, _, _ = _build_service(_selection(), [], {})
     selector.side_effect = error
 
     with pytest.raises(type(error)):
@@ -639,13 +599,10 @@ async def test_evaluate_supplied_propagates_defects(anti_corruption_service, err
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_fails_when_candidate_union_cannot_be_hydrated(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_fails_when_candidate_union_cannot_be_hydrated():
     incoming = _supplied_reference()
     missing_id = uuid7()
     service, _, _, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(Candidate(reference_id=missing_id, rank=1, routes=[])),
         [],
         {missing_id: 0.9},
@@ -658,12 +615,9 @@ async def test_evaluate_supplied_fails_when_candidate_union_cannot_be_hydrated(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_fails_when_stored_incoming_cannot_be_hydrated(
-    anti_corruption_service,
-):
+async def test_evaluate_fails_when_stored_incoming_cannot_be_hydrated():
     reference_id = uuid7()
     service, selector, _, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(),
         [],
         {},
@@ -678,26 +632,21 @@ async def test_evaluate_fails_when_stored_incoming_cannot_be_hydrated(
 
 
 @pytest.mark.asyncio
-async def test_evaluate_supplied_presents_only_scored_enhancements(
-    anti_corruption_service,
-):
+async def test_evaluate_supplied_presents_only_scored_enhancements():
     """Both entrypoints must show the scorer the same enhancement types."""
     incoming = _supplied_reference()
     incoming.enhancements = [
         *(incoming.enhancements or []),
-        destiny_sdk.enhancements.Enhancement(
+        EnhancementFactory.build(
             reference_id=incoming.id,
             source="evaluation-benchmark",
-            visibility=Visibility.PUBLIC,
-            content=destiny_sdk.enhancements.AbstractContentEnhancement(
-                process=destiny_sdk.enhancements.AbstractProcessType.OTHER,
+            content=AbstractContentEnhancementFactory.build(
                 abstract="An abstract the Deduper does not score on.",
             ),
         ),
     ]
     candidate = _reference()
     service, _, _, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
         [candidate],
         {candidate.id: 0.1},
@@ -715,14 +664,11 @@ async def test_evaluate_supplied_presents_only_scored_enhancements(
 @pytest.mark.asyncio
 async def test_evaluate_withholds_full_text_from_the_scorer():
     """Redaction, not the hydration filter, is what keeps full text off this path."""
-    sign_url = AsyncMock()
-    anti_corruption_service = ReferenceAntiCorruptionService(sign_url=sign_url)
     # Community-bound adds an annotation, which redaction keeps and the scored
     # view drops, so this covers both filters rather than only redaction.
     incoming = _with_full_text(_reference(community_bound=True))
     candidate = _with_full_text(_reference(community_bound=True))
     service, _, reader, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
         [incoming, candidate],
         {candidate.id: 0.9},
@@ -741,19 +687,15 @@ async def test_evaluate_withholds_full_text_from_the_scorer():
             enhancement.content.enhancement_type
             for enhancement in scored.enhancements or []
         ] == [EnhancementType.BIBLIOGRAPHIC]
-    sign_url.assert_not_awaited()
 
 
 @pytest.mark.asyncio
-async def test_evaluate_fails_when_stored_incoming_has_no_search_fields(
-    anti_corruption_service,
-):
+async def test_evaluate_fails_when_stored_incoming_has_no_search_fields():
     # Empty-list kwargs do not stick through the factory, which regenerates both.
     reference = ReferenceFactory.build(visibility="public").model_copy(
         update={"enhancements": [], "identifiers": []}
     )
     service, selector, _, pair_scorer = _build_service(
-        anti_corruption_service,
         _selection(),
         [reference],
         {},
@@ -777,7 +719,7 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
     candidate.identifiers = [
         LinkedExternalIdentifierFactory.build(
             reference_id=candidate.id,
-            identifier=incoming.identifiers[0],
+            identifier=incoming.identifiers[0].identifier,
         )
     ]
     references = fake_repository([candidate])
@@ -817,7 +759,6 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
     assessor = DeduplicationAssessmentService(
         candidate_selector=candidate_service.get_deduplication_candidates,
         reference_reader=references,
-        anti_corruption_service=anti_corruption_service,
         pair_scorer=pair_scorer,
     )
 

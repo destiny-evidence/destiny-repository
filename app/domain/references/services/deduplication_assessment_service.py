@@ -4,7 +4,6 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 from uuid import UUID
 
-import destiny_sdk
 from pydantic import ValidationError
 from sqlalchemy.exc import InterfaceError, OperationalError
 
@@ -29,10 +28,8 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.projections import CandidateReferenceProjection
 from app.domain.references.services.access_control_service import (
+    RedactedReference,
     ReferenceAccessControlService,
-)
-from app.domain.references.services.anti_corruption_service import (
-    ReferenceAntiCorruptionService,
 )
 
 CandidateSelector = Callable[
@@ -71,8 +68,8 @@ class PairScorer(Protocol):
 
     async def score_pair(
         self,
-        incoming: destiny_sdk.references.Reference,
-        candidate: destiny_sdk.references.Reference,
+        incoming: RedactedReference,
+        candidate: RedactedReference,
     ) -> DeduplicationPairResult:
         """Score one incoming-reference and candidate pair."""
         ...
@@ -86,39 +83,34 @@ class DeduplicationAssessmentService:
         *,
         candidate_selector: CandidateSelector,
         reference_reader: ReferenceReader,
-        anti_corruption_service: ReferenceAntiCorruptionService,
         pair_scorer: PairScorer,
     ) -> None:
         """Initialize the service with read-only assessment dependencies."""
         self._candidate_selector = candidate_selector
         self._reference_reader = reference_reader
-        self._anti_corruption_service = anti_corruption_service
         self._pair_scorer = pair_scorer
         # Entitlements are deliberately empty: the scorer compares bibliographic
         # fields, so nothing here may reach full text.
         self._access_control_service = ReferenceAccessControlService()
 
-    async def _to_scorer_view(
-        self, reference: Reference
-    ) -> destiny_sdk.references.Reference:
-        """Convert a reference to the least-privileged SDK view the scorer sees."""
-        return await self._anti_corruption_service.reference_to_sdk(
-            self._access_control_service.redact_reference(reference)
-        )
+    def _to_scorer_view(self, reference: Reference) -> RedactedReference:
+        """Reduce a reference to the least-privileged view the scorer sees."""
+        return self._access_control_service.redact_reference(reference)
 
     @staticmethod
-    def _scored_view(
-        reference: destiny_sdk.references.Reference,
-    ) -> destiny_sdk.references.Reference:
+    def _scored_view(reference: RedactedReference) -> RedactedReference:
         """Present only the enhancement types the Deduper compares."""
-        return reference.model_copy(
-            update={
-                "enhancements": [
-                    enhancement
-                    for enhancement in reference.enhancements or []
-                    if enhancement.content.enhancement_type in SCORED_ENHANCEMENT_TYPES
-                ]
-            }
+        return RedactedReference(
+            reference.model_copy(
+                update={
+                    "enhancements": [
+                        enhancement
+                        for enhancement in reference.enhancements or []
+                        if enhancement.content.enhancement_type
+                        in SCORED_ENHANCEMENT_TYPES
+                    ]
+                }
+            )
         )
 
     async def _hydrate_one(self, reference_id: UUID) -> Reference:
@@ -140,7 +132,6 @@ class DeduplicationAssessmentService:
     ) -> DeduplicationAssessment:
         """Assess a stored reference from one hydrated input snapshot."""
         reference = await self._hydrate_one(reference_id)
-        incoming = await self._to_scorer_view(reference)
         candidate_reference = CandidateReferenceProjection.get_from_reference(reference)
         # A reference can project to nothing searchable, which the input model
         # rejects. Convert it rather than let a bare ValidationError escape.
@@ -156,7 +147,7 @@ class DeduplicationAssessmentService:
             msg = f"Cannot build a candidate query for {reference_id}: {exc}"
             raise DeduplicationValueError(msg) from exc
         return await self._assess(
-            incoming,
+            reference,
             selection_input,
             retrieval_policy=retrieval_policy,
             k=k,
@@ -164,14 +155,14 @@ class DeduplicationAssessmentService:
 
     async def evaluate_supplied(
         self,
-        incoming: destiny_sdk.references.Reference,
+        incoming: Reference,
         selection_input: CandidateSelectionInput,
         *,
         retrieval_policy: RetrievalPolicyName | None = None,
         k: int | None = None,
     ) -> DeduplicationAssessment:
         """
-        Assess a frozen SDK reference against a query the runner built.
+        Assess an unimported supplied reference against a query the runner built.
 
         The caller owns the query payload because it decides which fields and
         identifiers the record presents, and sets ``excluded_reference_id`` when the
@@ -186,16 +177,16 @@ class DeduplicationAssessmentService:
 
     async def _assess(
         self,
-        incoming: destiny_sdk.references.Reference,
+        incoming: Reference,
         selection_input: CandidateSelectionInput,
         *,
         retrieval_policy: RetrievalPolicyName | None,
         k: int | None,
     ) -> DeduplicationAssessment:
         """Find, hydrate and score every candidate under one assessment."""
-        # Filter here rather than per entrypoint: a supplied record carries whatever
+        # Reduce here rather than per entrypoint: a supplied record carries whatever
         # its dataset held, and both sides must reach the scorer alike.
-        incoming = self._scored_view(incoming)
+        scored_incoming = self._scored_view(self._to_scorer_view(incoming))
         try:
             candidate_selection = await self._candidate_selector(
                 CandidateSelectionRequest(
@@ -247,11 +238,11 @@ class DeduplicationAssessmentService:
         scorer_metadata = self._pair_scorer.metadata.model_copy(deep=True)
         threshold = scorer_metadata.threshold
         for candidate in candidate_selection.candidates:
-            candidate_sdk = self._scored_view(
-                await self._to_scorer_view(candidates_by_id[candidate.reference_id])
+            candidate_view = self._scored_view(
+                self._to_scorer_view(candidates_by_id[candidate.reference_id])
             )
             pair_result = await self._pair_scorer.score_pair(
-                incoming=incoming, candidate=candidate_sdk
+                incoming=scored_incoming, candidate=candidate_view
             )
             clears_threshold = (
                 pair_result.probability >= threshold
