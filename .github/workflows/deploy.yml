@@ -138,10 +138,11 @@ jobs:
       # Report every unhealthy app, not just the first.
       fail-fast: false
       matrix:
-        container_app:
-          - ${{ vars.CONTAINER_APP_NAME }}
-          - ${{ vars.CONTAINER_APP_TASKS_NAME }}
-          - ${{ vars.CONTAINER_APP_UI_NAME }}
+        # We have to do this lookup as `strategy` cannot see ENV vars
+        app_var:
+          - CONTAINER_APP_NAME
+          - CONTAINER_APP_TASKS_NAME
+          - CONTAINER_APP_UI_NAME
     steps:
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
@@ -150,21 +151,26 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # The deploy jobs return once Azure accepts the new revision, not once it is
+      # serving, so a replica that never starts would otherwise report a green deploy.
       - name: Wait for latest revision to be running
         uses: Azure/cli@v2.0.0
         with:
           inlineScript: |
-            APP_ID=$(az containerapp show \
-              --name "${{ matrix.container_app }}" \
-              --resource-group ${{vars.RESOURCE_GROUP}} \
-              --query id --output tsv)
+            APP="${{ vars[matrix.app_var] }}"
 
-            REVISION=$(az containerapp show \
-              --name "${{ matrix.container_app }}" \
+            if [ -z "$APP" ]; then
+              echo "::error::${{ matrix.app_var }} is unset"
+              exit 1
+            fi
+
+            APP_ID=$(az containerapp show --name "$APP" \
+              --resource-group ${{vars.RESOURCE_GROUP}} --query id --output tsv)
+            REVISION=$(az containerapp show --name "$APP" \
               --resource-group ${{vars.RESOURCE_GROUP}} \
               --query properties.latestRevisionName --output tsv)
 
-            echo "Waiting for revision $REVISION"
+            echo "Waiting for $APP revision $REVISION"
             az resource wait \
               --ids "$APP_ID/revisions/$REVISION" \
               --custom "properties.runningState=='Running'" \
@@ -177,7 +183,7 @@ jobs:
         with:
           inlineScript: |
             az containerapp replica list \
-              --name "${{ matrix.container_app }}" \
+              --name "${{ vars[matrix.app_var] }}" \
               --resource-group ${{vars.RESOURCE_GROUP}}
 
   migrate-database:
