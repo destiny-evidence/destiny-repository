@@ -46,7 +46,7 @@ Provisioning
 
 In order to obtain a token from the DESTINY authentication server, you will need to be enrolled in our auth server. Please reach out if you need access.
 
-Everyone will have ``reference.reader``, but please reach out if you need additional permission scopes. You can see the available scopes per API resource in `the API documentation <https://api.evidence-repository.org/redoc>`_ - it is listed under each sub-category.
+Everyone enrolled will have ``reference.reader``, but please reach out if you need additional permissions, naming the environments they apply to. You can see which permission each API resource requires in `the API documentation <https://api.evidence-repository.org/redoc>`_ - it is listed under each sub-category.
 
 
 Obtaining a token
@@ -88,14 +88,16 @@ If you are not using Python, or want to authenticate from a tool like Postman, y
     "Client ID (production)", ``destiny-auth-client-production``
     "Grant type", "Authorization Code (with PKCE)"
     "Code challenge method", ``S256``
-    "Default scopes", ``openid profile email``
+    "Scopes", ``openid profile email``
+
+Request no other scopes - your permissions are already carried in the token.
 
 The redirect URI you supply must be registered on the Keycloak client. At present we allow localhost and postman redirect URIs, but if you want to use a different one, please reach out so we can add it.
 
 Service-to-service authentication
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-For backend services, scheduled jobs, or anything else that runs without a human user. Uses the OAuth 2.0 client credentials flow. This requires a dedicated Keycloak client with Service Accounts enabled — please reach out so we can provision one. Scopes for these clients are mapped from service account roles in Keycloak, not group membership.
+For backend services, scheduled jobs, or anything else that runs without a human user. Uses the OAuth 2.0 client credentials flow. This requires a dedicated Keycloak client with Service Accounts enabled — please reach out so we can provision one, telling us which environments it needs and what it needs to do there.
 
 Using the SDK
 """""""""""""
@@ -163,5 +165,7 @@ The tokens will expire after a certain period (usually two hours). After expirat
 
 Troubleshooting
 ---------------
+
+A ``401`` means the token was rejected - most often expired, or obtained for a different environment than the API you called. A ``403`` means you lack the permission that resource requires.
 
 Please reach out if you experience any issues either obtaining or using tokens - most likely, we need to update some permissions.
