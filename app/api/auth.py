@@ -114,7 +114,8 @@ def derive_entitlements(
     """
     Compute the entitlements granted to a JWT principal.
 
-    ``granted`` is the union of scope and role strings carried in the token.
+    ``granted`` is the set of grants carried in the token: scopes and
+    app roles on the Azure path, client roles on the Keycloak path.
     Robots authenticate via HMAC and source their entitlements from the
     ``Robot`` record directly, bypassing this function.
     """
@@ -469,6 +470,8 @@ class KeycloakJwtAuth(JwtAuth):
     Similar to AzureJwtAuth but configured for Keycloak's OIDC endpoints.
     Uses joserfc for JWT verification and JWKS handling.
 
+    Authorization is the set of client roles held on ``client_id``.
+
     Example:
         .. code-block:: python
 
@@ -477,7 +480,7 @@ class KeycloakJwtAuth(JwtAuth):
                     keycloak_url="http://localhost:8080",
                     realm="destiny",
                     client_id="destiny-repository-client",
-                    scope=AuthScope.REFERENCE_READER,
+                    role=AuthRole.REFERENCE_READER,
                 )
 
             caching_auth = CachingStrategyAuth(selector=auth_strategy)
@@ -506,9 +509,10 @@ class KeycloakJwtAuth(JwtAuth):
         Args:
             keycloak_url: The base URL of the Keycloak server (used for JWKS fetching)
             realm: The Keycloak realm name
-            client_id: The client ID (audience) for token validation
-            scope: The required scope in the token's `scope` claim
-            role: The required role in `realm_access.roles` or client roles
+            client_id: The client ID (audience) for token validation, and the
+                `resource_access` key authorization is read from.
+            scope: Accepted for parity with `AzureJwtAuth` and ignored.
+            role: The required role in `resource_access.{client_id}.roles`
             cache_ttl: Time to live for JWKS cache entries, defaults to 24 hours
             issuer_url: Optional separate URL for token issuer validation. Defaults to
                 keycloak_url if not provided. Useful when tokens are issued with a
@@ -598,39 +602,38 @@ class KeycloakJwtAuth(JwtAuth):
             return KeySet.import_key_set(response.json())
 
     def _extract_roles(self, verified_claims: dict[str, Any]) -> frozenset[str]:
-        """Collect all role strings from realm_access and resource_access."""
-        realm_roles = verified_claims.get("realm_access", {}).get("roles", [])
-        client_roles = (
+        """
+        Collect the client roles granted on this deployment's Keycloak client.
+
+        Take roles from its ``resource_access`` entry alone.
+        """
+        return frozenset(
             verified_claims.get("resource_access", {})
             .get(self.client_id, {})
             .get("roles", [])
         )
-        return frozenset(realm_roles) | frozenset(client_roles)
 
-    def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> SubjectType:
+    def _subject_type(self, verified_claims: dict[str, Any]) -> SubjectType:
         """
-        Check for required scope or role in the Keycloak token.
+        Classify the authenticated principal, for telemetry only.
 
-        Keycloak tokens have:
-        - scope: space-separated string of scopes
-        - realm_access.roles: list of realm roles
-        - resource_access.{client_id}.roles: list of client roles
-
-        Keycloak tokens always contain a ``scope`` claim. We therefore check
-        scope first and fall back to roles, allowing service accounts that
-        have a realm/client role but no explicit scope.
+        Keycloak names a service account's principal ``service-account-{azp}``;
+        any other token carrying ``preferred_username`` belongs to a user.
         """
-        if self.scope and verified_claims.get("scope"):
-            scopes = verified_claims["scope"].split()
-            if self.scope.value in scopes:
-                return SubjectType.USER
+        username = verified_claims.get("preferred_username")
+        azp = verified_claims.get("azp")
+        if username and username != f"service-account-{azp}":
+            return SubjectType.USER
+        return SubjectType.SERVICE
 
+    def _require_role(self, verified_claims: dict[str, Any]) -> SubjectType:
+        """Check for the required client role in the Keycloak token."""
         if self.role and self.role.value in self._extract_roles(verified_claims):
-            return SubjectType.SERVICE
+            return self._subject_type(verified_claims)
 
         raise AuthError(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="The token does not contain the required scope or role.",
+            detail="The token does not contain the required role.",
         )
 
     async def __call__(
@@ -646,9 +649,8 @@ class KeycloakJwtAuth(JwtAuth):
             )
 
         verified_claims = await self.verify_token(credentials.credentials)
-        subject_type = self._require_scope_or_role(verified_claims)
+        subject_type = self._require_role(verified_claims)
 
-        scopes = set(verified_claims.get("scope", "").split())
         roles = self._extract_roles(verified_claims)
 
         span = trace.get_current_span()
@@ -659,7 +661,7 @@ class KeycloakJwtAuth(JwtAuth):
         if roles:
             span.set_attribute(Attributes.USER_ROLES, ",".join(roles))
 
-        return derive_entitlements(subject_type, frozenset(scopes | roles))
+        return derive_entitlements(subject_type, roles)
 
 
 class MultiIssuerJwtAuth(JwtAuth):

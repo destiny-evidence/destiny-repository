@@ -15,109 +15,67 @@
   "ssoSessionMaxLifespan": 36000,
   "offlineSessionIdleTimeout": 2592000,
   "roles": {
-    "realm": [
-      {
-        "name": "administrator",
-        "description": "Can manage the repository itself"
-      },
-      {
-        "name": "import.writer",
-        "description": "Importers can import"
-      },
-      {
-        "name": "reference.reader",
-        "description": "Can view references"
-      },
-      {
-        "name": "reference.deduplicator",
-        "description": "Can deduplicate references"
-      },
-      {
-        "name": "enhancement_request.writer",
-        "description": "Can request enhancements"
-      },
-      {
-        "name": "robot.writer",
-        "description": "Can register robots and rotate robot client secrets"
-      }
-    ]
+    "client": {
+      "destiny-repository-client-local": [
+        {
+          "name": "administrator",
+          "description": "Can manage the repository itself"
+        },
+        {
+          "name": "import.writer",
+          "description": "Importers can import"
+        },
+        {
+          "name": "reference.reader",
+          "description": "Can view references"
+        },
+        {
+          "name": "reference.full_text.reader",
+          "description": "Can view reference full text"
+        },
+        {
+          "name": "reference.deduplicator",
+          "description": "Can deduplicate references"
+        },
+        {
+          "name": "enhancement_request.writer",
+          "description": "Can request enhancements"
+        },
+        {
+          "name": "robot.writer",
+          "description": "Can register robots and rotate robot client secrets"
+        },
+        {
+          "name": "robot.entitlement.writer",
+          "description": "Can manage robot entitlements"
+        }
+      ]
+    }
   },
   "groups": [
     {
-      "name": "consumers",
-      "realmRoles": ["reference.reader"]
-    },
-    {
-      "name": "developers",
-      "realmRoles": [
-        "administrator",
-        "import.writer",
-        "reference.reader",
-        "reference.deduplicator",
-        "enhancement_request.writer",
-        "robot.writer"
-      ]
-    }
-  ],
-  "clientScopes": [
-    {
-      "name": "administrator.all",
-      "description": "Full administrative access",
-      "protocol": "openid-connect",
-      "attributes": {
-        "include.in.token.scope": "true",
-        "display.on.consent.screen": "true"
+      "name": "consumers-local",
+      "clientRoles": {
+        "destiny-repository-client-local": ["reference.reader"]
       }
     },
     {
-      "name": "import.writer.all",
-      "description": "Import data access",
-      "protocol": "openid-connect",
-      "attributes": {
-        "include.in.token.scope": "true",
-        "display.on.consent.screen": "true"
-      }
-    },
-    {
-      "name": "reference.reader.all",
-      "description": "Reference read access",
-      "protocol": "openid-connect",
-      "attributes": {
-        "include.in.token.scope": "true",
-        "display.on.consent.screen": "true"
-      }
-    },
-    {
-      "name": "reference.deduplicator.all",
-      "description": "Reference deduplication access",
-      "protocol": "openid-connect",
-      "attributes": {
-        "include.in.token.scope": "true",
-        "display.on.consent.screen": "true"
-      }
-    },
-    {
-      "name": "enhancement_request.writer.all",
-      "description": "Enhancement request write access",
-      "protocol": "openid-connect",
-      "attributes": {
-        "include.in.token.scope": "true",
-        "display.on.consent.screen": "true"
-      }
-    },
-    {
-      "name": "robot.writer.all",
-      "description": "Robot management access",
-      "protocol": "openid-connect",
-      "attributes": {
-        "include.in.token.scope": "true",
-        "display.on.consent.screen": "true"
+      "name": "developers-local",
+      "clientRoles": {
+        "destiny-repository-client-local": [
+          "administrator",
+          "import.writer",
+          "reference.reader",
+          "reference.deduplicator",
+          "enhancement_request.writer",
+          "robot.writer"
+        ]
       }
     }
   ],
   "clients": [
     {
-      "clientId": "destiny-auth-client",
+      "clientId": "destiny-auth-client-local",
       "name": "DESTINY Repository Auth Client",
       "description": "Public client for all user authentication (UI, CLI, Postman, API testing tools)",
       "enabled": true,
@@ -135,14 +93,6 @@
         "https://oauth.pstmn.io/v1/callback"
       ],
       "webOrigins": ["http://localhost:3000", "https://oauth.pstmn.io"],
-      "optionalClientScopes": [
-        "administrator.all",
-        "import.writer.all",
-        "reference.reader.all",
-        "reference.deduplicator.all",
-        "enhancement_request.writer.all",
-        "robot.writer.all"
-      ],
       "attributes": {
         "oauth2.device.authorization.grant.enabled": "true",
         "pkce.code.challenge.method": "S256",
@@ -155,7 +105,7 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "destiny-repository-client",
+            "included.client.audience": "destiny-repository-client-local",
             "id.token.claim": "false",
             "access.token.claim": "true"
           }
@@ -163,7 +113,7 @@
       ]
     },
     {
-      "clientId": "destiny-repository-client",
+      "clientId": "destiny-repository-client-local",
       "name": "DESTINY Repository API",
       "description": "Backend API resource server",
       "enabled": true,
@@ -191,33 +141,7 @@
           "temporary": false
         }
       ],
-      "groups": ["developers"]
-    }
-  ],
-  "scopeMappings": [
-    {
-      "clientScope": "administrator.all",
-      "roles": ["administrator"]
-    },
-    {
-      "clientScope": "import.writer.all",
-      "roles": ["import.writer"]
-    },
-    {
-      "clientScope": "reference.reader.all",
-      "roles": ["reference.reader"]
-    },
-    {
-      "clientScope": "reference.deduplicator.all",
-      "roles": ["reference.deduplicator"]
-    },
-    {
-      "clientScope": "enhancement_request.writer.all",
-      "roles": ["enhancement_request.writer"]
-    },
-    {
-      "clientScope": "robot.writer.all",
-      "roles": ["robot.writer"]
+      "groups": ["developers-local"]
     }
   ]
 }

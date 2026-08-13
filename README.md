@@ -197,7 +197,7 @@ To get a token for use in a development environment, there is a utility module:
 uv run python -m app.utils.get_token
 ```
 
-### Keycloak Authentication (Experimental)
+### Keycloak Authentication
 
 Keycloak support is experimental as we transition from Azure AD to Keycloak. It is controlled by the `AUTH_PROVIDER` setting in `.env`:
 
@@ -205,8 +205,12 @@ Keycloak support is experimental as we transition from Azure AD to Keycloak. It 
 AUTH_PROVIDER=keycloak
 KEYCLOAK_URL=http://localhost:8080
 KEYCLOAK_REALM=destiny
-KEYCLOAK_CLIENT_ID=destiny-repository-client
+KEYCLOAK_CLIENT_ID=destiny-repository-client-local
 ```
+
+The client is named after the environment, and authorization is the set of client
+roles the principal holds on it (`resource_access["destiny-repository-client-local"]`
+in local development). Realm roles and the `scope` claim confer no access.
 
 When `ENV=local` (the default in `.env.example`), authentication is bypassed entirely regardless of the provider. To test with Keycloak auth enforced locally, start Keycloak and run the app via docker compose:
 

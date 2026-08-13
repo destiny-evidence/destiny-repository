@@ -28,37 +28,6 @@ class TestKeycloakAuth:
         # 200 for success (search returns empty list)
         assert response.status_code == 200
 
-    async def test_token_with_wrong_scope_fails(
-        self,
-        keycloak_api_client: httpx.AsyncClient,
-        keycloak_url: str,
-    ):
-        """Test that a token without required scope fails authorization."""
-        # Get a token with only openid scope (no reference.reader.all)
-        token_url = f"{keycloak_url}/realms/destiny/protocol/openid-connect/token"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                token_url,
-                data={
-                    "grant_type": "password",
-                    "client_id": "destiny-auth-client",
-                    "username": "testuser",
-                    "password": "testpass",
-                    "scope": "openid",  # Missing reference.reader.all
-                },
-            )
-            response.raise_for_status()
-            minimal_token = response.json()["access_token"]
-
-        # Try to access references endpoint
-        response = await keycloak_api_client.get(
-            "references/search/?q=test",
-            headers={"Authorization": f"Bearer {minimal_token}"},
-        )
-        # Should fail with 403 Forbidden (token is valid but lacks scope)
-        assert response.status_code == 403
-
     async def test_expired_token_fails(
         self,
         keycloak_api_client: httpx.AsyncClient,
@@ -71,20 +40,20 @@ class TestKeycloakAuth:
         )
         assert response.status_code == 401
 
-    async def test_requesting_assigned_scope_is_granted(
+    async def test_client_role_grants_access(
         self,
         keycloak_api_client: httpx.AsyncClient,
-        keycloak_token_all_scopes: str,
+        keycloak_token: str,
     ):
         """
-        Test that a user can access an endpoint when they have the required scope.
+        Test that a client role held on the repository's client grants access.
 
-        testuser has robot.writer.all via the developers group, which holds the
-        robot.writer role. The scopeMapping for robot.writer.all requires that role.
+        testuser holds robot.writer on destiny-repository-client-test via the
+        developers-test group.
         """
         response = await keycloak_api_client.post(
             "robots/",
-            headers={"Authorization": f"Bearer {keycloak_token_all_scopes}"},
+            headers={"Authorization": f"Bearer {keycloak_token}"},
             json={
                 "name": "Test Robot",
                 "description": "A robot created during e2e test",
@@ -98,41 +67,45 @@ class TestKeycloakAuth:
         assert "id" in robot_data
         assert "client_secret" in robot_data
 
-    async def test_requesting_unassigned_scope_is_denied(
+    async def test_unheld_client_role_is_denied(
         self,
         keycloak_api_client: httpx.AsyncClient,
-        keycloak_url: str,
+        keycloak_restricted_token: str,
     ):
         """
-        Test that a user cannot gain access by requesting a scope they don't have.
+        Test that a role the principal does not hold denies access.
 
-        The restricteduser does not have robot.writer.all assigned.
-        Even though they explicitly request it in the token, Keycloak should
-        not include it, and the API should deny access.
+        restricteduser holds reference.reader alone via consumers-test.
         """
-        token_url = f"{keycloak_url}/realms/destiny/protocol/openid-connect/token"
-
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                token_url,
-                data={
-                    "grant_type": "password",
-                    "client_id": "destiny-auth-client",
-                    "username": "restricteduser",
-                    "password": "testpass",
-                    "scope": "openid robot.writer.all",
-                },
-            )
-            response.raise_for_status()
-            token = response.json()["access_token"]
-
         response = await keycloak_api_client.post(
             "robots/",
-            headers={"Authorization": f"Bearer {token}"},
+            headers={"Authorization": f"Bearer {keycloak_restricted_token}"},
             json={
                 "name": "Unauthorized Robot",
                 "description": "Should not be created",
                 "owner": "restricted@example.com",
+            },
+        )
+        assert response.status_code == 403
+
+    async def test_realm_role_confers_no_access(
+        self,
+        keycloak_api_client: httpx.AsyncClient,
+        keycloak_legacy_realm_role_token: str,
+    ):
+        """
+        Test that a realm role of the same name confers nothing.
+
+        legacyuser holds robot.writer as a realm role only. Realm roles are
+        realm-global and so cannot express an environment-scoped grant.
+        """
+        response = await keycloak_api_client.post(
+            "robots/",
+            headers={"Authorization": f"Bearer {keycloak_legacy_realm_role_token}"},
+            json={
+                "name": "Realm Role Robot",
+                "description": "Should not be created",
+                "owner": "legacy@example.com",
             },
         )
         assert response.status_code == 403

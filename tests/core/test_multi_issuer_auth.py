@@ -39,7 +39,7 @@ _test_private_key = {
 
 FAKE_KEYCLOAK_URL = "http://localhost:8080"
 FAKE_KEYCLOAK_REALM = "destiny"
-FAKE_KEYCLOAK_CLIENT_ID = "destiny-repository-client"
+FAKE_KEYCLOAK_CLIENT_ID = "destiny-repository-client-test"
 FAKE_KEYCLOAK_ISSUER = f"{FAKE_KEYCLOAK_URL}/realms/{FAKE_KEYCLOAK_REALM}"
 
 FAKE_AZURE_APP_ID = "test_application_id"
@@ -129,7 +129,6 @@ def _generate_azure_token(
 
 def _generate_keycloak_token(
     user_payload: dict | None = None,
-    scope: str | None = None,
     role: str | None = None,
 ) -> str:
     """Generate a fake Keycloak token."""
@@ -140,15 +139,14 @@ def _generate_keycloak_token(
         "exp": int((now + datetime.timedelta(minutes=10)).timestamp()),
         "aud": FAKE_KEYCLOAK_CLIENT_ID,
         "iss": FAKE_KEYCLOAK_ISSUER,
-        "azp": "destiny-auth-client",
+        "azp": "destiny-auth-client-test",
+        "preferred_username": "testuser",
         "typ": "Bearer",
     }
     if user_payload:
         payload.update(user_payload)
-    if scope:
-        payload["scope"] = f"openid profile email {scope}"
     if role:
-        payload["realm_access"] = {"roles": [role]}
+        payload["resource_access"] = {FAKE_KEYCLOAK_CLIENT_ID: {"roles": [role]}}
     private_key = RSAKey.import_key(_test_private_key)
     header = {"alg": "RS256", "kid": _test_private_key["kid"]}
     return joserfc_jwt.encode(header, payload, private_key)
@@ -195,8 +193,8 @@ class TestMultiIssuerAuth:
         fake_request: Request,
         stub_keycloak_jwks: None,  # noqa: ARG002
     ) -> None:
-        """Keycloak token with correct scope is accepted."""
-        token = _generate_keycloak_token(scope=AuthScope.REFERENCE_READER)
+        """Keycloak token with correct client role is accepted."""
+        token = _generate_keycloak_token(role=AuthRole.REFERENCE_READER)
         credentials = Mock()
         credentials.credentials = token
         assert isinstance(await multi_issuer_auth(fake_request, credentials), frozenset)

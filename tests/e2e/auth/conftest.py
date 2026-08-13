@@ -68,13 +68,16 @@ def keycloak_internal_url(keycloak: DockerContainer) -> str:
     return f"http://{host_name}:{port}"
 
 
-async def _get_keycloak_token(keycloak_url: str, scopes: str) -> str:
+async def get_keycloak_token(keycloak_url: str, username: str) -> str:
     """
-    Get a token from Keycloak.
+    Get a token from Keycloak for the given test user.
+
+    Authorization comes from the client roles the user holds on
+    ``destiny-repository-client-test``, so no scope is requested.
 
     Args:
         keycloak_url: Base URL for Keycloak (e.g., http://localhost:8080)
-        scopes: Space-separated list of scopes to request
+        username: The realm user to authenticate as
 
     Returns:
         The access token string
@@ -87,10 +90,10 @@ async def _get_keycloak_token(keycloak_url: str, scopes: str) -> str:
             token_url,
             data={
                 "grant_type": "password",
-                "client_id": "destiny-auth-client",
-                "username": "testuser",
+                "client_id": "destiny-auth-client-test",
+                "username": username,
                 "password": "testpass",
-                "scope": scopes,
+                "scope": "openid",
             },
             timeout=5.0,
         )
@@ -100,18 +103,20 @@ async def _get_keycloak_token(keycloak_url: str, scopes: str) -> str:
 
 @pytest.fixture(scope="session")
 async def keycloak_token(keycloak_url: str) -> str:
-    """Get a token from Keycloak with reference.reader.all scope."""
-    return await _get_keycloak_token(keycloak_url, "openid reference.reader.all")
+    """Get a token for testuser, who holds the developers-test client roles."""
+    return await get_keycloak_token(keycloak_url, "testuser")
 
 
 @pytest.fixture(scope="session")
-async def keycloak_token_all_scopes(keycloak_url: str) -> str:
-    """Get a token from Keycloak with all available scopes."""
-    return await _get_keycloak_token(
-        keycloak_url,
-        "openid reference.reader.all administrator.all import.writer.all "
-        "reference.deduplicator.all enhancement_request.writer.all robot.writer.all",
-    )
+async def keycloak_restricted_token(keycloak_url: str) -> str:
+    """Get a token for restricteduser, who holds reference.reader alone."""
+    return await get_keycloak_token(keycloak_url, "restricteduser")
+
+
+@pytest.fixture(scope="session")
+async def keycloak_legacy_realm_role_token(keycloak_url: str) -> str:
+    """Get a token for legacyuser, who holds robot.writer as a realm role."""
+    return await get_keycloak_token(keycloak_url, "legacyuser")
 
 
 def add_keycloak_env(
@@ -130,7 +135,7 @@ def add_keycloak_env(
         .with_env("KEYCLOAK_URL", keycloak_internal)
         .with_env("KEYCLOAK_ISSUER_URL", keycloak_external)
         .with_env("KEYCLOAK_REALM", "destiny")
-        .with_env("KEYCLOAK_CLIENT_ID", "destiny-repository-client")
+        .with_env("KEYCLOAK_CLIENT_ID", "destiny-repository-client-test")
     )
 
 
