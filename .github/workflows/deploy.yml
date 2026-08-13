@@ -201,7 +201,7 @@ jobs:
               --resource-group ${{vars.RESOURCE_GROUP}}
 
   notify:
-    if: ${{ always() && inputs.environment == 'production' }}
+    if: ${{ always() && inputs.environment == 'development' }}
     needs:
       - verify-deployment
       - migrate-database
