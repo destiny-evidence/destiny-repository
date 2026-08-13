@@ -142,6 +142,22 @@
         }
       ],
       "groups": ["developers-local"]
+    },
+    {
+      "username": "consumeruser",
+      "email": "consumeruser@localhost",
+      "emailVerified": true,
+      "enabled": true,
+      "firstName": "Consumer",
+      "lastName": "User",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "testpass",
+          "temporary": false
+        }
+      ],
+      "groups": ["consumers-local"]
     }
   ]
 }
