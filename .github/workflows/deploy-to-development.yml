@@ -25,4 +25,4 @@ jobs:
     secrets: inherit
     with:
       environment: development
-      image_tag: does-not-exist
+      image_tag: ${{ needs.build.outputs.image_tag }}
