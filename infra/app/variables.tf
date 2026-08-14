@@ -517,3 +517,9 @@ variable "alert_slack_webhook_url" {
   default     = ""
   sensitive   = true
 }
+
+variable "ci_slack_webhook_url" {
+  description = "Slack webhook URL for deploy notifications"
+  type        = string
+  sensitive   = true
+}

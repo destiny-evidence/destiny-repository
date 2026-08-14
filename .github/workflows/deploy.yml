@@ -128,6 +128,64 @@ jobs:
           containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
           imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ inputs.image_tag }}
 
+  verify-deployment:
+    runs-on: ubuntu-latest
+    needs:
+      - deploy-application
+      - deploy-ui
+    environment: ${{ inputs.environment }}
+    strategy:
+      # Report every unhealthy app, not just the first.
+      fail-fast: false
+      matrix:
+        # We have to do this lookup as `strategy` cannot see ENV vars
+        app_var:
+          - CONTAINER_APP_NAME
+          - CONTAINER_APP_TASKS_NAME
+          - CONTAINER_APP_UI_NAME
+    steps:
+      - name: "Az CLI login"
+        uses: azure/login@v2.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # The deploy jobs return once Azure accepts the new revision, not once it is
+      # serving, so a replica that never starts would otherwise report a green deploy.
+      - name: Wait for latest revision to be running
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            APP="${{ vars[matrix.app_var] }}"
+
+            if [ -z "$APP" ]; then
+              echo "::error::${{ matrix.app_var }} is unset"
+              exit 1
+            fi
+
+            APP_ID=$(az containerapp show --name "$APP" \
+              --resource-group ${{vars.RESOURCE_GROUP}} --query id --output tsv)
+            REVISION=$(az containerapp show --name "$APP" \
+              --resource-group ${{vars.RESOURCE_GROUP}} \
+              --query properties.latestRevisionName --output tsv)
+
+            echo "Waiting for $APP revision $REVISION"
+            az resource wait \
+              --ids "$APP_ID/revisions/$REVISION" \
+              --custom "properties.runningState=='Running'" \
+              --interval 10 \
+              --timeout 300
+
+      - name: Show replica state on failure
+        if: failure()
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            az containerapp replica list \
+              --name "${{ vars[matrix.app_var] }}" \
+              --resource-group ${{vars.RESOURCE_GROUP}}
+
   migrate-database:
     runs-on: ubuntu-latest
     needs: deploy-container-apps-jobs
@@ -147,3 +205,43 @@ jobs:
             az containerapp job start \
               --name "db-migrator-${{ vars.ENVIRONMENT_NAME }}" \
               --resource-group ${{vars.RESOURCE_GROUP}}
+
+  notify:
+    if: ${{ always() && inputs.environment == 'production' }}
+    needs:
+      - verify-deployment
+      - migrate-database
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      STATUS: >-
+        ${{ (contains(needs.*.result, 'failure') && '🚨 DEPLOY FAILED')
+        || (contains(needs.*.result, 'skipped') && '🚨 DEPLOY FAILED')
+        || (contains(needs.*.result, 'cancelled') && '⚠️ Deploy cancelled')
+        || '✅ Deployed' }}
+    steps:
+      - name: Notify Slack of deploy result
+        uses: slackapi/slack-github-action@v4.0.0
+        with:
+          webhook: ${{ secrets.CI_SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          # The action swallows delivery errors by default; fail loudly instead.
+          errors: true
+          # github.workflow distinguishes a promotion from a rollback.
+          payload: |
+            blocks:
+              - type: header
+                text:
+                  type: plain_text
+                  emoji: true
+                  text: "${{ env.STATUS }} - ${{ vars.APP_NAME }} (${{ inputs.environment }})"
+              - type: section
+                fields:
+                  - type: mrkdwn
+                    text: "*Image tag:*\n<${{ github.server_url }}/${{ github.repository }}/commit/${{ inputs.image_tag }}|${{ inputs.image_tag }}>"
+                  - type: mrkdwn
+                    text: "*Triggered by:*\n${{ github.triggering_actor }}"
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: "${{ github.workflow }} · <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View run>"

@@ -141,6 +141,14 @@ resource "github_actions_environment_secret" "azure_storage_account_name" {
   plaintext_value = azurerm_storage_account.this.name
 }
 
+resource "github_actions_environment_secret" "ci_slack_webhook_url" {
+  # Read by the notify step in deploy.yml to announce production deploys.
+  repository      = github_repository_environment.environment.repository
+  environment     = github_repository_environment.environment.environment
+  secret_name     = "CI_SLACK_WEBHOOK_URL"
+  plaintext_value = var.ci_slack_webhook_url
+}
+
 resource "github_actions_environment_secret" "destiny_api_endpoint" {
   # The eppi-import GitHub Action needs know the url to the Destiny API.
   repository      = github_repository_environment.environment.repository
