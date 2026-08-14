@@ -18,6 +18,7 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    JsonValue,
     PositiveInt,
     StringConstraints,
     TypeAdapter,
@@ -953,10 +954,20 @@ class CandidateSelectionInput(BaseModel):
         default_factory=list,
         description="Identifiers to union with the Elasticsearch candidates.",
     )
+    excluded_reference_id: UUID | None = Field(
+        default=None,
+        description="Reference ID to exclude from inline candidate selection.",
+    )
 
     @model_validator(mode="after")
     def validate_exactly_one_input_mode(self) -> Self:
         """Require exactly one of reference_id or inline candidate-search fields."""
+        if self.reference_id is not None and self.excluded_reference_id is not None:
+            msg = (
+                "excluded_reference_id applies to inline input; the reference_id "
+                "mode already excludes its own reference."
+            )
+            raise ValueError(msg)
         has_reference_id = self.reference_id is not None
         has_inline = bool(
             self.title or self.authors or self.publication_year or self.identifiers
@@ -1093,6 +1104,126 @@ class CandidateSelectionResult(BaseModel):
     input_searchability: InputSearchability
     diagnostics: CandidateSelectionDiagnostics
     candidates: list[Candidate] = Field(default_factory=list)
+
+
+class DeduplicationFieldStatus(StrEnum):
+    """How the values for one scored field relate across a reference pair."""
+
+    MATCH = auto()
+    """Both values are present and match."""
+    MISMATCH = auto()
+    """Both values are present and differ."""
+    MISSING_INCOMING = auto()
+    """Only the incoming value is missing."""
+    MISSING_CANDIDATE = auto()
+    """Only the candidate value is missing."""
+    MISSING_BOTH = auto()
+    """Both values are missing."""
+
+
+class DeduplicationFieldComparison(BaseModel):
+    """Compared values, availability and score for one Deduper field."""
+
+    incoming_value: JsonValue | None = None
+    candidate_value: JsonValue | None = None
+    status: DeduplicationFieldStatus
+    score: float | None = None
+
+
+class DeduplicationPairResult(BaseModel):
+    """Structured evidence returned by a Deduper adapter for one pair."""
+
+    probability: float | None = Field(default=None, ge=0, le=1)
+    field_comparisons: dict[str, DeduplicationFieldComparison] = Field(
+        default_factory=dict
+    )
+    early_stop_reason: str | None = None
+    doi_mismatch_adjusted: bool = False
+    suggested_label: str | None = None
+    unscorable_reason: str | None = None
+
+    @model_validator(mode="after")
+    def validate_scoring_state(self) -> Self:
+        """Require either a probability or an unscorable reason."""
+        if (self.probability is None) == (self.unscorable_reason is None):
+            msg = "Exactly one of probability or unscorable_reason is required"
+            raise ValueError(msg)
+        return self
+
+
+class DeduperMetadata(BaseModel):
+    """Identity and effective configuration of one loaded Deduper."""
+
+    package_version: str
+    configuration_hash: str
+    threshold: float = Field(ge=0, le=1)
+    effective_configuration: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class ScoredDeduplicationCandidate(BaseModel):
+    """One retrieved candidate and the Deduper evidence for its pair."""
+
+    candidate: Candidate
+    pair_result: DeduplicationPairResult
+    clears_threshold: bool | None
+
+
+class DeduplicationAssessmentOutcome(StrEnum):
+    """Reference-level proposal produced from all threshold-clearing pairs."""
+
+    PROPOSE_CANONICAL = auto()
+    """Every pair scored below threshold and the input was searchable."""
+    PROPOSE_DUPLICATE = auto()
+    """Every pair was scored and exactly one candidate cleared the threshold."""
+    NO_PROPOSAL = auto()
+    """The input was unsearchable, scoring was incomplete, or matches conflicted."""
+
+
+class DeduplicationAssessment(BaseModel):
+    """Read-only candidate retrieval and pair-scoring result for one reference."""
+
+    incoming_reference_id: UUID
+    candidate_selection: CandidateSelectionResult
+    deduper: DeduperMetadata
+    scored_candidates: list[ScoredDeduplicationCandidate] = Field(default_factory=list)
+    outcome: DeduplicationAssessmentOutcome
+    proposed_duplicate_of_id: UUID | None = None
+    threshold_clearing_candidate_ids: list[UUID] = Field(default_factory=list)
+    unscorable_candidate_ids: list[UUID] = Field(default_factory=list)
+
+
+# The enhancement types the Deduper compares. Abstracts are excluded because its
+# scoring weights are configured without them, so sending one is wasted payload.
+SCORED_ENHANCEMENT_TYPES = (EnhancementType.BIBLIOGRAPHIC,)
+
+
+class DeduplicationPaper(ProjectedBaseModel):
+    """
+    The record shape the Deduper scores, built here rather than by the toolkit.
+
+    Mirrors the toolkit's ``Paper`` constructor so it can be handed over as
+    ``model_dump(exclude_none=True)``. Carries the fields the checked-in weights
+    score, plus identifiers and volume, which are unweighted today.
+    """
+
+    doi: destiny_sdk.identifiers.DOIIdentifier | None = None
+    openalex_id: destiny_sdk.identifiers.OpenAlexIdentifier | None = None
+    pubmed_id: destiny_sdk.identifiers.PubMedIdentifier | None = None
+    title: str | None = None
+    authors: list[destiny_sdk.enhancements.Authorship] | None = None
+    year: int | None = None
+    journal: str | None = None
+    pages: str | None = None
+    volume: str | None = None
+    issue: str | None = None
+
+    @model_validator(mode="after")
+    def validate_not_empty(self) -> Self:
+        """Reject an empty paper, which is the toolkit's own rejection too."""
+        if all(value is None for value in self.model_dump().values()):
+            msg = "A deduplication paper needs at least one populated field"
+            raise ValueError(msg)
+        return self
 
 
 class LinkedDataProjection(ProjectedBaseModel):

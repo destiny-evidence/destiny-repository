@@ -1,6 +1,20 @@
 """Tests for service-side candidate author-query construction."""
 
+from unittest.mock import AsyncMock
+
+import pytest
+from elastic_transport import ApiResponseMeta, ConnectionTimeout
+from elastic_transport import ConnectionError as ESConnectionError
+from elasticsearch import ApiError
+from elasticsearch.dsl import AsyncSearch
+
 from app.core.config import DedupCandidateScoringConfig
+from app.core.exceptions import ESError
+from app.domain.references.models.models import (
+    CandidateCanonicalSearchQuery,
+    DuplicateDetermination,
+)
+from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.services.deduplication_service import (
     _candidate_author_terms,
 )
@@ -79,3 +93,61 @@ class TestBuildCandidateAuthorQueries:
         assert "Álvarez" in queries[0]
         assert "李" in queries[1]
         assert "雷" in queries[1]
+
+
+class TestCandidateSearchFailureTranslation:
+    """Transient Elasticsearch failures become ESError; defects stay fatal."""
+
+    @staticmethod
+    def _api_error(status: int) -> ApiError:
+        meta = ApiResponseMeta(
+            status=status, http_version="1.1", headers={}, duration=0.0, node=None
+        )
+        return ApiError("elasticsearch said no", meta=meta, body=None)
+
+    async def _search(self, monkeypatch, error: Exception):
+        async def execute(_self):
+            raise error
+
+        monkeypatch.setattr(AsyncSearch, "execute", execute)
+        repository = ReferenceESRepository(client=AsyncMock())
+        return await repository.search_for_candidate_canonicals(
+            CandidateCanonicalSearchQuery(
+                title="A study",
+                title_fuzziness="AUTO",
+                title_boost=1.0,
+                title_operator="or",
+                title_minimum_should_match="50%",
+                author_terms=("Jane Doe",),
+                author_tie_breaker=0.3,
+                publication_year_range=(2023, 2025),
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+                excluded_reference_id=None,
+            ),
+            k=10,
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "error",
+        [
+            pytest.param(ConnectionTimeout("timed out"), id="timeout"),
+            pytest.param(ESConnectionError("refused"), id="connection"),
+        ],
+    )
+    async def test_transport_failure_becomes_es_error(self, monkeypatch, error):
+        with pytest.raises(ESError):
+            await self._search(monkeypatch, error)
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [429, 502, 503, 504])
+    async def test_transient_status_becomes_es_error(self, monkeypatch, status):
+        with pytest.raises(ESError):
+            await self._search(monkeypatch, self._api_error(status))
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 404])
+    async def test_client_error_stays_fatal(self, monkeypatch, status):
+        """A malformed query is a defect: it must not be retried per record."""
+        with pytest.raises(ApiError):
+            await self._search(monkeypatch, self._api_error(status))

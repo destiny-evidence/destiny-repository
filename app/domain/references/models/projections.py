@@ -9,13 +9,16 @@ import destiny_sdk
 from app.core.exceptions import ProjectionError
 from app.domain.base import GenericProjection
 from app.domain.references.models.models import (
+    SCORED_ENHANCEMENT_TYPES,
     CandidateCanonicalSearchFields,
     CandidateIdentifier,
     CandidateReference,
+    DeduplicationPaper,
     Enhancement,
     EnhancementRequest,
     EnhancementRequestStatus,
     EnhancementType,
+    ExternalIdentifierType,
     PendingEnhancementStatus,
     Reference,
     ReferenceSearchFields,
@@ -264,6 +267,112 @@ class CandidateReferenceProjection(GenericProjection[CandidateReference]):
                 for linked in (reference.identifiers or [])
             ],
         )
+
+
+def _scored_contents_by_priority_untimed_lowest(
+    reference: Reference,
+) -> list[destiny_sdk.enhancements.BibliographicMetadataEnhancement]:
+    """
+    Order scored enhancement contents by increasing priority.
+
+    Supplied references are built in memory and carry no ``created_at``, which the
+    shared sort rejects, so those hold input order below anything stored.
+    """
+    scored = [
+        enhancement
+        for enhancement in reference.enhancements or []
+        if enhancement.content.enhancement_type in SCORED_ENHANCEMENT_TYPES
+    ]
+    untimed = [enhancement for enhancement in scored if not enhancement.created_at]
+    timed = [enhancement for enhancement in scored if enhancement.created_at]
+    ordered = untimed + _priority_sorted_enhancements(reference.id, timed)
+    # isinstance narrows what the enum filter above already selected; it is not a
+    # second policy on which types are scored.
+    return [
+        enhancement.content
+        for enhancement in ordered
+        if isinstance(
+            enhancement.content,
+            destiny_sdk.enhancements.BibliographicMetadataEnhancement,
+        )
+    ]
+
+
+class DeduplicationPaperProjection(GenericProjection[DeduplicationPaper]):
+    """Projection from a reference to the record shape the Deduper scores."""
+
+    @classmethod
+    def get_from_reference(cls, reference: Reference) -> DeduplicationPaper:
+        """
+        Project a hydrated reference into Deduper-scoreable fields.
+
+        :param reference: The reference to project from.
+        :type reference: app.domain.references.models.models.Reference
+        :raises ProjectionError: If nothing scoreable projects.
+        :return: The projected paper.
+        :rtype: DeduplicationPaper
+        """
+        try:
+            identifiers = {
+                linked.identifier.identifier_type: linked.identifier
+                for linked in (reference.identifiers or [])
+            }
+            doi = identifiers.get(ExternalIdentifierType.DOI)
+            open_alex = identifiers.get(ExternalIdentifierType.OPEN_ALEX)
+            pubmed = identifiers.get(ExternalIdentifierType.PM_ID)
+
+            title, year, journal, pages, volume, issue = (None,) * 6
+            authors: list[destiny_sdk.enhancements.Authorship] | None = None
+
+            for content in _scored_contents_by_priority_untimed_lowest(reference):
+                # Hydrate if present on this enhancement, otherwise keep prior value
+                title = content.title or title
+                # Stored order is the citation sequence; reordering would lose it
+                authors = content.authorship or authors
+                year = (
+                    content.publication_year
+                    or (
+                        content.publication_date.year
+                        if content.publication_date
+                        else None
+                    )
+                    or year
+                )
+                if venue := content.publication_venue:
+                    journal = venue.display_name or journal
+                if pagination := content.pagination:
+                    volume = pagination.volume or volume
+                    issue = pagination.issue or issue
+                    pages = cls._page_range(pagination) or pages
+
+            return DeduplicationPaper(
+                doi=doi
+                if isinstance(doi, destiny_sdk.identifiers.DOIIdentifier)
+                else None,
+                openalex_id=open_alex
+                if isinstance(open_alex, destiny_sdk.identifiers.OpenAlexIdentifier)
+                else None,
+                pubmed_id=pubmed
+                if isinstance(pubmed, destiny_sdk.identifiers.PubMedIdentifier)
+                else None,
+                title=title,
+                authors=authors,
+                year=year,
+                journal=journal,
+                pages=pages,
+                volume=volume,
+                issue=issue,
+            )
+        except Exception as exc:
+            msg = "Failed to project DeduplicationPaper from Reference"
+            raise ProjectionError(msg) from exc
+
+    @staticmethod
+    def _page_range(pagination: destiny_sdk.enhancements.Pagination) -> str | None:
+        """Join both endpoints, or nothing: one endpoint is a page number."""
+        if pagination.first_page and pagination.last_page:
+            return f"{pagination.first_page}-{pagination.last_page}"
+        return None
 
 
 class ReferenceRisProjection(GenericProjection[RisRecord]):

@@ -6,7 +6,8 @@ from collections.abc import AsyncGenerator, Collection, Mapping, Sequence
 from typing import Any, ClassVar, Literal
 from uuid import UUID
 
-from elasticsearch import AsyncElasticsearch
+import elastic_transport
+from elasticsearch import ApiError, AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
 from elasticsearch.dsl.query import (
     Bool,
@@ -36,6 +37,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
+from app.core.exceptions import ESError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import (
     trace_repository_generator,
@@ -276,6 +278,15 @@ class ReferenceSQLRepository(
         return [
             db_reference.to_domain(preload=preload) for db_reference in db_references
         ]
+
+
+_TOO_MANY_REQUESTS = 429
+_SERVER_ERROR = 500
+
+
+def _is_transient_es_status(status: int) -> bool:
+    """Whether an Elasticsearch status is worth surfacing as infrastructure failure."""
+    return status >= _SERVER_ERROR or status == _TOO_MANY_REQUESTS
 
 
 class ReferenceESRepository(
@@ -827,7 +838,17 @@ class ReferenceESRepository(
         if track_total_hits:
             search = search.extra(track_total_hits=True)
 
-        response = await search.execute()
+        try:
+            response = await search.execute()
+        except elastic_transport.TransportError as exc:
+            msg = f"Candidate search could not reach Elasticsearch: {exc}"
+            raise ESError(msg) from exc
+        except ApiError as exc:
+            # A 4xx means this query is malformed, which is a defect and stays fatal.
+            if not _is_transient_es_status(exc.meta.status):
+                raise
+            msg = f"Candidate search unavailable ({exc.meta.status}): {exc}"
+            raise ESError(msg) from exc
 
         hits = sorted(
             [

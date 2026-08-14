@@ -7,7 +7,7 @@ import pytest
 from destiny_sdk.enhancements import Authorship
 from pydantic import ValidationError
 
-from app.core.exceptions import DeduplicationValueError
+from app.core.exceptions import DeduplicationError, DeduplicationValueError
 from app.domain.references.models.models import (
     CandidateElasticsearchRoute,
     CandidateIdentifier,
@@ -116,25 +116,39 @@ def build_service(fake_uow, anti_corruption_service):
 
 
 class TestCandidateSelectionInputValidation:
-    def test_rejects_neither(self):
+    def test_rejects_missing_input_mode(self):
         with pytest.raises(ValidationError):
             CandidateSelectionInput()
 
-    def test_rejects_both(self):
+    def test_rejects_reference_id_with_inline_fields(self):
         with pytest.raises(ValidationError):
             CandidateSelectionInput(reference_id=uuid7(), title="A title")
 
-    def test_accepts_reference_id(self):
-        input_ = CandidateSelectionInput(reference_id=uuid7())
-        assert input_.reference_id is not None
+    def test_accepts_reference_id_input(self):
+        selection_input = CandidateSelectionInput(reference_id=uuid7())
+        assert selection_input.reference_id is not None
 
-    def test_accepts_inline(self):
-        input_ = CandidateSelectionInput(
+    def test_accepts_inline_input(self):
+        selection_input = CandidateSelectionInput(
             title="A title", authors=["Jane"], publication_year=2020
         )
-        assert input_.title == "A title"
+        assert selection_input.title == "A title"
 
-    def test_k_bounds_enforced(self):
+    def test_accepts_inline_with_excluded_reference_id(self):
+        excluded = uuid7()
+
+        selection_input = CandidateSelectionInput(
+            title="A title", excluded_reference_id=excluded
+        )
+
+        assert selection_input.excluded_reference_id == excluded
+
+    def test_rejects_reference_id_with_excluded_reference_id(self):
+        """The reference_id mode already excludes its own reference."""
+        with pytest.raises(ValidationError):
+            CandidateSelectionInput(reference_id=uuid7(), excluded_reference_id=uuid7())
+
+    def test_rejects_k_outside_bounds(self):
         with pytest.raises(ValidationError):
             CandidateSelectionRequest(
                 input=CandidateSelectionInput(reference_id=uuid7()), k=0
@@ -171,7 +185,7 @@ class TestCandidateSelectionInputValidation:
             )
 
 
-def test_unknown_retrieval_policy_rejected_by_request_model():
+def test_request_model_rejects_unknown_retrieval_policy():
     """An unknown policy is rejected when the request is built (a 422 at the API)."""
     with pytest.raises(ValidationError):
         CandidateSelectionRequest(
@@ -183,7 +197,9 @@ def test_unknown_retrieval_policy_rejected_by_request_model():
 
 
 @pytest.mark.asyncio
-async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service):
+async def test_no_year_filter_policy_removes_year_range_and_records_policy(
+    build_service,
+):
     hit = uuid7()
     service, es_refs, _, _ = build_service(
         es_result=_es_result(ESScoreResult(id=hit, score=5.0))
@@ -213,9 +229,7 @@ async def test_no_year_filter_v1_passes_strategy_and_stamps_policy(build_service
 
 
 @pytest.mark.asyncio
-async def test_request_without_overrides_honours_rollback_policy_and_configured_k(
-    build_service, monkeypatch
-):
+async def test_request_defaults_to_configured_policy_and_k(build_service, monkeypatch):
     from app.domain.references.services import deduplication_service as dedup_module
 
     service, es_refs, _, _ = build_service()
@@ -241,7 +255,7 @@ async def test_request_without_overrides_honours_rollback_policy_and_configured_
 
 
 @pytest.mark.asyncio
-async def test_year_optional_policy_searches_missing_year_input(build_service):
+async def test_year_optional_policy_searches_without_publication_year(build_service):
     service, es_refs, _, _ = build_service(
         es_result=_es_result(ESScoreResult(id=uuid7(), score=4.0))
     )
@@ -261,7 +275,7 @@ async def test_year_optional_policy_searches_missing_year_input(build_service):
 
 
 @pytest.mark.asyncio
-async def test_missing_year_input_unsearchable_under_control(build_service):
+async def test_control_policy_marks_input_without_year_unsearchable(build_service):
     service, es_refs, _, _ = build_service()
 
     result = await service.get_deduplication_candidates(
@@ -308,7 +322,7 @@ async def test_inline_input_returns_ranked_es_candidates(build_service):
 
 
 @pytest.mark.asyncio
-async def test_reference_id_input_self_excludes_and_defaults_k(build_service):
+async def test_reference_id_input_excludes_itself_and_uses_configured_k(build_service):
     reference = _searchable_reference()
     hit = uuid7()
     service, es_refs, sql_refs, _ = build_service(
@@ -333,7 +347,65 @@ async def test_reference_id_input_self_excludes_and_defaults_k(build_service):
 
 
 @pytest.mark.asyncio
-async def test_k_override_passed_to_es(build_service):
+async def test_inline_input_excludes_held_reference_from_es_candidates(
+    build_service,
+):
+    excluded = uuid7()
+    service, es_refs, _, _ = build_service()
+
+    await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                title="A study",
+                authors=["Jane Doe"],
+                publication_year=2025,
+                excluded_reference_id=excluded,
+            ),
+            hydrate=False,
+        )
+    )
+
+    query = es_refs.search_for_candidate_canonicals.call_args.args[0]
+    assert query.excluded_reference_id == excluded
+
+
+@pytest.mark.asyncio
+async def test_inline_input_excludes_held_reference_from_identifier_candidates(
+    build_service,
+):
+    doi = DOIIdentifierFactory.build()
+    held = ReferenceFactory.build(visibility="public")
+    held = held.model_copy(
+        update={
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    identifier=doi, reference_id=held.id
+                )
+            ]
+        }
+    )
+    service, _, _, _ = build_service(found_references=[held])
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                identifiers=[
+                    CandidateIdentifier(
+                        identifier_type=ExternalIdentifierType.DOI,
+                        identifier=str(doi.identifier),
+                    )
+                ],
+                excluded_reference_id=held.id,
+            ),
+            hydrate=False,
+        )
+    )
+
+    assert result.candidates == []
+
+
+@pytest.mark.asyncio
+async def test_k_override_is_forwarded_to_elasticsearch(build_service):
     service, es_refs, _, _ = build_service()
 
     result = await service.get_deduplication_candidates(
@@ -352,7 +424,7 @@ async def test_k_override_passed_to_es(build_service):
 
 
 @pytest.mark.asyncio
-async def test_identifier_only_match_ranks_ahead_of_es(build_service):
+async def test_identifier_only_match_ranks_ahead_of_es_candidates(build_service):
     doi = DOIIdentifierFactory.build()
     identifier_ref = ReferenceFactory.build(visibility="public")
     identifier_ref = identifier_ref.model_copy(
@@ -452,7 +524,9 @@ async def test_same_canonical_from_both_routes_is_returned_once(build_service):
 
 
 @pytest.mark.asyncio
-async def test_identifier_match_on_duplicate_resolves_to_canonical(build_service):
+async def test_duplicate_identifier_match_resolves_to_canonical(
+    build_service,
+):
     doi = DOIIdentifierFactory.build()
     canonical_id = uuid7()
     duplicate = ReferenceFactory.build(visibility="public")
@@ -494,7 +568,46 @@ async def test_identifier_match_on_duplicate_resolves_to_canonical(build_service
 
 
 @pytest.mark.asyncio
-async def test_identifier_match_keeps_canonical_with_existing_duplicates_eligible(
+async def test_duplicate_identifier_match_missing_canonical_raises_deduplication_error(
+    build_service,
+):
+    doi = DOIIdentifierFactory.build()
+    duplicate = ReferenceFactory.build(visibility="public")
+    duplicate = duplicate.model_copy(
+        update={
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    identifier=doi, reference_id=duplicate.id
+                )
+            ],
+            "duplicate_decision": ReferenceDuplicateDecision(
+                reference_id=duplicate.id,
+                active_decision=True,
+                duplicate_determination=DuplicateDetermination.DUPLICATE,
+                canonical_reference_id=uuid7(),
+            ).model_copy(update={"canonical_reference_id": None}),
+        }
+    )
+    service, _, _, _ = build_service(found_references=[duplicate])
+
+    with pytest.raises(DeduplicationError, match="without a canonical reference id"):
+        await service.get_deduplication_candidates(
+            CandidateSelectionRequest(
+                input=CandidateSelectionInput(
+                    identifiers=[
+                        CandidateIdentifier(
+                            identifier_type=ExternalIdentifierType.DOI,
+                            identifier=str(doi.identifier),
+                        )
+                    ]
+                ),
+                hydrate=False,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_canonical_identifier_match_remains_eligible_with_existing_duplicates(
     build_service,
 ):
     doi = DOIIdentifierFactory.build()
@@ -537,7 +650,7 @@ async def test_identifier_match_keeps_canonical_with_existing_duplicates_eligibl
 
 
 @pytest.mark.asyncio
-async def test_hydrate_includes_reference_projection(build_service):
+async def test_hydrate_true_includes_candidate_reference_projection(build_service):
     hit = uuid7()
     hydrated = _searchable_reference().model_copy(update={"id": hit})
     service, _, _, _ = build_service(
@@ -600,7 +713,7 @@ async def test_identifier_only_input_matches_when_es_unsearchable(build_service)
     assert result.diagnostics.es_total_hits is None
 
 
-async def test_invalid_identifier_raises(build_service):
+async def test_invalid_identifier_raises_deduplication_value_error(build_service):
     """A malformed identifier value fails normalisation and raises (422 in the API)."""
     service, _, _, _ = build_service()
     with pytest.raises(DeduplicationValueError):
@@ -619,7 +732,7 @@ async def test_invalid_identifier_raises(build_service):
         )
 
 
-async def test_unsearchable_input_returns_empty_200(build_service):
+async def test_unsearchable_input_returns_empty_candidate_result(build_service):
     service, es_refs, _, _ = build_service()
 
     result = await service.get_deduplication_candidates(
@@ -636,7 +749,7 @@ async def test_unsearchable_input_returns_empty_200(build_service):
 
 
 @pytest.mark.asyncio
-async def test_writes_no_duplicate_decision_state(build_service):
+async def test_candidate_selection_does_not_write_duplicate_decisions(build_service):
     service, _, _, decisions = build_service(
         es_result=_es_result(ESScoreResult(id=uuid7(), score=1.0))
     )
@@ -669,7 +782,7 @@ def test_track_total_hits_defaults_true_and_is_overridable():
 
 
 @pytest.mark.asyncio
-async def test_track_total_hits_forwarded_to_es_search(build_service):
+async def test_track_total_hits_is_forwarded_to_elasticsearch(build_service):
     service, es_refs, _, _ = build_service(
         es_result=_es_result(ESScoreResult(id=uuid7(), score=4.0))
     )
