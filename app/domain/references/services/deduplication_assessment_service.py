@@ -49,12 +49,14 @@ UNPROJECTABLE_CANDIDATE_REASON = "Candidate could not be projected for scoring."
 class ReferenceReader(Protocol):
     """Reference reads required by assessment orchestration."""
 
-    async def get_hydrated(
+    # Awaitable rather than ``async def``: the latter demands a coroutine, which the
+    # traced repository methods do not declare, and this only ever awaits the result.
+    def get_hydrated(
         self,
         reference_ids: list[UUID],
         enhancement_types: list[str] | None = None,
         external_identifier_types: list[str] | None = None,
-    ) -> list[Reference]:
+    ) -> Awaitable[list[Reference]]:
         """Read full references with optional relationship filters."""
         ...
 

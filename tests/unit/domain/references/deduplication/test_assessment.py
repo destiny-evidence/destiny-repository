@@ -32,6 +32,7 @@ from app.domain.references.models.models import (
     RetrievalPolicyName,
 )
 from app.domain.references.models.projections import DeduplicationPaperProjection
+from app.domain.references.repository import ReferenceSQLRepository
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -857,3 +858,14 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
         method.assert_not_awaited()
     sql_uow.commit.assert_not_awaited()
     es_uow.commit.assert_not_awaited()
+
+
+# This test annotated with -> None so mypy checks the body. Unannotated bodies
+# are skipped, so without it the assignment is never checked and proves nothing.
+def test_reference_repository_satisfies_the_reader_protocol() -> None:
+    """The one real implementation must be assignable to the protocol it implements."""
+    repository = ReferenceSQLRepository(MagicMock())
+
+    reader: ReferenceReader = repository
+
+    assert reader.get_hydrated == repository.get_hydrated
