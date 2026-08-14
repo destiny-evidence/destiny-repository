@@ -208,7 +208,7 @@ KEYCLOAK_REALM=destiny
 KEYCLOAK_CLIENT_ID=destiny-repository-client-local
 ```
 
-The client is named after the environment, and authorization is the set of client
+The authorization is the set of client
 roles the principal holds on it (`resource_access["destiny-repository-client-local"]`
 in local development). Realm roles and the `scope` claim confer no access.
 
