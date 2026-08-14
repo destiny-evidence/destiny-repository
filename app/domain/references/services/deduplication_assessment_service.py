@@ -32,9 +32,6 @@ from app.domain.references.models.projections import (
     CandidateReferenceProjection,
     DeduplicationPaperProjection,
 )
-from app.domain.references.services.access_control_service import (
-    ReferenceAccessControlService,
-)
 
 CandidateSelector = Callable[
     [CandidateSelectionRequest], Awaitable[CandidateSelectionResult]
@@ -93,15 +90,14 @@ class DeduplicationAssessmentService:
         self._candidate_selector = candidate_selector
         self._reference_reader = reference_reader
         self._pair_scorer = pair_scorer
-        # Entitlements are deliberately empty: the scorer compares bibliographic
-        # fields, so nothing here may reach full text.
-        self._access_control_service = ReferenceAccessControlService()
 
-    def _to_scorer_paper(self, reference: Reference) -> DeduplicationPaper:
-        """Reduce a reference to the least-privileged view the scorer sees."""
-        redacted = self._access_control_service.redact_reference(reference)
+    @staticmethod
+    def _to_scorer_paper(reference: Reference) -> DeduplicationPaper:
+        """Project a reference into the record the scorer compares."""
+        # No access-control redaction: a paper's fields are an allowlist, so it
+        # already excludes everything redaction would have dropped.
         try:
-            return DeduplicationPaperProjection.get_from_reference(redacted)
+            return DeduplicationPaperProjection.get_from_reference(reference)
         except ProjectionError as exc:
             # ``from exc`` keeps the projection failure as the cause, so the message
             # does not need to restate it.

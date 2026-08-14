@@ -110,6 +110,19 @@ def _with_full_text(reference: Reference) -> Reference:
     return reference
 
 
+def _bibliographic_only(reference: Reference) -> Reference:
+    """Reduce a reference to what the scorer is meant to see, for comparison."""
+    return reference.model_copy(
+        update={
+            "enhancements": [
+                enhancement
+                for enhancement in reference.enhancements or []
+                if enhancement.content.enhancement_type == EnhancementType.BIBLIOGRAPHIC
+            ]
+        }
+    )
+
+
 def _supplied_reference() -> Reference:
     """Build the unimported record an evaluation runner supplies."""
     reference = ReferenceFactory.build(visibility="public")
@@ -697,8 +710,8 @@ async def test_evaluate_fails_when_stored_incoming_cannot_be_hydrated():
 
 @pytest.mark.asyncio
 async def test_evaluate_supplied_presents_only_scored_enhancements():
-    """Both entrypoints must show the scorer the same enhancement types."""
-    incoming = _supplied_reference()
+    """A supplied record skips hydration filtering, so only the projection filters."""
+    incoming = _with_full_text(_supplied_reference())
     incoming.enhancements = [
         *(incoming.enhancements or []),
         EnhancementFactory.build(
@@ -720,14 +733,16 @@ async def test_evaluate_supplied_presents_only_scored_enhancements():
 
     scored_incoming, _ = pair_scorer.calls[0]
     assert scored_incoming.title == "A supplied reference"
-    assert "abstract" not in scored_incoming.model_dump()
+    assert scored_incoming == DeduplicationPaperProjection.get_from_reference(
+        _bibliographic_only(incoming)
+    )
 
 
 @pytest.mark.asyncio
 async def test_evaluate_withholds_full_text_from_the_scorer():
     """The projection, not the hydration filter, is what keeps full text off this."""
-    # Community-bound adds an annotation, which redaction keeps and the projection
-    # drops, so this covers both filters rather than only redaction.
+    # Candidates only ever reach the scorer through this path, so the widened
+    # hydration below is the only way to test them against an unfiltered record.
     incoming = _with_full_text(_reference(community_bound=True))
     candidate = _with_full_text(_reference(community_bound=True))
     service, _, reader, pair_scorer = _build_service(
@@ -743,25 +758,13 @@ async def test_evaluate_withholds_full_text_from_the_scorer():
 
     await service.evaluate(incoming.id)
 
-    # Absence of full text is tautological on a paper, so compare against a
-    # bibliographic-only projection instead.
     scored_incoming, scored_candidate = pair_scorer.calls[0]
     for scored, reference in (
         (scored_incoming, incoming),
         (scored_candidate, candidate),
     ):
-        bibliographic_only = reference.model_copy(
-            update={
-                "enhancements": [
-                    enhancement
-                    for enhancement in reference.enhancements or []
-                    if enhancement.content.enhancement_type
-                    == EnhancementType.BIBLIOGRAPHIC
-                ]
-            }
-        )
         assert scored == DeduplicationPaperProjection.get_from_reference(
-            bibliographic_only
+            _bibliographic_only(reference)
         )
 
 
