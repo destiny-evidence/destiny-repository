@@ -12,8 +12,10 @@ from app.core.exceptions import (
     DeduplicationNotFoundError,
     DeduplicationValueError,
     ESError,
+    ProjectionError,
 )
 from app.domain.references.models.models import (
+    SCORED_ENHANCEMENT_TYPES,
     CandidateSelectionInput,
     CandidateSelectionRequest,
     CandidateSelectionResult,
@@ -21,14 +23,16 @@ from app.domain.references.models.models import (
     DeduplicationAssessment,
     DeduplicationAssessmentOutcome,
     DeduplicationPairResult,
-    EnhancementType,
+    DeduplicationPaper,
     Reference,
     RetrievalPolicyName,
     ScoredDeduplicationCandidate,
 )
-from app.domain.references.models.projections import CandidateReferenceProjection
+from app.domain.references.models.projections import (
+    CandidateReferenceProjection,
+    DeduplicationPaperProjection,
+)
 from app.domain.references.services.access_control_service import (
-    RedactedReference,
     ReferenceAccessControlService,
 )
 
@@ -40,9 +44,9 @@ CandidateSelector = Callable[
 # Malformed queries and programming defects stay fatal, not one failed row per input.
 INFRASTRUCTURE_ERRORS = (ESError, OperationalError, InterfaceError)
 
-# The enhancement types the Deduper compares. Abstracts are excluded because its
-# scoring weights are configured without them, so sending one is wasted payload.
-SCORED_ENHANCEMENT_TYPES = (EnhancementType.BIBLIOGRAPHIC,)
+# Stored on the pair result, so it stays flat: the candidate id already travels
+# beside it on the scored candidate and in the unscorable id list.
+UNPROJECTABLE_CANDIDATE_REASON = "Candidate could not be projected for scoring."
 
 
 class ReferenceReader(Protocol):
@@ -68,8 +72,8 @@ class PairScorer(Protocol):
 
     async def score_pair(
         self,
-        incoming: RedactedReference,
-        candidate: RedactedReference,
+        incoming: DeduplicationPaper,
+        candidate: DeduplicationPaper,
     ) -> DeduplicationPairResult:
         """Score one incoming-reference and candidate pair."""
         ...
@@ -93,25 +97,16 @@ class DeduplicationAssessmentService:
         # fields, so nothing here may reach full text.
         self._access_control_service = ReferenceAccessControlService()
 
-    def _to_scorer_view(self, reference: Reference) -> RedactedReference:
+    def _to_scorer_paper(self, reference: Reference) -> DeduplicationPaper:
         """Reduce a reference to the least-privileged view the scorer sees."""
-        return self._access_control_service.redact_reference(reference)
-
-    @staticmethod
-    def _scored_view(reference: RedactedReference) -> RedactedReference:
-        """Present only the enhancement types the Deduper compares."""
-        return RedactedReference(
-            reference.model_copy(
-                update={
-                    "enhancements": [
-                        enhancement
-                        for enhancement in reference.enhancements or []
-                        if enhancement.content.enhancement_type
-                        in SCORED_ENHANCEMENT_TYPES
-                    ]
-                }
-            )
-        )
+        redacted = self._access_control_service.redact_reference(reference)
+        try:
+            return DeduplicationPaperProjection.get_from_reference(redacted)
+        except ProjectionError as exc:
+            # ``from exc`` keeps the projection failure as the cause, so the message
+            # does not need to restate it.
+            msg = f"Cannot build a deduplication paper for {reference.id}"
+            raise DeduplicationValueError(msg) from exc
 
     async def _hydrate_one(self, reference_id: UUID) -> Reference:
         """Read one stored reference, treating an empty result as not-found."""
@@ -186,7 +181,7 @@ class DeduplicationAssessmentService:
         """Find, hydrate and score every candidate under one assessment."""
         # Reduce here rather than per entrypoint: a supplied record carries whatever
         # its dataset held, and both sides must reach the scorer alike.
-        scored_incoming = self._scored_view(self._to_scorer_view(incoming))
+        scored_incoming = self._to_scorer_paper(incoming)
         try:
             candidate_selection = await self._candidate_selector(
                 CandidateSelectionRequest(
@@ -238,12 +233,20 @@ class DeduplicationAssessmentService:
         scorer_metadata = self._pair_scorer.metadata.model_copy(deep=True)
         threshold = scorer_metadata.threshold
         for candidate in candidate_selection.candidates:
-            candidate_view = self._scored_view(
-                self._to_scorer_view(candidates_by_id[candidate.reference_id])
-            )
-            pair_result = await self._pair_scorer.score_pair(
-                incoming=scored_incoming, candidate=candidate_view
-            )
+            try:
+                candidate_paper = self._to_scorer_paper(
+                    candidates_by_id[candidate.reference_id]
+                )
+            except DeduplicationValueError:
+                # One unprojectable candidate is not a failed assessment; it is a
+                # candidate the Deduper was never given a chance to score.
+                pair_result = DeduplicationPairResult(
+                    unscorable_reason=UNPROJECTABLE_CANDIDATE_REASON
+                )
+            else:
+                pair_result = await self._pair_scorer.score_pair(
+                    incoming=scored_incoming, candidate=candidate_paper
+                )
             clears_threshold = (
                 pair_result.probability >= threshold
                 if pair_result.probability is not None

@@ -1191,6 +1191,40 @@ class DeduplicationAssessment(BaseModel):
     unscorable_candidate_ids: list[UUID] = Field(default_factory=list)
 
 
+# The enhancement types the Deduper compares. Abstracts are excluded because its
+# scoring weights are configured without them, so sending one is wasted payload.
+SCORED_ENHANCEMENT_TYPES = (EnhancementType.BIBLIOGRAPHIC,)
+
+
+class DeduplicationPaper(ProjectedBaseModel):
+    """
+    The record shape the Deduper scores, built here rather than by the toolkit.
+
+    Mirrors the toolkit's ``Paper`` constructor so it can be handed over as
+    ``model_dump(exclude_none=True)``. Carries the fields the checked-in weights
+    score, plus identifiers and volume, which are unweighted today.
+    """
+
+    doi: destiny_sdk.identifiers.DOIIdentifier | None = None
+    openalex_id: destiny_sdk.identifiers.OpenAlexIdentifier | None = None
+    pubmed_id: destiny_sdk.identifiers.PubMedIdentifier | None = None
+    title: str | None = None
+    authors: list[destiny_sdk.enhancements.Authorship] | None = None
+    year: int | None = None
+    journal: str | None = None
+    pages: str | None = None
+    volume: str | None = None
+    issue: str | None = None
+
+    @model_validator(mode="after")
+    def validate_not_empty(self) -> Self:
+        """Reject an empty paper, which is the toolkit's own rejection too."""
+        if all(value is None for value in self.model_dump().values()):
+            msg = "A deduplication paper needs at least one populated field"
+            raise ValueError(msg)
+        return self
+
+
 class LinkedDataProjection(ProjectedBaseModel):
     """Result of projecting a LinkedDataEnhancement into flat searchable fields."""
 

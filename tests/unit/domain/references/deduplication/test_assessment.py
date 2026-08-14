@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
@@ -22,17 +24,19 @@ from app.domain.references.models.models import (
     DeduplicationFieldComparison,
     DeduplicationFieldStatus,
     DeduplicationPairResult,
+    DeduplicationPaper,
     EnhancementType,
     ExternalIdentifierType,
     InputSearchability,
     Reference,
     RetrievalPolicyName,
 )
-from app.domain.references.services.access_control_service import RedactedReference
+from app.domain.references.models.projections import DeduplicationPaperProjection
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.deduplication_assessment_service import (
+    UNPROJECTABLE_CANDIDATE_REASON,
     DeduplicationAssessmentService,
     ReferenceReader,
 )
@@ -172,10 +176,24 @@ def _selection(
     )
 
 
+def _openalex_id(reference: Reference):
+    """Return the OpenAlex identifier the reference factories attach."""
+    return next(
+        linked.identifier
+        for linked in reference.identifiers or []
+        if linked.identifier.identifier_type == ExternalIdentifierType.OPEN_ALEX
+    )
+
+
+class ScoredPair(NamedTuple):
+    incoming: DeduplicationPaper
+    candidate: DeduplicationPaper
+
+
 class FakePairScorer:
     def __init__(
         self,
-        probabilities: dict[UUID, float | None],
+        probabilities: Sequence[float | None],
         *,
         threshold: float = 0.85,
     ) -> None:
@@ -185,16 +203,17 @@ class FakePairScorer:
             threshold=threshold,
             effective_configuration={"weights": "test"},
         )
-        self.probabilities = probabilities
-        self.calls: list[tuple[Reference, Reference]] = []
+        self.probabilities = list(probabilities)
+        self.calls: list[ScoredPair] = []
 
     async def score_pair(
         self,
-        incoming: RedactedReference,
-        candidate: RedactedReference,
+        incoming: DeduplicationPaper,
+        candidate: DeduplicationPaper,
     ) -> DeduplicationPairResult:
-        self.calls.append((incoming, candidate))
-        probability = self.probabilities[candidate.id]
+        self.calls.append(ScoredPair(incoming, candidate))
+        # A paper carries no reference id, so scores are consumed in candidate order.
+        probability = self.probabilities[len(self.calls) - 1]
         if probability is None:
             return DeduplicationPairResult(
                 unscorable_reason="stand-in could not score this pair"
@@ -264,7 +283,10 @@ def _build_service(
     reader = MagicMock(spec=ReferenceReader)
     reader.get_hydrated = AsyncMock(side_effect=get_hydrated)
     selector = AsyncMock(return_value=selection)
-    pair_scorer = FakePairScorer(probabilities)
+    # Translated here so test bodies can keep naming scores per candidate.
+    pair_scorer = FakePairScorer(
+        [probabilities[candidate.reference_id] for candidate in selection.candidates]
+    )
     service = DeduplicationAssessmentService(
         candidate_selector=selector,
         reference_reader=reader,
@@ -277,7 +299,7 @@ def _build_service(
 async def test_evaluate_supplied_scores_identifier_candidate_and_proposes_it():
     incoming = _supplied_reference()
     candidate = _reference(community_bound=True)
-    identifier = candidate.identifiers[0].identifier
+    identifier = _openalex_id(candidate)
     selected = Candidate(
         reference_id=candidate.id,
         rank=1,
@@ -314,7 +336,8 @@ async def test_evaluate_supplied_scores_identifier_candidate_and_proposes_it():
         == 1
     )
     assert len(pair_scorer.calls) == 1
-    assert pair_scorer.calls[0][1].id == candidate.id
+    # A paper has no reference id, so identity travels as the OpenAlex identifier.
+    assert pair_scorer.calls[0].candidate.openalex_id == _openalex_id(candidate)
     reader.get_hydrated.assert_awaited_once_with(
         [candidate.id], enhancement_types=[EnhancementType.BIBLIOGRAPHIC]
     )
@@ -325,8 +348,9 @@ async def test_evaluate_supplied_scores_identifier_candidate_and_proposes_it():
     )
     assert request.k == 7
     assert request.input.reference_id is None
-    assert (
-        request.input.identifiers[0].identifier_type == ExternalIdentifierType.OPEN_ALEX
+    assert any(
+        item.identifier_type == ExternalIdentifierType.OPEN_ALEX
+        for item in request.input.identifiers
     )
     assert assessment.model_dump_json()
 
@@ -358,8 +382,8 @@ async def test_evaluate_scores_all_candidates_and_retains_every_threshold_match(
         candidates[0].id,
         candidates[2].id,
     ]
-    assert [call[1].id for call in pair_scorer.calls] == [
-        candidate.id for candidate in candidates
+    assert [call.candidate.openalex_id for call in pair_scorer.calls] == [
+        _openalex_id(candidate) for candidate in candidates
     ]
     assert [
         scored.candidate.reference_id for scored in assessment.scored_candidates
@@ -381,13 +405,10 @@ async def test_evaluate_stored_reuses_one_snapshot_for_selection_and_scoring():
 
     await service.evaluate(incoming.id)
 
-    scored_incoming = pair_scorer.calls[0][0]
-    assert scored_incoming.enhancements
-    assert {
-        enhancement.content.enhancement_type
-        for enhancement in scored_incoming.enhancements
-    } == {EnhancementType.BIBLIOGRAPHIC}
+    scored_incoming = pair_scorer.calls[0].incoming
     selection_input = selector.await_args.args[0].input
+    # The same snapshot fed both, so the scored title matches the queried one.
+    assert scored_incoming.title == selection_input.title
     assert selection_input.reference_id is None
     assert selection_input.title == "A complete reference"
     assert selection_input.excluded_reference_id == incoming.id
@@ -445,6 +466,51 @@ async def test_evaluate_supplied_makes_no_proposal_for_any_unscorable_candidate(
     assert assessment.unscorable_candidate_ids == [unscorable_candidate.id]
     assert assessment.scored_candidates[0].clears_threshold is True
     assert assessment.scored_candidates[1].clears_threshold is None
+
+
+@pytest.mark.asyncio
+async def test_evaluate_marks_an_unprojectable_candidate_unscorable():
+    incoming = _supplied_reference()
+    # Empty-list kwargs do not stick through the factory, which regenerates both.
+    unprojectable = ReferenceFactory.build(visibility="public").model_copy(
+        update={"enhancements": [], "identifiers": []}
+    )
+    service, _, _, pair_scorer = _build_service(
+        _selection(Candidate(reference_id=unprojectable.id, rank=1, routes=[])),
+        [unprojectable],
+        {unprojectable.id: 0.9},
+    )
+
+    assessment = await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+    assert assessment.outcome == DeduplicationAssessmentOutcome.NO_PROPOSAL
+    assert assessment.unscorable_candidate_ids == [unprojectable.id]
+    assert (
+        assessment.scored_candidates[0].pair_result.unscorable_reason
+        == UNPROJECTABLE_CANDIDATE_REASON
+    )
+    # The Deduper is never asked to score a pair it could not have been given.
+    assert pair_scorer.calls == []
+
+
+@pytest.mark.asyncio
+async def test_evaluate_supplied_fails_when_incoming_cannot_project():
+    unprojectable = ReferenceFactory.build(visibility="public").model_copy(
+        update={"enhancements": [], "identifiers": []}
+    )
+    candidate = _reference()
+    service, _, _, pair_scorer = _build_service(
+        _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
+        [candidate],
+        {candidate.id: 0.9},
+    )
+
+    with pytest.raises(DeduplicationValueError):
+        await service.evaluate_supplied(
+            unprojectable, _supplied_input(_supplied_reference())
+        )
+
+    assert pair_scorer.calls == []
 
 
 @pytest.mark.asyncio
@@ -510,10 +576,8 @@ async def test_evaluate_supplied_scores_the_runners_own_record():
     assessment = await service.evaluate_supplied(incoming, supplied_input)
 
     assert assessment.incoming_reference_id == incoming.id
-    scored_incoming = pair_scorer.calls[0][0]
-    assert scored_incoming.id == incoming.id
-    assert scored_incoming.identifiers == incoming.identifiers
-    assert scored_incoming.enhancements == incoming.enhancements
+    scored_incoming = pair_scorer.calls[0].incoming
+    assert scored_incoming == DeduplicationPaperProjection.get_from_reference(incoming)
     assert selector.await_args.args[0].input == supplied_input
     # Awaited only for the candidate: the supplied record is never read back.
     reader.get_hydrated.assert_awaited_once_with(
@@ -655,17 +719,15 @@ async def test_evaluate_supplied_presents_only_scored_enhancements():
     await service.evaluate_supplied(incoming, _supplied_input(incoming))
 
     scored_incoming, _ = pair_scorer.calls[0]
-    assert [
-        enhancement.content.enhancement_type
-        for enhancement in scored_incoming.enhancements or []
-    ] == [EnhancementType.BIBLIOGRAPHIC]
+    assert scored_incoming.title == "A supplied reference"
+    assert "abstract" not in scored_incoming.model_dump()
 
 
 @pytest.mark.asyncio
 async def test_evaluate_withholds_full_text_from_the_scorer():
-    """Redaction, not the hydration filter, is what keeps full text off this path."""
-    # Community-bound adds an annotation, which redaction keeps and the scored
-    # view drops, so this covers both filters rather than only redaction.
+    """The projection, not the hydration filter, is what keeps full text off this."""
+    # Community-bound adds an annotation, which redaction keeps and the projection
+    # drops, so this covers both filters rather than only redaction.
     incoming = _with_full_text(_reference(community_bound=True))
     candidate = _with_full_text(_reference(community_bound=True))
     service, _, reader, pair_scorer = _build_service(
@@ -681,12 +743,26 @@ async def test_evaluate_withholds_full_text_from_the_scorer():
 
     await service.evaluate(incoming.id)
 
+    # Absence of full text is tautological on a paper, so compare against a
+    # bibliographic-only projection instead.
     scored_incoming, scored_candidate = pair_scorer.calls[0]
-    for scored in (scored_incoming, scored_candidate):
-        assert [
-            enhancement.content.enhancement_type
-            for enhancement in scored.enhancements or []
-        ] == [EnhancementType.BIBLIOGRAPHIC]
+    for scored, reference in (
+        (scored_incoming, incoming),
+        (scored_candidate, candidate),
+    ):
+        bibliographic_only = reference.model_copy(
+            update={
+                "enhancements": [
+                    enhancement
+                    for enhancement in reference.enhancements or []
+                    if enhancement.content.enhancement_type
+                    == EnhancementType.BIBLIOGRAPHIC
+                ]
+            }
+        )
+        assert scored == DeduplicationPaperProjection.get_from_reference(
+            bibliographic_only
+        )
 
 
 @pytest.mark.asyncio
@@ -719,7 +795,7 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
     candidate.identifiers = [
         LinkedExternalIdentifierFactory.build(
             reference_id=candidate.id,
-            identifier=incoming.identifiers[0].identifier,
+            identifier=_openalex_id(incoming),
         )
     ]
     references = fake_repository([candidate])
@@ -755,7 +831,7 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
         sql_uow,
         es_uow,
     )
-    pair_scorer = FakePairScorer({candidate.id: 0.9})
+    pair_scorer = FakePairScorer([0.9])
     assessor = DeduplicationAssessmentService(
         candidate_selector=candidate_service.get_deduplication_candidates,
         reference_reader=references,
