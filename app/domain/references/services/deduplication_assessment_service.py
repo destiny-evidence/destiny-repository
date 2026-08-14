@@ -94,8 +94,6 @@ class DeduplicationAssessmentService:
     @staticmethod
     def _to_scorer_paper(reference: Reference) -> DeduplicationPaper:
         """Project a reference into the record the scorer compares."""
-        # No access-control redaction: a paper's fields are an allowlist, so it
-        # already excludes everything redaction would have dropped.
         try:
             return DeduplicationPaperProjection.get_from_reference(reference)
         except ProjectionError as exc:
