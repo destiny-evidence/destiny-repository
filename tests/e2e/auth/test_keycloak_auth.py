@@ -1,6 +1,15 @@
 """End-to-end tests for Keycloak authentication."""
 
+import base64
+import json
+
 import httpx
+
+
+def _claims(token: str) -> dict:
+    """Decode a JWT payload without verifying it."""
+    body = token.split(".")[1]
+    return json.loads(base64.urlsafe_b64decode(body + "=" * (-len(body) % 4)))
 
 
 class TestKeycloakAuth:
@@ -99,6 +108,14 @@ class TestKeycloakAuth:
         legacyuser holds robot.writer as a realm role only. Realm roles are
         realm-global and so cannot express an environment-scoped grant.
         """
+        # Assert the role is in the token, so this tests that the API ignores
+        # realm_access rather than that Keycloak withheld the role.
+        claims = _claims(keycloak_legacy_realm_role_token)
+        assert "robot.writer" in claims["realm_access"]["roles"]
+        assert "robot.writer" not in claims.get("resource_access", {}).get(
+            "destiny-repository-client-test", {}
+        ).get("roles", [])
+
         response = await keycloak_api_client.post(
             "robots/",
             headers={"Authorization": f"Bearer {keycloak_legacy_realm_role_token}"},

@@ -83,6 +83,7 @@
       "directAccessGrantsEnabled": false,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
+      "fullScopeAllowed": false,
       "protocol": "openid-connect",
       "rootUrl": "http://localhost:3000",
       "baseUrl": "/",
@@ -159,5 +160,22 @@
       ],
       "groups": ["consumers-local"]
     }
-  ]
+  ],
+  "clientScopeMappings": {
+    "destiny-repository-client-local": [
+      {
+        "client": "destiny-auth-client-local",
+        "roles": [
+          "administrator",
+          "import.writer",
+          "reference.reader",
+          "reference.full_text.reader",
+          "reference.deduplicator",
+          "enhancement_request.writer",
+          "robot.writer",
+          "robot.entitlement.writer"
+        ]
+      }
+    ]
+  }
 }

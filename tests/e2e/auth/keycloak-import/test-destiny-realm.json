@@ -93,6 +93,7 @@
       "directAccessGrantsEnabled": true,
       "standardFlowEnabled": true,
       "implicitFlowEnabled": false,
+      "fullScopeAllowed": false,
       "protocol": "openid-connect",
       "rootUrl": "",
       "baseUrl": "/",
@@ -179,6 +180,29 @@
         }
       ],
       "groups": ["legacy-realm-role-holders"]
+    }
+  ],
+  "clientScopeMappings": {
+    "destiny-repository-client-test": [
+      {
+        "client": "destiny-auth-client-test",
+        "roles": [
+          "administrator",
+          "import.writer",
+          "reference.reader",
+          "reference.full_text.reader",
+          "reference.deduplicator",
+          "enhancement_request.writer",
+          "robot.writer",
+          "robot.entitlement.writer"
+        ]
+      }
+    ]
+  },
+  "scopeMappings": [
+    {
+      "client": "destiny-auth-client-test",
+      "roles": ["robot.writer"]
     }
   ]
 }
