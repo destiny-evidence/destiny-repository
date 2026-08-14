@@ -30,6 +30,12 @@ from app.domain.references.models.models import (
     RetrievalPolicyName,
     ScoredDeduplicationCandidate,
 )
+from app.domain.references.models.projections import DeduplicationPaperProjection
+from app.domain.references.services.deduplication_assessment_service import (
+    DeduplicationAssessmentService,
+    PairScorer,
+    ReferenceReader,
+)
 from app.domain.references.services.deduplication_evaluation_runner import (
     DeduplicationEvaluationRunner,
     EvaluationRunConfiguration,
@@ -334,12 +340,16 @@ async def test_run_builds_yearless_and_union_assessment_inputs():
     second_incoming, second_selection = assessor.evaluate_supplied.await_args_list[
         1
     ].args
-    bibliography = first_incoming.enhancements[0].content
+    # Through the projection the scorer runs on, not the record's own attributes: a
+    # record can hold every field and still be unscorable.
+    first_paper = DeduplicationPaperProjection.get_from_reference(first_incoming)
     assert first_incoming.id.version == 7
-    assert first_incoming.identifiers[0].identifier == "W1"
-    assert bibliography.publication_year is None
+    assert first_paper.openalex_id is not None
+    assert first_paper.openalex_id.identifier == "W1"
+    assert first_paper.title == "Study yearless"
+    assert first_paper.year is None
     assert [
-        (author.display_name, author.position) for author in bibliography.authorship
+        (author.display_name, author.position) for author in first_paper.authors or []
     ] == [
         ("First Author", "first"),
         ("Middle Author", "middle"),
@@ -350,7 +360,9 @@ async def test_run_builds_yearless_and_union_assessment_inputs():
         first_selection.identifiers[0].identifier_type
         is ExternalIdentifierType.OPEN_ALEX
     )
-    assert second_incoming.identifiers[0].identifier == "W1"
+    second_paper = DeduplicationPaperProjection.get_from_reference(second_incoming)
+    assert second_paper.openalex_id is not None
+    assert second_paper.openalex_id.identifier == "W1"
     # route_applicability is analysis metadata, not query-shaping input.
     # The runner sends full input so production policy records real provenance.
     assert (
@@ -601,6 +613,43 @@ async def test_run_accepts_a_record_the_corpus_was_never_searched_for():
 
     manifest = json.loads(uploaded["manifest.json"])
     assert manifest["counts"]["record_statuses"]["assessed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_run_supplies_a_record_the_assessment_service_can_score():
+    """A stand-in assessor takes any record, so drive the service the runner gets."""
+    repository, uploaded = _blob_repository(_line("scoreable").encode())
+    configuration = _configuration()
+    pair_scorer = MagicMock(spec=PairScorer)
+    pair_scorer.metadata = configuration.deduper
+    service = DeduplicationAssessmentService(
+        candidate_selector=AsyncMock(
+            return_value=CandidateSelectionResult(
+                retrieval_policy=configuration.retrieval_policy,
+                index_version=configuration.elasticsearch_index_version,
+                k_requested=configuration.k,
+                input_searchability=InputSearchability(
+                    searchable=True, reason="The input has a title and authors."
+                ),
+                candidates=[],
+                diagnostics=CandidateSelectionDiagnostics(),
+            )
+        ),
+        reference_reader=MagicMock(spec=ReferenceReader),
+        pair_scorer=pair_scorer,
+    )
+
+    await DeduplicationEvaluationRunner(assessor=service).run(
+        run_id=uuid7(),
+        input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+        blob_repository=repository,
+        configuration=configuration,
+    )
+
+    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    assert [(row["query_id"], row["status"]) for row in records] == [
+        ("scoreable", "assessed")
+    ]
 
 
 @pytest.mark.asyncio

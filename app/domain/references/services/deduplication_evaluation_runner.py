@@ -27,6 +27,9 @@ from app.domain.references.models.models import (
     DeduplicationAssessment,
     DeduplicationAssessmentOutcome,
     DeduplicationPairResult,
+    Enhancement,
+    LinkedExternalIdentifier,
+    Reference,
     RetrievalPolicyName,
 )
 from app.persistence.blob.models import BlobStorageFile
@@ -130,7 +133,7 @@ class SuppliedReferenceAssessor(Protocol):
 
     async def evaluate_supplied(
         self,
-        incoming: destiny_sdk.references.Reference,
+        incoming: Reference,
         selection_input: CandidateSelectionInput,
         *,
         retrieval_policy: RetrievalPolicyName | None = None,
@@ -426,7 +429,7 @@ class DeduplicationEvaluationRunner:
     @staticmethod
     def _assessment_inputs(
         record: EvaluationInputRecord,
-    ) -> tuple[destiny_sdk.references.Reference, CandidateSelectionInput]:
+    ) -> tuple[Reference, CandidateSelectionInput]:
         reference_id = uuid7()
         identifiers = [
             destiny_sdk.identifiers.ExternalIdentifierAdapter.validate_python(
@@ -450,11 +453,16 @@ class DeduplicationEvaluationRunner:
             )
             for index, name in enumerate(record.input_reference.authors)
         ]
-        incoming = destiny_sdk.references.Reference(
+        incoming = Reference(
             id=reference_id,
-            identifiers=identifiers,
+            identifiers=[
+                LinkedExternalIdentifier(
+                    identifier=identifier, reference_id=reference_id
+                )
+                for identifier in identifiers
+            ],
             enhancements=[
-                destiny_sdk.enhancements.Enhancement(
+                Enhancement(
                     reference_id=reference_id,
                     source=record.dataset_version,
                     visibility=destiny_sdk.visibility.Visibility.PUBLIC,
