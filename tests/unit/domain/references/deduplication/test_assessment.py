@@ -901,4 +901,6 @@ def test_reference_repository_satisfies_the_reader_protocol() -> None:
 
     reader: ReferenceReader = repository
 
-    assert reader.get_hydrated == repository.get_hydrated
+    # Nothing meaningful to assert at runtime: the annotated assignment above is
+    # the check, and mypy is what performs it.
+    assert reader is repository

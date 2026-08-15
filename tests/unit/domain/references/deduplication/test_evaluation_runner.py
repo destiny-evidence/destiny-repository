@@ -218,6 +218,11 @@ def _blob_repository(source: bytes) -> tuple[BlobRepository, dict[str, bytes]]:
     return repository, uploaded
 
 
+def _rows(artifact: bytes) -> list[dict]:
+    """Read JSONL the way the runner writes it: newline only, never splitlines()."""
+    return [json.loads(row) for row in artifact.decode().split("\n") if row]
+
+
 @pytest.mark.asyncio
 async def test_run_writes_complete_reviewable_bundle():
     """The public run contract preserves input identity and writes manifest last."""
@@ -257,8 +262,8 @@ async def test_run_writes_complete_reviewable_bundle():
     assert artifacts.input_byte_size == len(source)
     assert artifacts.input_sha256 == hashlib.sha256(source).hexdigest()
 
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
-    pairs = [json.loads(row) for row in uploaded["pair-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
+    pairs = _rows(uploaded["pair-results.jsonl"])
     assert [
         (row["query_id"], row["line_number"], row["status"]) for row in records
     ] == [
@@ -266,6 +271,9 @@ async def test_run_writes_complete_reviewable_bundle():
         (None, 2, "input_invalid"),
     ]
     assert records[1]["error"]["code"] == "invalid_json"
+    # The parser is handed one line at a time, so its own line number is always 1
+    # and would contradict the envelope's.
+    assert "line" not in records[1]["error"]["message"]
     assert [row["clears_threshold"] for row in pairs] == [True, False, None]
     assert all(row["query_id"] == "assessed" for row in pairs)
     assert pairs[0]["retrieval_routes"][0]["policy"] == "candidate_selection_v1"
@@ -407,7 +415,7 @@ async def test_run_splits_records_only_on_newline():
         configuration=_configuration(),
     )
 
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     assert [
         (row["query_id"], row["line_number"], row["status"]) for row in records
     ] == [
@@ -461,7 +469,7 @@ async def test_run_records_expected_failures_and_continues():
         configuration=_configuration(),
     )
 
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     assert [row["line_number"] for row in records] == [1, 3, 4, 5, 6, 7, 8]
     assert [row["status"] for row in records] == [
         "assessed",
@@ -511,7 +519,7 @@ async def test_run_preserves_completed_records_when_it_aborts():
         )
 
     assert set(uploaded) == {"record-results.jsonl"}
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     assert [(row["query_id"], row["status"]) for row in records] == [
         ("first", "assessed")
     ]
@@ -586,7 +594,7 @@ async def test_run_aborts_when_a_record_contradicts_the_published_configuration(
         field for field in _CONFIGURATION_FIELDS if f"{field} asserted" in message
     ] == reported
     assert set(uploaded) == {"record-results.jsonl"}
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     # The record that triggered the mismatch is kept, so the bundle shows what
     # actually ran against what the configuration declared.
     assert [(row["query_id"], row["status"]) for row in records] == [
@@ -618,7 +626,7 @@ async def test_run_aborts_when_a_record_declares_another_dataset():
     assert set(uploaded) == {"record-results.jsonl"}
     # Rejected before it is assessed, so unlike a drifted run there is nothing
     # completed to keep for that line.
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     assert [(row["query_id"], row["status"]) for row in records] == [
         ("first", "assessed")
     ]
@@ -656,6 +664,10 @@ async def test_run_supplies_a_record_the_assessment_service_can_score():
     configuration = _configuration()
     pair_scorer = MagicMock(spec=PairScorer)
     pair_scorer.metadata = configuration.deduper
+    # Set explicitly: the protocol declares get_hydrated `-> Awaitable[...]` rather
+    # than `async def`, so MagicMock(spec=...) mocks it as sync and awaiting fails.
+    reference_reader = MagicMock(spec=ReferenceReader)
+    reference_reader.get_hydrated = AsyncMock(return_value=[])
     service = DeduplicationAssessmentService(
         candidate_selector=AsyncMock(
             return_value=CandidateSelectionResult(
@@ -669,7 +681,7 @@ async def test_run_supplies_a_record_the_assessment_service_can_score():
                 diagnostics=CandidateSelectionDiagnostics(),
             )
         ),
-        reference_reader=MagicMock(spec=ReferenceReader),
+        reference_reader=reference_reader,
         pair_scorer=pair_scorer,
     )
 
@@ -680,7 +692,7 @@ async def test_run_supplies_a_record_the_assessment_service_can_score():
         configuration=configuration,
     )
 
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     assert [(row["query_id"], row["status"]) for row in records] == [
         ("scoreable", "assessed")
     ]
@@ -712,7 +724,7 @@ async def test_run_keeps_completed_records_when_cancelled():
         )
 
     assert set(uploaded) == {"record-results.jsonl"}
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     assert [(row["query_id"], row["status"]) for row in records] == [
         ("first", "assessed")
     ]
@@ -751,7 +763,7 @@ async def test_run_keeps_completed_records_when_its_task_is_cancelled():
         await task
 
     assert set(uploaded) == {"record-results.jsonl"}
-    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    records = _rows(uploaded["record-results.jsonl"])
     assert [(row["query_id"], row["status"]) for row in records] == [
         ("first", "assessed")
     ]

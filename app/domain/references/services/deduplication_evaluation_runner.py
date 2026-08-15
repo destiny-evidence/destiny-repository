@@ -298,7 +298,7 @@ class DeduplicationEvaluationRunner:
                 None,
                 line_number,
                 "invalid_json",
-                f"Invalid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}.",
+                f"Invalid JSON: {exc.msg} at column {exc.colno}.",
             )
         if not isinstance(payload, dict):
             return self._invalid_result(
