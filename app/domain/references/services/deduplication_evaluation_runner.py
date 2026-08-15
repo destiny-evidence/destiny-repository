@@ -323,6 +323,16 @@ class DeduplicationEvaluationRunner:
                 f"Invalid evaluation record: {exc}",
             )
 
+        if record.dataset_version != configuration.dataset_version:
+            # Checked before the assessment, unlike the run's own values: the input
+            # can contradict the manifest without any retrieval being spent on it.
+            msg = (
+                f"Evaluation run contradicts its configuration at line {line_number}: "
+                f"dataset_version asserted {configuration.dataset_version!r}, "
+                f"record declares {record.dataset_version!r}"
+            )
+            raise EvaluationConfigurationMismatchError(msg)
+
         try:
             assessment = await self._assessor.evaluate_supplied(
                 incoming,

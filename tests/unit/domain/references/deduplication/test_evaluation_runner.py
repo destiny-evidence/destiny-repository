@@ -71,6 +71,7 @@ def _line(
     route_applicability: list[str] | None = None,
     input_identifiers: list[str] | None = None,
     excluded_reference_ids: list[str] | None = None,
+    dataset_version: str = "retrieval-query-set/v1",
 ) -> str:
     return json.dumps(
         {
@@ -83,7 +84,7 @@ def _line(
             "input_identifiers": input_identifiers or ["open_alex:W1"],
             "route_applicability": route_applicability or ["fuzzy"],
             "excluded_reference_ids": excluded_reference_ids or [],
-            "dataset_version": "retrieval-query-set/v1",
+            "dataset_version": dataset_version,
         }
     )
 
@@ -592,6 +593,36 @@ async def test_run_aborts_when_a_record_contradicts_the_published_configuration(
         ("first", "assessed"),
         ("drifted", "assessed"),
     ]
+
+
+@pytest.mark.asyncio
+async def test_run_aborts_when_a_record_declares_another_dataset():
+    """A manifest naming one dataset must not describe records from another."""
+    source = "\n".join(
+        [_line("first"), _line("other", dataset_version="retrieval-query-set/v2")]
+    ).encode()
+    repository, uploaded = _blob_repository(source)
+    assessor = _assessor()
+
+    with pytest.raises(EvaluationConfigurationMismatchError) as mismatch:
+        await DeduplicationEvaluationRunner(assessor=assessor).run(
+            run_id=uuid7(),
+            input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+            blob_repository=repository,
+            configuration=_configuration(),
+        )
+
+    message = str(mismatch.value)
+    assert "retrieval-query-set/v1" in message
+    assert "retrieval-query-set/v2" in message
+    assert set(uploaded) == {"record-results.jsonl"}
+    # Rejected before it is assessed, so unlike a drifted run there is nothing
+    # completed to keep for that line.
+    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    assert [(row["query_id"], row["status"]) for row in records] == [
+        ("first", "assessed")
+    ]
+    assert assessor.evaluate_supplied.await_count == 1
 
 
 @pytest.mark.asyncio
