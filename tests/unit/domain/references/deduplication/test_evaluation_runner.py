@@ -586,8 +586,11 @@ async def test_run_aborts_when_a_record_contradicts_the_published_configuration(
     ] == reported
     assert set(uploaded) == {"record-results.jsonl"}
     records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    # The record that triggered the mismatch is kept, so the bundle shows what
+    # actually ran against what the configuration declared.
     assert [(row["query_id"], row["status"]) for row in records] == [
-        ("first", "assessed")
+        ("first", "assessed"),
+        ("drifted", "assessed"),
     ]
 
 
@@ -653,11 +656,21 @@ async def test_run_supplies_a_record_the_assessment_service_can_score():
 
 
 @pytest.mark.asyncio
-async def test_run_writes_nothing_when_cancelled():
-    """Cancellation unwinds without further blob I/O."""
-    repository, uploaded = _blob_repository(_line("failed").encode())
+async def test_run_keeps_completed_records_when_cancelled():
+    """A shutdown costs the same hours of retrieval as any other abort."""
+    source = "\n".join([_line("first"), _line("cancelled")]).encode()
+    repository, uploaded = _blob_repository(source)
+    call_count = 0
+
+    async def assess(incoming, *_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            raise asyncio.CancelledError
+        return _assessment(incoming.id)
+
     assessor = AsyncMock()
-    assessor.evaluate_supplied.side_effect = asyncio.CancelledError()
+    assessor.evaluate_supplied = AsyncMock(side_effect=assess)
 
     with pytest.raises(asyncio.CancelledError):
         await DeduplicationEvaluationRunner(assessor=assessor).run(
@@ -667,4 +680,47 @@ async def test_run_writes_nothing_when_cancelled():
             configuration=_configuration(),
         )
 
-    assert uploaded == {}
+    assert set(uploaded) == {"record-results.jsonl"}
+    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    assert [(row["query_id"], row["status"]) for row in records] == [
+        ("first", "assessed")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_run_keeps_completed_records_when_its_task_is_cancelled():
+    """Cancelling the task, not raising the sentinel: the salvage still has to run."""
+    source = "\n".join([_line("first"), _line("blocked")]).encode()
+    repository, uploaded = _blob_repository(source)
+    reached_second = asyncio.Event()
+    call_count = 0
+
+    async def assess(incoming, *_args, **_kwargs):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 2:
+            reached_second.set()
+            await asyncio.Event().wait()
+        return _assessment(incoming.id)
+
+    assessor = AsyncMock()
+    assessor.evaluate_supplied = AsyncMock(side_effect=assess)
+
+    task = asyncio.create_task(
+        DeduplicationEvaluationRunner(assessor=assessor).run(
+            run_id=uuid7(),
+            input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+            blob_repository=repository,
+            configuration=_configuration(),
+        )
+    )
+    await reached_second.wait()
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert set(uploaded) == {"record-results.jsonl"}
+    records = [json.loads(row) for row in uploaded["record-results.jsonl"].splitlines()]
+    assert [(row["query_id"], row["status"]) for row in records] == [
+        ("first", "assessed")
+    ]

@@ -182,17 +182,22 @@ class DeduplicationEvaluationRunner:
                     line_number += 1
                     if not line.strip():
                         continue
-                    record_results.append(
-                        await self._evaluate_line(
-                            run_id=run_id,
-                            line=line,
-                            line_number=line_number,
-                            configuration=configuration,
-                        )
+                    result = await self._evaluate_line(
+                        run_id=run_id,
+                        line=line,
+                        line_number=line_number,
+                        configuration=configuration,
                     )
-        except Exception:
-            # A run costs hours of retrieval, so keep whatever completed. Writing no
-            # manifest is what marks the bundle incomplete.
+                    record_results.append(result)
+                    # Checked after the record is kept, so an aborting bundle still
+                    # carries the assessment that disagrees with the configuration.
+                    if result.assessment is not None:
+                        self._verify_configuration(
+                            result.assessment, configuration, line_number
+                        )
+        except BaseException:
+            # A run costs hours of retrieval, so keep whatever completed, a
+            # cancelling shutdown included. No manifest marks the bundle incomplete.
             await self._upload(
                 blob_repository,
                 path,
@@ -342,7 +347,6 @@ class DeduplicationEvaluationRunner:
                     message=f"Evaluation failed ({type(exc).__name__}): {exc}",
                 ),
             )
-        self._verify_configuration(assessment, configuration, line_number)
         return EvaluationRecordResult(
             run_id=run_id,
             query_id=record.query_id,
