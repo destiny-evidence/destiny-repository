@@ -528,6 +528,39 @@ async def test_evaluate_supplied_fails_when_incoming_cannot_project():
 
 
 @pytest.mark.asyncio
+async def test_evaluate_supplied_reports_a_scorer_failure_as_a_deduplication_error():
+    """The Deduper is third-party: one pair it cannot score is one failed record."""
+    incoming = _supplied_reference()
+    candidate = _reference()
+
+    class _RaisingScorer:
+        metadata = DeduperMetadata(
+            package_version="fake-1",
+            configuration_hash="test-config",
+            threshold=0.85,
+        )
+
+        async def score_pair(self, incoming, candidate):
+            msg = "scorer exploded"
+            raise RuntimeError(msg)
+
+    reader = MagicMock(spec=ReferenceReader)
+    reader.get_hydrated = AsyncMock(return_value=[candidate])
+    service = DeduplicationAssessmentService(
+        candidate_selector=AsyncMock(
+            return_value=_selection(
+                Candidate(reference_id=candidate.id, rank=1, routes=[])
+            )
+        ),
+        reference_reader=reader,
+        pair_scorer=_RaisingScorer(),
+    )
+
+    with pytest.raises(DeduplicationError, match="scorer exploded"):
+        await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+
+@pytest.mark.asyncio
 async def test_evaluate_empty_searchable_union_proposes_canonical():
     incoming = _reference()
     service, _, reader, pair_scorer = _build_service(

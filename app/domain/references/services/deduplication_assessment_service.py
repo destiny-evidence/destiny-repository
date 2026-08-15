@@ -104,6 +104,28 @@ class DeduplicationAssessmentService:
             msg = f"Cannot build a deduplication paper for {reference.id}"
             raise DeduplicationValueError(msg) from exc
 
+    async def _score_candidate(
+        self, incoming: DeduplicationPaper, candidate: Reference
+    ) -> DeduplicationPairResult:
+        """Score one pair, or say why the Deduper could not be asked."""
+        try:
+            candidate_paper = self._to_scorer_paper(candidate)
+        except DeduplicationValueError:
+            # One unprojectable candidate is not a failed assessment; it is a
+            # candidate the Deduper was never given a chance to score.
+            return DeduplicationPairResult(
+                unscorable_reason=UNPROJECTABLE_CANDIDATE_REASON
+            )
+        try:
+            return await self._pair_scorer.score_pair(
+                incoming=incoming, candidate=candidate_paper
+            )
+        except Exception as exc:
+            # Deliberately broad, unlike the narrow retrieval and hydration
+            # handlers: a third-party scorer's defect is one record's, not the run's.
+            msg = f"Candidate scoring failed ({type(exc).__name__}): {exc}"
+            raise DeduplicationError(msg) from exc
+
     async def _hydrate_one(self, reference_id: UUID) -> Reference:
         """Read one stored reference, treating an empty result as not-found."""
         hydrated = await self._reference_reader.get_hydrated(
@@ -229,20 +251,9 @@ class DeduplicationAssessmentService:
         scorer_metadata = self._pair_scorer.metadata.model_copy(deep=True)
         threshold = scorer_metadata.threshold
         for candidate in candidate_selection.candidates:
-            try:
-                candidate_paper = self._to_scorer_paper(
-                    candidates_by_id[candidate.reference_id]
-                )
-            except DeduplicationValueError:
-                # One unprojectable candidate is not a failed assessment; it is a
-                # candidate the Deduper was never given a chance to score.
-                pair_result = DeduplicationPairResult(
-                    unscorable_reason=UNPROJECTABLE_CANDIDATE_REASON
-                )
-            else:
-                pair_result = await self._pair_scorer.score_pair(
-                    incoming=scored_incoming, candidate=candidate_paper
-                )
+            pair_result = await self._score_candidate(
+                scored_incoming, candidates_by_id[candidate.reference_id]
+            )
             clears_threshold = (
                 pair_result.probability >= threshold
                 if pair_result.probability is not None
