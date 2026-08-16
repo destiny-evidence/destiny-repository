@@ -406,6 +406,19 @@ class DedupCandidateScoringConfig(BaseModel):
     )
 
 
+class DedupAssessmentRecordingConfig(BaseModel):
+    """Configuration for recording deduplication assessment evidence."""
+
+    evidence_sample_rate_bits: int | None = Field(
+        default=0,
+        ge=0,
+        le=64,
+        description="Base-2 sample-rate exponent. Keep full evidence for a "
+        "deterministic 1 / (2 ** N) sample, regardless of outcome. Null keeps "
+        "none.",
+    )
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -418,6 +431,9 @@ class Settings(BaseSettings):
 
     feature_flags: FeatureFlags = FeatureFlags()
     dedup_scoring: DedupCandidateScoringConfig = DedupCandidateScoringConfig()
+    dedup_assessment_recording: DedupAssessmentRecordingConfig = (
+        DedupAssessmentRecordingConfig()
+    )
 
     db_config: DatabaseConfig
     es_config: ESConfig

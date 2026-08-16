@@ -1347,6 +1347,11 @@ class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
     payload_reason: str | None = Field(
         default=None, description="Why the payload is absent when it was wanted."
     )
+    payload_sampled: bool = Field(
+        default=False,
+        description="Whether this record is in the evidence sample. Independent of "
+        "whether the payload was kept, so the sampled set stays uniform.",
+    )
     payload_bytes: int | None = Field(
         default=None,
         ge=0,

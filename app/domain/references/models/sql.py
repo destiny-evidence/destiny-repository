@@ -829,6 +829,7 @@ class DeduplicationAssessmentRecord(
     )
     payload_blob_url: Mapped[str | None] = mapped_column(String, nullable=True)
     payload_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    payload_sampled: Mapped[bool] = mapped_column(nullable=False, default=False)
     payload_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
@@ -874,6 +875,7 @@ class DeduplicationAssessmentRecord(
             payload_state=domain_obj.payload_state,
             payload_blob_url=domain_obj.payload_blob_url,
             payload_reason=domain_obj.payload_reason,
+            payload_sampled=domain_obj.payload_sampled,
             payload_bytes=domain_obj.payload_bytes,
         )
 
@@ -906,6 +908,7 @@ class DeduplicationAssessmentRecord(
             payload_state=self.payload_state,
             payload_blob_url=self.payload_blob_url,
             payload_reason=self.payload_reason,
+            payload_sampled=self.payload_sampled,
             payload_bytes=self.payload_bytes,
         )
 

@@ -5,6 +5,7 @@ from pydantic import ValidationError
 
 from app.core.config import (
     AzureBlobConfig,
+    DedupAssessmentRecordingConfig,
     DedupCandidateScoringConfig,
     ESConfig,
     MinioConfig,
@@ -76,3 +77,29 @@ def test_candidate_selection_config_defaults_to_production_policy_and_k():
 
     assert config.default_retrieval_policy is RetrievalPolicyName.CANDIDATE_SELECTION_V1
     assert config.candidate_k == 10
+
+
+def test_dedup_assessment_recording_defaults_to_full_evidence_sample():
+    """Default recording keeps every sampled evidence payload."""
+    config = DedupAssessmentRecordingConfig()
+
+    assert config.evidence_sample_rate_bits == 0
+
+
+@pytest.mark.parametrize("sample_rate_bits", [None, 0, 1, 8, 64])
+def test_dedup_assessment_recording_accepts_valid_sample_rate_bits(
+    sample_rate_bits: int | None,
+):
+    """Evidence sampling is configured as a base-2 sample-rate exponent."""
+    config = DedupAssessmentRecordingConfig(evidence_sample_rate_bits=sample_rate_bits)
+
+    assert config.evidence_sample_rate_bits == sample_rate_bits
+
+
+@pytest.mark.parametrize("sample_rate_bits", [-1, 65])
+def test_dedup_assessment_recording_rejects_invalid_sample_rate_bits(
+    sample_rate_bits: int,
+):
+    """The sample-rate exponent must fit the 64-bit sampler digest."""
+    with pytest.raises(ValidationError):
+        DedupAssessmentRecordingConfig(evidence_sample_rate_bits=sample_rate_bits)

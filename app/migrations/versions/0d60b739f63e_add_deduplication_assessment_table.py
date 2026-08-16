@@ -42,6 +42,7 @@ def upgrade() -> None:
     sa.Column('payload_state', sa.String(), nullable=False),
     sa.Column('payload_blob_url', sa.String(), nullable=True),
     sa.Column('payload_reason', sa.String(), nullable=True),
+    sa.Column('payload_sampled', sa.Boolean(), nullable=False),
     sa.Column('payload_bytes', sa.Integer(), nullable=True),
     sa.Column('id', sa.UUID(), nullable=False),
     sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),

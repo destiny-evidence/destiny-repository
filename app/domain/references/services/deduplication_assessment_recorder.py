@@ -1,8 +1,9 @@
 """Durable recording of deduplication assessments, with no decision writing."""
 
+import hashlib
 from io import BytesIO
 from typing import NamedTuple, Protocol
-from uuid import UUID
+from uuid import UUID, uuid7
 
 from app.core.exceptions import BlobStorageError
 from app.domain.references.models.models import (
@@ -19,6 +20,22 @@ from app.persistence.blob.repository import BlobRepository
 # yet stored reads as failed. A crash then leaves the truth rather than a stuck state.
 PAYLOAD_PENDING_REASON = "Payload write not completed."
 PAYLOAD_PATH = "deduplication-assessments"
+
+
+def evidence_sampled(record_id: UUID, sample_rate_bits: int | None) -> bool:
+    """
+    Whether this record is in the 1 / (2 ** sample_rate_bits) evidence sample.
+
+    Keyed on the record rather than drawn at random, so a retried or replayed
+    assessment decides the same way and a run can be reproduced.
+    """
+    if sample_rate_bits is None:
+        return False
+    # Hashed rather than read off the id: uuid7 carries a monotonic counter in its
+    # random field, so using those bits directly risks selecting whole batches at once.
+    digest = hashlib.blake2b(record_id.bytes, digest_size=8).digest()
+    mask = (1 << sample_rate_bits) - 1
+    return int.from_bytes(digest) & mask == 0
 
 
 class AssessmentRecordStore(Protocol):
@@ -85,14 +102,16 @@ class DeduplicationAssessmentRecorder:
         *,
         record_store: AssessmentRecordStore,
         payload_writer: AssessmentPayloadWriter,
+        evidence_sample_rate_bits: int | None,
     ) -> None:
         """Initialize the recorder with its persistence collaborators."""
         self._record_store = record_store
         self._payload_writer = payload_writer
+        self._evidence_sample_rate_bits = evidence_sample_rate_bits
 
     @staticmethod
-    def _retain_payload(assessment: DeduplicationAssessment) -> bool:
-        """Keep evidence only where a later reader would need it."""
+    def _is_interesting(assessment: DeduplicationAssessment) -> bool:
+        """Whether a later reader would need this assessment's evidence."""
         return bool(
             assessment.threshold_clearing_candidate_ids
             or assessment.unscorable_candidate_ids
@@ -128,10 +147,15 @@ class DeduplicationAssessmentRecorder:
         """Persist an assessment summary, and its payload when worth keeping."""
         selection = assessment.candidate_selection
         best_score, best_non_winning_score = self._scores(assessment)
-        retain_payload = self._retain_payload(assessment)
+        # The id is minted here rather than by the model, because sampling keys off it
+        # and the flag has to be set on the row as it is inserted.
+        record_id = uuid7()
+        sampled = evidence_sampled(record_id, self._evidence_sample_rate_bits)
+        retain_payload = self._is_interesting(assessment) or sampled
 
         record = await self._record_store.add(
             DeduplicationAssessmentRecord(
+                id=record_id,
                 incoming_reference_id=assessment.incoming_reference_id,
                 purpose=purpose,
                 policy_generation=policy_generation,
@@ -156,12 +180,12 @@ class DeduplicationAssessmentRecorder:
                 if retain_payload
                 else AssessmentPayloadState.NOT_RETAINED,
                 payload_reason=PAYLOAD_PENDING_REASON if retain_payload else None,
+                payload_sampled=sampled,
             )
         )
         if not retain_payload:
             return record
 
-        record_id = record.id
         try:
             stored = await self._payload_writer.write(
                 record_id=record_id, assessment=assessment

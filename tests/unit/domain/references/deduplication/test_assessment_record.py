@@ -22,6 +22,7 @@ from app.domain.references.models.models import (
 from app.domain.references.services.deduplication_assessment_recorder import (
     DeduplicationAssessmentRecorder,
     StoredPayload,
+    evidence_sampled,
 )
 
 POLICY_GENERATION = "openalex-2026-08-a"
@@ -170,8 +171,135 @@ def recorder(
     record_store: FakeRecordStore, payload_writer: FakePayloadWriter
 ) -> DeduplicationAssessmentRecorder:
     return DeduplicationAssessmentRecorder(
-        record_store=record_store, payload_writer=payload_writer
+        record_store=record_store,
+        payload_writer=payload_writer,
+        evidence_sample_rate_bits=None,
     )
+
+
+def _recorder_at(
+    sample_rate_bits: int | None,
+    record_store: FakeRecordStore,
+    payload_writer: FakePayloadWriter,
+) -> DeduplicationAssessmentRecorder:
+    return DeduplicationAssessmentRecorder(
+        record_store=record_store,
+        payload_writer=payload_writer,
+        evidence_sample_rate_bits=sample_rate_bits,
+    )
+
+
+def test_evidence_sampling_is_deterministic_for_a_record():
+    record_id = uuid7()
+
+    assert evidence_sampled(record_id, 1) == evidence_sampled(record_id, 1)
+
+
+@pytest.mark.parametrize(
+    ("sample_rate_bits", "expected"),
+    [pytest.param(None, False, id="never"), pytest.param(0, True, id="always")],
+)
+def test_evidence_sampling_honours_the_extremes(sample_rate_bits, expected):
+    assert evidence_sampled(uuid7(), sample_rate_bits) is expected
+
+
+@pytest.mark.parametrize("sample_rate_bits", [1, 2, 5])
+def test_evidence_sampling_selects_the_configured_power_of_two_rate(
+    sample_rate_bits: int,
+):
+    # More than one rate, so a hardcoded one cannot pass. At least one above 1,
+    # because an off-by-one mask still selects about half at 1 and only shows above it.
+    sample_size = 10_000
+    expected = sample_size / (2**sample_rate_bits)
+
+    selected = sum(
+        evidence_sampled(uuid7(), sample_rate_bits) for _ in range(sample_size)
+    )
+
+    assert abs(selected - expected) < expected * 0.25
+
+
+async def test_uninteresting_assessment_keeps_a_payload_when_sampled(
+    record_store: FakeRecordStore,
+    payload_writer: FakePayloadWriter,
+) -> None:
+    recorder = _recorder_at(0, record_store, payload_writer)
+
+    record = await recorder.record(
+        build_assessment([scored_candidate(0.2)]),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.payload_state == AssessmentPayloadState.STORED
+    assert record.payload_sampled is True
+    assert payload_writer.calls == [record.id]
+
+
+async def test_interesting_assessment_is_kept_without_being_sampled(
+    record_store: FakeRecordStore,
+    payload_writer: FakePayloadWriter,
+) -> None:
+    # The flag marks sample membership, not the reason a payload exists. Folding the
+    # two together would hide sampled-and-interesting records and bias the sample.
+    recorder = _recorder_at(None, record_store, payload_writer)
+
+    record = await recorder.record(
+        build_assessment([scored_candidate(0.95)]),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.payload_state == AssessmentPayloadState.STORED
+    assert record.payload_sampled is False
+
+
+async def test_stored_payload_records_its_size(
+    record_store: FakeRecordStore,
+) -> None:
+    # The size is what makes narrowing the sample rate an evidence-based decision
+    # rather than a guess.
+    recorder = DeduplicationAssessmentRecorder(
+        record_store=record_store,
+        payload_writer=FakePayloadWriter(size_bytes=48_000),
+        evidence_sample_rate_bits=0,
+    )
+
+    record = await recorder.record(
+        build_assessment([scored_candidate(0.2)]),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.payload_bytes == 48_000
+
+
+async def test_unretained_payload_has_no_size(
+    recorder: DeduplicationAssessmentRecorder,
+) -> None:
+    record = await recorder.record(
+        build_assessment([scored_candidate(0.2)]),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.payload_state == AssessmentPayloadState.NOT_RETAINED
+    assert record.payload_bytes is None
+
+
+async def test_interesting_assessment_is_flagged_when_also_sampled(
+    record_store: FakeRecordStore,
+    payload_writer: FakePayloadWriter,
+) -> None:
+    recorder = _recorder_at(0, record_store, payload_writer)
+
+    record = await recorder.record(
+        build_assessment([scored_candidate(0.95)]),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.payload_sampled is True
 
 
 async def test_below_threshold_assessment_is_recorded_without_a_payload(
@@ -350,44 +478,13 @@ async def test_searchable_input_records_a_run_route_even_without_an_index_alias(
     assert record.es_index_name is None
 
 
-async def test_stored_payload_records_its_size(
-    record_store: FakeRecordStore,
-) -> None:
-    # The size is what makes narrowing retention an evidence-based decision rather
-    # than a guess.
-    recorder = DeduplicationAssessmentRecorder(
-        record_store=record_store,
-        payload_writer=FakePayloadWriter(size_bytes=48_000),
-    )
-
-    record = await recorder.record(
-        build_assessment([scored_candidate(0.95)]),
-        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
-        policy_generation=POLICY_GENERATION,
-    )
-
-    assert record.payload_bytes == 48_000
-
-
-async def test_unretained_payload_has_no_size(
-    recorder: DeduplicationAssessmentRecorder,
-) -> None:
-    record = await recorder.record(
-        build_assessment([scored_candidate(0.2)]),
-        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
-        policy_generation=POLICY_GENERATION,
-    )
-
-    assert record.payload_state == AssessmentPayloadState.NOT_RETAINED
-    assert record.payload_bytes is None
-
-
 async def test_failed_payload_write_keeps_the_summary_record(
     record_store: FakeRecordStore,
 ) -> None:
     recorder = DeduplicationAssessmentRecorder(
         record_store=record_store,
         payload_writer=FakePayloadWriter(error=MinioBlobStorageError("bucket gone")),
+        evidence_sample_rate_bits=None,
     )
 
     record = await recorder.record(
