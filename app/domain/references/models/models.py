@@ -1319,7 +1319,8 @@ class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
     )
     purpose: DeduplicationAssessmentPurpose
     policy_generation: str = Field(
-        description="The acting-policy generation this assessment was run under."
+        description="The acting-policy generation this assessment was run under. "
+        "Identifies configuration, not execution, and so keys the evidence sample.",
     )
     retrieval_policy: RetrievalPolicyName
     k: int = Field(description="The configured candidate count requested.")

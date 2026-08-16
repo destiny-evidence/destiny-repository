@@ -3,8 +3,9 @@
 import hashlib
 from io import BytesIO
 from typing import NamedTuple, Protocol
-from uuid import UUID, uuid7
+from uuid import UUID
 
+from app.core.config import EVIDENCE_SAMPLE_DIGEST_BITS
 from app.core.exceptions import BlobStorageError
 from app.domain.references.models.models import (
     AssessmentCandidateSummary,
@@ -22,18 +23,26 @@ PAYLOAD_PENDING_REASON = "Payload write not completed."
 PAYLOAD_PATH = "deduplication-assessments"
 
 
-def evidence_sampled(record_id: UUID, sample_rate_bits: int | None) -> bool:
+def evidence_sampled(
+    incoming_reference_id: UUID,
+    policy_generation: str,
+    sample_rate_bits: int | None,
+) -> bool:
     """
-    Whether this record is in the 1 / (2 ** sample_rate_bits) evidence sample.
+    Whether this assessment is in the 1 / (2 ** sample_rate_bits) evidence sample.
 
-    Keyed on the record rather than drawn at random, so a retried or replayed
-    assessment decides the same way and a run can be reproduced.
+    Keyed on the reference and the generation assessing it, so a retried or
+    restarted run samples the same population rather than drawing again.
     """
     if sample_rate_bits is None:
         return False
-    # Hashed rather than read off the id: uuid7 carries a monotonic counter in its
-    # random field, so using those bits directly risks selecting whole batches at once.
-    digest = hashlib.blake2b(record_id.bytes, digest_size=8).digest()
+    if sample_rate_bits > EVIDENCE_SAMPLE_DIGEST_BITS:
+        msg = f"Sample rate exceeds the {EVIDENCE_SAMPLE_DIGEST_BITS}-bit digest."
+        raise ValueError(msg)
+    # Hashed rather than read off the reference id: uuid7 carries a monotonic counter
+    # in its random field, so those bits select whole ingest batches at once.
+    key = incoming_reference_id.bytes + policy_generation.encode()
+    digest = hashlib.blake2b(key, digest_size=EVIDENCE_SAMPLE_DIGEST_BITS // 8).digest()
     mask = (1 << sample_rate_bits) - 1
     return int.from_bytes(digest) & mask == 0
 
@@ -147,15 +156,15 @@ class DeduplicationAssessmentRecorder:
         """Persist an assessment summary, and its payload when worth keeping."""
         selection = assessment.candidate_selection
         best_score, best_non_winning_score = self._scores(assessment)
-        # The id is minted here rather than by the model, because sampling keys off it
-        # and the flag has to be set on the row as it is inserted.
-        record_id = uuid7()
-        sampled = evidence_sampled(record_id, self._evidence_sample_rate_bits)
+        sampled = evidence_sampled(
+            assessment.incoming_reference_id,
+            policy_generation,
+            self._evidence_sample_rate_bits,
+        )
         retain_payload = self._is_interesting(assessment) or sampled
 
         record = await self._record_store.add(
             DeduplicationAssessmentRecord(
-                id=record_id,
                 incoming_reference_id=assessment.incoming_reference_id,
                 purpose=purpose,
                 policy_generation=policy_generation,
@@ -186,6 +195,7 @@ class DeduplicationAssessmentRecorder:
         if not retain_payload:
             return record
 
+        record_id = record.id
         try:
             stored = await self._payload_writer.write(
                 record_id=record_id, assessment=assessment

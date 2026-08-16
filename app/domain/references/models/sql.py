@@ -829,7 +829,9 @@ class DeduplicationAssessmentRecord(
     )
     payload_blob_url: Mapped[str | None] = mapped_column(String, nullable=True)
     payload_reason: Mapped[str | None] = mapped_column(String, nullable=True)
-    payload_sampled: Mapped[bool] = mapped_column(nullable=False, default=False)
+    payload_sampled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
     payload_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (

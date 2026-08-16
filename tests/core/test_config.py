@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import (
+    EVIDENCE_SAMPLE_DIGEST_BITS,
     AzureBlobConfig,
     DedupAssessmentRecordingConfig,
     DedupCandidateScoringConfig,
@@ -86,7 +87,9 @@ def test_dedup_assessment_recording_defaults_to_full_evidence_sample():
     assert config.evidence_sample_rate_bits == 0
 
 
-@pytest.mark.parametrize("sample_rate_bits", [None, 0, 1, 8, 64])
+@pytest.mark.parametrize(
+    "sample_rate_bits", [None, 0, 1, 8, EVIDENCE_SAMPLE_DIGEST_BITS]
+)
 def test_dedup_assessment_recording_accepts_valid_sample_rate_bits(
     sample_rate_bits: int | None,
 ):
@@ -96,10 +99,10 @@ def test_dedup_assessment_recording_accepts_valid_sample_rate_bits(
     assert config.evidence_sample_rate_bits == sample_rate_bits
 
 
-@pytest.mark.parametrize("sample_rate_bits", [-1, 65])
+@pytest.mark.parametrize("sample_rate_bits", [-1, EVIDENCE_SAMPLE_DIGEST_BITS + 1])
 def test_dedup_assessment_recording_rejects_invalid_sample_rate_bits(
     sample_rate_bits: int,
 ):
-    """The sample-rate exponent must fit the 64-bit sampler digest."""
+    """A rate the sampler's digest cannot express is refused at configuration time."""
     with pytest.raises(ValidationError):
         DedupAssessmentRecordingConfig(evidence_sample_rate_bits=sample_rate_bits)

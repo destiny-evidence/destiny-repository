@@ -406,16 +406,20 @@ class DedupCandidateScoringConfig(BaseModel):
     )
 
 
+# Width of the evidence sampler's digest. A sample rate needing more bits than the
+# digest holds would select nothing, so it bounds the exponent as well.
+EVIDENCE_SAMPLE_DIGEST_BITS = 64
+
+
 class DedupAssessmentRecordingConfig(BaseModel):
     """Configuration for recording deduplication assessment evidence."""
 
     evidence_sample_rate_bits: int | None = Field(
         default=0,
         ge=0,
-        le=64,
-        description="Base-2 sample-rate exponent. Keep full evidence for a "
-        "deterministic 1 / (2 ** N) sample, regardless of outcome. Null keeps "
-        "none.",
+        le=EVIDENCE_SAMPLE_DIGEST_BITS,
+        description="Keep full evidence for one assessment in 2 ** N, on top of "
+        "those kept for being interesting. 0 keeps every assessment, null keeps none.",
     )
 
 

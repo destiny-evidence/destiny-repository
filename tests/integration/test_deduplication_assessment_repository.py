@@ -43,6 +43,7 @@ def build_record(
     *,
     probability: float = 0.95,
     proposed_duplicate_of_id: UUID | None = None,
+    payload_sampled: bool = False,
 ) -> DeduplicationAssessmentRecord:
     """Build a record the way the recorder would, without persisting it."""
     assessment = build_assessment(
@@ -69,6 +70,7 @@ def build_record(
             for scored in assessment.scored_candidates
         ],
         payload_state=AssessmentPayloadState.NOT_RETAINED,
+        payload_sampled=payload_sampled,
     )
 
 
@@ -119,6 +121,18 @@ async def test_records_are_listable_by_policy_generation(
 
     assert len(found) == 3
     assert {record.policy_generation for record in found} == {"openalex-2026-08-a"}
+
+
+async def test_sample_membership_survives_the_round_trip(
+    repository: DeduplicationAssessmentSQLRepository,
+) -> None:
+    """Sample membership is readable back, so the sampled population is listable."""
+    record = build_record(payload_sampled=True)
+
+    await repository.add(record)
+    fetched = await repository.get_by_pk(record.id)
+
+    assert fetched.payload_sampled is True
 
 
 async def test_payload_location_can_be_attached_after_insert(

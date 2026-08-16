@@ -2,6 +2,7 @@ from uuid import UUID, uuid7
 
 import pytest
 
+from app.core.config import EVIDENCE_SAMPLE_DIGEST_BITS
 from app.core.exceptions import MinioBlobStorageError
 from app.domain.references.models.models import (
     AssessmentPayloadState,
@@ -189,18 +190,12 @@ def _recorder_at(
     )
 
 
-def test_evidence_sampling_is_deterministic_for_a_record():
-    record_id = uuid7()
-
-    assert evidence_sampled(record_id, 1) == evidence_sampled(record_id, 1)
-
-
 @pytest.mark.parametrize(
     ("sample_rate_bits", "expected"),
     [pytest.param(None, False, id="never"), pytest.param(0, True, id="always")],
 )
 def test_evidence_sampling_honours_the_extremes(sample_rate_bits, expected):
-    assert evidence_sampled(uuid7(), sample_rate_bits) is expected
+    assert evidence_sampled(uuid7(), POLICY_GENERATION, sample_rate_bits) is expected
 
 
 @pytest.mark.parametrize("sample_rate_bits", [1, 2, 5])
@@ -213,10 +208,28 @@ def test_evidence_sampling_selects_the_configured_power_of_two_rate(
     expected = sample_size / (2**sample_rate_bits)
 
     selected = sum(
-        evidence_sampled(uuid7(), sample_rate_bits) for _ in range(sample_size)
+        evidence_sampled(uuid7(), POLICY_GENERATION, sample_rate_bits)
+        for _ in range(sample_size)
     )
 
     assert abs(selected - expected) < expected * 0.25
+
+
+def test_evidence_sampling_varies_with_the_policy_generation():
+    # Both outcomes appearing proves the generation reaches the digest. Dropping it
+    # from the key would leave a reference in or out of every generation's sample.
+    reference_id = uuid7()
+
+    drawn = {evidence_sampled(reference_id, f"generation-{n}", 1) for n in range(20)}
+
+    assert drawn == {True, False}
+
+
+def test_evidence_sampling_rejects_a_rate_wider_than_the_digest():
+    # Masking past the digest matches nothing, so an unbounded rate would read as a
+    # working configuration that silently keeps no evidence at all.
+    with pytest.raises(ValueError, match="digest"):
+        evidence_sampled(uuid7(), POLICY_GENERATION, EVIDENCE_SAMPLE_DIGEST_BITS + 1)
 
 
 async def test_uninteresting_assessment_keeps_a_payload_when_sampled(
@@ -285,6 +298,29 @@ async def test_unretained_payload_has_no_size(
 
     assert record.payload_state == AssessmentPayloadState.NOT_RETAINED
     assert record.payload_bytes is None
+
+
+async def test_reassessing_the_same_reference_reuses_sample_membership(
+    record_store: FakeRecordStore,
+    payload_writer: FakePayloadWriter,
+) -> None:
+    # Twenty, not two: keying off the row id would draw independently per assessment
+    # row, so two records could agree on a coin toss and let that bug pass.
+    attempts = 20
+    recorder = _recorder_at(1, record_store, payload_writer)
+    assessment = build_assessment([scored_candidate(0.2)])
+
+    records = [
+        await recorder.record(
+            assessment,
+            purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+            policy_generation=POLICY_GENERATION,
+        )
+        for _ in range(attempts)
+    ]
+
+    assert len({record.id for record in records}) == attempts
+    assert len({record.payload_sampled for record in records}) == 1
 
 
 async def test_interesting_assessment_is_flagged_when_also_sampled(
