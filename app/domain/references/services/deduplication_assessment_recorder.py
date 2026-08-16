@@ -5,6 +5,7 @@ from uuid import UUID
 
 from app.core.exceptions import BlobStorageError
 from app.domain.references.models.models import (
+    AssessmentCandidateSummary,
     AssessmentPayloadState,
     DeduplicationAssessment,
     DeduplicationAssessmentPurpose,
@@ -111,7 +112,10 @@ class DeduplicationAssessmentRecorder:
                 proposed_duplicate_of_id=assessment.proposed_duplicate_of_id,
                 best_score=best_score,
                 best_non_winning_score=best_non_winning_score,
-                scored_candidates=assessment.scored_candidates,
+                scored_candidates=[
+                    AssessmentCandidateSummary.from_scored_candidate(scored)
+                    for scored in assessment.scored_candidates
+                ],
                 payload_state=AssessmentPayloadState.FAILED
                 if retain_payload
                 else AssessmentPayloadState.NOT_RETAINED,

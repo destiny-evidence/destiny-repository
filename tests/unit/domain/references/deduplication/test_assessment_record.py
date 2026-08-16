@@ -378,7 +378,7 @@ async def test_scored_candidates_are_retained_on_the_record(
         policy_generation=POLICY_GENERATION,
     )
 
-    assert [c.candidate.reference_id for c in record.scored_candidates] == [
+    assert [c.reference_id for c in record.scored_candidates] == [
         s.candidate.reference_id for s in assessment.scored_candidates
     ]
     assert record.proposed_duplicate_of_id == assessment.proposed_duplicate_of_id

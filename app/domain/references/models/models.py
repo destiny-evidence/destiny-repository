@@ -1226,6 +1226,70 @@ class DeduplicationPaper(ProjectedBaseModel):
         return self
 
 
+class FieldAvailability(StrEnum):
+    """Which side of a field comparison was absent, for fields not compared."""
+
+    MISSING_INCOMING = auto()
+    """The incoming reference had no value for this field."""
+    MISSING_CANDIDATE = auto()
+    """The candidate had no value for this field."""
+    MISSING_BOTH = auto()
+    """Neither side had a value, so nothing could be compared."""
+
+
+_FIELD_AVAILABILITY_BY_STATUS = {
+    DeduplicationFieldStatus.MISSING_INCOMING: FieldAvailability.MISSING_INCOMING,
+    DeduplicationFieldStatus.MISSING_CANDIDATE: FieldAvailability.MISSING_CANDIDATE,
+    DeduplicationFieldStatus.MISSING_BOTH: FieldAvailability.MISSING_BOTH,
+}
+
+
+class AssessmentCandidateSummary(BaseModel):
+    """
+    One candidate as persisted on an assessment record.
+
+    Deliberately narrower than :class:`ScoredDeduplicationCandidate`: compared values
+    and per-field scores stay in the blob payload, which is where the evidence lives.
+    """
+
+    reference_id: UUID
+    rank: int
+    routes: list[CandidateRoute]
+    probability: float | None = None
+    clears_threshold: bool | None = None
+    unscorable_reason: str | None = None
+    early_stop_reason: str | None = None
+    doi_mismatch_adjusted: bool = False
+    suggested_label: str | None = None
+    field_availability: dict[str, FieldAvailability] = Field(
+        default_factory=dict,
+        description="Fields that could not be compared, and which side was absent. "
+        "Compared fields are omitted.",
+    )
+
+    @classmethod
+    def from_scored_candidate(cls, scored: ScoredDeduplicationCandidate) -> Self:
+        """Reduce a scored candidate to what the record persists."""
+        return cls(
+            reference_id=scored.candidate.reference_id,
+            rank=scored.candidate.rank,
+            routes=scored.candidate.routes,
+            probability=scored.pair_result.probability,
+            clears_threshold=scored.clears_threshold,
+            unscorable_reason=scored.pair_result.unscorable_reason,
+            early_stop_reason=scored.pair_result.early_stop_reason,
+            doi_mismatch_adjusted=scored.pair_result.doi_mismatch_adjusted,
+            suggested_label=scored.pair_result.suggested_label,
+            field_availability={
+                field: availability
+                for field, comparison in scored.pair_result.field_comparisons.items()
+                if (
+                    availability := _FIELD_AVAILABILITY_BY_STATUS.get(comparison.status)
+                )
+            },
+        )
+
+
 class DeduplicationAssessmentPurpose(StrEnum):
     """Why an assessment was run, fixed when it is recorded."""
 
@@ -1277,7 +1341,7 @@ class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Runner-up behind a proposal, or the top score where none cleared.",
     )
-    scored_candidates: list[ScoredDeduplicationCandidate] = Field(default_factory=list)
+    scored_candidates: list[AssessmentCandidateSummary] = Field(default_factory=list)
     payload_state: AssessmentPayloadState
     payload_blob_url: str | None = None
     payload_reason: str | None = Field(
