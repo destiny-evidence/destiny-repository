@@ -325,6 +325,23 @@ async def test_unsearchable_input_records_that_the_es_route_did_not_run(
     assert record.es_index_name is None
 
 
+async def test_searchable_input_records_a_run_route_even_without_an_index_alias(
+    recorder: DeduplicationAssessmentRecorder,
+) -> None:
+    # get_current_index_name returns None when no alias fronts the index, which
+    # says nothing about whether the query was issued.
+    assessment = build_assessment([], searchable=True, index_version=None)
+
+    record = await recorder.record(
+        assessment,
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.es_route_ran is True
+    assert record.es_index_name is None
+
+
 async def test_failed_payload_write_keeps_the_summary_record(
     record_store: FakeRecordStore,
 ) -> None:

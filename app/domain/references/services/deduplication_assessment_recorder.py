@@ -101,9 +101,8 @@ class DeduplicationAssessmentRecorder:
                 retrieval_policy=selection.retrieval_policy,
                 k=selection.k_requested,
                 candidate_count=selection.diagnostics.candidate_count,
-                # Stamped in the same branch that issues the query, so the two
-                # cannot disagree about whether the route ran.
-                es_route_ran=selection.index_version is not None,
+                # The index name is null without an alias, so it cannot stand in.
+                es_route_ran=selection.input_searchability.searchable,
                 es_index_name=selection.index_version,
                 deduper_version=assessment.deduper.package_version,
                 deduper_config_hash=assessment.deduper.configuration_hash,
