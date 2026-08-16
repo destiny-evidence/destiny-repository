@@ -69,6 +69,9 @@ from app.domain.references.models.models import (
     SiblingGroup,
 )
 from app.domain.references.models.models import (
+    DeduplicationAssessmentRecord as DomainDeduplicationAssessmentRecord,
+)
+from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
 )
 from app.domain.references.models.models import (
@@ -100,6 +103,9 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.projections import (
     EnhancementRequestStatusProjection,
+)
+from app.domain.references.models.sql import (
+    DeduplicationAssessmentRecord as SQLDeduplicationAssessmentRecord,
 )
 from app.domain.references.models.sql import (
     Enhancement as SQLEnhancement,
@@ -1225,6 +1231,32 @@ class ReferenceDuplicateDecisionSQLRepository(
             )
         )
         return dict(result.all())
+
+
+class DeduplicationAssessmentRepositoryBase(
+    GenericAsyncRepository[DomainDeduplicationAssessmentRecord, GenericPersistenceType],
+    ABC,
+):
+    """Abstract implementation of a repository for Deduplication Assessments."""
+
+
+class DeduplicationAssessmentSQLRepository(
+    GenericAsyncSqlRepository[
+        DomainDeduplicationAssessmentRecord,
+        SQLDeduplicationAssessmentRecord,
+        Literal["__none__"],
+    ],
+    DeduplicationAssessmentRepositoryBase,
+):
+    """Concrete implementation of a repo for Deduplication Assessments using SQL."""
+
+    def __init__(self, session: AsyncSession) -> None:
+        """Initialize the repository with the database session."""
+        super().__init__(
+            session,
+            DomainDeduplicationAssessmentRecord,
+            SQLDeduplicationAssessmentRecord,
+        )
 
 
 class PendingEnhancementRepositoryBase(

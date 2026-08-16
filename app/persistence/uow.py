@@ -12,6 +12,7 @@ from app.core.telemetry.attributes import set_span_status
 from app.core.telemetry.logger import get_logger
 from app.domain.imports.repository import ImportRecordRepositoryBase
 from app.domain.references.repository import (
+    DeduplicationAssessmentRepositoryBase,
     EnhancementRepositoryBase,
     EnhancementRequestRepositoryBase,
     ExternalIdentifierRepositoryBase,
@@ -40,6 +41,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
     robots: RobotRepositoryBase
     robot_automations: RobotAutomationRepositoryBase
     reference_duplicate_decisions: ReferenceDuplicateDecisionRepositoryBase
+    deduplication_assessments: DeduplicationAssessmentRepositoryBase
     pending_enhancements: PendingEnhancementRepositoryBase
     robot_enhancement_batches: RobotEnhancementBatchRepositoryBase
 
@@ -52,6 +54,7 @@ class AsyncUnitOfWorkBase(AbstractAsyncContextManager, ABC):
         "robots",
         "robot_automations",
         "reference_duplicate_decisions",
+        "deduplication_assessments",
         "pending_enhancements",
         "robot_enhancement_batches",
     }
