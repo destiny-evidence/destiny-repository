@@ -1,6 +1,7 @@
 """Durable recording of deduplication assessments, with no decision writing."""
 
-from typing import Protocol
+from io import BytesIO
+from typing import NamedTuple, Protocol
 from uuid import UUID
 
 from app.core.exceptions import BlobStorageError
@@ -11,10 +12,13 @@ from app.domain.references.models.models import (
     DeduplicationAssessmentPurpose,
     DeduplicationAssessmentRecord,
 )
+from app.persistence.blob.models import BlobContainer
+from app.persistence.blob.repository import BlobRepository
 
 # The summary row is written before the payload, so a payload that is wanted but not
 # yet stored reads as failed. A crash then leaves the truth rather than a stuck state.
 PAYLOAD_PENDING_REASON = "Payload write not completed."
+PAYLOAD_PATH = "deduplication-assessments"
 
 
 class AssessmentRecordStore(Protocol):
@@ -33,12 +37,44 @@ class AssessmentRecordStore(Protocol):
         ...
 
 
+class StoredPayload(NamedTuple):
+    """Where an evidence payload was stored, and how much it cost to store."""
+
+    location: str
+    size_bytes: int
+
+
 class AssessmentPayloadWriter(Protocol):
     """Writer for the full evidence payload behind an assessment."""
 
-    async def write(self, record_id: UUID, assessment: DeduplicationAssessment) -> str:
-        """Store the payload and return its location."""
+    async def write(
+        self, record_id: UUID, assessment: DeduplicationAssessment
+    ) -> StoredPayload:
+        """Store the payload and return where it went and how large it was."""
         ...
+
+
+class BlobAssessmentPayloadWriter:
+    """Write assessment payloads to the team blob container."""
+
+    def __init__(self, *, blob_repository: BlobRepository) -> None:
+        """Initialize the writer with the blob repository it uploads through."""
+        self._blob_repository = blob_repository
+
+    async def write(
+        self, record_id: UUID, assessment: DeduplicationAssessment
+    ) -> StoredPayload:
+        """Store the payload under the record it belongs to."""
+        content = assessment.model_dump_json().encode()
+        # Named for the record rather than the reference: a reference can be assessed
+        # many times, and a uuid7 filename sorts by creation.
+        file = await self._blob_repository.upload_file_to_blob_storage(
+            content=BytesIO(content),
+            path=PAYLOAD_PATH,
+            filename=f"{record_id}.json",
+            container=BlobContainer.OPERATIONS,
+        )
+        return StoredPayload(location=file.to_uri(), size_bytes=len(content))
 
 
 class DeduplicationAssessmentRecorder:
@@ -127,7 +163,7 @@ class DeduplicationAssessmentRecorder:
 
         record_id = record.id
         try:
-            location = await self._payload_writer.write(
+            stored = await self._payload_writer.write(
                 record_id=record_id, assessment=assessment
             )
         except BlobStorageError as exc:
@@ -140,6 +176,7 @@ class DeduplicationAssessmentRecorder:
         return await self._record_store.update_by_pk(
             record_id,
             payload_state=AssessmentPayloadState.STORED,
-            payload_blob_url=location,
+            payload_blob_url=stored.location,
+            payload_bytes=stored.size_bytes,
             payload_reason=None,
         )

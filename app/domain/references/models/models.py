@@ -1347,6 +1347,12 @@ class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
     payload_reason: str | None = Field(
         default=None, description="Why the payload is absent when it was wanted."
     )
+    payload_bytes: int | None = Field(
+        default=None,
+        ge=0,
+        description="Size of the stored payload, so retention can be narrowed on "
+        "measured cost rather than estimate.",
+    )
 
 
 class LinkedDataProjection(ProjectedBaseModel):

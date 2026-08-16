@@ -21,6 +21,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.services.deduplication_assessment_recorder import (
     DeduplicationAssessmentRecorder,
+    StoredPayload,
 )
 
 POLICY_GENERATION = "openalex-2026-08-a"
@@ -51,15 +52,22 @@ class FakeRecordStore:
 class FakePayloadWriter:
     """Payload writer that records its calls and can be made to fail."""
 
-    def __init__(self, *, error: Exception | None = None) -> None:
+    def __init__(
+        self, *, error: Exception | None = None, size_bytes: int = 1234
+    ) -> None:
         self.calls: list[UUID] = []
+        self.size_bytes = size_bytes
         self._error = error
 
-    async def write(self, record_id: UUID, assessment: DeduplicationAssessment) -> str:
+    async def write(
+        self, record_id: UUID, assessment: DeduplicationAssessment
+    ) -> StoredPayload:
         self.calls.append(record_id)
         if self._error:
             raise self._error
-        return f"assessments/{record_id}.json"
+        return StoredPayload(
+            location=f"assessments/{record_id}.json", size_bytes=self.size_bytes
+        )
 
 
 def scored_candidate(
@@ -340,6 +348,38 @@ async def test_searchable_input_records_a_run_route_even_without_an_index_alias(
 
     assert record.es_route_ran is True
     assert record.es_index_name is None
+
+
+async def test_stored_payload_records_its_size(
+    record_store: FakeRecordStore,
+) -> None:
+    # The size is what makes narrowing retention an evidence-based decision rather
+    # than a guess.
+    recorder = DeduplicationAssessmentRecorder(
+        record_store=record_store,
+        payload_writer=FakePayloadWriter(size_bytes=48_000),
+    )
+
+    record = await recorder.record(
+        build_assessment([scored_candidate(0.95)]),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.payload_bytes == 48_000
+
+
+async def test_unretained_payload_has_no_size(
+    recorder: DeduplicationAssessmentRecorder,
+) -> None:
+    record = await recorder.record(
+        build_assessment([scored_candidate(0.2)]),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        policy_generation=POLICY_GENERATION,
+    )
+
+    assert record.payload_state == AssessmentPayloadState.NOT_RETAINED
+    assert record.payload_bytes is None
 
 
 async def test_failed_payload_write_keeps_the_summary_record(

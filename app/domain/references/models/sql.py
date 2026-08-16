@@ -829,6 +829,7 @@ class DeduplicationAssessmentRecord(
     )
     payload_blob_url: Mapped[str | None] = mapped_column(String, nullable=True)
     payload_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    payload_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
         # For listing the population an acting policy generation produced.
@@ -873,6 +874,7 @@ class DeduplicationAssessmentRecord(
             payload_state=domain_obj.payload_state,
             payload_blob_url=domain_obj.payload_blob_url,
             payload_reason=domain_obj.payload_reason,
+            payload_bytes=domain_obj.payload_bytes,
         )
 
     def to_domain(
@@ -904,6 +906,7 @@ class DeduplicationAssessmentRecord(
             payload_state=self.payload_state,
             payload_blob_url=self.payload_blob_url,
             payload_reason=self.payload_reason,
+            payload_bytes=self.payload_bytes,
         )
 
 
