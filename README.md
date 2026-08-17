@@ -199,7 +199,7 @@ uv run python -m app.utils.get_token
 
 ### Keycloak Authentication
 
-Keycloak support is experimental as we transition from Azure AD to Keycloak. It is controlled by the `AUTH_PROVIDER` setting in `.env`:
+Keycloak support is controlled by the `AUTH_PROVIDER` setting in `.env`:
 
 ```dotenv
 AUTH_PROVIDER=keycloak
