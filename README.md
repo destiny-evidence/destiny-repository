@@ -212,13 +212,21 @@ The authorization is the set of client
 roles the principal holds on it (`resource_access["destiny-repository-client-local"]`
 in local development). Realm roles and the `scope` claim confer no access.
 
-When `ENV=local` (the default in `.env.example`), authentication is bypassed entirely regardless of the provider. To test with Keycloak auth enforced locally, start Keycloak and run the app via docker compose:
+When `ENV=local` (the default in `.env.example`), authentication is bypassed entirely regardless of the provider. To test with Keycloak auth enforced locally, set `BYPASS_AUTH=false` and configure the internal Keycloak URL (`http://keycloak:8080`) for token validation, while using `http://localhost:8080` as the issuer URL to match tokens obtained from the browser.
+
+```dotenv
+KEYCLOAK_URL=http://keycloak:8080
+KEYCLOAK_REALM=destiny
+KEYCLOAK_CLIENT_ID=destiny-repository-client-local
+KEYCLOAK_ISSUER_URL=http://localhost:8080
+BYPASS_AUTH=false
+```
+
+Then start Keycloak and run the app via docker compose:
 
 ```sh
 docker compose --profile keycloak --profile app up
 ```
-
-Set `BYPASS_AUTH=false` and configure the internal Keycloak URL (`http://keycloak:8080`) for token validation, while using `http://localhost:8080` as the issuer URL to match tokens obtained from the browser.
 
 The Keycloak realm is auto-imported from the [keycloak/](keycloak/) directory on startup. The admin console is available at <http://localhost:8080> with credentials `admin`/`admin`.
 
