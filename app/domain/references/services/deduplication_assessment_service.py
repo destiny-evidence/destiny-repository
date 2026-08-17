@@ -49,8 +49,7 @@ UNPROJECTABLE_CANDIDATE_REASON = "Candidate could not be projected for scoring."
 class ReferenceReader(Protocol):
     """Reference reads required by assessment orchestration."""
 
-    # Awaitable rather than ``async def``: the latter demands a coroutine, which the
-    # traced repository methods do not declare, and this only ever awaits the result.
+    # Awaitable, not ``async def``: traced repository methods don't declare one.
     def get_hydrated(
         self,
         reference_ids: list[UUID],
@@ -111,8 +110,6 @@ class DeduplicationAssessmentService:
         try:
             candidate_paper = self._to_scorer_paper(candidate)
         except DeduplicationValueError:
-            # One unprojectable candidate is not a failed assessment; it is a
-            # candidate the Deduper was never given a chance to score.
             return DeduplicationPairResult(
                 unscorable_reason=UNPROJECTABLE_CANDIDATE_REASON
             )
@@ -121,8 +118,7 @@ class DeduplicationAssessmentService:
                 incoming=incoming, candidate=candidate_paper
             )
         except Exception as exc:
-            # Deliberately broad, unlike the narrow retrieval and hydration
-            # handlers: a third-party scorer's defect is one record's, not the run's.
+            # Broad by design: a scorer's defect fails one record, not the run.
             msg = f"Candidate scoring failed ({type(exc).__name__}): {exc}"
             raise DeduplicationError(msg) from exc
 

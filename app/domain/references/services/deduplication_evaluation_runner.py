@@ -52,6 +52,12 @@ class EvaluationInputReference(BaseModel):
     title: str | None
     authors: list[str]
     year: int | None
+    journal: str | None = None
+    issue: str | None = None
+    first_page: str | None = None
+    last_page: str | None = None
+    volume: str | None = None
+    """Unscored, but the scorer's early-stop veto compares it raw and unnormalised."""
 
 
 class EvaluationInputRecord(BaseModel):
@@ -165,11 +171,9 @@ class DeduplicationEvaluationRunner:
         """Evaluate a JSONL blob and write its run-scoped artifact bundle."""
         # Two passes over the immutable input: the manifest digest must cover the
         # exact bytes, which the line reader cannot yield once it has decoded them.
-        digest = hashlib.sha256()
-        byte_size = 0
-        async for chunk in blob_repository.stream_chunks_from_blob_storage(input_file):
-            digest.update(chunk)
-            byte_size += len(chunk)
+        streamed = await blob_repository.digest(input_file)
+        byte_size = streamed.byte_size
+        input_sha256 = streamed.sha256_checksum
 
         path = f"deduplication_evaluation/{run_id}"
         record_results: list[EvaluationRecordResult] = []
@@ -196,8 +200,8 @@ class DeduplicationEvaluationRunner:
                             result.assessment, configuration, line_number
                         )
         except BaseException:
-            # A run costs hours of retrieval, so keep whatever completed, a
-            # cancelling shutdown included. No manifest marks the bundle incomplete.
+            # Keep whatever completed, a cancelling shutdown included: discarding it
+            # means querying every record again. No manifest marks it incomplete.
             await self._upload(
                 blob_repository,
                 path,
@@ -211,7 +215,6 @@ class DeduplicationEvaluationRunner:
             for record_result in record_results
             for pair in self._pair_results(record_result)
         ]
-        input_sha256 = digest.hexdigest()
 
         record_bytes = self._jsonl(record_results)
         record_file = await self._upload(
@@ -373,6 +376,8 @@ class DeduplicationEvaluationRunner:
         line_number: int,
     ) -> None:
         """Fail the run rather than publish a manifest the run contradicts."""
+        # Returned provenance is checked, not the arguments sent: an assessor may
+        # substitute a default, clamp k, or report either value incorrectly.
         selection = assessment.candidate_selection
         asserted: list[tuple[str, object, object]] = [
             (
@@ -467,6 +472,22 @@ class DeduplicationEvaluationRunner:
             )
             for index, name in enumerate(record.input_reference.authors)
         ]
+        biblio = record.input_reference
+        venue = (
+            destiny_sdk.enhancements.PublicationVenue(display_name=biblio.journal)
+            if biblio.journal
+            else None
+        )
+        pagination = (
+            destiny_sdk.enhancements.Pagination(
+                volume=biblio.volume,
+                issue=biblio.issue,
+                first_page=biblio.first_page,
+                last_page=biblio.last_page,
+            )
+            if any((biblio.volume, biblio.issue, biblio.first_page, biblio.last_page))
+            else None
+        )
         incoming = Reference(
             id=reference_id,
             identifiers=[
@@ -484,6 +505,8 @@ class DeduplicationEvaluationRunner:
                         title=record.input_reference.title,
                         authorship=authorship,
                         publication_year=record.input_reference.year,
+                        publication_venue=venue,
+                        pagination=pagination,
                     ),
                 )
             ],

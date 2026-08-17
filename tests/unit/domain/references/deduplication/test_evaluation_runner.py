@@ -41,7 +41,11 @@ from app.domain.references.services.deduplication_evaluation_runner import (
     EvaluationRunConfiguration,
 )
 from app.persistence.blob.client import GenericBlobStorageClient
-from app.persistence.blob.models import BlobStorageFile, BlobStorageLocation
+from app.persistence.blob.models import (
+    BlobDigest,
+    BlobStorageFile,
+    BlobStorageLocation,
+)
 from app.persistence.blob.repository import BlobRepository
 
 
@@ -72,6 +76,7 @@ def _line(
     input_identifiers: list[str] | None = None,
     excluded_reference_ids: list[str] | None = None,
     dataset_version: str = "retrieval-query-set/v1",
+    input_reference_extra: dict | None = None,
 ) -> str:
     return json.dumps(
         {
@@ -80,7 +85,8 @@ def _line(
                 "title": f"Study {query_id}",
                 "authors": ["First Author", "Middle Author", "Last Author"],
                 "year": year,
-            },
+            }
+            | (input_reference_extra or {}),
             "input_identifiers": input_identifiers or ["open_alex:W1"],
             "route_applicability": route_applicability or ["fuzzy"],
             "excluded_reference_ids": excluded_reference_ids or [],
@@ -191,9 +197,11 @@ def _blob_repository(source: bytes) -> tuple[BlobRepository, dict[str, bytes]]:
     midpoint = len(source) // 2
     chunks = [source[:midpoint], source[midpoint:]]
 
-    async def stream_chunks(_file):
-        for chunk in chunks:
-            yield chunk
+    async def digest(_file, **_kwargs):
+        return BlobDigest(
+            byte_size=len(source),
+            sha256_checksum=hashlib.sha256(source).hexdigest(),
+        )
 
     @asynccontextmanager
     async def stream_lines(file):
@@ -212,7 +220,7 @@ def _blob_repository(source: bytes) -> tuple[BlobRepository, dict[str, bytes]]:
         )
 
     repository = MagicMock(spec=BlobRepository)
-    repository.stream_chunks_from_blob_storage = stream_chunks
+    repository.digest = digest
     repository.stream_file_from_blob_storage = stream_lines
     repository.upload_file_to_blob_storage = AsyncMock(side_effect=upload)
     return repository, uploaded
@@ -384,6 +392,37 @@ async def test_run_builds_yearless_and_union_assessment_inputs():
         call.kwargs == {"retrieval_policy": policy, "k": 10}
         for call in assessor.evaluate_supplied.await_args_list
     )
+
+
+@pytest.mark.asyncio
+async def test_run_carries_every_bibliographic_field_the_scorer_reads():
+    """Production hands the scorer these, so a measurement of it has to as well."""
+    source = _line(
+        "enriched",
+        input_reference_extra={
+            "journal": "Journal of Testing",
+            "issue": "3",
+            "first_page": "12",
+            "last_page": "19",
+            "volume": "14",
+        },
+    ).encode()
+    repository, _uploaded = _blob_repository(source)
+    assessor = _assessor()
+
+    await DeduplicationEvaluationRunner(assessor=assessor).run(
+        run_id=uuid7(),
+        input_file=BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl"),
+        blob_repository=repository,
+        configuration=_configuration(),
+    )
+
+    incoming, _selection = assessor.evaluate_supplied.await_args_list[0].args
+    paper = DeduplicationPaperProjection.get_from_reference(incoming)
+    assert paper.journal == "Journal of Testing"
+    assert paper.pages == "12-19"
+    assert paper.issue == "3"
+    assert paper.volume == "14"
 
 
 @pytest.mark.asyncio
@@ -700,7 +739,7 @@ async def test_run_supplies_a_record_the_assessment_service_can_score():
 
 @pytest.mark.asyncio
 async def test_run_keeps_completed_records_when_cancelled():
-    """A shutdown costs the same hours of retrieval as any other abort."""
+    """A shutdown throws away as much completed work as any other abort."""
     source = "\n".join([_line("first"), _line("cancelled")]).encode()
     repository, uploaded = _blob_repository(source)
     call_count = 0

@@ -30,6 +30,7 @@ from app.persistence.blob.clients.remote import RemoteBlobStorageClient
 from app.persistence.blob.models import (
     BlobContainer,
     BlobCopyResult,
+    BlobDigest,
     BlobSignedUrlType,
     BlobStorageFile,
     BlobStorageLocation,
@@ -114,6 +115,37 @@ _registry = _BlobClientRegistry()
 async def close_blob_clients() -> None:
     """Release every backend client held by the process-wide registry."""
     await _registry.aclose()
+
+
+class _StreamDigest:
+    """Hash and count chunks in passing, so one read serves both."""
+
+    def __init__(self, source: BlobStorageFile, max_bytes: int | None) -> None:
+        self._source = source
+        self._max_bytes = max_bytes
+        self._hasher = hashlib.sha256()
+        self._byte_size = 0
+
+    async def wrap(self, chunks: AsyncIterator[bytes]) -> AsyncIterator[bytes]:
+        """Yield each chunk onward, aborting once ``max_bytes`` is passed."""
+        async for chunk in chunks:
+            self._hasher.update(chunk)
+            self._byte_size += len(chunk)
+            if self._max_bytes is not None and self._byte_size > self._max_bytes:
+                msg = (
+                    f"Source {self._source.to_uri()} exceeds "
+                    f"max_bytes={self._max_bytes} "
+                    f"(streamed at least {self._byte_size} bytes before abort)."
+                )
+                raise BlobSizeExceededError(msg)
+            yield chunk
+
+    def result(self) -> BlobDigest:
+        """Return the size and checksum of everything streamed so far."""
+        return BlobDigest(
+            byte_size=self._byte_size,
+            sha256_checksum=self._hasher.hexdigest(),
+        )
 
 
 class BlobRepository:
@@ -226,14 +258,29 @@ class BlobRepository:
         client = await self._preload_config(file)
         yield client.stream_file(file)
 
-    async def stream_chunks_from_blob_storage(
+    async def digest(
         self,
         file: BlobStorageFile,
-    ) -> AsyncIterator[bytes]:
-        """Stream a file as raw bytes from Blob Storage."""
+        max_bytes: int | None = None,
+    ) -> BlobDigest:
+        """
+        Stream a file to compute its size and sha256, writing nothing.
+
+        :param file: The file to read.
+        :type file: BlobStorageFile
+        :param max_bytes: Optional cap on the total bytes streamed, enforced as
+            in :meth:`copy`. ``None`` disables the check.
+        :type max_bytes: int | None
+        :return: The size and checksum of the file's bytes.
+        :rtype: BlobDigest
+        :raises BlobSizeExceededError: if ``max_bytes`` is set and the file
+            yields more bytes than allowed.
+        """
         client = await self._preload_config(file)
-        async for chunk in client.stream_chunks(file):
-            yield chunk
+        digest = _StreamDigest(file, max_bytes)
+        async for _ in digest.wrap(client.stream_chunks(file)):
+            pass
+        return digest.result()
 
     async def get_signed_url(
         self,
@@ -301,29 +348,18 @@ class BlobRepository:
         src_client = await self._preload_config(source)
         dest_client = await self._preload_config(destination)
 
-        hasher = hashlib.sha256()
-        size = 0
-
-        async def hashed_chunks() -> AsyncIterator[bytes]:
-            nonlocal size
-            async for chunk in src_client.stream_chunks(source):
-                hasher.update(chunk)
-                size += len(chunk)
-                if max_bytes is not None and size > max_bytes:
-                    msg = (
-                        f"Source {source.to_uri()} exceeds max_bytes={max_bytes} "
-                        f"(streamed at least {size} bytes before abort)."
-                    )
-                    raise BlobSizeExceededError(msg)
-                yield chunk
+        digest = _StreamDigest(source, max_bytes)
 
         await dest_client.upload_file(
-            hashed_chunks(), destination, content_type=content_type
+            digest.wrap(src_client.stream_chunks(source)),
+            destination,
+            content_type=content_type,
         )
+        streamed = digest.result()
 
         return BlobCopyResult(
             source=source,
             destination=destination,
-            byte_size=size,
-            sha256_checksum=hasher.hexdigest(),
+            byte_size=streamed.byte_size,
+            sha256_checksum=streamed.sha256_checksum,
         )
