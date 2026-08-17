@@ -4,6 +4,10 @@ from uuid import uuid7
 
 import pytest
 
+from app.domain.references.models.models import (
+    DeduplicationFieldComparison,
+    DeduplicationFieldStatus,
+)
 from app.domain.references.services.deduplication_assessment_recorder import (
     BlobAssessmentPayloadWriter,
 )
@@ -38,7 +42,7 @@ async def test_payload_is_written_to_the_operations_container_under_the_record_i
     record_id = uuid7()
 
     stored = await writer.write(
-        record_id=record_id, assessment=build_assessment([scored_candidate(0.95)])
+        payload_id=record_id, assessment=build_assessment([scored_candidate(0.95)])
     )
 
     call = blob_repository.upload_file_to_blob_storage.call_args.kwargs
@@ -56,11 +60,47 @@ async def test_written_payload_reports_the_bytes_it_stored(
     blob_repository: AsyncMock,
 ) -> None:
     stored = await writer.write(
-        record_id=uuid7(), assessment=build_assessment([scored_candidate(0.95)])
+        payload_id=uuid7(), assessment=build_assessment([scored_candidate(0.95)])
     )
 
     uploaded = blob_repository.upload_file_to_blob_storage.call_args.kwargs["content"]
     assert stored.size_bytes == len(uploaded.getvalue())
+
+
+async def test_payload_carries_the_values_the_scorer_actually_compared(
+    writer: BlobAssessmentPayloadWriter,
+    blob_repository: AsyncMock,
+) -> None:
+    # The raw values can differ while the compared forms match, so only the
+    # normalised pair explains why a field scored the way it did.
+    assessment = build_assessment(
+        [
+            scored_candidate(
+                0.95,
+                field_comparisons={
+                    "title": DeduplicationFieldComparison(
+                        incoming_value="The Title: A Study.",
+                        candidate_value="the title a study",
+                        normalised_incoming_value="the title a study",
+                        normalised_candidate_value="the title a study",
+                        status=DeduplicationFieldStatus.COMPARED,
+                        score=1.0,
+                    )
+                },
+            )
+        ]
+    )
+
+    await writer.write(payload_id=uuid7(), assessment=assessment)
+
+    content = blob_repository.upload_file_to_blob_storage.call_args.kwargs["content"]
+    written = json.loads(content.getvalue())
+    comparison = written["scored_candidates"][0]["pair_result"]["field_comparisons"][
+        "title"
+    ]
+    assert comparison["incoming_value"] == "The Title: A Study."
+    assert comparison["normalised_incoming_value"] == "the title a study"
+    assert comparison["normalised_candidate_value"] == "the title a study"
 
 
 async def test_written_payload_is_the_serialised_assessment(
@@ -71,7 +111,7 @@ async def test_written_payload_is_the_serialised_assessment(
         [scored_candidate(0.95), scored_candidate(0.2, rank=2)]
     )
 
-    await writer.write(record_id=uuid7(), assessment=assessment)
+    await writer.write(payload_id=uuid7(), assessment=assessment)
 
     content = blob_repository.upload_file_to_blob_storage.call_args.kwargs["content"]
     written = json.loads(content.getvalue())

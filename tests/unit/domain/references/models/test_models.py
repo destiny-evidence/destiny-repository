@@ -67,7 +67,7 @@ def test_deduplication_pair_result_rejects_ambiguous_scoring_state(data):
 def test_deduplication_field_comparison_rejects_non_json_values(field_name):
     with pytest.raises(ValidationError):
         DeduplicationFieldComparison(
-            status=DeduplicationFieldStatus.MATCH,
+            status=DeduplicationFieldStatus.COMPARED,
             **{field_name: object()},
         )
 
@@ -114,10 +114,10 @@ def test_candidate_summary_omits_compared_fields_from_availability():
     scored = _scored_candidate(
         {
             "title": DeduplicationFieldComparison(
-                status=DeduplicationFieldStatus.MATCH, score=0.99
+                status=DeduplicationFieldStatus.COMPARED, score=0.99
             ),
             "journal": DeduplicationFieldComparison(
-                status=DeduplicationFieldStatus.MISMATCH, score=0.2
+                status=DeduplicationFieldStatus.COMPARED, score=0.2
             ),
         }
     )
@@ -137,7 +137,7 @@ def test_candidate_summary_records_which_side_a_field_was_missing_from():
                 status=DeduplicationFieldStatus.MISSING_BOTH
             ),
             "title": DeduplicationFieldComparison(
-                status=DeduplicationFieldStatus.MATCH, score=1.0
+                status=DeduplicationFieldStatus.COMPARED, score=1.0
             ),
         }
     )
@@ -156,13 +156,13 @@ def test_candidate_summary_never_carries_compared_values_or_scores():
     scored = _scored_candidate(
         {
             "title": DeduplicationFieldComparison(
-                status=DeduplicationFieldStatus.MATCH,
+                status=DeduplicationFieldStatus.COMPARED,
                 score=0.97,
                 incoming_value="A hydrated title",
                 candidate_value="A hydrated title",
             ),
             "authors": DeduplicationFieldComparison(
-                status=DeduplicationFieldStatus.MATCH,
+                status=DeduplicationFieldStatus.COMPARED,
                 score=0.88,
                 incoming_value=["Ada Lovelace"],
                 candidate_value=["Ada Lovelace"],

@@ -1107,12 +1107,16 @@ class CandidateSelectionResult(BaseModel):
 
 
 class DeduplicationFieldStatus(StrEnum):
-    """How the values for one scored field relate across a reference pair."""
+    """
+    Whether one field could be compared across a reference pair, and if not, why.
 
-    MATCH = auto()
-    """Both values are present and match."""
-    MISMATCH = auto()
-    """Both values are present and differ."""
+    Deliberately says nothing about the comparison's outcome. Comparators are fuzzy,
+    so any match/mismatch verdict here would either restate the score or bake a
+    threshold into evidence. The score and the normalised values carry that.
+    """
+
+    COMPARED = auto()
+    """Both values were present, so the comparator ran and returned a score."""
     MISSING_INCOMING = auto()
     """Only the incoming value is missing."""
     MISSING_CANDIDATE = auto()
@@ -1126,6 +1130,10 @@ class DeduplicationFieldComparison(BaseModel):
 
     incoming_value: JsonValue | None = None
     candidate_value: JsonValue | None = None
+    # The form the scorer compared, which is what explains the score: raw values
+    # can differ while their normalised forms match.
+    normalised_incoming_value: str | None = None
+    normalised_candidate_value: str | None = None
     status: DeduplicationFieldStatus
     score: float | None = None
 
@@ -1238,6 +1246,7 @@ class FieldAvailability(StrEnum):
 
 
 _FIELD_AVAILABILITY_BY_STATUS = {
+    # Compared fields stay in the blob payload only.
     DeduplicationFieldStatus.MISSING_INCOMING: FieldAvailability.MISSING_INCOMING,
     DeduplicationFieldStatus.MISSING_CANDIDATE: FieldAvailability.MISSING_CANDIDATE,
     DeduplicationFieldStatus.MISSING_BOTH: FieldAvailability.MISSING_BOTH,
@@ -1281,11 +1290,9 @@ class AssessmentCandidateSummary(BaseModel):
             doi_mismatch_adjusted=scored.pair_result.doi_mismatch_adjusted,
             suggested_label=scored.pair_result.suggested_label,
             field_availability={
-                field: availability
+                field: _FIELD_AVAILABILITY_BY_STATUS[comparison.status]
                 for field, comparison in scored.pair_result.field_comparisons.items()
-                if (
-                    availability := _FIELD_AVAILABILITY_BY_STATUS.get(comparison.status)
-                )
+                if comparison.status in _FIELD_AVAILABILITY_BY_STATUS
             },
         )
 
@@ -1313,6 +1320,10 @@ class AssessmentPayloadState(StrEnum):
 class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
     """Durable summary of one assessment, whether or not it becomes a decision."""
 
+    idempotency_key: UUID = Field(
+        description="The delivery this record was written for. Identifies the "
+        "attempt, not the reference, so a redelivery resolves to the same record.",
+    )
     incoming_reference_id: UUID = Field(
         description="The assessed reference. Not a foreign key: supplied records "
         "under evaluation need not be held.",
@@ -1320,7 +1331,7 @@ class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
     purpose: DeduplicationAssessmentPurpose
     policy_generation: str = Field(
         description="The acting-policy generation this assessment was run under. "
-        "Identifies configuration, not execution, and so keys the evidence sample.",
+        "The cohort assessments are grouped and listed by, not an execution identity.",
     )
     retrieval_policy: RetrievalPolicyName
     k: int = Field(description="The configured candidate count requested.")
@@ -1329,6 +1340,11 @@ class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
     es_index_name: str | None = Field(
         default=None,
         description="The concrete index searched, absent when the route did not run.",
+    )
+    input_searchability_reason: str | None = Field(
+        default=None,
+        description="Why the input did or did not meet the searchability gate, so the "
+        "record explains its own retrieval without it being run again.",
     )
     deduper_version: str
     deduper_config_hash: str

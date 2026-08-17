@@ -6,16 +6,20 @@ JSONB round-trip, that a policy generation's population is listable, and that th
 repository is reachable only through an active unit of work.
 """
 
-from uuid import UUID
+from uuid import UUID, uuid7
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.exceptions import SQLIntegrityError
 from app.domain.references.models.models import (
     AssessmentCandidateSummary,
     AssessmentPayloadState,
+    CandidateIdentifier,
+    CandidateIdentifierRoute,
     DeduplicationAssessmentPurpose,
     DeduplicationAssessmentRecord,
+    ExternalIdentifierType,
     RetrievalPolicyName,
 )
 from app.domain.references.repository import (
@@ -25,11 +29,16 @@ from app.domain.references.repository import (
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import ReferenceFactory
 from tests.unit.domain.references.deduplication.test_assessment_record import (
+    POLICY_GENERATION,
     build_assessment,
     scored_candidate,
 )
 
 pytestmark = pytest.mark.usefixtures("session")
+
+# Shares no component with POLICY_GENERATION, so a listing that ignored the filter
+# cannot be mistaken for one that applied it.
+UNRELATED_GENERATION = "crossref-backfill-2027-01"
 
 
 @pytest.fixture
@@ -39,7 +48,7 @@ def repository(session: AsyncSession) -> DeduplicationAssessmentSQLRepository:
 
 
 def build_record(
-    policy_generation: str = "openalex-2026-08-a",
+    policy_generation: str = POLICY_GENERATION,
     *,
     probability: float = 0.95,
     proposed_duplicate_of_id: UUID | None = None,
@@ -50,6 +59,7 @@ def build_record(
         [scored_candidate(probability), scored_candidate(0.12, rank=2)]
     )
     return DeduplicationAssessmentRecord(
+        idempotency_key=uuid7(),
         incoming_reference_id=assessment.incoming_reference_id,
         purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
         policy_generation=policy_generation,
@@ -94,6 +104,32 @@ async def test_candidate_set_survives_a_jsonb_round_trip(
         assert stored.clears_threshold == original.clears_threshold
 
 
+async def test_identifier_route_survives_a_jsonb_round_trip(
+    repository: DeduplicationAssessmentSQLRepository,
+) -> None:
+    """A matched-identifier route rebuilds with its identifiers intact."""
+    # Routes are a discriminated union rebuilt by model_validate, and this is the only
+    # arm carrying nested objects. The Elasticsearch arm cannot exercise that shape.
+    record = build_record()
+    record.scored_candidates[0].routes = [
+        CandidateIdentifierRoute(
+            matched_identifiers=[
+                CandidateIdentifier(
+                    identifier="10.1234/abc", identifier_type=ExternalIdentifierType.DOI
+                )
+            ]
+        )
+    ]
+
+    await repository.add(record)
+    fetched = await repository.get_by_pk(record.id)
+
+    route = fetched.scored_candidates[0].routes[0]
+    assert isinstance(route, CandidateIdentifierRoute)
+    assert [i.identifier for i in route.matched_identifiers] == ["10.1234/abc"]
+    assert route.matched_identifiers[0].identifier_type == ExternalIdentifierType.DOI
+
+
 async def test_retrieval_policy_and_enums_round_trip_as_strings(
     repository: DeduplicationAssessmentSQLRepository,
 ) -> None:
@@ -114,13 +150,13 @@ async def test_records_are_listable_by_policy_generation(
 ) -> None:
     """A policy generation's population is findable over its index."""
     for _ in range(3):
-        await repository.add(build_record("openalex-2026-08-a"))
-    await repository.add(build_record("openalex-2026-08-b"))
+        await repository.add(build_record(POLICY_GENERATION))
+    await repository.add(build_record(UNRELATED_GENERATION))
 
-    found = await repository.find(policy_generation="openalex-2026-08-a")
+    found = await repository.find(policy_generation=POLICY_GENERATION)
 
     assert len(found) == 3
-    assert {record.policy_generation for record in found} == {"openalex-2026-08-a"}
+    assert {record.policy_generation for record in found} == {POLICY_GENERATION}
 
 
 async def test_sample_membership_survives_the_round_trip(
@@ -165,6 +201,69 @@ async def test_proposed_canonical_references_a_held_reference(
 
     fetched = await repository.get_by_pk(record.id)
     assert fetched.proposed_duplicate_of_id == canonical.id
+
+
+async def test_proposed_canonical_that_is_not_held_is_rejected(
+    repository: DeduplicationAssessmentSQLRepository,
+) -> None:
+    """An unheld proposed canonical is refused by the foreign key."""
+    # The asymmetry this defends is deliberate: incoming_reference_id is intentionally
+    # unconstrained, so only this side proves the constraint is actually present.
+    record = build_record(proposed_duplicate_of_id=uuid7())
+
+    with pytest.raises(SQLIntegrityError):
+        await repository.add(record)
+
+
+@pytest.mark.parametrize(
+    ("state", "blob_url", "payload_bytes"),
+    [
+        pytest.param(AssessmentPayloadState.STORED, None, 10, id="stored-without-url"),
+        pytest.param(
+            AssessmentPayloadState.NOT_RETAINED,
+            "minio://operations/x.json",
+            None,
+            id="unretained-with-url",
+        ),
+        pytest.param(
+            AssessmentPayloadState.NOT_RETAINED, None, 10, id="unretained-with-bytes"
+        ),
+    ],
+)
+async def test_incoherent_payload_state_is_rejected(
+    repository: DeduplicationAssessmentSQLRepository,
+    state: AssessmentPayloadState,
+    blob_url: str | None,
+    payload_bytes: int | None,
+) -> None:
+    """The database refuses payload columns that contradict the payload state."""
+    # update_by_pk writes attributes straight onto the persistence object with no model
+    # validation, so a check constraint is the only guard on the real write path.
+    record = build_record()
+    record.payload_state = state
+    record.payload_blob_url = blob_url
+    record.payload_bytes = payload_bytes
+
+    with pytest.raises(SQLIntegrityError):
+        await repository.add(record)
+
+
+async def test_one_attempt_cannot_write_two_records(
+    repository: DeduplicationAssessmentSQLRepository,
+) -> None:
+    """The database refuses a second record for the same delivery."""
+    # The recorder looks the key up before writing, but two concurrent redeliveries
+    # can both miss that read; the constraint is what makes the second one fail.
+    attempt = uuid7()
+    first = build_record()
+    first.idempotency_key = attempt
+    await repository.add(first)
+
+    second = build_record()
+    second.idempotency_key = attempt
+
+    with pytest.raises(SQLIntegrityError):
+        await repository.add(second)
 
 
 async def test_repository_is_unreachable_outside_an_active_unit_of_work(

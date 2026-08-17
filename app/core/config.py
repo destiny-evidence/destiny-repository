@@ -418,8 +418,11 @@ class DedupAssessmentRecordingConfig(BaseModel):
         default=0,
         ge=0,
         le=EVIDENCE_SAMPLE_DIGEST_BITS,
-        description="Keep full evidence for one assessment in 2 ** N, on top of "
-        "those kept for being interesting. 0 keeps every assessment, null keeps none.",
+        description="Rate at which uninteresting assessments also keep their "
+        "evidence, one in 2 ** N. An assessment that proposed a duplicate or failed "
+        "to score a candidate keeps its evidence regardless; this decides how many "
+        "of the rest join them. 0 keeps all of them, null keeps none of them. Every "
+        "assessment records whether it was in the sample, interesting or not.",
     )
 
 

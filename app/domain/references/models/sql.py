@@ -9,6 +9,7 @@ from sqlalchemy import (
 )
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -794,6 +795,7 @@ class DeduplicationAssessmentRecord(
 
     __tablename__ = "deduplication_assessment"
 
+    idempotency_key: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
     # Not a foreign key: the evaluation runner and the performance run assess
     # supplied records that need not correspond to a stored reference at all.
     incoming_reference_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
@@ -808,6 +810,9 @@ class DeduplicationAssessmentRecord(
     candidate_count: Mapped[int] = mapped_column(Integer, nullable=False)
     es_route_ran: Mapped[bool] = mapped_column(Boolean, nullable=False)
     es_index_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    input_searchability_reason: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
     deduper_version: Mapped[str] = mapped_column(String, nullable=False)
     deduper_config_hash: Mapped[str] = mapped_column(String, nullable=False)
     threshold: Mapped[float] = mapped_column(Float, nullable=False)
@@ -848,6 +853,21 @@ class DeduplicationAssessmentRecord(
             "ix_deduplication_assessment_created_at",
             "created_at",
         ),
+        # A redelivered task must not write a second row and a second payload.
+        Index(
+            "uq_deduplication_assessment_idempotency_key",
+            "idempotency_key",
+            unique=True,
+        ),
+        # The generic update_by_pk writes attributes without model validation, so the
+        # coherence of the payload columns is only guaranteed if the database holds it.
+        CheckConstraint(
+            "(payload_state = 'stored' AND payload_blob_url IS NOT NULL)"
+            " OR (payload_state = 'failed' AND payload_blob_url IS NULL)"
+            " OR (payload_state = 'not_retained' AND payload_blob_url IS NULL"
+            " AND payload_bytes IS NULL AND payload_reason IS NULL)",
+            name="ck_deduplication_assessment_payload_state",
+        ),
     )
 
     @classmethod
@@ -855,6 +875,7 @@ class DeduplicationAssessmentRecord(
         """Create a persistence model from a domain object."""
         return cls(
             id=domain_obj.id,
+            idempotency_key=domain_obj.idempotency_key,
             incoming_reference_id=domain_obj.incoming_reference_id,
             purpose=domain_obj.purpose,
             policy_generation=domain_obj.policy_generation,
@@ -863,6 +884,7 @@ class DeduplicationAssessmentRecord(
             candidate_count=domain_obj.candidate_count,
             es_route_ran=domain_obj.es_route_ran,
             es_index_name=domain_obj.es_index_name,
+            input_searchability_reason=domain_obj.input_searchability_reason,
             deduper_version=domain_obj.deduper_version,
             deduper_config_hash=domain_obj.deduper_config_hash,
             threshold=domain_obj.threshold,
@@ -888,6 +910,7 @@ class DeduplicationAssessmentRecord(
         """Convert the persistence model into a Domain object."""
         return DomainDeduplicationAssessmentRecord(
             id=self.id,
+            idempotency_key=self.idempotency_key,
             incoming_reference_id=self.incoming_reference_id,
             purpose=self.purpose,
             policy_generation=self.policy_generation,
@@ -896,6 +919,7 @@ class DeduplicationAssessmentRecord(
             candidate_count=self.candidate_count,
             es_route_ran=self.es_route_ran,
             es_index_name=self.es_index_name,
+            input_searchability_reason=self.input_searchability_reason,
             deduper_version=self.deduper_version,
             deduper_config_hash=self.deduper_config_hash,
             threshold=self.threshold,

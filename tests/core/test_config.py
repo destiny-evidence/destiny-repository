@@ -82,6 +82,8 @@ def test_candidate_selection_config_defaults_to_production_policy_and_k():
 
 def test_dedup_assessment_recording_defaults_to_full_evidence_sample():
     """Default recording keeps every sampled evidence payload."""
+    # Deliberately wide: a sample can be narrowed later, but evidence never written
+    # cannot be recovered. Environments set the rate that controls their own cost.
     config = DedupAssessmentRecordingConfig()
 
     assert config.evidence_sample_rate_bits == 0

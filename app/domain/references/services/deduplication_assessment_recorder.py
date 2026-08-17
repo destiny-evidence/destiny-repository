@@ -17,32 +17,31 @@ from app.domain.references.models.models import (
 from app.persistence.blob.models import BlobContainer
 from app.persistence.blob.repository import BlobRepository
 
-# The summary row is written before the payload, so a payload that is wanted but not
-# yet stored reads as failed. A crash then leaves the truth rather than a stuck state.
-PAYLOAD_PENDING_REASON = "Payload write not completed."
 PAYLOAD_PATH = "deduplication-assessments"
 
 
 def evidence_sampled(
     incoming_reference_id: UUID,
-    policy_generation: str,
     sample_rate_bits: int | None,
 ) -> bool:
     """
     Whether this assessment is in the 1 / (2 ** sample_rate_bits) evidence sample.
 
-    Keyed on the reference and the generation assessing it, so a retried or
-    restarted run samples the same population rather than drawing again.
+    Keyed on the reference alone, so every policy generation keeps evidence for the
+    same references and two generations can be compared on like for like.
     """
     if sample_rate_bits is None:
         return False
-    if sample_rate_bits > EVIDENCE_SAMPLE_DIGEST_BITS:
-        msg = f"Sample rate exceeds the {EVIDENCE_SAMPLE_DIGEST_BITS}-bit digest."
+    if not 0 <= sample_rate_bits <= EVIDENCE_SAMPLE_DIGEST_BITS:
+        msg = (
+            f"Sample rate must be 0 to {EVIDENCE_SAMPLE_DIGEST_BITS}, the digest width."
+        )
         raise ValueError(msg)
     # Hashed rather than read off the reference id: uuid7 carries a monotonic counter
     # in its random field, so those bits select whole ingest batches at once.
-    key = incoming_reference_id.bytes + policy_generation.encode()
-    digest = hashlib.blake2b(key, digest_size=EVIDENCE_SAMPLE_DIGEST_BITS // 8).digest()
+    digest = hashlib.blake2b(
+        incoming_reference_id.bytes, digest_size=EVIDENCE_SAMPLE_DIGEST_BITS // 8
+    ).digest()
     mask = (1 << sample_rate_bits) - 1
     return int.from_bytes(digest) & mask == 0
 
@@ -56,10 +55,8 @@ class AssessmentRecordStore(Protocol):
         """Persist a new assessment record."""
         ...
 
-    async def update_by_pk(
-        self, pk: UUID, **kwargs: object
-    ) -> DeduplicationAssessmentRecord:
-        """Update an existing assessment record in place."""
+    async def find(self, **filters: object) -> list[DeduplicationAssessmentRecord]:
+        """Return the records matching the given field filters."""
         ...
 
 
@@ -70,11 +67,20 @@ class StoredPayload(NamedTuple):
     size_bytes: int
 
 
+class _PayloadOutcome(NamedTuple):
+    """The payload fields of a record, once the payload's fate is settled."""
+
+    state: AssessmentPayloadState
+    location: str | None = None
+    size_bytes: int | None = None
+    reason: str | None = None
+
+
 class AssessmentPayloadWriter(Protocol):
     """Writer for the full evidence payload behind an assessment."""
 
     async def write(
-        self, record_id: UUID, assessment: DeduplicationAssessment
+        self, payload_id: UUID, assessment: DeduplicationAssessment
     ) -> StoredPayload:
         """Store the payload and return where it went and how large it was."""
         ...
@@ -88,16 +94,14 @@ class BlobAssessmentPayloadWriter:
         self._blob_repository = blob_repository
 
     async def write(
-        self, record_id: UUID, assessment: DeduplicationAssessment
+        self, payload_id: UUID, assessment: DeduplicationAssessment
     ) -> StoredPayload:
-        """Store the payload under the record it belongs to."""
+        """Store the payload under the delivery it belongs to."""
         content = assessment.model_dump_json().encode()
-        # Named for the record rather than the reference: a reference can be assessed
-        # many times, and a uuid7 filename sorts by creation.
         file = await self._blob_repository.upload_file_to_blob_storage(
             content=BytesIO(content),
             path=PAYLOAD_PATH,
-            filename=f"{record_id}.json",
+            filename=f"{payload_id}.json",
             container=BlobContainer.OPERATIONS,
         )
         return StoredPayload(location=file.to_uri(), size_bytes=len(content))
@@ -146,25 +150,58 @@ class DeduplicationAssessmentRecorder:
         ]
         return max(probabilities, default=None), max(non_winning, default=None)
 
+    async def _store_payload(
+        self, payload_id: UUID, assessment: DeduplicationAssessment
+    ) -> _PayloadOutcome:
+        """Write the payload, reporting a storage failure rather than raising."""
+        try:
+            stored = await self._payload_writer.write(
+                payload_id=payload_id, assessment=assessment
+            )
+        except BlobStorageError as exc:
+            # Coverage is why every assessment gets a row, so a storage failure must
+            # not cost one. The summary stands and says the payload is missing.
+            return _PayloadOutcome(AssessmentPayloadState.FAILED, reason=str(exc))
+        return _PayloadOutcome(
+            AssessmentPayloadState.STORED,
+            location=stored.location,
+            size_bytes=stored.size_bytes,
+        )
+
     async def record(
         self,
         assessment: DeduplicationAssessment,
         *,
         purpose: DeduplicationAssessmentPurpose,
         policy_generation: str,
+        idempotency_key: UUID,
     ) -> DeduplicationAssessmentRecord:
         """Persist an assessment summary, and its payload when worth keeping."""
+        # Identifies the delivery, not the reference: the same reference is legitimately
+        # reassessed under one generation as the corpus moves beneath it.
+        existing = await self._record_store.find(idempotency_key=idempotency_key)
+        if existing:
+            return existing[0]
+
         selection = assessment.candidate_selection
         best_score, best_non_winning_score = self._scores(assessment)
         sampled = evidence_sampled(
-            assessment.incoming_reference_id,
-            policy_generation,
-            self._evidence_sample_rate_bits,
+            assessment.incoming_reference_id, self._evidence_sample_rate_bits
         )
         retain_payload = self._is_interesting(assessment) or sampled
 
-        record = await self._record_store.add(
+        # Named for the delivery, not the record: the find-first guard above only sees
+        # committed rows, so a retry after a rolled-back insert would otherwise mint a
+        # fresh record id and strand a second copy of the same payload.
+        payload = (
+            await self._store_payload(idempotency_key, assessment)
+            if retain_payload
+            else _PayloadOutcome(AssessmentPayloadState.NOT_RETAINED)
+        )
+
+        return await self._record_store.add(
             DeduplicationAssessmentRecord(
+                idempotency_key=idempotency_key,
                 incoming_reference_id=assessment.incoming_reference_id,
                 purpose=purpose,
                 policy_generation=policy_generation,
@@ -174,6 +211,7 @@ class DeduplicationAssessmentRecorder:
                 # The index name is null without an alias, so it cannot stand in.
                 es_route_ran=selection.input_searchability.searchable,
                 es_index_name=selection.index_version,
+                input_searchability_reason=selection.input_searchability.reason,
                 deduper_version=assessment.deduper.package_version,
                 deduper_config_hash=assessment.deduper.configuration_hash,
                 threshold=assessment.deduper.threshold,
@@ -185,32 +223,10 @@ class DeduplicationAssessmentRecorder:
                     AssessmentCandidateSummary.from_scored_candidate(scored)
                     for scored in assessment.scored_candidates
                 ],
-                payload_state=AssessmentPayloadState.FAILED
-                if retain_payload
-                else AssessmentPayloadState.NOT_RETAINED,
-                payload_reason=PAYLOAD_PENDING_REASON if retain_payload else None,
+                payload_state=payload.state,
+                payload_blob_url=payload.location,
+                payload_bytes=payload.size_bytes,
+                payload_reason=payload.reason,
                 payload_sampled=sampled,
             )
-        )
-        if not retain_payload:
-            return record
-
-        record_id = record.id
-        try:
-            stored = await self._payload_writer.write(
-                record_id=record_id, assessment=assessment
-            )
-        except BlobStorageError as exc:
-            # Coverage is why every assessment gets a row, so a storage failure must
-            # not remove one. The summary stands and says the payload is missing.
-            return await self._record_store.update_by_pk(
-                record_id, payload_reason=str(exc)
-            )
-
-        return await self._record_store.update_by_pk(
-            record_id,
-            payload_state=AssessmentPayloadState.STORED,
-            payload_blob_url=stored.location,
-            payload_bytes=stored.size_bytes,
-            payload_reason=None,
         )
