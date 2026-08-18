@@ -13,6 +13,7 @@ from uuid import uuid7
 import pytest
 
 from app.core.exceptions import (
+    BlobSizeExceededError,
     DeduplicationError,
     EvaluationConfigurationMismatchError,
 )
@@ -197,7 +198,12 @@ def _blob_repository(source: bytes) -> tuple[BlobRepository, dict[str, bytes]]:
     midpoint = len(source) // 2
     chunks = [source[:midpoint], source[midpoint:]]
 
-    async def digest(_file, **_kwargs):
+    async def digest(_file, max_bytes=None, **_kwargs):
+        # Mirrors the real repository, which aborts the stream rather than
+        # returning a digest, so a cap test cannot pass against a stub alone.
+        if max_bytes is not None and len(source) > max_bytes:
+            msg = f"Blob exceeds max_bytes={max_bytes}"
+            raise BlobSizeExceededError(msg)
         return BlobDigest(
             byte_size=len(source),
             sha256_checksum=hashlib.sha256(source).hexdigest(),
@@ -232,6 +238,25 @@ def _rows(artifact: bytes) -> list[dict]:
 
 
 @pytest.mark.asyncio
+async def test_run_refuses_an_input_over_the_cap_before_assessing_anything():
+    """The cap has to bite on the digest pass, not after a corpus query per record."""
+    source = (_line("assessed") + "\n").encode()
+    repository, uploaded = _blob_repository(source)
+    assessor = _assessor(with_pairs=True)
+
+    with pytest.raises(BlobSizeExceededError):
+        await DeduplicationEvaluationRunner(assessor=assessor).run(
+            run_id=uuid7(),
+            input_file=BlobStorageFile.from_uri("azure://evals/datasets/in.jsonl"),
+            blob_repository=repository,
+            configuration=_configuration(),
+            max_input_bytes=len(source) - 1,
+        )
+
+    assert assessor.evaluate_supplied.await_count == 0
+    assert uploaded == {}
+
+
 async def test_run_writes_complete_reviewable_bundle():
     """The public run contract preserves input identity and writes manifest last."""
     run_id = uuid7()

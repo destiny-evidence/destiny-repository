@@ -645,6 +645,14 @@ class Settings(BaseSettings):
         ),
     )
 
+    evaluation_input_max_byte_size: int = Field(
+        default=256 * 1024**2,
+        description=(
+            "Maximum size in bytes accepted for a deduplication evaluation input. "
+            "Aborts the run before any record is assessed if exceeded."
+        ),
+    )
+
     default_pending_enhancement_lease_duration: datetime.timedelta = Field(
         default=iso8601_duration_adapter.validate_python("PT10M"),
         description=(

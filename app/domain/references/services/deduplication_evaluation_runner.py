@@ -167,11 +167,17 @@ class DeduplicationEvaluationRunner:
         input_file: BlobStorageFile,
         blob_repository: BlobRepository,
         configuration: EvaluationRunConfiguration,
+        max_input_bytes: int | None = None,
     ) -> EvaluationRunArtifacts:
-        """Evaluate a JSONL blob and write its run-scoped artifact bundle."""
+        """
+        Evaluate a JSONL blob and write its run-scoped artifact bundle.
+
+        :raises BlobSizeExceededError: If the input exceeds ``max_input_bytes``.
+        """
         # Two passes over the immutable input: the manifest digest must cover the
         # exact bytes, which the line reader cannot yield once it has decoded them.
-        streamed = await blob_repository.digest(input_file)
+        # The cap is checked on this first pass, before any record is assessed.
+        streamed = await blob_repository.digest(input_file, max_bytes=max_input_bytes)
         byte_size = streamed.byte_size
         input_sha256 = streamed.sha256_checksum
 
