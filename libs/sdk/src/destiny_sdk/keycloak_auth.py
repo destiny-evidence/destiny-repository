@@ -32,7 +32,7 @@ class KeycloakClientCredentialsFlow:
 
     Example usage:
         flow = KeycloakClientCredentialsFlow(
-            keycloak_url="http://localhost:8080",
+            keycloak_url="https://keycloak-deployment.org",
             realm="destiny",
             client_id="my-service-client",
             client_secret="my-secret",
@@ -106,9 +106,9 @@ class KeycloakAuthCodeFlow:
 
     Example usage:
         flow = KeycloakAuthCodeFlow(
-            keycloak_url="http://localhost:8080",
+            keycloak_url="https://keycloak-deployment.org",
             realm="destiny",
-            client_id="destiny-auth-client",
+            client_id="destiny-auth-client-id",
         )
         token = flow.authenticate()
     """

@@ -477,9 +477,9 @@ class KeycloakJwtAuth(JwtAuth):
 
             def auth_strategy():
                 return KeycloakJwtAuth(
-                    keycloak_url="http://localhost:8080",
+                    keycloak_url="https://keycloak-deployment.org",
                     realm="destiny",
-                    client_id="destiny-repository-client",
+                    client_id="destiny-repository-client-id",
                     role=AuthRole.REFERENCE_READER,
                 )
 
