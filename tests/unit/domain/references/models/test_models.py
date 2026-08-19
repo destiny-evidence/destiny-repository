@@ -21,7 +21,6 @@ from app.domain.references.models.models import (
     DeduplicationPairResult,
     DuplicateDetermination,
     Enhancement,
-    FieldAvailability,
     FullTextEnhancement,
     GenericExternalIdentifier,
     ReferenceDuplicateDecision,
@@ -145,9 +144,19 @@ def test_candidate_summary_records_which_side_a_field_was_missing_from():
     summary = AssessmentCandidateSummary.from_scored_candidate(scored)
 
     assert summary.field_availability == {
-        "journal": FieldAvailability.MISSING_CANDIDATE,
-        "pages": FieldAvailability.MISSING_BOTH,
+        "journal": DeduplicationFieldStatus.MISSING_CANDIDATE,
+        "pages": DeduplicationFieldStatus.MISSING_BOTH,
     }
+
+
+def test_candidate_summary_rejects_compared_field_availability():
+    with pytest.raises(ValidationError, match="COMPARED"):
+        AssessmentCandidateSummary(
+            reference_id=uuid7(),
+            rank=1,
+            routes=[],
+            field_availability={"title": DeduplicationFieldStatus.COMPARED},
+        )
 
 
 def test_candidate_summary_never_carries_compared_values_or_scores():

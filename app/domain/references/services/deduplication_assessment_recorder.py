@@ -5,7 +5,10 @@ from io import BytesIO
 from typing import NamedTuple, Protocol
 from uuid import UUID
 
-from app.core.config import EVIDENCE_SAMPLE_DIGEST_BITS
+from app.core.config import (
+    EVIDENCE_SAMPLE_DIGEST_BITS,
+    DedupAssessmentRecordingConfig,
+)
 from app.core.exceptions import BlobStorageError
 from app.domain.references.models.models import (
     AssessmentCandidateSummary,
@@ -32,11 +35,6 @@ def evidence_sampled(
     """
     if sample_rate_bits is None:
         return False
-    if not 0 <= sample_rate_bits <= EVIDENCE_SAMPLE_DIGEST_BITS:
-        msg = (
-            f"Sample rate must be 0 to {EVIDENCE_SAMPLE_DIGEST_BITS}, the digest width."
-        )
-        raise ValueError(msg)
     # Hashed rather than read off the reference id: uuid7 carries a monotonic counter
     # in its random field, so those bits select whole ingest batches at once.
     digest = hashlib.blake2b(
@@ -49,10 +47,10 @@ def evidence_sampled(
 class AssessmentRecordStore(Protocol):
     """Persistence required to record an assessment."""
 
-    async def add(
+    async def add_or_find_by_idempotency_key(
         self, record: DeduplicationAssessmentRecord
     ) -> DeduplicationAssessmentRecord:
-        """Persist a new assessment record."""
+        """Persist a record or return the row already written for its delivery."""
         ...
 
     async def find(self, **filters: object) -> list[DeduplicationAssessmentRecord]:
@@ -115,12 +113,12 @@ class DeduplicationAssessmentRecorder:
         *,
         record_store: AssessmentRecordStore,
         payload_writer: AssessmentPayloadWriter,
-        evidence_sample_rate_bits: int | None,
+        recording_config: DedupAssessmentRecordingConfig,
     ) -> None:
         """Initialize the recorder with its persistence collaborators."""
         self._record_store = record_store
         self._payload_writer = payload_writer
-        self._evidence_sample_rate_bits = evidence_sample_rate_bits
+        self._evidence_sample_rate_bits = recording_config.evidence_sample_rate_bits
 
     @staticmethod
     def _is_interesting(assessment: DeduplicationAssessment) -> bool:
@@ -199,7 +197,7 @@ class DeduplicationAssessmentRecorder:
             else _PayloadOutcome(AssessmentPayloadState.NOT_RETAINED)
         )
 
-        return await self._record_store.add(
+        return await self._record_store.add_or_find_by_idempotency_key(
             DeduplicationAssessmentRecord(
                 idempotency_key=idempotency_key,
                 incoming_reference_id=assessment.incoming_reference_id,

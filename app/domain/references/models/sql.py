@@ -840,18 +840,9 @@ class DeduplicationAssessmentRecord(
     payload_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     __table_args__ = (
-        # For listing the population an acting policy generation produced.
-        Index(
-            "ix_deduplication_assessment_policy_generation",
-            "policy_generation",
-        ),
         Index(
             "ix_deduplication_assessment_incoming_reference_id",
             "incoming_reference_id",
-        ),
-        Index(
-            "ix_deduplication_assessment_created_at",
-            "created_at",
         ),
         # A redelivered task must not write a second row and a second payload.
         Index(

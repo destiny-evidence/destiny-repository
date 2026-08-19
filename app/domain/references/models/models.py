@@ -1234,25 +1234,6 @@ class DeduplicationPaper(ProjectedBaseModel):
         return self
 
 
-class FieldAvailability(StrEnum):
-    """Which side of a field comparison was absent, for fields not compared."""
-
-    MISSING_INCOMING = auto()
-    """The incoming reference had no value for this field."""
-    MISSING_CANDIDATE = auto()
-    """The candidate had no value for this field."""
-    MISSING_BOTH = auto()
-    """Neither side had a value, so nothing could be compared."""
-
-
-_FIELD_AVAILABILITY_BY_STATUS = {
-    # Compared fields stay in the blob payload only.
-    DeduplicationFieldStatus.MISSING_INCOMING: FieldAvailability.MISSING_INCOMING,
-    DeduplicationFieldStatus.MISSING_CANDIDATE: FieldAvailability.MISSING_CANDIDATE,
-    DeduplicationFieldStatus.MISSING_BOTH: FieldAvailability.MISSING_BOTH,
-}
-
-
 class AssessmentCandidateSummary(BaseModel):
     """
     One candidate as persisted on an assessment record.
@@ -1270,11 +1251,22 @@ class AssessmentCandidateSummary(BaseModel):
     early_stop_reason: str | None = None
     doi_mismatch_adjusted: bool = False
     suggested_label: str | None = None
-    field_availability: dict[str, FieldAvailability] = Field(
+    field_availability: dict[str, DeduplicationFieldStatus] = Field(
         default_factory=dict,
         description="Fields that could not be compared, and which side was absent. "
         "Compared fields are omitted.",
     )
+
+    @field_validator("field_availability")
+    @classmethod
+    def validate_field_availability(
+        cls, field_availability: dict[str, DeduplicationFieldStatus]
+    ) -> dict[str, DeduplicationFieldStatus]:
+        """Reject compared fields, which belong in the payload."""
+        if DeduplicationFieldStatus.COMPARED in field_availability.values():
+            msg = "Field availability cannot contain COMPARED fields"
+            raise ValueError(msg)
+        return field_availability
 
     @classmethod
     def from_scored_candidate(cls, scored: ScoredDeduplicationCandidate) -> Self:
@@ -1290,9 +1282,9 @@ class AssessmentCandidateSummary(BaseModel):
             doi_mismatch_adjusted=scored.pair_result.doi_mismatch_adjusted,
             suggested_label=scored.pair_result.suggested_label,
             field_availability={
-                field: _FIELD_AVAILABILITY_BY_STATUS[comparison.status]
+                field: comparison.status
                 for field, comparison in scored.pair_result.field_comparisons.items()
-                if comparison.status in _FIELD_AVAILABILITY_BY_STATUS
+                if comparison.status != DeduplicationFieldStatus.COMPARED
             },
         )
 

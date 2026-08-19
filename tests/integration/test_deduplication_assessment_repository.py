@@ -2,8 +2,9 @@
 Integration tests for deduplication assessment persistence.
 
 Covers what the recorder's unit tests cannot: that the candidate set survives a
-JSONB round-trip, that a policy generation's population is listable, and that the
-repository is reachable only through an active unit of work.
+JSONB round-trip, that a policy generation's population is listable, that the
+idempotent writer resolves collisions, and that the repository is reachable only
+through an active unit of work.
 """
 
 from uuid import UUID, uuid7
@@ -148,7 +149,7 @@ async def test_retrieval_policy_and_enums_round_trip_as_strings(
 async def test_records_are_listable_by_policy_generation(
     repository: DeduplicationAssessmentSQLRepository,
 ) -> None:
-    """A policy generation's population is findable over its index."""
+    """A policy generation's population is findable."""
     for _ in range(3):
         await repository.add(build_record(POLICY_GENERATION))
     await repository.add(build_record(UNRELATED_GENERATION))
@@ -264,6 +265,24 @@ async def test_one_attempt_cannot_write_two_records(
 
     with pytest.raises(SQLIntegrityError):
         await repository.add(second)
+
+
+async def test_idempotent_add_returns_the_existing_record(
+    repository: DeduplicationAssessmentSQLRepository,
+) -> None:
+    """The idempotent writer resolves a unique-key collision to the stored row."""
+    attempt = uuid7()
+    first = build_record()
+    first.idempotency_key = attempt
+    await repository.add(first)
+
+    second = build_record()
+    second.idempotency_key = attempt
+
+    returned = await repository.add_or_find_by_idempotency_key(second)
+
+    assert returned.id == first.id
+    assert returned.incoming_reference_id == first.incoming_reference_id
 
 
 async def test_repository_is_unreachable_outside_an_active_unit_of_work(

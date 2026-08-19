@@ -33,11 +33,12 @@ from sqlalchemy import (
     update,
 )
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.core.exceptions import ESError
+from app.core.exceptions import ESError, SQLIntegrityError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.repository import (
     trace_repository_generator,
@@ -1257,6 +1258,36 @@ class DeduplicationAssessmentSQLRepository(
             DomainDeduplicationAssessmentRecord,
             SQLDeduplicationAssessmentRecord,
         )
+
+    @trace_repository_method(tracer)
+    async def add_or_find_by_idempotency_key(
+        self, record: DomainDeduplicationAssessmentRecord
+    ) -> DomainDeduplicationAssessmentRecord:
+        """Insert a record, or return the row written by a racing delivery."""
+        trace_attribute(Attributes.DB_PK, str(record.id))
+        self.trace_domain_object_id(record)
+        persistence = self._persistence_cls.from_domain(record)
+        try:
+            # A savepoint, so a losing insert does not abort the enclosing unit of
+            # work and leaves the session usable for the lookup below.
+            async with self._session.begin_nested():
+                self._session.add(persistence)
+                await self._session.flush()
+        except IntegrityError as e:
+            sql_error = SQLIntegrityError.from_sqlalchemy_integrity_error(
+                e, self._persistence_cls.__name__
+            )
+            if "idempotency_key" not in sql_error.collision:
+                raise sql_error from e
+            # The insert blocked until the winner committed, so at read committed
+            # this statement's fresh snapshot sees the row it collided with.
+            existing = await self.find(idempotency_key=record.idempotency_key)
+            if existing:
+                return existing[0]
+            raise sql_error from e
+
+        await self._session.refresh(persistence)
+        return persistence.to_domain()
 
 
 class PendingEnhancementRepositoryBase(

@@ -58,15 +58,11 @@ def upgrade() -> None:
         name='ck_deduplication_assessment_payload_state',
     )
     )
-    op.create_index('ix_deduplication_assessment_created_at', 'deduplication_assessment', ['created_at'], unique=False)
     op.create_index('ix_deduplication_assessment_incoming_reference_id', 'deduplication_assessment', ['incoming_reference_id'], unique=False)
-    op.create_index('ix_deduplication_assessment_policy_generation', 'deduplication_assessment', ['policy_generation'], unique=False)
     op.create_index('uq_deduplication_assessment_idempotency_key', 'deduplication_assessment', ['idempotency_key'], unique=True)
 
 
 def downgrade() -> None:
     op.drop_index('uq_deduplication_assessment_idempotency_key', table_name='deduplication_assessment')
-    op.drop_index('ix_deduplication_assessment_policy_generation', table_name='deduplication_assessment')
     op.drop_index('ix_deduplication_assessment_incoming_reference_id', table_name='deduplication_assessment')
-    op.drop_index('ix_deduplication_assessment_created_at', table_name='deduplication_assessment')
     op.drop_table('deduplication_assessment')
