@@ -92,7 +92,7 @@ export async function createKeycloakConfig(): Promise<AuthProviderProps> {
   const clientId =
     runtime.KEYCLOAK_CLIENT_ID ||
     process.env.KEYCLOAK_CLIENT_ID ||
-    "destiny-auth-client";
+    "destiny-auth-client-local";
 
   return {
     authority: `${keycloakUrl}/realms/${realm}`,

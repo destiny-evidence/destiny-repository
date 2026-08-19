@@ -631,7 +631,7 @@ class TestKeycloakOAuthMiddleware:
                 "access_token": mock_token,
                 "expires_in": 300,
                 "token_type": "Bearer",
-                "scope": "openid import.writer.all",
+                "scope": "openid",
             },
         )
 
@@ -640,7 +640,6 @@ class TestKeycloakOAuthMiddleware:
             realm="destiny",
             client_id="test-service-client",
             client_secret=SecretStr("test-secret"),
-            scopes=["import.writer.all"],
         )
 
         request = httpx.Request("GET", "https://api.example.com/test")

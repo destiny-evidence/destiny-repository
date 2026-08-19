@@ -10,5 +10,5 @@
 
     "KEYCLOAK_URL": "http://localhost:8080",
     "KEYCLOAK_REALM": "destiny",
-    "KEYCLOAK_CLIENT_ID": "destiny-auth-client"
+    "KEYCLOAK_CLIENT_ID": "destiny-auth-client-local"
 }

@@ -499,12 +499,16 @@ class KeycloakOAuthMiddleware(httpx.Auth):
     Initial login will be interactive through a browser window. Subsequent token
     retrievals will use cached tokens and refreshes where possible.
 
+    Authorization is the set of client roles held on the repository client of the
+    environment being accessed, so the client ID names an environment and no
+    scopes are requested.
+
     .. code-block:: python
 
         auth = KeycloakOAuthMiddleware(
-            keycloak_url="http://localhost:8080",
+            keycloak_url="https://auth.evidence-repository.org",
             realm="destiny",
-            client_id="destiny-auth-client",
+            client_id="destiny-auth-client-staging",
         )
 
     **Confidential Client (machine-to-machine)**
@@ -515,7 +519,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
     .. code-block:: python
 
         auth = KeycloakOAuthMiddleware(
-            keycloak_url="http://localhost:8080",
+            keycloak_url="https://auth.evidence-repository.org",
             realm="destiny",
             client_id="my-service-client",
             client_secret="my-secret",
@@ -523,13 +527,12 @@ class KeycloakOAuthMiddleware(httpx.Auth):
 
     """
 
-    def __init__(  # noqa: PLR0913
+    def __init__(
         self,
         keycloak_url: str,
         realm: str,
-        client_id: str = "destiny-auth-client",
+        client_id: str,
         client_secret: SecretStr | None = None,
-        scopes: list[str] | None = None,
         callback_port: int = 8400,
     ) -> None:
         """
@@ -539,13 +542,11 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         :type keycloak_url: str
         :param realm: The Keycloak realm name.
         :type realm: str
-        :param client_id: The OAuth2 client ID.
+        :param client_id: The OAuth2 client ID, e.g. destiny-auth-client-staging.
         :type client_id: str
         :param client_secret: The OAuth2 client secret. When provided, uses
             client credentials flow instead of authorization code flow.
         :type client_secret: SecretStr | None
-        :param scopes: Optional list of scopes to request.
-        :type scopes: list[str] | None
         :param callback_port: Port for local callback server during auth code flow.
         :type callback_port: int
         """
@@ -566,7 +567,6 @@ class KeycloakOAuthMiddleware(httpx.Auth):
                 callback_port=callback_port,
             )
             self._get_token = self._get_token_from_auth_code
-        self._scopes = scopes
         self._token: TokenResponse | None = None
 
     def _get_token_from_auth_code(self, *, force_refresh: bool = False) -> str:
@@ -594,7 +594,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
             return self._token.access_token
 
         # Perform full authentication flow
-        self._token = self._auth_flow.authenticate(scopes=self._scopes)
+        self._token = self._auth_flow.authenticate()
         return self._token.access_token
 
     def _get_token_from_client_credentials(
@@ -616,7 +616,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         if self._token and not force_refresh:
             return self._token.access_token
 
-        self._token = self._auth_flow.authenticate(scopes=self._scopes)
+        self._token = self._auth_flow.authenticate()
         return self._token.access_token
 
     def auth_flow(
@@ -685,7 +685,6 @@ class OAuthMiddleware(httpx.Auth):
         realm: str = "destiny",
         client_id: str | None = None,
         client_secret: SecretStr | None = None,
-        scopes: list[str] | None = None,
         callback_port: int = 8400,
         azure_client_id: str | None = None,
         azure_application_id: str | None = None,
@@ -738,7 +737,6 @@ class OAuthMiddleware(httpx.Auth):
                 realm=realm,
                 client_id=client_id,
                 client_secret=client_secret,
-                scopes=scopes,
                 callback_port=callback_port,
             )
 

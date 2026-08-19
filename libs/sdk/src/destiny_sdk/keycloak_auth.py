@@ -28,14 +28,16 @@ class KeycloakClientCredentialsFlow:
     Uses a confidential client (client_id + client_secret) to obtain tokens
     without user interaction.
 
+    Authorization is the set of client roles assigned to the service account.
+
     Example usage:
         flow = KeycloakClientCredentialsFlow(
-            keycloak_url="http://localhost:8080",
+            keycloak_url="https://keycloak-deployment.org",
             realm="destiny",
             client_id="my-service-client",
             client_secret="my-secret",
         )
-        token = flow.authenticate(scopes=["import.writer.all"])
+        token = flow.authenticate()
     """
 
     def __init__(
@@ -63,15 +65,9 @@ class KeycloakClientCredentialsFlow:
         base = f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect"
         self.token_endpoint = f"{base}/token"
 
-    def authenticate(
-        self,
-        scopes: list[str] | None = None,
-    ) -> TokenResponse:
+    def authenticate(self) -> TokenResponse:
         """
         Obtain an access token using client credentials.
-
-        Args:
-            scopes: Optional list of scopes to request
 
         Returns:
             TokenResponse with access token (refresh_token will be None)
@@ -83,14 +79,10 @@ class KeycloakClientCredentialsFlow:
             token_endpoint_auth_method="client_secret_post",  # noqa: S106
         )
 
-        scope_str = "openid"
-        if scopes:
-            scope_str = f"{scope_str} {' '.join(scopes)}"
-
         token = client.fetch_token(
             self.token_endpoint,
             grant_type="client_credentials",
-            scope=scope_str,
+            scope="openid",
         )
 
         return TokenResponse(
@@ -109,22 +101,23 @@ class KeycloakAuthCodeFlow:
     Uses authlib for OAuth2/OIDC handling, which provides built-in support for
     PKCE, token refresh, and error handling.
 
-    Uses the same `destiny-auth-client` as all other human users.
-    Scopes are determined by the user's group membership (consumers vs developers).
+    Authorization is the set of client roles the user's group membership grants;
+    there is nothing to request.
 
     Example usage:
         flow = KeycloakAuthCodeFlow(
-            keycloak_url="http://localhost:8080",
+            keycloak_url="https://keycloak-deployment.org",
             realm="destiny",
+            client_id="destiny-auth-client-id",
         )
-        token = flow.authenticate(scopes=["reference.reader.all"])
+        token = flow.authenticate()
     """
 
     def __init__(
         self,
         keycloak_url: str,
         realm: str,
-        client_id: str = "destiny-auth-client",
+        client_id: str,
         callback_port: int = 8400,
     ) -> None:
         """
@@ -133,7 +126,7 @@ class KeycloakAuthCodeFlow:
         Args:
             keycloak_url: Base URL of the Keycloak server
             realm: Keycloak realm name
-            client_id: OIDC client ID (defaults to destiny-auth-client)
+            client_id: OIDC client ID
             callback_port: Port for local callback server
 
         """
@@ -182,7 +175,6 @@ class KeycloakAuthCodeFlow:
 
     def authenticate(
         self,
-        scopes: list[str] | None = None,
         *,
         open_browser: bool = True,
     ) -> TokenResponse:
@@ -193,7 +185,6 @@ class KeycloakAuthCodeFlow:
         the authorization code for tokens.
 
         Args:
-            scopes: Optional list of scopes to request
             open_browser: Whether to automatically open the browser
 
         Returns:
@@ -202,10 +193,7 @@ class KeycloakAuthCodeFlow:
         """
         client = self._create_client()
 
-        # Build scope string
         scope_str = "openid profile email"
-        if scopes:
-            scope_str = f"{scope_str} {' '.join(scopes)}"
 
         # Generate PKCE code_verifier. authlib derives the S256 code_challenge
         # from this for the authorization request, and sends it back with the

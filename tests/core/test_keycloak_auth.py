@@ -11,7 +11,8 @@ from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import KeySet, RSAKey
 from pytest_httpx import HTTPXMock
 
-from app.api.auth import KeycloakJwtAuth
+from app.api.auth import KeycloakJwtAuth, SubjectType
+from app.core.entitlements import Entitlement
 
 
 class FakeAuthScopes(StrEnum):
@@ -24,6 +25,7 @@ class FakeAuthRoles(StrEnum):
     """Fake authentication roles used for testing."""
 
     READER = "reference.reader"
+    FULL_TEXT_READER = "reference.full_text.reader"
 
 
 class TokenGenerator(Protocol):
@@ -33,7 +35,9 @@ class TokenGenerator(Protocol):
         self,
         user_payload: dict | None = None,
         scope: str | None = None,
-        role: str | None = None,
+        roles: list[str] | None = None,
+        realm_roles: list[str] | None = None,
+        roles_client_id: str | None = None,
     ) -> str:
         """Generate a fake Keycloak token for testing."""
         ...
@@ -79,7 +83,7 @@ def fake_realm() -> str:
 @pytest.fixture
 def fake_client_id() -> str:
     """Return a fake client ID for testing."""
-    return "destiny-repository-client"
+    return "destiny-repository-client-test"
 
 
 @pytest.fixture
@@ -101,26 +105,17 @@ def auth(
     fake_realm: str,
     fake_client_id: str,
 ) -> KeycloakJwtAuth:
-    """Create a KeycloakJwtAuth instance for testing with scope."""
+    """
+    Create a KeycloakJwtAuth instance for testing.
+
+    Configured as the routes configure it: with both a scope and a role, of
+    which only the role is honoured.
+    """
     return KeycloakJwtAuth(
         keycloak_url=fake_keycloak_url,
         realm=fake_realm,
         client_id=fake_client_id,
         scope=FakeAuthScopes.READ_ALL,
-    )
-
-
-@pytest.fixture
-def auth_with_role(
-    fake_keycloak_url: str,
-    fake_realm: str,
-    fake_client_id: str,
-) -> KeycloakJwtAuth:
-    """Create a KeycloakJwtAuth instance for testing with role."""
-    return KeycloakJwtAuth(
-        keycloak_url=fake_keycloak_url,
-        realm=fake_realm,
-        client_id=fake_client_id,
         role=FakeAuthRoles.READER,
     )
 
@@ -143,7 +138,9 @@ def generate_keycloak_token(
     def __generate_token(
         user_payload: dict | None = None,
         scope: str | None = None,
-        role: str | None = None,
+        roles: list[str] | None = None,
+        realm_roles: list[str] | None = None,
+        roles_client_id: str | None = None,
     ) -> str:
         if user_payload is None:
             user_payload = {}
@@ -155,7 +152,8 @@ def generate_keycloak_token(
             "exp": int((now + datetime.timedelta(minutes=10)).timestamp()),
             "aud": fake_client_id,
             "iss": f"{fake_keycloak_url}/realms/{fake_realm}",
-            "azp": "destiny-auth-client",
+            "azp": "destiny-auth-client-test",
+            "preferred_username": "testuser",
             "typ": "Bearer",
         }
 
@@ -163,8 +161,12 @@ def generate_keycloak_token(
 
         if scope:
             payload["scope"] = f"openid profile email {scope}"
-        if role:
-            payload["realm_access"] = {"roles": [role]}
+        if roles:
+            payload["resource_access"] = {
+                roles_client_id or fake_client_id: {"roles": roles}
+            }
+        if realm_roles:
+            payload["realm_access"] = {"roles": realm_roles}
 
         header = {"alg": "RS256", "kid": _test_private_key["kid"]}
         return joserfc_jwt.encode(header, payload, private_key)
@@ -305,60 +307,25 @@ async def test_verify_token_parse_failure_after_retry(
     assert "Unable to parse authentication token" in excinfo.value.detail
 
 
-async def test_requires_scope_success(
+async def test_requires_role_success(
     httpx_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
-    """Test that we successfully validate a token with the requested scope."""
+    """Test that a client role on the configured client grants access."""
     httpx_mock.add_response(json={"keys": [fake_public_key]})
 
-    token = generate_keycloak_token(scope=FakeAuthScopes.READ_ALL.value)
+    token = generate_keycloak_token(roles=[FakeAuthRoles.READER.value])
     credentials = Mock()
     credentials.credentials = token
     assert isinstance(await auth(fake_request, credentials), frozenset)
 
 
-async def test_requires_role_success(
-    httpx_mock: HTTPXMock,
-    auth_with_role: KeycloakJwtAuth,
-    fake_public_key: dict,
-    generate_keycloak_token: TokenGenerator,
-    fake_request: Request,
-):
-    """Test that we successfully validate a token with the requested role."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    token = generate_keycloak_token(role=FakeAuthRoles.READER.value)
-    credentials = Mock()
-    credentials.credentials = token
-    assert isinstance(await auth_with_role(fake_request, credentials), frozenset)
-
-
-async def test_requires_scope_not_found(
-    httpx_mock: HTTPXMock,
-    auth: KeycloakJwtAuth,
-    fake_public_key: dict,
-    generate_keycloak_token: TokenGenerator,
-    fake_request: Request,
-):
-    """Test that we raise an exception with a token without the appropriate scope."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
-
-    token = generate_keycloak_token(scope="wrong.scope")
-    credentials = Mock()
-    credentials.credentials = token
-    with pytest.raises(HTTPException) as excinfo:
-        await auth(fake_request, credentials)
-    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
-    assert "required scope or role" in excinfo.value.detail
-
-
 async def test_requires_role_not_found(
     httpx_mock: HTTPXMock,
-    auth_with_role: KeycloakJwtAuth,
+    auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
@@ -366,39 +333,120 @@ async def test_requires_role_not_found(
     """Test that we raise an exception with a token without the appropriate role."""
     httpx_mock.add_response(json={"keys": [fake_public_key]})
 
-    token = generate_keycloak_token(role="wrong.role")
+    token = generate_keycloak_token(roles=["wrong.role"])
     credentials = Mock()
     credentials.credentials = token
     with pytest.raises(HTTPException) as excinfo:
-        await auth_with_role(fake_request, credentials)
+        await auth(fake_request, credentials)
     assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
-    assert "required scope or role" in excinfo.value.detail
+    assert "required role" in excinfo.value.detail
 
 
-async def test_scope_fallback_to_role(  # noqa: PLR0913
+async def test_scope_confers_no_access(
     httpx_mock: HTTPXMock,
-    fake_keycloak_url: str,
-    fake_realm: str,
-    fake_client_id: str,
+    auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
-    """Test that role check is used when scope is missing but role is present."""
-    auth = KeycloakJwtAuth(
-        keycloak_url=fake_keycloak_url,
-        realm=fake_realm,
-        client_id=fake_client_id,
-        scope=FakeAuthScopes.READ_ALL,
-        role=FakeAuthRoles.READER,
-    )
+    """Test that the scope claim alone does not authorize a request."""
     httpx_mock.add_response(json={"keys": [fake_public_key]})
 
-    # Token has wrong scope but correct role
-    token = generate_keycloak_token(scope="openid", role=FakeAuthRoles.READER.value)
+    token = generate_keycloak_token(scope=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
     credentials.credentials = token
-    assert isinstance(await auth(fake_request, credentials), frozenset)
+    with pytest.raises(HTTPException) as excinfo:
+        await auth(fake_request, credentials)
+    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
+
+
+async def test_realm_role_confers_no_access(
+    httpx_mock: HTTPXMock,
+    auth: KeycloakJwtAuth,
+    fake_public_key: dict,
+    generate_keycloak_token: TokenGenerator,
+    fake_request: Request,
+):
+    """Test that a realm role of the same name does not authorize a request."""
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+
+    token = generate_keycloak_token(realm_roles=[FakeAuthRoles.READER.value])
+    credentials = Mock()
+    credentials.credentials = token
+    with pytest.raises(HTTPException) as excinfo:
+        await auth(fake_request, credentials)
+    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
+
+
+async def test_role_on_another_client_confers_no_access(
+    httpx_mock: HTTPXMock,
+    auth: KeycloakJwtAuth,
+    fake_public_key: dict,
+    generate_keycloak_token: TokenGenerator,
+    fake_request: Request,
+):
+    """Test that another environment's client roles do not authorize a request."""
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+
+    token = generate_keycloak_token(
+        roles=[FakeAuthRoles.READER.value],
+        roles_client_id="destiny-repository-client-production",
+    )
+    credentials = Mock()
+    credentials.credentials = token
+    with pytest.raises(HTTPException) as excinfo:
+        await auth(fake_request, credentials)
+    assert excinfo.value.status_code == status.HTTP_403_FORBIDDEN
+
+
+async def test_entitlements_derive_from_client_roles_only(
+    httpx_mock: HTTPXMock,
+    auth: KeycloakJwtAuth,
+    fake_public_key: dict,
+    generate_keycloak_token: TokenGenerator,
+    fake_request: Request,
+):
+    """Test that entitlements come from client roles and not from scopes."""
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    credentials = Mock()
+
+    credentials.credentials = generate_keycloak_token(
+        roles=[FakeAuthRoles.READER.value, FakeAuthRoles.FULL_TEXT_READER.value],
+    )
+    assert Entitlement.FULL_TEXT in await auth(fake_request, credentials)
+
+    # The equivalent scope grants nothing, even alongside a role that authorizes.
+    credentials.credentials = generate_keycloak_token(
+        roles=[FakeAuthRoles.READER.value],
+        scope="reference.full_text.reader.all",
+    )
+    assert Entitlement.FULL_TEXT not in await auth(fake_request, credentials)
+
+
+@pytest.mark.parametrize(
+    ("claims", "expected"),
+    [
+        (
+            {"preferred_username": "testuser", "azp": "destiny-auth-client-test"},
+            SubjectType.USER,
+        ),
+        (
+            {
+                "preferred_username": "service-account-some-robot",
+                "azp": "some-robot",
+            },
+            SubjectType.SERVICE,
+        ),
+        ({"azp": "some-robot"}, SubjectType.SERVICE),
+    ],
+)
+def test_subject_type(
+    auth: KeycloakJwtAuth,
+    claims: dict,
+    expected: SubjectType,
+):
+    """Test that the subject type is derived from the principal's username."""
+    assert auth._subject_type(claims) is expected  # noqa: SLF001
 
 
 async def test_missing_credentials(
@@ -443,7 +491,7 @@ async def test_custom_issuer_url(
         keycloak_url=keycloak_url,
         realm=fake_realm,
         client_id=fake_client_id,
-        scope=FakeAuthScopes.READ_ALL,
+        role=FakeAuthRoles.READER,
         issuer_url=issuer_url,
     )
 
@@ -462,7 +510,7 @@ async def test_custom_issuer_url(
         "exp": int((now + datetime.timedelta(minutes=10)).timestamp()),
         "aud": fake_client_id,
         "iss": f"{issuer_url}/realms/{fake_realm}",  # Using issuer_url
-        "scope": f"openid {FakeAuthScopes.READ_ALL.value}",
+        "resource_access": {fake_client_id: {"roles": [FakeAuthRoles.READER.value]}},
     }
     header = {"alg": "RS256", "kid": _test_private_key["kid"]}
     token = joserfc_jwt.encode(header, payload, private_key)
