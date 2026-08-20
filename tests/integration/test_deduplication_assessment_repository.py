@@ -7,9 +7,11 @@ idempotent writer resolves collisions, and that the repository is reachable only
 through an active unit of work.
 """
 
+import asyncio
 from uuid import UUID, uuid7
 
 import pytest
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLIntegrityError
@@ -23,10 +25,14 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     RetrievalPolicyName,
 )
+from app.domain.references.models.sql import (
+    DeduplicationAssessmentRecord as SQLDeduplicationAssessmentRecord,
+)
 from app.domain.references.repository import (
     DeduplicationAssessmentSQLRepository,
     ReferenceSQLRepository,
 )
+from app.persistence.sql.session import AsyncDatabaseSessionManager
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import ReferenceFactory
 from tests.unit.domain.references.deduplication.test_assessment_record import (
@@ -40,6 +46,32 @@ pytestmark = pytest.mark.usefixtures("session")
 # Shares no component with POLICY_GENERATION, so a listing that ignored the filter
 # cannot be mistaken for one that applied it.
 UNRELATED_GENERATION = "crossref-backfill-2027-01"
+
+# A ceiling, not a wait: a passing run returns in milliseconds.
+BLOCK_TIMEOUT_SECONDS = 10.0
+
+
+async def wait_until_another_writer_blocks(
+    sessionmanager: AsyncDatabaseSessionManager,
+) -> None:
+    """Wait for another backend to be waiting on a lock in this database."""
+    # Fresh connection per poll: a backend caches pg_stat_activity per transaction.
+    query = text(
+        "SELECT count(*) FROM pg_stat_activity"
+        " WHERE datname = current_database()"
+        " AND wait_event_type = 'Lock'"
+        " AND pid <> pg_backend_pid()"
+        # Any lock would let this commit before the racing insert was issued.
+        " AND query LIKE :insert_prefix"
+    )
+    insert_prefix = f"INSERT INTO {SQLDeduplicationAssessmentRecord.__tablename__}%"
+    deadline = asyncio.get_running_loop().time() + BLOCK_TIMEOUT_SECONDS
+    while asyncio.get_running_loop().time() < deadline:
+        async with sessionmanager.connect() as connection:
+            if await connection.scalar(query, {"insert_prefix": insert_prefix}):
+                return
+        await asyncio.sleep(0.05)
+    pytest.fail("the second writer never blocked on the unique index")
 
 
 @pytest.fixture
@@ -283,6 +315,45 @@ async def test_idempotent_add_returns_the_existing_record(
 
     assert returned.id == first.id
     assert returned.incoming_reference_id == first.incoming_reference_id
+
+
+async def test_a_blocked_writer_resolves_to_the_winner_that_committed(
+    repository: DeduplicationAssessmentSQLRepository,
+    session: AsyncSession,
+    sessionmanager_for_tests: AsyncDatabaseSessionManager,
+) -> None:
+    """A second session blocked on the unique index resolves to the committed row."""
+    # One session cannot test this: the lookup must be older than the commit.
+    attempt = uuid7()
+    winner = build_record()
+    winner.idempotency_key = attempt
+    await repository.add(winner)
+
+    async with sessionmanager_for_tests.session() as other_session:
+        loser = build_record()
+        loser.idempotency_key = attempt
+        loser_repository = DeduplicationAssessmentSQLRepository(other_session)
+
+        # The repository decorator erases the coroutine to Awaitable.
+        async def write_the_loser() -> DeduplicationAssessmentRecord:
+            return await loser_repository.add_or_find_by_idempotency_key(loser)
+
+        blocked = asyncio.create_task(write_the_loser())
+        try:
+            await wait_until_another_writer_blocks(sessionmanager_for_tests)
+
+            await session.commit()
+            resolved = await asyncio.wait_for(blocked, timeout=BLOCK_TIMEOUT_SECONDS)
+        finally:
+            # Releases the lock either way, so a failure reports instead of hanging.
+            await session.rollback()
+            blocked.cancel()
+            await asyncio.gather(blocked, return_exceptions=True)
+
+    assert resolved.id == winner.id
+
+    surviving = await repository.find(idempotency_key=attempt)
+    assert len(surviving) == 1
 
 
 async def test_repository_is_unreachable_outside_an_active_unit_of_work(
