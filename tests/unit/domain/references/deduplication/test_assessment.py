@@ -32,6 +32,7 @@ from app.domain.references.models.models import (
     RetrievalPolicyName,
 )
 from app.domain.references.models.projections import DeduplicationPaperProjection
+from app.domain.references.repository import ReferenceSQLRepository
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -527,6 +528,39 @@ async def test_evaluate_supplied_fails_when_incoming_cannot_project():
 
 
 @pytest.mark.asyncio
+async def test_evaluate_supplied_reports_a_scorer_failure_as_a_deduplication_error():
+    """The Deduper is third-party: one pair it cannot score is one failed record."""
+    incoming = _supplied_reference()
+    candidate = _reference()
+
+    class _RaisingScorer:
+        metadata = DeduperMetadata(
+            package_version="fake-1",
+            configuration_hash="test-config",
+            threshold=0.85,
+        )
+
+        async def score_pair(self, incoming, candidate):
+            msg = "scorer exploded"
+            raise RuntimeError(msg)
+
+    reader = MagicMock(spec=ReferenceReader)
+    reader.get_hydrated = AsyncMock(return_value=[candidate])
+    service = DeduplicationAssessmentService(
+        candidate_selector=AsyncMock(
+            return_value=_selection(
+                Candidate(reference_id=candidate.id, rank=1, routes=[])
+            )
+        ),
+        reference_reader=reader,
+        pair_scorer=_RaisingScorer(),
+    )
+
+    with pytest.raises(DeduplicationError, match="scorer exploded"):
+        await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+
+@pytest.mark.asyncio
 async def test_evaluate_empty_searchable_union_proposes_canonical():
     incoming = _reference()
     service, _, reader, pair_scorer = _build_service(
@@ -857,3 +891,16 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
         method.assert_not_awaited()
     sql_uow.commit.assert_not_awaited()
     es_uow.commit.assert_not_awaited()
+
+
+# This test annotated with -> None so mypy checks the body. Unannotated bodies
+# are skipped, so without it the assignment is never checked and proves nothing.
+def test_reference_repository_satisfies_the_reader_protocol() -> None:
+    """The one real implementation must be assignable to the protocol it implements."""
+    repository = ReferenceSQLRepository(MagicMock())
+
+    reader: ReferenceReader = repository
+
+    # Nothing meaningful to assert at runtime: the annotated assignment above is
+    # the check, and mypy is what performs it.
+    assert reader is repository
