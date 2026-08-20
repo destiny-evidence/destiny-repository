@@ -1,0 +1,57 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.Candidate
+
+A candidate canonical reference with route provenance.
+" alt="" coords="1192,447,1741,587"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.CandidateElasticsearchRoute
+
+Provenance for a candidate surfaced by the Elasticsearch query.
+" alt="" coords="1971,292,2208,432"/>
+<area shape="rect" id="node3" title="app.domain.references.models.models.CandidateIdentifierRoute
+
+Provenance for a candidate surfaced by an exact identifier match.
+" alt="" coords="1921,480,2257,564"/>
+<area shape="rect" id="node4" title="app.domain.references.models.models.CandidateReference
+
+Hydrated bibliographic fields of a candidate reference.
+" alt="" coords="1933,612,2245,752"/>
+<area shape="rect" id="node5" title="app.domain.references.models.models.CandidateIdentifier
+
+An external identifier used as candidate&#45;search input and match provenance.
+
+Narrows :class:`GenericExternalIdentifier` to require an explicit type;
+candidate search does not accept database&#45;id (untyped) lookups.
+" alt="" coords="2437,633,2780,745"/>
+<area shape="rect" id="node6" title="app.domain.references.models.models.CandidateSelectionDiagnostics
+
+Retrieval diagnostics for evaluation.
+" alt="" coords="1344,147,1589,399"/>
+<area shape="rect" id="node7" title="app.domain.references.models.models.CandidateSelectionResult
+
+Ranked candidates and diagnostics for a candidate&#45;selection request.
+" alt="" coords="668,5,1048,201"/>
+<area shape="rect" id="node8" title="app.domain.references.models.models.InputSearchability
+
+Whether the input meets the Elasticsearch bibliographic searchability gate.
+" alt="" coords="1390,15,1543,99"/>
+<area shape="rect" id="node9" title="app.domain.references.models.models.DeduperMetadata
+
+Identity and effective configuration of one loaded Deduper.
+" alt="" coords="695,249,1021,389"/>
+<area shape="rect" id="node10" title="app.domain.references.models.models.DeduplicationAssessment
+
+Read&#45;only candidate retrieval and pair&#45;scoring result for one reference.
+" alt="" coords="5,165,524,417"/>
+<area shape="rect" id="node11" title="app.domain.references.models.models.ScoredDeduplicationCandidate
+
+One retrieved candidate and the Deduper evidence for its pair.
+" alt="" coords="702,438,1014,550"/>
+<area shape="rect" id="node13" title="app.domain.references.models.models.DeduplicationPairResult
+
+Structured evidence returned by a Deduper adapter for one pair.
+" alt="" coords="1225,663,1709,859"/>
+<area shape="rect" id="node12" title="app.domain.references.models.models.DeduplicationFieldComparison
+
+Compared values, availability and score for one Deduper field.
+" alt="" coords="1885,800,2293,996"/>
+</map>
