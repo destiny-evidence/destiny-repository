@@ -179,8 +179,8 @@ resource "azuread_app_role_assignment" "ai_evidence_summariser_to_reference_full
 # Agentic mapping (research-mapper) role assignments
 data "azurerm_user_assigned_identity" "research_mapper" {
   count               = var.research_mapper_app_name != null ? 1 : 0
-  name                = "${var.research_mapper_app_name}-${var.environment}"
-  resource_group_name = "rg-${var.research_mapper_app_name}-${var.environment}"
+  name                = var.research_mapper_app_name
+  resource_group_name = "rg-${var.research_mapper_app_name}"
 }
 
 resource "azuread_app_role_assignment" "research_mapper_to_reference_reader" {
