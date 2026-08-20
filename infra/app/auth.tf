@@ -175,3 +175,17 @@ resource "azuread_app_role_assignment" "ai_evidence_summariser_to_reference_full
   principal_object_id = data.azurerm_user_assigned_identity.ai_evidence_summariser[0].principal_id
   resource_object_id  = azuread_service_principal.destiny_repository.object_id
 }
+
+# Agentic mapping (research-mapper) role assignments
+data "azurerm_user_assigned_identity" "research_mapper" {
+  count               = var.research_mapper_app_name != null ? 1 : 0
+  name                = var.research_mapper_app_name
+  resource_group_name = "rg-${var.research_mapper_app_name}"
+}
+
+resource "azuread_app_role_assignment" "research_mapper_to_reference_reader" {
+  count               = length(data.azurerm_user_assigned_identity.research_mapper)
+  app_role_id         = azuread_application_app_role.reference_reader.role_id
+  principal_object_id = data.azurerm_user_assigned_identity.research_mapper[0].principal_id
+  resource_object_id  = azuread_service_principal.destiny_repository.object_id
+}
