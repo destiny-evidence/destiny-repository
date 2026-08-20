@@ -406,6 +406,26 @@ class DedupCandidateScoringConfig(BaseModel):
     )
 
 
+# Width of the evidence sampler's digest. A sample rate needing more bits than the
+# digest holds would select nothing, so it bounds the exponent as well.
+EVIDENCE_SAMPLE_DIGEST_BITS = 64
+
+
+class DedupAssessmentRecordingConfig(BaseModel):
+    """Configuration for recording deduplication assessment evidence."""
+
+    evidence_sample_rate_bits: int | None = Field(
+        default=0,
+        ge=0,
+        le=EVIDENCE_SAMPLE_DIGEST_BITS,
+        description="Rate at which uninteresting assessments also keep their "
+        "evidence, one in 2 ** N. An assessment that proposed a duplicate or failed "
+        "to score a candidate keeps its evidence regardless; this decides how many "
+        "of the rest join them. 0 keeps all of them, null keeps none of them. Every "
+        "assessment records whether it was in the sample, interesting or not.",
+    )
+
+
 class Settings(BaseSettings):
     """Settings model for API."""
 
@@ -418,6 +438,9 @@ class Settings(BaseSettings):
 
     feature_flags: FeatureFlags = FeatureFlags()
     dedup_scoring: DedupCandidateScoringConfig = DedupCandidateScoringConfig()
+    dedup_assessment_recording: DedupAssessmentRecordingConfig = (
+        DedupAssessmentRecordingConfig()
+    )
 
     db_config: DatabaseConfig
     es_config: ESConfig

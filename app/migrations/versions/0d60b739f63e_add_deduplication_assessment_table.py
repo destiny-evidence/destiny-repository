@@ -1,0 +1,68 @@
+"""
+Add deduplication_assessment table
+
+Revision ID: 0d60b739f63e
+Revises: 6df1b2b092ed
+Create Date: 2026-08-12 11:23:14.857244+00:00
+
+"""
+from collections.abc import Sequence
+from typing import Union
+
+import sqlalchemy as sa
+from alembic import op
+from sqlalchemy.dialects import postgresql
+
+# revision identifiers, used by Alembic.
+revision: str = '0d60b739f63e'
+down_revision: Union[str, None] = '6df1b2b092ed'
+branch_labels: Union[str, Sequence[str], None] = None
+depends_on: Union[str, Sequence[str], None] = None
+
+
+def upgrade() -> None:
+    op.create_table('deduplication_assessment',
+    sa.Column('idempotency_key', sa.UUID(), nullable=False),
+    sa.Column('incoming_reference_id', sa.UUID(), nullable=False),
+    sa.Column('purpose', sa.String(), nullable=False),
+    sa.Column('policy_generation', sa.String(), nullable=False),
+    sa.Column('retrieval_policy', sa.String(), nullable=False),
+    sa.Column('k', sa.Integer(), nullable=False),
+    sa.Column('candidate_count', sa.Integer(), nullable=False),
+    sa.Column('es_route_ran', sa.Boolean(), nullable=False),
+    sa.Column('es_index_name', sa.String(), nullable=True),
+    sa.Column('input_searchability_reason', sa.String(), nullable=True),
+    sa.Column('deduper_version', sa.String(), nullable=False),
+    sa.Column('deduper_config_hash', sa.String(), nullable=False),
+    sa.Column('threshold', sa.Float(), nullable=False),
+    sa.Column('outcome', sa.String(), nullable=False),
+    sa.Column('proposed_duplicate_of_id', sa.UUID(), nullable=True),
+    sa.Column('best_score', sa.Float(), nullable=True),
+    sa.Column('best_non_winning_score', sa.Float(), nullable=True),
+    sa.Column('scored_candidates', postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+    sa.Column('payload_state', sa.String(), nullable=False),
+    sa.Column('payload_blob_url', sa.String(), nullable=True),
+    sa.Column('payload_reason', sa.String(), nullable=True),
+    sa.Column('payload_sampled', sa.Boolean(), nullable=False),
+    sa.Column('payload_bytes', sa.Integer(), nullable=True),
+    sa.Column('id', sa.UUID(), nullable=False),
+    sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    sa.Column('updated_at', sa.DateTime(timezone=True), nullable=False),
+    sa.ForeignKeyConstraint(['proposed_duplicate_of_id'], ['reference.id'], ),
+    sa.PrimaryKeyConstraint('id'),
+    sa.CheckConstraint(
+        "(payload_state = 'stored' AND payload_blob_url IS NOT NULL)"
+        " OR (payload_state = 'failed' AND payload_blob_url IS NULL)"
+        " OR (payload_state = 'not_retained' AND payload_blob_url IS NULL"
+        " AND payload_bytes IS NULL AND payload_reason IS NULL)",
+        name='ck_deduplication_assessment_payload_state',
+    )
+    )
+    op.create_index('ix_deduplication_assessment_incoming_reference_id', 'deduplication_assessment', ['incoming_reference_id'], unique=False)
+    op.create_index('uq_deduplication_assessment_idempotency_key', 'deduplication_assessment', ['idempotency_key'], unique=True)
+
+
+def downgrade() -> None:
+    op.drop_index('uq_deduplication_assessment_idempotency_key', table_name='deduplication_assessment')
+    op.drop_index('ix_deduplication_assessment_incoming_reference_id', table_name='deduplication_assessment')
+    op.drop_table('deduplication_assessment')

@@ -4,7 +4,9 @@ import pytest
 from pydantic import ValidationError
 
 from app.core.config import (
+    EVIDENCE_SAMPLE_DIGEST_BITS,
     AzureBlobConfig,
+    DedupAssessmentRecordingConfig,
     DedupCandidateScoringConfig,
     ESConfig,
     MinioConfig,
@@ -76,3 +78,33 @@ def test_candidate_selection_config_defaults_to_production_policy_and_k():
 
     assert config.default_retrieval_policy is RetrievalPolicyName.CANDIDATE_SELECTION_V1
     assert config.candidate_k == 10
+
+
+def test_dedup_assessment_recording_defaults_to_full_evidence_sample():
+    """Default recording keeps every sampled evidence payload."""
+    # Deliberately wide: a sample can be narrowed later, but evidence never written
+    # cannot be recovered. Environments set the rate that controls their own cost.
+    config = DedupAssessmentRecordingConfig()
+
+    assert config.evidence_sample_rate_bits == 0
+
+
+@pytest.mark.parametrize(
+    "sample_rate_bits", [None, 0, 1, 8, EVIDENCE_SAMPLE_DIGEST_BITS]
+)
+def test_dedup_assessment_recording_accepts_valid_sample_rate_bits(
+    sample_rate_bits: int | None,
+):
+    """Evidence sampling is configured as a base-2 sample-rate exponent."""
+    config = DedupAssessmentRecordingConfig(evidence_sample_rate_bits=sample_rate_bits)
+
+    assert config.evidence_sample_rate_bits == sample_rate_bits
+
+
+@pytest.mark.parametrize("sample_rate_bits", [-1, EVIDENCE_SAMPLE_DIGEST_BITS + 1])
+def test_dedup_assessment_recording_rejects_invalid_sample_rate_bits(
+    sample_rate_bits: int,
+):
+    """A rate the sampler's digest cannot express is refused at configuration time."""
+    with pytest.raises(ValidationError):
+        DedupAssessmentRecordingConfig(evidence_sample_rate_bits=sample_rate_bits)

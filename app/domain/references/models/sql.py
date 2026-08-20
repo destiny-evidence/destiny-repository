@@ -9,7 +9,9 @@ from sqlalchemy import (
 )
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -24,6 +26,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
 from app.domain.references.models.models import (
     AnnotationFilter,
+    AssessmentCandidateSummary,
+    AssessmentPayloadState,
+    DeduplicationAssessmentOutcome,
+    DeduplicationAssessmentPurpose,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -39,8 +45,12 @@ from app.domain.references.models.models import (
     LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
+    RetrievalPolicyName,
     SearchQuery,
     Visibility,
+)
+from app.domain.references.models.models import (
+    DeduplicationAssessmentRecord as DomainDeduplicationAssessmentRecord,
 )
 from app.domain.references.models.models import (
     Enhancement as DomainEnhancement,
@@ -775,6 +785,148 @@ class ReferenceDuplicateDecision(
             canonical_reference_id=self.canonical_reference_id,
             duplicate_determination=self.duplicate_determination,
             detail=self.detail,
+        )
+
+
+class DeduplicationAssessmentRecord(
+    GenericSQLPersistence[DomainDeduplicationAssessmentRecord]
+):
+    """SQL Persistence model for a Deduplication Assessment Record."""
+
+    __tablename__ = "deduplication_assessment"
+
+    idempotency_key: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
+    # Not a foreign key: the evaluation runner and the performance run assess
+    # supplied records that need not correspond to a stored reference at all.
+    incoming_reference_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
+    purpose: Mapped[DeduplicationAssessmentPurpose] = mapped_column(
+        String, nullable=False
+    )
+    policy_generation: Mapped[str] = mapped_column(String, nullable=False)
+    retrieval_policy: Mapped[RetrievalPolicyName] = mapped_column(
+        String, nullable=False
+    )
+    k: Mapped[int] = mapped_column(Integer, nullable=False)
+    candidate_count: Mapped[int] = mapped_column(Integer, nullable=False)
+    es_route_ran: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    es_index_name: Mapped[str | None] = mapped_column(String, nullable=True)
+    input_searchability_reason: Mapped[str | None] = mapped_column(
+        String, nullable=True
+    )
+    deduper_version: Mapped[str] = mapped_column(String, nullable=False)
+    deduper_config_hash: Mapped[str] = mapped_column(String, nullable=False)
+    threshold: Mapped[float] = mapped_column(Float, nullable=False)
+    outcome: Mapped[DeduplicationAssessmentOutcome] = mapped_column(
+        String, nullable=False
+    )
+    # Unlike the incoming side, a candidate always came from retrieval against the
+    # live corpus, so it is held and the reference can be constrained.
+    proposed_duplicate_of_id: Mapped[UUID | None] = mapped_column(
+        SQL_UUID, ForeignKey("reference.id"), nullable=True
+    )
+    best_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    best_non_winning_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    scored_candidates: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, nullable=False
+    )
+    payload_state: Mapped[AssessmentPayloadState] = mapped_column(
+        String, nullable=False
+    )
+    payload_blob_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    payload_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    payload_sampled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    payload_bytes: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        Index(
+            "ix_deduplication_assessment_incoming_reference_id",
+            "incoming_reference_id",
+        ),
+        # A redelivered task must not write a second row and a second payload.
+        Index(
+            "uq_deduplication_assessment_idempotency_key",
+            "idempotency_key",
+            unique=True,
+        ),
+        # The generic update_by_pk writes attributes without model validation, so the
+        # coherence of the payload columns is only guaranteed if the database holds it.
+        CheckConstraint(
+            "(payload_state = 'stored' AND payload_blob_url IS NOT NULL)"
+            " OR (payload_state = 'failed' AND payload_blob_url IS NULL)"
+            " OR (payload_state = 'not_retained' AND payload_blob_url IS NULL"
+            " AND payload_bytes IS NULL AND payload_reason IS NULL)",
+            name="ck_deduplication_assessment_payload_state",
+        ),
+    )
+
+    @classmethod
+    def from_domain(cls, domain_obj: DomainDeduplicationAssessmentRecord) -> Self:
+        """Create a persistence model from a domain object."""
+        return cls(
+            id=domain_obj.id,
+            idempotency_key=domain_obj.idempotency_key,
+            incoming_reference_id=domain_obj.incoming_reference_id,
+            purpose=domain_obj.purpose,
+            policy_generation=domain_obj.policy_generation,
+            retrieval_policy=domain_obj.retrieval_policy,
+            k=domain_obj.k,
+            candidate_count=domain_obj.candidate_count,
+            es_route_ran=domain_obj.es_route_ran,
+            es_index_name=domain_obj.es_index_name,
+            input_searchability_reason=domain_obj.input_searchability_reason,
+            deduper_version=domain_obj.deduper_version,
+            deduper_config_hash=domain_obj.deduper_config_hash,
+            threshold=domain_obj.threshold,
+            outcome=domain_obj.outcome,
+            proposed_duplicate_of_id=domain_obj.proposed_duplicate_of_id,
+            best_score=domain_obj.best_score,
+            best_non_winning_score=domain_obj.best_non_winning_score,
+            scored_candidates=[
+                candidate.model_dump(mode="json")
+                for candidate in domain_obj.scored_candidates
+            ],
+            payload_state=domain_obj.payload_state,
+            payload_blob_url=domain_obj.payload_blob_url,
+            payload_reason=domain_obj.payload_reason,
+            payload_sampled=domain_obj.payload_sampled,
+            payload_bytes=domain_obj.payload_bytes,
+        )
+
+    def to_domain(
+        self,
+        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+    ) -> DomainDeduplicationAssessmentRecord:
+        """Convert the persistence model into a Domain object."""
+        return DomainDeduplicationAssessmentRecord(
+            id=self.id,
+            idempotency_key=self.idempotency_key,
+            incoming_reference_id=self.incoming_reference_id,
+            purpose=self.purpose,
+            policy_generation=self.policy_generation,
+            retrieval_policy=self.retrieval_policy,
+            k=self.k,
+            candidate_count=self.candidate_count,
+            es_route_ran=self.es_route_ran,
+            es_index_name=self.es_index_name,
+            input_searchability_reason=self.input_searchability_reason,
+            deduper_version=self.deduper_version,
+            deduper_config_hash=self.deduper_config_hash,
+            threshold=self.threshold,
+            outcome=self.outcome,
+            proposed_duplicate_of_id=self.proposed_duplicate_of_id,
+            best_score=self.best_score,
+            best_non_winning_score=self.best_non_winning_score,
+            scored_candidates=[
+                AssessmentCandidateSummary.model_validate(candidate)
+                for candidate in self.scored_candidates
+            ],
+            payload_state=self.payload_state,
+            payload_blob_url=self.payload_blob_url,
+            payload_reason=self.payload_reason,
+            payload_sampled=self.payload_sampled,
+            payload_bytes=self.payload_bytes,
         )
 
 

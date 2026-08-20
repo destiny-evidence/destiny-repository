@@ -1107,12 +1107,16 @@ class CandidateSelectionResult(BaseModel):
 
 
 class DeduplicationFieldStatus(StrEnum):
-    """How the values for one scored field relate across a reference pair."""
+    """
+    Whether one field could be compared across a reference pair, and if not, why.
 
-    MATCH = auto()
-    """Both values are present and match."""
-    MISMATCH = auto()
-    """Both values are present and differ."""
+    Deliberately says nothing about the comparison's outcome. Comparators are fuzzy,
+    so any match/mismatch verdict here would either restate the score or bake a
+    threshold into evidence. The score and the normalised values carry that.
+    """
+
+    COMPARED = auto()
+    """Both values were present, so the comparator ran and returned a score."""
     MISSING_INCOMING = auto()
     """Only the incoming value is missing."""
     MISSING_CANDIDATE = auto()
@@ -1126,6 +1130,10 @@ class DeduplicationFieldComparison(BaseModel):
 
     incoming_value: JsonValue | None = None
     candidate_value: JsonValue | None = None
+    # The form the scorer compared, which is what explains the score: raw values
+    # can differ while their normalised forms match.
+    normalised_incoming_value: str | None = None
+    normalised_candidate_value: str | None = None
     status: DeduplicationFieldStatus
     score: float | None = None
 
@@ -1224,6 +1232,141 @@ class DeduplicationPaper(ProjectedBaseModel):
             msg = "A deduplication paper needs at least one populated field"
             raise ValueError(msg)
         return self
+
+
+class AssessmentCandidateSummary(BaseModel):
+    """
+    One candidate as persisted on an assessment record.
+
+    Deliberately narrower than :class:`ScoredDeduplicationCandidate`: compared values
+    and per-field scores stay in the blob payload, which is where the evidence lives.
+    """
+
+    reference_id: UUID
+    rank: int
+    routes: list[CandidateRoute]
+    probability: float | None = None
+    clears_threshold: bool | None = None
+    unscorable_reason: str | None = None
+    early_stop_reason: str | None = None
+    doi_mismatch_adjusted: bool = False
+    suggested_label: str | None = None
+    field_availability: dict[str, DeduplicationFieldStatus] = Field(
+        default_factory=dict,
+        description="Fields that could not be compared, and which side was absent. "
+        "Compared fields are omitted.",
+    )
+
+    @field_validator("field_availability")
+    @classmethod
+    def validate_field_availability(
+        cls, field_availability: dict[str, DeduplicationFieldStatus]
+    ) -> dict[str, DeduplicationFieldStatus]:
+        """Reject compared fields, which belong in the payload."""
+        if DeduplicationFieldStatus.COMPARED in field_availability.values():
+            msg = "Field availability cannot contain COMPARED fields"
+            raise ValueError(msg)
+        return field_availability
+
+    @classmethod
+    def from_scored_candidate(cls, scored: ScoredDeduplicationCandidate) -> Self:
+        """Reduce a scored candidate to what the record persists."""
+        return cls(
+            reference_id=scored.candidate.reference_id,
+            rank=scored.candidate.rank,
+            routes=scored.candidate.routes,
+            probability=scored.pair_result.probability,
+            clears_threshold=scored.clears_threshold,
+            unscorable_reason=scored.pair_result.unscorable_reason,
+            early_stop_reason=scored.pair_result.early_stop_reason,
+            doi_mismatch_adjusted=scored.pair_result.doi_mismatch_adjusted,
+            suggested_label=scored.pair_result.suggested_label,
+            field_availability={
+                field: comparison.status
+                for field, comparison in scored.pair_result.field_comparisons.items()
+                if comparison.status != DeduplicationFieldStatus.COMPARED
+            },
+        )
+
+
+class DeduplicationAssessmentPurpose(StrEnum):
+    """Why an assessment was run, fixed when it is recorded."""
+
+    DEDUPLICATION = auto()
+    """Normal path; the record may later be applied as a duplicate decision."""
+    PERFORMANCE_SHADOW = auto()
+    """Measurement only; never applied, because applying needs a fresh assessment."""
+
+
+class AssessmentPayloadState(StrEnum):
+    """Whether the full evidence payload for an assessment was stored."""
+
+    NOT_RETAINED = auto()
+    """Nothing cleared the threshold and every candidate scored, so none was kept."""
+    STORED = auto()
+    """The payload was written and its location is on the record."""
+    FAILED = auto()
+    """The payload was worth keeping but could not be written."""
+
+
+class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
+    """Durable summary of one assessment, whether or not it becomes a decision."""
+
+    idempotency_key: UUID = Field(
+        description="The delivery this record was written for. Identifies the "
+        "attempt, not the reference, so a redelivery resolves to the same record.",
+    )
+    incoming_reference_id: UUID = Field(
+        description="The assessed reference. Not a foreign key: supplied records "
+        "under evaluation need not be held.",
+    )
+    purpose: DeduplicationAssessmentPurpose
+    policy_generation: str = Field(
+        description="The acting-policy generation this assessment was run under. "
+        "The cohort assessments are grouped and listed by, not an execution identity.",
+    )
+    retrieval_policy: RetrievalPolicyName
+    k: int = Field(description="The configured candidate count requested.")
+    candidate_count: int = Field(description="Candidates actually returned.")
+    es_route_ran: bool
+    es_index_name: str | None = Field(
+        default=None,
+        description="The concrete index searched, absent when the route did not run.",
+    )
+    input_searchability_reason: str | None = Field(
+        default=None,
+        description="Why the input did or did not meet the searchability gate, so the "
+        "record explains its own retrieval without it being run again.",
+    )
+    deduper_version: str
+    deduper_config_hash: str
+    threshold: float = Field(ge=0, le=1)
+    outcome: DeduplicationAssessmentOutcome
+    proposed_duplicate_of_id: UUID | None = None
+    best_score: float | None = Field(
+        default=None, description="Highest probability across all scored pairs."
+    )
+    best_non_winning_score: float | None = Field(
+        default=None,
+        description="Runner-up behind a proposal, or the top score where none cleared.",
+    )
+    scored_candidates: list[AssessmentCandidateSummary] = Field(default_factory=list)
+    payload_state: AssessmentPayloadState
+    payload_blob_url: str | None = None
+    payload_reason: str | None = Field(
+        default=None, description="Why the payload is absent when it was wanted."
+    )
+    payload_sampled: bool = Field(
+        default=False,
+        description="Whether this record is in the evidence sample. Independent of "
+        "whether the payload was kept, so the sampled set stays uniform.",
+    )
+    payload_bytes: int | None = Field(
+        default=None,
+        ge=0,
+        description="Size of the stored payload, so retention can be narrowed on "
+        "measured cost rather than estimate.",
+    )
 
 
 class LinkedDataProjection(ProjectedBaseModel):

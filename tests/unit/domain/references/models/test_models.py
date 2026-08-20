@@ -10,7 +10,11 @@ from pydantic import ValidationError
 
 from app.core.exceptions import SDKToDomainError
 from app.domain.references.models.models import (
+    AssessmentCandidateSummary,
+    Candidate,
     CandidateCanonicalSearchFields,
+    CandidateElasticsearchRoute,
+    CandidateReference,
     DeduperMetadata,
     DeduplicationFieldComparison,
     DeduplicationFieldStatus,
@@ -20,6 +24,7 @@ from app.domain.references.models.models import (
     FullTextEnhancement,
     GenericExternalIdentifier,
     ReferenceDuplicateDecision,
+    ScoredDeduplicationCandidate,
 )
 from app.domain.references.models.validators import ReferenceCreateResult
 from app.domain.references.services.anti_corruption_service import (
@@ -61,9 +66,129 @@ def test_deduplication_pair_result_rejects_ambiguous_scoring_state(data):
 def test_deduplication_field_comparison_rejects_non_json_values(field_name):
     with pytest.raises(ValidationError):
         DeduplicationFieldComparison(
-            status=DeduplicationFieldStatus.MATCH,
+            status=DeduplicationFieldStatus.COMPARED,
             **{field_name: object()},
         )
+
+
+def _scored_candidate(
+    field_comparisons=None,
+    *,
+    reference=None,
+):
+    return ScoredDeduplicationCandidate(
+        candidate=Candidate(
+            reference_id=uuid7(),
+            rank=3,
+            routes=[
+                CandidateElasticsearchRoute(
+                    policy="candidate_selection_v1", rank=3, score=9.5
+                )
+            ],
+            reference=reference,
+        ),
+        pair_result=DeduplicationPairResult(
+            probability=0.42,
+            field_comparisons=field_comparisons or {},
+        ),
+        clears_threshold=False,
+    )
+
+
+def test_candidate_summary_carries_identity_and_retrieval_provenance():
+    scored = _scored_candidate()
+
+    summary = AssessmentCandidateSummary.from_scored_candidate(scored)
+
+    assert summary.reference_id == scored.candidate.reference_id
+    assert summary.rank == 3
+    assert summary.routes == scored.candidate.routes
+    assert summary.probability == pytest.approx(0.42)
+    assert summary.clears_threshold is False
+
+
+def test_candidate_summary_omits_compared_fields_from_availability():
+    # Only absence belongs in the map. MISMATCH is the tempting one to keep, but it
+    # would make a distrusted verdict durable and cost an entry on every field.
+    scored = _scored_candidate(
+        {
+            "title": DeduplicationFieldComparison(
+                status=DeduplicationFieldStatus.COMPARED, score=0.99
+            ),
+            "journal": DeduplicationFieldComparison(
+                status=DeduplicationFieldStatus.COMPARED, score=0.2
+            ),
+        }
+    )
+
+    summary = AssessmentCandidateSummary.from_scored_candidate(scored)
+
+    assert summary.field_availability == {}
+
+
+def test_candidate_summary_records_which_side_a_field_was_missing_from():
+    scored = _scored_candidate(
+        {
+            "journal": DeduplicationFieldComparison(
+                status=DeduplicationFieldStatus.MISSING_CANDIDATE
+            ),
+            "pages": DeduplicationFieldComparison(
+                status=DeduplicationFieldStatus.MISSING_BOTH
+            ),
+            "title": DeduplicationFieldComparison(
+                status=DeduplicationFieldStatus.COMPARED, score=1.0
+            ),
+        }
+    )
+
+    summary = AssessmentCandidateSummary.from_scored_candidate(scored)
+
+    assert summary.field_availability == {
+        "journal": DeduplicationFieldStatus.MISSING_CANDIDATE,
+        "pages": DeduplicationFieldStatus.MISSING_BOTH,
+    }
+
+
+def test_candidate_summary_rejects_compared_field_availability():
+    with pytest.raises(ValidationError, match="COMPARED"):
+        AssessmentCandidateSummary(
+            reference_id=uuid7(),
+            rank=1,
+            routes=[],
+            field_availability={"title": DeduplicationFieldStatus.COMPARED},
+        )
+
+
+def test_candidate_summary_never_carries_compared_values_or_scores():
+    # Compared values are the bulk, titles most of all: present on nearly every
+    # record and stored for both sides of every candidate pair.
+    scored = _scored_candidate(
+        {
+            "title": DeduplicationFieldComparison(
+                status=DeduplicationFieldStatus.COMPARED,
+                score=0.97,
+                incoming_value="A hydrated title",
+                candidate_value="A hydrated title",
+            ),
+            "authors": DeduplicationFieldComparison(
+                status=DeduplicationFieldStatus.COMPARED,
+                score=0.88,
+                incoming_value=["Ada Lovelace"],
+                candidate_value=["Ada Lovelace"],
+            ),
+        },
+        reference=CandidateReference(
+            title="A hydrated title", authors=["Ada Lovelace"]
+        ),
+    )
+
+    serialised = AssessmentCandidateSummary.from_scored_candidate(
+        scored
+    ).model_dump_json()
+
+    assert "Ada Lovelace" not in serialised
+    assert "A hydrated title" not in serialised
+    assert "0.97" not in serialised
 
 
 def test_deduper_metadata_rejects_non_json_configuration():

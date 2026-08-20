@@ -237,7 +237,7 @@ class FakePairScorer:
                 "title": DeduplicationFieldComparison(
                     incoming_value="A complete reference",
                     candidate_value="A complete reference",
-                    status=DeduplicationFieldStatus.MATCH,
+                    status=DeduplicationFieldStatus.COMPARED,
                     score=1.0,
                 )
             },
