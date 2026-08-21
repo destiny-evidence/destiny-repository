@@ -405,6 +405,37 @@ async def test_inline_input_excludes_held_reference_from_identifier_candidates(
 
 
 @pytest.mark.asyncio
+async def test_failed_retrieval_still_records_what_it_was_running(
+    build_service, span_attributes
+):
+    service, es_refs, _, _ = build_service()
+    es_refs.search_for_candidate_canonicals = AsyncMock(
+        side_effect=RuntimeError("Elasticsearch is down")
+    )
+
+    with pytest.raises(RuntimeError):
+        await service.get_deduplication_candidates(
+            CandidateSelectionRequest(
+                input=CandidateSelectionInput(
+                    title="A study", authors=["Jane Doe"], publication_year=2025
+                ),
+                k=25,
+                hydrate=False,
+            )
+        )
+
+    attributes = span_attributes("Select deduplication candidates")
+    assert attributes["app.candidate_selection.k_requested"] == 25
+    assert (
+        attributes["app.candidate_selection.retrieval_policy"]
+        == "candidate_selection_v1"
+    )
+    # Everything the search would have produced is absent, so a failure is legible.
+    assert "app.candidate_selection.es_total_hits" not in attributes
+    assert "app.candidate_selection.candidate_count" not in attributes
+
+
+@pytest.mark.asyncio
 async def test_k_override_is_forwarded_to_elasticsearch(build_service):
     service, es_refs, _, _ = build_service()
 

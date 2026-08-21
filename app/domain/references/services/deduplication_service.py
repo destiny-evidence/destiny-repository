@@ -196,10 +196,6 @@ def _trace_candidate_selection(
     """Record the retrieval diagnostics as bounded span attributes."""
     diagnostics = result.diagnostics
     trace_attribute(
-        Attributes.CANDIDATE_SELECTION_RETRIEVAL_POLICY, result.retrieval_policy.value
-    )
-    trace_attribute(Attributes.CANDIDATE_SELECTION_K_REQUESTED, result.k_requested)
-    trace_attribute(
         Attributes.CANDIDATE_SELECTION_SEARCHABLE, result.input_searchability.searchable
     )
     # Truthiness throughout, matching the searchability gate where a 0 year is absent.
@@ -262,6 +258,11 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             request.retrieval_policy or settings.dedup_scoring.default_retrieval_policy
         )
         policy = resolve_retrieval_policy(policy_name)
+        # Set before any I/O: an errored span is still groupable by what it was running.
+        trace_attribute(
+            Attributes.CANDIDATE_SELECTION_RETRIEVAL_POLICY, policy_name.value
+        )
+        trace_attribute(Attributes.CANDIDATE_SELECTION_K_REQUESTED, k)
 
         (
             search_fields,

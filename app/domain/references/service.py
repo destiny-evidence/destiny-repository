@@ -1358,7 +1358,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             Attributes.DEDUPLICATION_DETERMINATION,
             reference_duplicate_decision.duplicate_determination.value,
         )
-        # False when the outcome matched the active decision, or DECOUPLED replaced it.
+        # False when the outcome matched or a person's decision blocked it. The other
+        # two decoupling branches leave it true, so a decoupling can read as changed.
         trace_attribute(Attributes.DEDUPLICATION_DECISION_CHANGED, decision_changed)
 
         await self.apply_reference_duplicate_decision_side_effects(

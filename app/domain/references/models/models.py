@@ -134,7 +134,7 @@ class Visibility(StrEnum):
 
 
 class DeduplicationRoute(StrEnum):
-    """Which path decided a reference, for telemetry."""
+    """How deduplication resolved a reference."""
 
     IDENTIFIER_SHORTCUT = auto()
     """A configured trusted identifier type matched, so Elasticsearch was never
