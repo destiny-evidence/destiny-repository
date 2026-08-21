@@ -7,6 +7,7 @@ from opentelemetry import trace
 
 from app.core.config import DedupCandidateScoringConfig, Environment, get_settings
 from app.core.exceptions import DeduplicationError, DeduplicationValueError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     Candidate,
@@ -186,6 +187,59 @@ def _searchability_reason(
     return "ok"
 
 
+def _trace_candidate_selection(
+    result: CandidateSelectionResult,
+    search_fields: CandidateCanonicalSearchFields,
+    *,
+    identifier_only_returned: int,
+) -> None:
+    """Record the retrieval diagnostics as bounded span attributes."""
+    diagnostics = result.diagnostics
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_RETRIEVAL_POLICY, result.retrieval_policy.value
+    )
+    trace_attribute(Attributes.CANDIDATE_SELECTION_K_REQUESTED, result.k_requested)
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_SEARCHABLE, result.input_searchability.searchable
+    )
+    # Truthiness throughout, matching the searchability gate where a 0 year is absent.
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_TITLE_PRESENT, bool(search_fields.title)
+    )
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_AUTHORS_PRESENT, bool(search_fields.authors)
+    )
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_PUBLICATION_YEAR_PRESENT,
+        bool(search_fields.publication_year),
+    )
+    if result.index_version is not None:
+        trace_attribute(
+            Attributes.CANDIDATE_SELECTION_INDEX_VERSION, result.index_version
+        )
+    if diagnostics.es_took_ms is not None:
+        trace_attribute(
+            Attributes.CANDIDATE_SELECTION_ES_TOOK_MS, diagnostics.es_took_ms
+        )
+    if diagnostics.es_total_hits is not None:
+        trace_attribute(
+            Attributes.CANDIDATE_SELECTION_ES_TOTAL_HITS, diagnostics.es_total_hits
+        )
+    trace_attribute(Attributes.CANDIDATE_SELECTION_ES_RETURNED, diagnostics.es_returned)
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_IDENTIFIER_RETURNED,
+        diagnostics.identifier_returned,
+    )
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_IDENTIFIER_ONLY_RETURNED,
+        identifier_only_returned,
+    )
+    trace_attribute(
+        Attributes.CANDIDATE_SELECTION_CANDIDATE_COUNT, diagnostics.candidate_count
+    )
+    trace_attribute(Attributes.CANDIDATE_SELECTION_TRUNCATED, diagnostics.truncated)
+
+
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing reference duplicate detection."""
 
@@ -198,6 +252,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
+    @tracer.start_as_current_span("Select deduplication candidates")
     async def get_deduplication_candidates(
         self, request: CandidateSelectionRequest
     ) -> CandidateSelectionResult:
@@ -289,7 +344,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         es_returned = len(es_hits)
-        return CandidateSelectionResult(
+        result = CandidateSelectionResult(
             retrieval_policy=policy.name,
             index_version=index_version,
             k_requested=k,
@@ -311,6 +366,10 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             ),
             candidates=candidates,
         )
+        _trace_candidate_selection(
+            result, search_fields, identifier_only_returned=len(identifier_only_ids)
+        )
+        return result
 
     async def _resolve_candidate_selection_input(
         self, selection_input: CandidateSelectionInput

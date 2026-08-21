@@ -102,6 +102,39 @@ class Attributes(StrEnum):
         "app.robot_automation.pending_enhancement_count"
     )
 
+    # Deduplication candidate retrieval
+    CANDIDATE_SELECTION_RETRIEVAL_POLICY = "app.candidate_selection.retrieval_policy"
+    CANDIDATE_SELECTION_K_REQUESTED = "app.candidate_selection.k_requested"
+    CANDIDATE_SELECTION_INDEX_VERSION = "app.candidate_selection.index_version"
+    CANDIDATE_SELECTION_SEARCHABLE = "app.candidate_selection.searchable"
+    # Input presence, not policy opinion: these read the same under every policy.
+    CANDIDATE_SELECTION_TITLE_PRESENT = "app.candidate_selection.title_present"
+    CANDIDATE_SELECTION_AUTHORS_PRESENT = "app.candidate_selection.authors_present"
+    CANDIDATE_SELECTION_PUBLICATION_YEAR_PRESENT = (
+        "app.candidate_selection.publication_year_present"
+    )
+    CANDIDATE_SELECTION_ES_TOOK_MS = "app.candidate_selection.es_took_ms"
+    CANDIDATE_SELECTION_ES_TOTAL_HITS = "app.candidate_selection.es_total_hits"
+    CANDIDATE_SELECTION_ES_RETURNED = "app.candidate_selection.es_returned"
+    CANDIDATE_SELECTION_IDENTIFIER_RETURNED = (
+        "app.candidate_selection.identifier_returned"
+    )
+    # Identifier-only candidates sort ahead of ES ones, so a non-zero value means
+    # rank 1 came from the identifier route.
+    CANDIDATE_SELECTION_IDENTIFIER_ONLY_RETURNED = (
+        "app.candidate_selection.identifier_only_returned"
+    )
+    CANDIDATE_SELECTION_CANDIDATE_COUNT = "app.candidate_selection.candidate_count"
+    CANDIDATE_SELECTION_TRUNCATED = "app.candidate_selection.truncated"
+
+    # Deduplication decisions
+    DEDUPLICATION_ROUTE = "app.deduplication.route"
+    DEDUPLICATION_DETERMINATION = "app.deduplication.determination"
+    DEDUPLICATION_SIDE_EFFECT_DECISION_COUNT = (
+        "app.deduplication.side_effect_decision_count"
+    )
+    DEDUPLICATION_DECISION_CHANGED = "app.deduplication.decision_changed"
+
     # Other
     FILE_LINE_NO = "app.file.line_number"
 

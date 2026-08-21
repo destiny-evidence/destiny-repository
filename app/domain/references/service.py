@@ -27,6 +27,7 @@ from app.domain.references.models.models import (
     CandidateSelectionRequest,
     CandidateSelectionResult,
     CrossFacetResult,
+    DeduplicationRoute,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -1272,17 +1273,35 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     @sql_unit_of_work
     @es_unit_of_work
+    # Innermost, so the unit-of-work spans do not take the attributes set below.
+    @tracer.start_as_current_span("Deduplicate reference")
     async def process_reference_duplicate_decision(
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
     ) -> None:
         """Process a reference duplicate decision."""
+        trace_attribute(
+            Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
+        )
         if settings.trusted_unique_identifier_types:
             shortcutted_decisions = await self._deduplication_service.shortcut_deduplication_using_identifiers(  # noqa: E501
                 reference_duplicate_decision,
                 settings.trusted_unique_identifier_types,
             )
             if shortcutted_decisions:
+                subject_decision, *side_effect_decisions = shortcutted_decisions
+                trace_attribute(
+                    Attributes.DEDUPLICATION_ROUTE,
+                    DeduplicationRoute.IDENTIFIER_SHORTCUT.value,
+                )
+                trace_attribute(
+                    Attributes.DEDUPLICATION_DETERMINATION,
+                    subject_decision.duplicate_determination.value,
+                )
+                trace_attribute(
+                    Attributes.DEDUPLICATION_SIDE_EFFECT_DECISION_COUNT,
+                    len(side_effect_decisions),
+                )
                 for decision in shortcutted_decisions:
                     await self.apply_reference_duplicate_decision_side_effects(
                         decision,
@@ -1291,6 +1310,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 return
 
         if settings.feature_flags.enable_canonical_candidate_search:
+            # Set before retrieval so an errored span without a determination
+            # separates a deduplication failure from a side-effect one.
+            trace_attribute(
+                Attributes.DEDUPLICATION_ROUTE,
+                DeduplicationRoute.CANDIDATE_SEARCH.value,
+            )
             candidate_selection = (
                 await self._deduplication_service.select_candidate_canonicals(
                     reference_duplicate_decision.reference_id
@@ -1303,12 +1328,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 )
             )
         else:
+            trace_attribute(
+                Attributes.DEDUPLICATION_ROUTE, DeduplicationRoute.DISABLED.value
+            )
             reference_duplicate_decision.duplicate_determination = (
                 DuplicateDetermination.UNSEARCHABLE
             )
             reference_duplicate_decision.detail = (
                 "Canonical candidate search is disabled."
             )
+        trace_attribute(
+            Attributes.DEDUPLICATION_DETERMINATION,
+            reference_duplicate_decision.duplicate_determination.value,
+        )
 
         (
             reference_duplicate_decision,
@@ -1317,6 +1349,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ) = await self._deduplication_service.map_duplicate_decision(
             reference_duplicate_decision
         )
+        # False means the decision was refused and parked as DECOUPLED, which is
+        # otherwise only visible in the detail prose.
+        trace_attribute(Attributes.DEDUPLICATION_DECISION_CHANGED, decision_changed)
 
         await self.apply_reference_duplicate_decision_side_effects(
             reference_duplicate_decision,

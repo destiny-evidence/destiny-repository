@@ -133,6 +133,18 @@ class Visibility(StrEnum):
     """Is not visible, but may be passed to data mining processes."""
 
 
+class DeduplicationRoute(StrEnum):
+    """Which path decided a reference, for telemetry."""
+
+    IDENTIFIER_SHORTCUT = auto()
+    """A configured trusted identifier type matched, so Elasticsearch was never
+    consulted."""
+    CANDIDATE_SEARCH = auto()
+    """Candidates were retrieved and handed to the determinator."""
+    DISABLED = auto()
+    """Candidate search is switched off in this environment."""
+
+
 class DuplicateDetermination(StrEnum):
     """
     The determination of whether a reference is a duplicate.

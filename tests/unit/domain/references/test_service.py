@@ -1651,3 +1651,149 @@ async def test_collect_search_enhancement_request_marks_failed_on_error(
     stored = fake_requests.get_first_record()
     assert stored.search_status == EnhancementRequestSearchStatus.FAILED
     assert "boom" in stored.error
+
+
+class TestDeduplicationDecisionTelemetry:
+    """Which route decided a reference, and what it decided, reaching the trace."""
+
+    SPAN = "Deduplicate reference"
+
+    @pytest.mark.asyncio
+    async def test_candidate_search_route_records_the_determination(
+        self, duplicate_processing_service, monkeypatch, span_attributes
+    ):
+        from app.domain.references import service as reference_service_module
+
+        monkeypatch.setattr(
+            reference_service_module.settings.feature_flags,
+            "enable_canonical_candidate_search",
+            True,
+        )
+        service, decision = duplicate_processing_service
+        determined = decision.model_copy(
+            update={"duplicate_determination": DuplicateDetermination.CANONICAL}
+        )
+        service._deduplication_service.determine_canonical_from_candidates = AsyncMock(  # noqa: SLF001
+            return_value=determined
+        )
+        service._deduplication_service.map_duplicate_decision = AsyncMock(  # noqa: SLF001
+            return_value=(determined, True, None)
+        )
+
+        await service.process_reference_duplicate_decision(decision)
+
+        assert span_attributes(self.SPAN) == {
+            "app.reference.id": str(decision.reference_id),
+            "app.deduplication.route": "candidate_search",
+            "app.deduplication.determination": "canonical",
+            "app.deduplication.decision_changed": True,
+        }
+
+    @pytest.mark.asyncio
+    async def test_a_refused_decision_records_that_nothing_changed(
+        self, duplicate_processing_service, monkeypatch, span_attributes
+    ):
+        from app.domain.references import service as reference_service_module
+
+        monkeypatch.setattr(
+            reference_service_module.settings.feature_flags,
+            "enable_canonical_candidate_search",
+            True,
+        )
+        service, decision = duplicate_processing_service
+        decoupled = decision.model_copy(
+            update={"duplicate_determination": DuplicateDetermination.DECOUPLED}
+        )
+        service._deduplication_service.determine_canonical_from_candidates = AsyncMock(  # noqa: SLF001
+            return_value=decoupled
+        )
+        service._deduplication_service.map_duplicate_decision = AsyncMock(  # noqa: SLF001
+            return_value=(decoupled, False, None)
+        )
+
+        await service.process_reference_duplicate_decision(decision)
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.deduplication.decision_changed"] is False
+        assert attributes["app.deduplication.determination"] == "decoupled"
+
+    @pytest.mark.asyncio
+    async def test_identifier_shortcut_route_records_its_side_effects(
+        self, duplicate_processing_service, monkeypatch, span_attributes
+    ):
+        from app.domain.references import service as reference_service_module
+
+        monkeypatch.setattr(
+            reference_service_module.settings,
+            "trusted_unique_identifier_types",
+            {"open_alex"},
+        )
+        service, decision = duplicate_processing_service
+        canonical_id = uuid7()
+        shortcutted = decision.model_copy(
+            update={
+                "duplicate_determination": DuplicateDetermination.DUPLICATE,
+                "canonical_reference_id": canonical_id,
+            }
+        )
+        side_effect = ReferenceDuplicateDecision(
+            reference_id=uuid7(),
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=canonical_id,
+        )
+        service._deduplication_service.shortcut_deduplication_using_identifiers = (  # noqa: SLF001
+            AsyncMock(return_value=[shortcutted, side_effect])
+        )
+
+        await service.process_reference_duplicate_decision(decision)
+
+        assert span_attributes(self.SPAN) == {
+            "app.reference.id": str(decision.reference_id),
+            "app.deduplication.route": "identifier_shortcut",
+            "app.deduplication.determination": "duplicate",
+            "app.deduplication.side_effect_decision_count": 1,
+        }
+
+    @pytest.mark.asyncio
+    async def test_disabled_candidate_search_records_a_disabled_route(
+        self, duplicate_processing_service, monkeypatch, span_attributes
+    ):
+        # Both branches end at unsearchable, so the route is the only thing
+        # separating "never searched" from "searched and found nothing".
+        from app.domain.references import service as reference_service_module
+
+        monkeypatch.setattr(
+            reference_service_module.settings.feature_flags,
+            "enable_canonical_candidate_search",
+            False,
+        )
+        service, decision = duplicate_processing_service
+
+        await service.process_reference_duplicate_decision(decision)
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.deduplication.route"] == "disabled"
+        assert attributes["app.deduplication.determination"] == "unsearchable"
+
+    @pytest.mark.asyncio
+    async def test_failure_before_a_determination_leaves_it_unset(
+        self, duplicate_processing_service, monkeypatch, span_attributes
+    ):
+        from app.domain.references import service as reference_service_module
+
+        monkeypatch.setattr(
+            reference_service_module.settings.feature_flags,
+            "enable_canonical_candidate_search",
+            True,
+        )
+        service, decision = duplicate_processing_service
+        service._deduplication_service.select_candidate_canonicals = AsyncMock(  # noqa: SLF001
+            side_effect=RuntimeError("Elasticsearch is down")
+        )
+
+        with pytest.raises(RuntimeError):
+            await service.process_reference_duplicate_decision(decision)
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.deduplication.route"] == "candidate_search"
+        assert "app.deduplication.determination" not in attributes
