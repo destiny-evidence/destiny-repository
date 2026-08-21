@@ -1684,13 +1684,15 @@ class TestDeduplicationDecisionTelemetry:
 
         assert span_attributes(self.SPAN) == {
             "app.reference.id": str(decision.reference_id),
+            "app.deduplication.candidate_search_enabled": True,
+            "app.deduplication.trusted_identifier_shortcut_enabled": False,
             "app.deduplication.route": "candidate_search",
             "app.deduplication.determination": "canonical",
             "app.deduplication.decision_changed": True,
         }
 
     @pytest.mark.asyncio
-    async def test_a_refused_decision_records_that_nothing_changed(
+    async def test_a_refused_decision_records_what_persisted_not_what_was_proposed(
         self, duplicate_processing_service, monkeypatch, span_attributes
     ):
         from app.domain.references import service as reference_service_module
@@ -1701,11 +1703,14 @@ class TestDeduplicationDecisionTelemetry:
             True,
         )
         service, decision = duplicate_processing_service
+        proposed = decision.model_copy(
+            update={"duplicate_determination": DuplicateDetermination.DUPLICATE}
+        )
         decoupled = decision.model_copy(
             update={"duplicate_determination": DuplicateDetermination.DECOUPLED}
         )
         service._deduplication_service.determine_canonical_from_candidates = AsyncMock(  # noqa: SLF001
-            return_value=decoupled
+            return_value=proposed
         )
         service._deduplication_service.map_duplicate_decision = AsyncMock(  # noqa: SLF001
             return_value=(decoupled, False, None)
@@ -1728,6 +1733,12 @@ class TestDeduplicationDecisionTelemetry:
             "trusted_unique_identifier_types",
             {"open_alex"},
         )
+        # Production's shape: the shortcut carries the stream, candidate search is off.
+        monkeypatch.setattr(
+            reference_service_module.settings.feature_flags,
+            "enable_canonical_candidate_search",
+            False,
+        )
         service, decision = duplicate_processing_service
         canonical_id = uuid7()
         shortcutted = decision.model_copy(
@@ -1749,6 +1760,8 @@ class TestDeduplicationDecisionTelemetry:
 
         assert span_attributes(self.SPAN) == {
             "app.reference.id": str(decision.reference_id),
+            "app.deduplication.candidate_search_enabled": False,
+            "app.deduplication.trusted_identifier_shortcut_enabled": True,
             "app.deduplication.route": "identifier_shortcut",
             "app.deduplication.determination": "duplicate",
             "app.deduplication.side_effect_decision_count": 1,

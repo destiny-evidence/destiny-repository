@@ -135,6 +135,15 @@ class Attributes(StrEnum):
     )
     DEDUPLICATION_DECISION_CHANGED = "app.deduplication.decision_changed"
 
+    # The two switches deciding whether deduplication runs. Route cannot separate a
+    # disabled shortcut from one that did not match this reference.
+    DEDUPLICATION_CANDIDATE_SEARCH_ENABLED = (
+        "app.deduplication.candidate_search_enabled"
+    )
+    DEDUPLICATION_TRUSTED_IDENTIFIER_SHORTCUT_ENABLED = (
+        "app.deduplication.trusted_identifier_shortcut_enabled"
+    )
+
     # Other
     FILE_LINE_NO = "app.file.line_number"
 

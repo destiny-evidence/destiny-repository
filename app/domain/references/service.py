@@ -1283,6 +1283,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         trace_attribute(
             Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
         )
+        trace_attribute(
+            Attributes.DEDUPLICATION_CANDIDATE_SEARCH_ENABLED,
+            settings.feature_flags.enable_canonical_candidate_search,
+        )
+        trace_attribute(
+            Attributes.DEDUPLICATION_TRUSTED_IDENTIFIER_SHORTCUT_ENABLED,
+            bool(settings.trusted_unique_identifier_types),
+        )
         if settings.trusted_unique_identifier_types:
             shortcutted_decisions = await self._deduplication_service.shortcut_deduplication_using_identifiers(  # noqa: E501
                 reference_duplicate_decision,
@@ -1337,10 +1345,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.detail = (
                 "Canonical candidate search is disabled."
             )
-        trace_attribute(
-            Attributes.DEDUPLICATION_DETERMINATION,
-            reference_duplicate_decision.duplicate_determination.value,
-        )
 
         (
             reference_duplicate_decision,
@@ -1349,8 +1353,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ) = await self._deduplication_service.map_duplicate_decision(
             reference_duplicate_decision
         )
-        # False means the decision was refused and parked as DECOUPLED, which is
-        # otherwise only visible in the detail prose.
+        # Read after mapping, which can rewrite the determination to DECOUPLED.
+        trace_attribute(
+            Attributes.DEDUPLICATION_DETERMINATION,
+            reference_duplicate_decision.duplicate_determination.value,
+        )
+        # False when the outcome matched the active decision, or DECOUPLED replaced it.
         trace_attribute(Attributes.DEDUPLICATION_DECISION_CHANGED, decision_changed)
 
         await self.apply_reference_duplicate_decision_side_effects(
