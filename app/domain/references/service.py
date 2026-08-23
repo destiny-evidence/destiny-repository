@@ -553,6 +553,18 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self._deduplication_service.get_deduplication_candidates(request)
 
     @sql_unit_of_work
+    @es_unit_of_work
+    @tracer.start_as_current_span("Deep deduplication retrieval")
+    async def run_deep_deduplication_retrieval(self, reference_id: UUID) -> None:
+        """
+        Retrieve candidates for measurement only, discarding the result.
+
+        Exceptions propagate so the caller logs the failure and the unit of work
+        marks its span errored.
+        """
+        await self._deduplication_service.select_candidate_canonicals(reference_id)
+
+    @sql_unit_of_work
     async def add_identifier(
         self, reference_id: UUID, identifier: ExternalIdentifier
     ) -> LinkedExternalIdentifier:

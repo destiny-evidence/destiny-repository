@@ -333,30 +333,33 @@ async def test_validate_and_import_robot_enhancement_batch_result_indexing_failu
     assert indexing_failed_call[1]["status"] == PendingEnhancementStatus.INDEXING_FAILED
 
 
-class TestProcessReferenceDuplicateDecisionRaceCondition:
+@pytest.fixture
+def decision_id():
+    return uuid7()
+
+
+@pytest.fixture
+def reference_id():
+    return uuid7()
+
+
+@pytest.fixture
+def mock_decision_pending(decision_id, reference_id):
+    return ReferenceDuplicateDecision(
+        id=decision_id,
+        reference_id=reference_id,
+        duplicate_determination=DuplicateDetermination.PENDING,
+        active_decision=False,  # PENDING decisions can't be active
+    )
+
+
+class TestActiveDecisionRace:
     """Tests for race condition handling in process_reference_duplicate_decision."""
 
     # Matches the DETAIL line Postgres emits for the active-decision constraint
     ACTIVE_DECISION_COLLISION = (
         "Violation: Key (reference_id, active_decision)" "=(uuid, t) already exists."
     )
-
-    @pytest.fixture
-    def decision_id(self):
-        return uuid7()
-
-    @pytest.fixture
-    def reference_id(self):
-        return uuid7()
-
-    @pytest.fixture
-    def mock_decision_pending(self, decision_id, reference_id):
-        return ReferenceDuplicateDecision(
-            id=decision_id,
-            reference_id=reference_id,
-            duplicate_determination=DuplicateDetermination.PENDING,
-            active_decision=False,  # PENDING decisions can't be active
-        )
 
     @pytest.fixture
     def mock_decision_canonical(self, decision_id, reference_id):
@@ -619,3 +622,77 @@ async def test_run_search_export_task_skips_non_pending_row(
     assert export.status == "completed"
     assert export.result_file == existing_file.to_uri()
     assert export.n_references == 42
+
+
+class TestDeepDeduplicationRetrieval:
+    """Deep deduplication retrieval measures the arrivals without deciding them."""
+
+    @pytest.fixture
+    def mock_reference_service(self, mock_decision_pending):
+        service = AsyncMock()
+        service.get_reference_duplicate_decision.return_value = mock_decision_pending
+        return service
+
+    @pytest.fixture
+    def _task_dependencies(self, monkeypatch, mock_reference_service):
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_blob_repository",
+            AsyncMock(return_value=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_reference_service",
+            AsyncMock(return_value=mock_reference_service),
+        )
+
+    @pytest.fixture
+    def enable_deep_deduplication(self, monkeypatch):
+        from app.domain.references import tasks as tasks_module
+
+        monkeypatch.setattr(
+            tasks_module.settings.feature_flags, "enable_deep_deduplication", True
+        )
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm", "_task_dependencies")
+    async def test_retrieval_does_not_run_by_default(
+        self, decision_id, mock_reference_service
+    ):
+        await process_reference_duplicate_decision(decision_id)
+
+        mock_reference_service.run_deep_deduplication_retrieval.assert_not_awaited()
+        mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
+
+    @pytest.mark.usefixtures(
+        "mock_sql_uow_cm",
+        "mock_es_uow_cm",
+        "_task_dependencies",
+        "enable_deep_deduplication",
+    )
+    async def test_retrieval_runs_before_the_decision(
+        self, decision_id, reference_id, mock_reference_service
+    ):
+        await process_reference_duplicate_decision(decision_id)
+
+        mock_reference_service.run_deep_deduplication_retrieval.assert_awaited_once_with(
+            reference_id
+        )
+        called = [call[0] for call in mock_reference_service.mock_calls]
+        assert called.index("run_deep_deduplication_retrieval") < called.index(
+            "process_reference_duplicate_decision"
+        )
+
+    @pytest.mark.usefixtures(
+        "mock_sql_uow_cm",
+        "mock_es_uow_cm",
+        "_task_dependencies",
+        "enable_deep_deduplication",
+    )
+    async def test_the_decision_still_runs_when_retrieval_fails(
+        self, decision_id, mock_reference_service
+    ):
+        mock_reference_service.run_deep_deduplication_retrieval.side_effect = (
+            RuntimeError("retrieval boom")
+        )
+
+        await process_reference_duplicate_decision(decision_id)
+
+        mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()

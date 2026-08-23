@@ -377,6 +377,7 @@ class FeatureFlags(BaseModel):
 
     enable_percolation: bool = True
     enable_canonical_candidate_search: bool = True
+    enable_deep_deduplication: bool = False
 
 
 class DedupCandidateScoringConfig(BaseModel):

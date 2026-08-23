@@ -435,6 +435,16 @@ async def process_reference_duplicate_decision(
                 )
                 return
 
+            if settings.feature_flags.enable_deep_deduplication:
+                # Before the decision, so retrieval sees the corpus in the
+                # state deep deduplication will see it. The result is discarded.
+                try:
+                    await reference_service.run_deep_deduplication_retrieval(
+                        reference_duplicate_decision.reference_id
+                    )
+                except Exception:
+                    logger.exception("Deep deduplication retrieval failed.")
+
             try:
                 await reference_service.process_reference_duplicate_decision(
                     reference_duplicate_decision
