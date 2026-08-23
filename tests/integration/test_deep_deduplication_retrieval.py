@@ -17,7 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.domain.references.models.sql import (
     ExternalIdentifier as SQLExternalIdentifier,
 )
-from app.domain.references.repository import ReferenceSQLRepository
+from app.domain.references.repository import (
+    ReferenceSQLRepository,
+)
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -46,7 +48,9 @@ async def test_a_sql_failure_in_retrieval_reaches_the_caller(
     reference = await ReferenceSQLRepository(session).add(ReferenceFactory.build())
     await session.commit()
 
-    async def _fail_against_the_database(_reference_id: UUID) -> None:
+    async def _fail_against_the_database(
+        _reference_id: UUID, **_kwargs: object
+    ) -> None:
         await service.sql_uow.session.execute(text("SELECT * FROM no_such_table"))
 
     monkeypatch.setattr(

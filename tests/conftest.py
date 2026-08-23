@@ -71,6 +71,24 @@ def span_attributes(
     _span_exporter.clear()
 
 
+@pytest.fixture
+def all_span_attributes(
+    _span_exporter: InMemorySpanExporter,
+) -> Generator[Callable[[str], list[dict[str, Any]]]]:
+    """Read every span with a given name, oldest first, for peaks over a run."""
+    _span_exporter.clear()
+
+    def _attributes_of_each(name: str) -> list[dict[str, Any]]:
+        return [
+            dict(span.attributes or {})
+            for span in _span_exporter.get_finished_spans()
+            if span.name == name
+        ]
+
+    yield _attributes_of_each
+    _span_exporter.clear()
+
+
 @pytest.fixture(scope="session", autouse=True)
 def anyio_backend() -> tuple[str, dict[str, Any]]:
     """Specify the anyio backend for async tests."""

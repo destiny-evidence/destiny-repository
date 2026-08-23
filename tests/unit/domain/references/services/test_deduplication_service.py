@@ -1625,6 +1625,7 @@ class TestCandidateSelectionTelemetry:
         await service.select_candidate_canonicals(searchable_reference.id)
 
         assert span_attributes(self.SPAN) == {
+            "app.candidate_selection.deep_deduplication": False,
             "app.candidate_selection.retrieval_policy": "candidate_selection_v1",
             "app.candidate_selection.k_requested": 10,
             "app.candidate_selection.index_version": "reference_v3",
@@ -1640,6 +1641,29 @@ class TestCandidateSelectionTelemetry:
             "app.candidate_selection.candidate_count": 1,
             "app.candidate_selection.truncated": False,
         }
+
+    @pytest.mark.asyncio
+    async def test_deep_deduplication_marks_the_selection_it_drove(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        span_attributes,
+    ):
+        """The marker separates these diagnostics from other callers without a join."""
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        await service.select_candidate_canonicals(
+            searchable_reference.id, deep_deduplication=True
+        )
+
+        assert span_attributes(self.SPAN)["app.candidate_selection.deep_deduplication"]
 
     @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(

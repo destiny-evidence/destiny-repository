@@ -250,9 +250,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     @tracer.start_as_current_span("Select deduplication candidates")
     async def get_deduplication_candidates(
-        self, request: CandidateSelectionRequest
+        self,
+        request: CandidateSelectionRequest,
+        *,
+        deep_deduplication: bool = False,
     ) -> CandidateSelectionResult:
         """Return ranked candidates with provenance, without persisting state."""
+        trace_attribute(
+            Attributes.CANDIDATE_SELECTION_DEEP_DEDUPLICATION, deep_deduplication
+        )
         k = request.k or settings.dedup_scoring.candidate_k
         policy_name = (
             request.retrieval_policy or settings.dedup_scoring.default_retrieval_policy
@@ -576,14 +582,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def select_candidate_canonicals(
-        self, reference_id: UUID
+        self, reference_id: UUID, *, deep_deduplication: bool = False
     ) -> CandidateSelectionResult:
         """Select candidates and return their complete retrieval provenance."""
         return await self.get_deduplication_candidates(
             CandidateSelectionRequest(
                 input=CandidateSelectionInput(reference_id=reference_id),
                 hydrate=False,
-            )
+            ),
+            deep_deduplication=deep_deduplication,
         )
 
     async def _placeholder_duplicate_determinator(

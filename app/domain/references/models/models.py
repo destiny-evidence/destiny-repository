@@ -145,6 +145,15 @@ class DeduplicationRoute(StrEnum):
     """Candidate search is switched off in this environment."""
 
 
+class DeepDeduplicationOutcome(StrEnum):
+    """How a deep deduplication retrieval ended."""
+
+    COMPLETED = auto()
+    """Retrieval returned. The result is discarded while the arm measures only."""
+    FAILED = auto()
+    """Retrieval raised; the caller logs it and the decision proceeds regardless."""
+
+
 class DuplicateDetermination(StrEnum):
     """
     The determination of whether a reference is a duplicate.
