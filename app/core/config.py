@@ -401,6 +401,11 @@ class DedupCandidateScoringConfig(BaseModel):
         le=1000,
         description="Default number of candidate references to retrieve.",
     )
+    retrieval_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description="Per-request Elasticsearch budget for ingestion-driven retrieval.",
+    )
     default_retrieval_policy: RetrievalPolicyName = Field(
         default=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
         description="Candidate retrieval policy used when no override is supplied.",

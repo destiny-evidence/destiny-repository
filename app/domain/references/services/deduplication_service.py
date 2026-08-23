@@ -254,6 +254,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         request: CandidateSelectionRequest,
         *,
         deep_deduplication: bool = False,
+        request_timeout: float | None = None,
     ) -> CandidateSelectionResult:
         """Return ranked candidates with provenance, without persisting state."""
         trace_attribute(
@@ -289,7 +290,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         es_result = None
         index_version = None
         if searchable:
-            index_version = await self.es_uow.references.get_current_index_name()
+            index_version = await self.es_uow.references.get_current_index_name(
+                request_timeout=request_timeout
+            )
             query = build_candidate_canonical_search_query(
                 search_fields,
                 scoring_config=settings.dedup_scoring,
@@ -300,6 +303,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 query,
                 k=k,
                 track_total_hits=request.track_total_hits,
+                request_timeout=request_timeout,
             )
 
         es_hits = es_result.hits if es_result else []
@@ -591,6 +595,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 hydrate=False,
             ),
             deep_deduplication=deep_deduplication,
+            request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
         )
 
     async def _placeholder_duplicate_determinator(

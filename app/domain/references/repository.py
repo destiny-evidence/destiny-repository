@@ -290,6 +290,11 @@ class ReferenceSQLRepository(
 _TOO_MANY_REQUESTS = 429
 _SERVER_ERROR = 500
 
+# Cached for the life of the process, not the unit of work, which builds a fresh
+# repository per task. Index contents churn daily, so the name is a rough stamp
+# either way and is not worth a round trip per deduplication.
+_current_index_names: dict[str, str] = {}
+
 
 def _is_transient_es_status(status: int) -> bool:
     """Whether an Elasticsearch status is worth surfacing as infrastructure failure."""
@@ -808,6 +813,14 @@ class ReferenceESRepository(
             max_boost=decay.max_boost,
         )
 
+    def _within_budget(self, request_timeout: float | None) -> AsyncElasticsearch:
+        """Ingestion cannot wait out the client-wide timeout and its retries."""
+        if request_timeout is None:
+            return self._client
+        return self._client.options(
+            request_timeout=request_timeout, max_retries=0, retry_on_timeout=False
+        )
+
     @trace_repository_method(tracer)
     async def search_for_candidate_canonicals(
         self,
@@ -815,6 +828,7 @@ class ReferenceESRepository(
         *,
         k: int,
         track_total_hits: bool = False,
+        request_timeout: float | None = None,
     ) -> CandidateCanonicalSearchResult:
         """
         Execute a candidate-canonical search specification in Elasticsearch.
@@ -835,7 +849,10 @@ class ReferenceESRepository(
         :rtype: CandidateCanonicalSearchResult
         """
         search = (
-            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            AsyncSearch(
+                using=self._within_budget(request_timeout),
+                index=self._persistence_cls.Index.name,
+            )
             .query(self._to_es_candidate_query(query))
             .source(fields=False)
             .extra(size=k)
@@ -876,11 +893,20 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
-    async def get_current_index_name(self) -> str | None:
+    async def get_current_index_name(
+        self, request_timeout: float | None = None
+    ) -> str | None:
         """Return the physical index name currently behind the alias, if any."""
-        return await IndexManager(
-            self._persistence_cls, self._client
-        ).get_current_index_name()
+        alias_name = self._persistence_cls.Index.name
+        if alias_name not in _current_index_names:
+            index_name = await IndexManager(
+                self._persistence_cls, self._within_budget(request_timeout)
+            ).get_current_index_name()
+            if index_name is None:
+                # Absent rather than settled, so a later call retries.
+                return None
+            _current_index_names[alias_name] = index_name
+        return _current_index_names[alias_name]
 
 
 class ExternalIdentifierRepositoryBase(

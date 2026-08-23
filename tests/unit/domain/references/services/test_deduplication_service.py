@@ -7,11 +7,13 @@ import pytest
 from destiny_sdk.enhancements import Authorship
 from destiny_sdk.identifiers import OtherIdentifier
 
-from app.core.config import Environment
+from app.core.config import Environment, get_settings
 from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     Candidate,
     CandidateSelectionDiagnostics,
+    CandidateSelectionInput,
+    CandidateSelectionRequest,
     CandidateSelectionResult,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
@@ -43,6 +45,8 @@ from tests.factories import (
     ReferenceFactory,
 )
 from tests.unit.domain.conftest import link_fake_repos
+
+settings = get_settings()
 
 
 def _mock_candidate_selection(service: DeduplicationService, *candidate_ids) -> None:
@@ -1664,6 +1668,49 @@ class TestCandidateSelectionTelemetry:
         )
 
         assert span_attributes(self.SPAN)["app.candidate_selection.deep_deduplication"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("from_ingestion", "expected"),
+        [
+            (True, settings.dedup_scoring.retrieval_timeout_seconds),
+            (False, None),
+        ],
+    )
+    async def test_only_ingestion_retrieval_bounds_the_elasticsearch_calls(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        from_ingestion,
+        expected,
+    ):
+        """Ingestion fails fast; a person waiting on the endpoint should not."""
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        if from_ingestion:
+            await service.select_candidate_canonicals(searchable_reference.id)
+        else:
+            await service.get_deduplication_candidates(
+                CandidateSelectionRequest(
+                    input=CandidateSelectionInput(reference_id=searchable_reference.id),
+                    hydrate=False,
+                )
+            )
+
+        # The alias lookup is a second round trip and needs the same budget.
+        es_refs = service.es_uow.references
+        for call in (
+            es_refs.search_for_candidate_canonicals,
+            es_refs.get_current_index_name,
+        ):
+            assert call.call_args.kwargs["request_timeout"] == expected
 
     @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(
