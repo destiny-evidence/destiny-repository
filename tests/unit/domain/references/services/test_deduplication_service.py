@@ -12,8 +12,6 @@ from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     Candidate,
     CandidateSelectionDiagnostics,
-    CandidateSelectionInput,
-    CandidateSelectionRequest,
     CandidateSelectionResult,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
@@ -1671,22 +1669,25 @@ class TestCandidateSelectionTelemetry:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        ("from_ingestion", "expected"),
+        ("selection_kwargs", "expected"),
         [
-            (True, settings.dedup_scoring.retrieval_timeout_seconds),
-            (False, None),
+            ({}, None),
+            (
+                {"request_timeout": settings.dedup_scoring.retrieval_timeout_seconds},
+                settings.dedup_scoring.retrieval_timeout_seconds,
+            ),
         ],
     )
-    async def test_only_ingestion_retrieval_bounds_the_elasticsearch_calls(
+    async def test_only_a_caller_supplied_budget_bounds_the_elasticsearch_calls(
         self,
         searchable_reference,
         anti_corruption_service,
         fake_uow,
         fake_repository,
-        from_ingestion,
+        selection_kwargs,
         expected,
     ):
-        """Ingestion fails fast; a person waiting on the endpoint should not."""
+        """The decision path supplies none, so it keeps the client-wide policy."""
         service = DeduplicationService(
             anti_corruption_service,
             fake_uow(references=fake_repository([searchable_reference])),
@@ -1694,15 +1695,9 @@ class TestCandidateSelectionTelemetry:
         )
         _mock_candidate_selection(service, uuid7())
 
-        if from_ingestion:
-            await service.select_candidate_canonicals(searchable_reference.id)
-        else:
-            await service.get_deduplication_candidates(
-                CandidateSelectionRequest(
-                    input=CandidateSelectionInput(reference_id=searchable_reference.id),
-                    hydrate=False,
-                )
-            )
+        await service.select_candidate_canonicals(
+            searchable_reference.id, **selection_kwargs
+        )
 
         # The alias lookup is a second round trip and needs the same budget.
         es_refs = service.es_uow.references

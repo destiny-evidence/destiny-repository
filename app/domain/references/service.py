@@ -596,7 +596,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             trace_attribute(Attributes.DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS, active)
             try:
                 await self._deduplication_service.select_candidate_canonicals(
-                    reference_id, deep_deduplication=True
+                    reference_id,
+                    deep_deduplication=True,
+                    request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
                 )
             except Exception:
                 trace_attribute(

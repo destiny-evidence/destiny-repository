@@ -586,16 +586,25 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def select_candidate_canonicals(
-        self, reference_id: UUID, *, deep_deduplication: bool = False
+        self,
+        reference_id: UUID,
+        *,
+        deep_deduplication: bool = False,
+        request_timeout: float | None = None,
     ) -> CandidateSelectionResult:
-        """Select candidates and return their complete retrieval provenance."""
+        """
+        Select candidates and return their complete retrieval provenance.
+
+        The caller sets the Elasticsearch budget: the duplicate decision shares
+        this method and needs the patient client-wide timeout.
+        """
         return await self.get_deduplication_candidates(
             CandidateSelectionRequest(
                 input=CandidateSelectionInput(reference_id=reference_id),
                 hydrate=False,
             ),
             deep_deduplication=deep_deduplication,
-            request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
+            request_timeout=request_timeout,
         )
 
     async def _placeholder_duplicate_determinator(

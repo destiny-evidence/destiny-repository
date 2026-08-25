@@ -1655,6 +1655,26 @@ async def test_collect_search_enhancement_request_marks_failed_on_error(
     assert "boom" in stored.error
 
 
+class TestDeepDeduplicationRetrievalBudget:
+    """Only the measurement arm bounds Elasticsearch."""
+
+    @pytest.mark.asyncio
+    async def test_shadow_retrieval_bounds_its_own_elasticsearch_calls(
+        self, duplicate_processing_service
+    ):
+        from app.domain.references import service as reference_service_module
+
+        service, decision = duplicate_processing_service
+
+        await service.run_deep_deduplication_retrieval(decision.reference_id)
+
+        selection = service._deduplication_service.select_candidate_canonicals  # noqa: SLF001
+        assert (
+            selection.await_args.kwargs["request_timeout"]
+            == reference_service_module.settings.dedup_scoring.retrieval_timeout_seconds
+        )
+
+
 class TestDeepDeduplicationRetrievalTelemetry:
     """What the measurement-only retrieval records about itself."""
 

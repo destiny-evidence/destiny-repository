@@ -813,8 +813,10 @@ class ReferenceESRepository(
             max_boost=decay.max_boost,
         )
 
-    def _within_budget(self, request_timeout: float | None) -> AsyncElasticsearch:
-        """Ingestion cannot wait out the client-wide timeout and its retries."""
+    def _client_within_budget(
+        self, request_timeout: float | None
+    ) -> AsyncElasticsearch:
+        """Measurement cannot wait out the client-wide timeout and its retries."""
         if request_timeout is None:
             return self._client
         return self._client.options(
@@ -850,7 +852,7 @@ class ReferenceESRepository(
         """
         search = (
             AsyncSearch(
-                using=self._within_budget(request_timeout),
+                using=self._client_within_budget(request_timeout),
                 index=self._persistence_cls.Index.name,
             )
             .query(self._to_es_candidate_query(query))
@@ -898,9 +900,10 @@ class ReferenceESRepository(
     ) -> str | None:
         """Return the physical index name currently behind the alias, if any."""
         alias_name = self._persistence_cls.Index.name
+        # A migration repointing the alias leaves this stale until the worker cycles.
         if alias_name not in _current_index_names:
             index_name = await IndexManager(
-                self._persistence_cls, self._within_budget(request_timeout)
+                self._persistence_cls, self._client_within_budget(request_timeout)
             ).get_current_index_name()
             if index_name is None:
                 # Absent rather than settled, so a later call retries.
