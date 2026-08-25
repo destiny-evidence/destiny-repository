@@ -900,7 +900,8 @@ class ReferenceESRepository(
     ) -> str | None:
         """Return the physical index name currently behind the alias, if any."""
         alias_name = self._persistence_cls.Index.name
-        # A migration repointing the alias leaves this stale until the worker cycles.
+        # Cached per process, so a repoint outside a release can stamp the previous
+        # index while the alias search already hits the new one.
         if alias_name not in _current_index_names:
             index_name = await IndexManager(
                 self._persistence_cls, self._client_within_budget(request_timeout)
