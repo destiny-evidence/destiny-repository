@@ -107,7 +107,6 @@ class Attributes(StrEnum):
     CANDIDATE_SELECTION_K_REQUESTED = "app.candidate_selection.k_requested"
     CANDIDATE_SELECTION_INDEX_VERSION = "app.candidate_selection.index_version"
     CANDIDATE_SELECTION_SEARCHABLE = "app.candidate_selection.searchable"
-    # Input presence, not policy opinion: these read the same under every policy.
     CANDIDATE_SELECTION_TITLE_PRESENT = "app.candidate_selection.title_present"
     CANDIDATE_SELECTION_AUTHORS_PRESENT = "app.candidate_selection.authors_present"
     CANDIDATE_SELECTION_PUBLICATION_YEAR_PRESENT = (
@@ -119,8 +118,6 @@ class Attributes(StrEnum):
     CANDIDATE_SELECTION_IDENTIFIER_RETURNED = (
         "app.candidate_selection.identifier_returned"
     )
-    # Identifier-only candidates sort ahead of ES ones, so a non-zero value means
-    # rank 1 came from the identifier route.
     CANDIDATE_SELECTION_IDENTIFIER_ONLY_RETURNED = (
         "app.candidate_selection.identifier_only_returned"
     )
@@ -134,9 +131,6 @@ class Attributes(StrEnum):
         "app.deduplication.side_effect_decision_count"
     )
     DEDUPLICATION_DECISION_CHANGED = "app.deduplication.decision_changed"
-
-    # The two switches deciding whether deduplication runs. Route cannot separate a
-    # disabled shortcut from one that did not match this reference.
     DEDUPLICATION_CANDIDATE_SEARCH_ENABLED = (
         "app.deduplication.candidate_search_enabled"
     )

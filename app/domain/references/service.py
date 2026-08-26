@@ -1318,8 +1318,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 return
 
         if settings.feature_flags.enable_canonical_candidate_search:
-            # Set before retrieval so an errored span without a determination
-            # separates a deduplication failure from a side-effect one.
             trace_attribute(
                 Attributes.DEDUPLICATION_ROUTE,
                 DeduplicationRoute.CANDIDATE_SEARCH.value,
@@ -1353,13 +1351,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ) = await self._deduplication_service.map_duplicate_decision(
             reference_duplicate_decision
         )
-        # Read after mapping, which can rewrite the determination to DECOUPLED.
         trace_attribute(
             Attributes.DEDUPLICATION_DETERMINATION,
             reference_duplicate_decision.duplicate_determination.value,
         )
-        # False when the outcome matched or a person's decision blocked it. The other
-        # two decoupling branches leave it true, so a decoupling can read as changed.
         trace_attribute(Attributes.DEDUPLICATION_DECISION_CHANGED, decision_changed)
 
         await self.apply_reference_duplicate_decision_side_effects(
