@@ -123,20 +123,13 @@ class Attributes(StrEnum):
     )
     CANDIDATE_SELECTION_CANDIDATE_COUNT = "app.candidate_selection.candidate_count"
     CANDIDATE_SELECTION_TRUNCATED = "app.candidate_selection.truncated"
-
-    # Marks a selection driven by deep deduplication, so its measurements can be
-    # filtered without joining to the parent span.
     CANDIDATE_SELECTION_DEEP_DEDUPLICATION = (
         "app.candidate_selection.deep_deduplication"
     )
 
     # Deep deduplication retrieval
     DEEP_DEDUPLICATION_OUTCOME = "app.deep_deduplication.outcome"
-    # Per-worker in-flight count, read at call start. A periodic metric export
-    # would return to zero between exports and lose the peak.
     DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS = "app.deep_deduplication.active_retrievals"
-    # High-water mark for the worker process, not an instantaneous reading, so it
-    # answers how close a worker came to its limit and not whether memory returned.
     DEEP_DEDUPLICATION_PEAK_RSS_BYTES = "app.deep_deduplication.peak_rss_bytes"
 
     # Deduplication decisions
