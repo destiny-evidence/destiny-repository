@@ -1599,3 +1599,102 @@ class TestShortcutDeduplication:
         assert results_decision_2[0].detail == (
             "Shortcutted with trusted identifier(s)"
         )
+
+
+class TestCandidateSelectionTelemetry:
+    """Retrieval diagnostics reaching the trace, not just the response body."""
+
+    SPAN = "Select deduplication candidates"
+
+    @pytest.mark.asyncio
+    async def test_searchable_selection_records_retrieval_diagnostics(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        span_attributes,
+    ):
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        await service.select_candidate_canonicals(searchable_reference.id)
+
+        assert span_attributes(self.SPAN) == {
+            "app.candidate_selection.retrieval_policy": "candidate_selection_v1",
+            "app.candidate_selection.k_requested": 10,
+            "app.candidate_selection.index_version": "reference_v3",
+            "app.candidate_selection.searchable": True,
+            "app.candidate_selection.title_present": True,
+            "app.candidate_selection.authors_present": True,
+            "app.candidate_selection.publication_year_present": True,
+            "app.candidate_selection.es_took_ms": 1,
+            "app.candidate_selection.es_total_hits": 1,
+            "app.candidate_selection.es_returned": 1,
+            "app.candidate_selection.identifier_returned": 0,
+            "app.candidate_selection.identifier_only_returned": 0,
+            "app.candidate_selection.candidate_count": 1,
+            "app.candidate_selection.truncated": False,
+        }
+
+    @pytest.mark.asyncio
+    async def test_truncation_is_recorded_when_hits_exceed_returned(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        span_attributes,
+    ):
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+        service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
+            return_value=CandidateCanonicalSearchResult(
+                hits=[ESScoreResult(id=uuid7(), score=1.0)],
+                total=ESSearchTotal(value=64, relation="eq"),
+                took_ms=137,
+            )
+        )
+
+        await service.select_candidate_canonicals(searchable_reference.id)
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.candidate_selection.truncated"] is True
+        assert attributes["app.candidate_selection.es_total_hits"] == 64
+        assert attributes["app.candidate_selection.es_returned"] == 1
+
+    @pytest.mark.asyncio
+    async def test_unsearchable_selection_records_the_missing_fields(
+        self,
+        reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        span_attributes,
+    ):
+        reference.enhancements = []
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service)
+
+        await service.select_candidate_canonicals(reference.id)
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.candidate_selection.searchable"] is False
+        assert attributes["app.candidate_selection.title_present"] is False
+        assert attributes["app.candidate_selection.authors_present"] is False
+        assert attributes["app.candidate_selection.publication_year_present"] is False
+        assert "app.candidate_selection.es_took_ms" not in attributes
+        assert "app.candidate_selection.es_total_hits" not in attributes
+        assert "app.candidate_selection.index_version" not in attributes

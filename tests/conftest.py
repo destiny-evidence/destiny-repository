@@ -4,13 +4,19 @@ import asyncio
 import datetime
 import logging
 import re
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import AsyncGenerator, Callable, Generator
 from typing import Any
 
 import pytest
 from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from jose import jwt
+from opentelemetry import trace
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
 from pytest_httpx import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +39,36 @@ settings = get_settings()
 MIGRATION_TASK: asyncio.Task | None = None
 
 logging.getLogger("asyncio").setLevel("DEBUG")
+
+
+@pytest.fixture(scope="session")
+def _span_exporter() -> InMemorySpanExporter:
+    """Attach to the installed provider: OTel honours set_tracer_provider once."""
+    exporter = InMemorySpanExporter()
+    trace.set_tracer_provider(TracerProvider())
+    provider = trace.get_tracer_provider()
+    assert isinstance(provider, TracerProvider)
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    return exporter
+
+
+@pytest.fixture
+def span_attributes(
+    _span_exporter: InMemorySpanExporter,
+) -> Generator[Callable[[str], dict[str, Any]]]:
+    """Read the attributes of the most recent span with a given name."""
+    _span_exporter.clear()
+
+    def _attributes_of(name: str) -> dict[str, Any]:
+        spans = [s for s in _span_exporter.get_finished_spans() if s.name == name]
+        if not spans:
+            seen = sorted({s.name for s in _span_exporter.get_finished_spans()})
+            msg = f"No span named {name!r}. Recorded spans: {seen}"
+            raise AssertionError(msg)
+        return dict(spans[-1].attributes or {})
+
+    yield _attributes_of
+    _span_exporter.clear()
 
 
 @pytest.fixture(scope="session", autouse=True)
