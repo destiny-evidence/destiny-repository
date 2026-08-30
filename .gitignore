@@ -207,3 +207,5 @@ libs/fake_data/*.jsonl
 .idea/
 
 .test.tmp
+
+docker-compose.override.yml
