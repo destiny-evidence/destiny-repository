@@ -102,7 +102,6 @@ async def test_candidates_inline_unions_es_and_identifier_without_persisting(  #
     assert response.status_code == 200
     body = response.json()
     assert body["retrieval_policy"] == "candidate_selection_v1"
-    assert body["index_version"].startswith("reference_v")
     assert body["k_requested"] == 50
     assert body["input_searchability"]["searchable"] is True
 

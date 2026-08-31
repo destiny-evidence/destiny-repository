@@ -209,10 +209,6 @@ def _trace_candidate_selection(
         Attributes.CANDIDATE_SELECTION_PUBLICATION_YEAR_PRESENT,
         bool(search_fields.publication_year),
     )
-    if result.index_version is not None:
-        trace_attribute(
-            Attributes.CANDIDATE_SELECTION_INDEX_VERSION, result.index_version
-        )
     if diagnostics.es_took_ms is not None:
         trace_attribute(
             Attributes.CANDIDATE_SELECTION_ES_TOOK_MS, diagnostics.es_took_ms
@@ -285,14 +281,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 identifier_lookups, self_id=self_id
             )
 
-        # The ES query and index-version stamp only apply to searchable input.
         searchable = policy.is_input_searchable(search_fields)
         es_result = None
-        index_version = None
         if searchable:
-            index_version = await self.es_uow.references.get_current_index_name(
-                request_timeout=request_timeout
-            )
             query = build_candidate_canonical_search_query(
                 search_fields,
                 scoring_config=settings.dedup_scoring,
@@ -357,7 +348,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         es_returned = len(es_hits)
         result = CandidateSelectionResult(
             retrieval_policy=policy.name,
-            index_version=index_version,
             k_requested=k,
             input_searchability=InputSearchability(
                 searchable=searchable,

@@ -12,7 +12,6 @@ from elasticsearch.dsl import AsyncSearch
 
 from app.core.config import DedupCandidateScoringConfig
 from app.core.exceptions import ESError
-from app.domain.references import repository as reference_repository
 from app.domain.references.models.models import (
     CandidateCanonicalSearchQuery,
     DuplicateDetermination,
@@ -96,12 +95,6 @@ class TestBuildCandidateAuthorQueries:
         assert "Álvarez" in queries[0]
         assert "李" in queries[1]
         assert "雷" in queries[1]
-
-
-@pytest.fixture
-def empty_index_name_cache(monkeypatch):
-    """The cache is process-scoped, so tests must not inherit each other's entries."""
-    monkeypatch.setattr(reference_repository, "_current_index_names", {})
 
 
 def _candidate_query() -> CandidateCanonicalSearchQuery:
@@ -209,60 +202,3 @@ class TestCandidateRetrievalRequestBudget:
 
         client.options.assert_not_called()
         assert using is client
-
-    async def test_the_alias_lookup_is_bounded_too(self, empty_index_name_cache):
-        """It is a second round trip, so bounding the search alone leaves it open."""
-        client, bounded = self._client()
-        bounded.indices.get_alias = AsyncMock(return_value={"reference_v1": {}})
-
-        await ReferenceESRepository(client=client).get_current_index_name(
-            request_timeout=5.0
-        )
-
-        client.options.assert_called_once_with(**self.BOUNDED)
-
-
-class TestCurrentIndexNameCache:
-    """The alias name is fetched once per process, not once per deduplication."""
-
-    @staticmethod
-    def _client(alias_response: dict) -> AsyncMock:
-        client, bounded = AsyncMock(), AsyncMock()
-        client.options = MagicMock(return_value=bounded)
-        bounded.indices.get_alias = AsyncMock(return_value=alias_response)
-        client.indices.get_alias = AsyncMock(return_value=alias_response)
-        return client
-
-    async def test_a_second_retrieval_does_not_ask_elasticsearch_again(
-        self, empty_index_name_cache
-    ):
-        client = self._client({"reference_v1": {}})
-        repository = ReferenceESRepository(client=client)
-
-        first = await repository.get_current_index_name(request_timeout=5.0)
-        second = await repository.get_current_index_name(request_timeout=5.0)
-
-        assert first == second == "reference_v1"
-        client.options.return_value.indices.get_alias.assert_awaited_once()
-
-    async def test_a_fresh_repository_still_sees_the_cached_name(
-        self, empty_index_name_cache
-    ):
-        """The unit of work builds a new repository per task, so it cannot hold it."""
-        client = self._client({"reference_v1": {}})
-
-        await ReferenceESRepository(client=client).get_current_index_name()
-        await ReferenceESRepository(client=client).get_current_index_name()
-
-        client.indices.get_alias.assert_awaited_once()
-
-    async def test_a_missing_alias_is_not_cached(self, empty_index_name_cache):
-        """None means the alias is not there yet, which a restart may resolve."""
-        client = self._client({})
-        client.indices.get_alias = AsyncMock(return_value={})
-        repository = ReferenceESRepository(client=client)
-
-        assert await repository.get_current_index_name() is None
-        assert await repository.get_current_index_name() is None
-
-        assert client.indices.get_alias.await_count == 2

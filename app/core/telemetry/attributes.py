@@ -105,7 +105,6 @@ class Attributes(StrEnum):
     # Deduplication candidate retrieval
     CANDIDATE_SELECTION_RETRIEVAL_POLICY = "app.candidate_selection.retrieval_policy"
     CANDIDATE_SELECTION_K_REQUESTED = "app.candidate_selection.k_requested"
-    CANDIDATE_SELECTION_INDEX_VERSION = "app.candidate_selection.index_version"
     CANDIDATE_SELECTION_SEARCHABLE = "app.candidate_selection.searchable"
     CANDIDATE_SELECTION_TITLE_PRESENT = "app.candidate_selection.title_present"
     CANDIDATE_SELECTION_AUTHORS_PRESENT = "app.candidate_selection.authors_present"

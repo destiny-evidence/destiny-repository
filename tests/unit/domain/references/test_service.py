@@ -164,7 +164,6 @@ async def test_process_duplicate_decision_passes_full_candidate_selection(
     )
     candidate_selection = CandidateSelectionResult(
         retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
-        index_version="reference_v3",
         k_requested=10,
         input_searchability=InputSearchability(searchable=True, reason="ok"),
         diagnostics=CandidateSelectionDiagnostics(candidate_count=0),

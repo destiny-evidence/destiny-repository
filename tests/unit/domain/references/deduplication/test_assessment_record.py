@@ -118,7 +118,6 @@ def build_assessment(
     *,
     threshold: float = 0.8,
     searchable: bool = True,
-    index_version: str | None = "reference-000042",
     outcome: DeduplicationAssessmentOutcome = (
         DeduplicationAssessmentOutcome.NO_PROPOSAL
     ),
@@ -145,7 +144,6 @@ def build_assessment(
         incoming_reference_id=uuid7(),
         candidate_selection=CandidateSelectionResult(
             retrieval_policy=RetrievalPolicyName.CURRENT_FUZZY_V1,
-            index_version=index_version,
             k_requested=10,
             input_searchability=InputSearchability(
                 searchable=searchable, reason="test input"
@@ -438,31 +436,24 @@ async def test_provenance_of_the_assessment_is_recorded(
 
 
 @pytest.mark.parametrize(
-    ("searchable", "index_version", "expected_ran"),
+    ("searchable", "expected_ran"),
     [
-        pytest.param(True, "reference-000042", True, id="searchable"),
-        # get_current_index_name returns None when no alias fronts the index, which
-        # says nothing about whether the query was issued.
-        pytest.param(True, None, True, id="searchable-without-an-alias"),
-        pytest.param(False, None, False, id="unsearchable"),
+        pytest.param(True, True, id="searchable"),
+        pytest.param(False, False, id="unsearchable"),
     ],
 )
 async def test_record_explains_whether_the_es_route_ran(
     recorder: DeduplicationAssessmentRecorder,
     searchable: bool,  # noqa: FBT001
-    index_version: str | None,
     expected_ran: bool,  # noqa: FBT001
 ) -> None:
     # es_route_ran says the route did not run; only the reason says why. Without it a
     # record cannot explain itself and the retrieval has to be run again to find out.
-    assessment = build_assessment(
-        [], searchable=searchable, index_version=index_version
-    )
+    assessment = build_assessment([], searchable=searchable)
 
     record = await record_assessment(recorder, assessment)
 
     assert record.es_route_ran is expected_ran
-    assert record.es_index_name == index_version
     assert record.input_searchability_reason == (
         assessment.candidate_selection.input_searchability.reason
     )

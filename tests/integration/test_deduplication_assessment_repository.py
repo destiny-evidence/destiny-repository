@@ -100,7 +100,6 @@ def build_record(
         k=assessment.candidate_selection.k_requested,
         candidate_count=assessment.candidate_selection.diagnostics.candidate_count,
         es_route_ran=True,
-        es_index_name=assessment.candidate_selection.index_version,
         deduper_version=assessment.deduper.package_version,
         deduper_config_hash=assessment.deduper.configuration_hash,
         threshold=assessment.deduper.threshold,

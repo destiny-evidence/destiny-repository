@@ -1117,10 +1117,6 @@ class CandidateSelectionResult(BaseModel):
     """Ranked candidates and diagnostics for a candidate-selection request."""
 
     retrieval_policy: RetrievalPolicyName
-    index_version: str | None = Field(
-        default=None,
-        description="The reference index version the candidates were drawn from.",
-    )
     k_requested: int
     input_searchability: InputSearchability
     diagnostics: CandidateSelectionDiagnostics
@@ -1350,10 +1346,6 @@ class DeduplicationAssessmentRecord(DomainBaseModel, SQLAttributeMixin):
     k: int = Field(description="The configured candidate count requested.")
     candidate_count: int = Field(description="Candidates actually returned.")
     es_route_ran: bool
-    es_index_name: str | None = Field(
-        default=None,
-        description="The concrete index searched, absent when the route did not run.",
-    )
     input_searchability_reason: str | None = Field(
         default=None,
         description="Why the input did or did not meet the searchability gate, so the "

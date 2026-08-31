@@ -53,9 +53,6 @@ def _mock_candidate_selection(service: DeduplicationService, *candidate_ids) -> 
         return_value=[]
     )
     service.es_uow = MagicMock()
-    service.es_uow.references.get_current_index_name = AsyncMock(
-        return_value="reference_v3"
-    )
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=CandidateCanonicalSearchResult(
             hits=[ESScoreResult(id=id_, score=1.0) for id_ in candidate_ids],
@@ -69,7 +66,6 @@ def _candidate_selection(*candidate_ids) -> CandidateSelectionResult:
     """Build the retrieval contract consumed by temporary determination tests."""
     return CandidateSelectionResult(
         retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
-        index_version="reference_v3",
         k_requested=10,
         input_searchability=InputSearchability(searchable=True, reason="ok"),
         diagnostics=CandidateSelectionDiagnostics(candidate_count=len(candidate_ids)),
@@ -337,7 +333,6 @@ async def test_select_candidate_canonicals_returns_unhydrated_provenance(
     result = await service.select_candidate_canonicals(searchable_reference.id)
 
     assert result.retrieval_policy.value == "candidate_selection_v1"
-    assert result.index_version == "reference_v3"
     assert result.k_requested == 10
     assert [candidate.reference_id for candidate in result.candidates] == [candidate_id]
     assert result.candidates[0].routes[0].type == "elasticsearch"
@@ -1630,7 +1625,6 @@ class TestCandidateSelectionTelemetry:
             "app.candidate_selection.deep_deduplication": False,
             "app.candidate_selection.retrieval_policy": "candidate_selection_v1",
             "app.candidate_selection.k_requested": 10,
-            "app.candidate_selection.index_version": "reference_v3",
             "app.candidate_selection.searchable": True,
             "app.candidate_selection.title_present": True,
             "app.candidate_selection.authors_present": True,
@@ -1699,13 +1693,8 @@ class TestCandidateSelectionTelemetry:
             searchable_reference.id, **selection_kwargs
         )
 
-        # The alias lookup is a second round trip and needs the same budget.
-        es_refs = service.es_uow.references
-        for call in (
-            es_refs.search_for_candidate_canonicals,
-            es_refs.get_current_index_name,
-        ):
-            assert call.call_args.kwargs["request_timeout"] == expected
+        call = service.es_uow.references.search_for_candidate_canonicals
+        assert call.call_args.kwargs["request_timeout"] == expected
 
     @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(
@@ -1763,4 +1752,3 @@ class TestCandidateSelectionTelemetry:
         assert attributes["app.candidate_selection.publication_year_present"] is False
         assert "app.candidate_selection.es_took_ms" not in attributes
         assert "app.candidate_selection.es_total_hits" not in attributes
-        assert "app.candidate_selection.index_version" not in attributes

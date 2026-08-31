@@ -130,7 +130,6 @@ from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.models.sql import SearchExport as SQLSearchExport
-from app.persistence.es.index_manager import IndexManager
 from app.persistence.es.persistence import (
     CandidateCanonicalSearchResult,
     ESFacetBucket,
@@ -289,11 +288,6 @@ class ReferenceSQLRepository(
 
 _TOO_MANY_REQUESTS = 429
 _SERVER_ERROR = 500
-
-# Cached for the life of the process, not the unit of work, which builds a fresh
-# repository per task. Index contents churn daily, so the name is a rough stamp
-# either way and is not worth a round trip per deduplication.
-_current_index_names: dict[str, str] = {}
 
 
 def _is_transient_es_status(status: int) -> bool:
@@ -893,24 +887,6 @@ class ReferenceESRepository(
             ),
             took_ms=response.took,
         )
-
-    @trace_repository_method(tracer)
-    async def get_current_index_name(
-        self, request_timeout: float | None = None
-    ) -> str | None:
-        """Return the physical index name currently behind the alias, if any."""
-        alias_name = self._persistence_cls.Index.name
-        # Cached per process, so a repoint outside a release can stamp the previous
-        # index while the alias search already hits the new one.
-        if alias_name not in _current_index_names:
-            index_name = await IndexManager(
-                self._persistence_cls, self._client_within_budget(request_timeout)
-            ).get_current_index_name()
-            if index_name is None:
-                # Absent rather than settled, so a later call retries.
-                return None
-            _current_index_names[alias_name] = index_name
-        return _current_index_names[alias_name]
 
 
 class ExternalIdentifierRepositoryBase(
