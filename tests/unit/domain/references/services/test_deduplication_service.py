@@ -7,7 +7,7 @@ import pytest
 from destiny_sdk.enhancements import Authorship
 from destiny_sdk.identifiers import OtherIdentifier
 
-from app.core.config import Environment
+from app.core.config import Environment, get_settings
 from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     Candidate,
@@ -44,6 +44,8 @@ from tests.factories import (
 )
 from tests.unit.domain.conftest import link_fake_repos
 
+settings = get_settings()
+
 
 def _mock_candidate_selection(service: DeduplicationService, *candidate_ids) -> None:
     """Configure repositories used by the shared read-only candidate selector."""
@@ -51,9 +53,6 @@ def _mock_candidate_selection(service: DeduplicationService, *candidate_ids) -> 
         return_value=[]
     )
     service.es_uow = MagicMock()
-    service.es_uow.references.get_current_index_name = AsyncMock(
-        return_value="reference_v3"
-    )
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=CandidateCanonicalSearchResult(
             hits=[ESScoreResult(id=id_, score=1.0) for id_ in candidate_ids],
@@ -67,7 +66,6 @@ def _candidate_selection(*candidate_ids) -> CandidateSelectionResult:
     """Build the retrieval contract consumed by temporary determination tests."""
     return CandidateSelectionResult(
         retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
-        index_version="reference_v3",
         k_requested=10,
         input_searchability=InputSearchability(searchable=True, reason="ok"),
         diagnostics=CandidateSelectionDiagnostics(candidate_count=len(candidate_ids)),
@@ -335,7 +333,6 @@ async def test_select_candidate_canonicals_returns_unhydrated_provenance(
     result = await service.select_candidate_canonicals(searchable_reference.id)
 
     assert result.retrieval_policy.value == "candidate_selection_v1"
-    assert result.index_version == "reference_v3"
     assert result.k_requested == 10
     assert [candidate.reference_id for candidate in result.candidates] == [candidate_id]
     assert result.candidates[0].routes[0].type == "elasticsearch"
@@ -1625,9 +1622,9 @@ class TestCandidateSelectionTelemetry:
         await service.select_candidate_canonicals(searchable_reference.id)
 
         assert span_attributes(self.SPAN) == {
+            "app.candidate_selection.deep_deduplication": False,
             "app.candidate_selection.retrieval_policy": "candidate_selection_v1",
             "app.candidate_selection.k_requested": 10,
-            "app.candidate_selection.index_version": "reference_v3",
             "app.candidate_selection.searchable": True,
             "app.candidate_selection.title_present": True,
             "app.candidate_selection.authors_present": True,
@@ -1640,6 +1637,64 @@ class TestCandidateSelectionTelemetry:
             "app.candidate_selection.candidate_count": 1,
             "app.candidate_selection.truncated": False,
         }
+
+    @pytest.mark.asyncio
+    async def test_deep_deduplication_marks_the_selection_it_drove(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        span_attributes,
+    ):
+        """The marker separates these diagnostics from other callers without a join."""
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        await service.select_candidate_canonicals(
+            searchable_reference.id, deep_deduplication=True
+        )
+
+        assert span_attributes(self.SPAN)["app.candidate_selection.deep_deduplication"]
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("selection_kwargs", "expected"),
+        [
+            ({}, None),
+            (
+                {"request_timeout": settings.dedup_scoring.retrieval_timeout_seconds},
+                settings.dedup_scoring.retrieval_timeout_seconds,
+            ),
+        ],
+    )
+    async def test_only_a_caller_supplied_budget_bounds_the_elasticsearch_calls(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        selection_kwargs,
+        expected,
+    ):
+        """The decision path supplies none, so it keeps the client-wide policy."""
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        await service.select_candidate_canonicals(
+            searchable_reference.id, **selection_kwargs
+        )
+
+        call = service.es_uow.references.search_for_candidate_canonicals
+        assert call.call_args.kwargs["request_timeout"] == expected
 
     @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(
@@ -1697,4 +1752,3 @@ class TestCandidateSelectionTelemetry:
         assert attributes["app.candidate_selection.publication_year_present"] is False
         assert "app.candidate_selection.es_took_ms" not in attributes
         assert "app.candidate_selection.es_total_hits" not in attributes
-        assert "app.candidate_selection.index_version" not in attributes

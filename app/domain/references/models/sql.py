@@ -809,7 +809,6 @@ class DeduplicationAssessmentRecord(
     k: Mapped[int] = mapped_column(Integer, nullable=False)
     candidate_count: Mapped[int] = mapped_column(Integer, nullable=False)
     es_route_ran: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    es_index_name: Mapped[str | None] = mapped_column(String, nullable=True)
     input_searchability_reason: Mapped[str | None] = mapped_column(
         String, nullable=True
     )
@@ -874,7 +873,6 @@ class DeduplicationAssessmentRecord(
             k=domain_obj.k,
             candidate_count=domain_obj.candidate_count,
             es_route_ran=domain_obj.es_route_ran,
-            es_index_name=domain_obj.es_index_name,
             input_searchability_reason=domain_obj.input_searchability_reason,
             deduper_version=domain_obj.deduper_version,
             deduper_config_hash=domain_obj.deduper_config_hash,
@@ -909,7 +907,6 @@ class DeduplicationAssessmentRecord(
             k=self.k,
             candidate_count=self.candidate_count,
             es_route_ran=self.es_route_ran,
-            es_index_name=self.es_index_name,
             input_searchability_reason=self.input_searchability_reason,
             deduper_version=self.deduper_version,
             deduper_config_hash=self.deduper_config_hash,

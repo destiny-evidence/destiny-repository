@@ -1,7 +1,9 @@
 """Unit tests for the ReferenceService class."""
 
+import asyncio
 import datetime
 import json
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call, patch
 from uuid import uuid7
 
@@ -162,7 +164,6 @@ async def test_process_duplicate_decision_passes_full_candidate_selection(
     )
     candidate_selection = CandidateSelectionResult(
         retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
-        index_version="reference_v3",
         k_requested=10,
         input_searchability=InputSearchability(searchable=True, reason="ok"),
         diagnostics=CandidateSelectionDiagnostics(candidate_count=0),
@@ -1653,6 +1654,171 @@ async def test_collect_search_enhancement_request_marks_failed_on_error(
     assert "boom" in stored.error
 
 
+class TestDeepDeduplicationRetrievalBudget:
+    """Only the measurement arm bounds Elasticsearch."""
+
+    @pytest.mark.asyncio
+    async def test_shadow_retrieval_bounds_its_own_elasticsearch_calls(
+        self, duplicate_processing_service
+    ):
+        from app.domain.references import service as reference_service_module
+
+        service, decision = duplicate_processing_service
+
+        await service.run_deep_deduplication_retrieval(decision.reference_id)
+
+        selection = service._deduplication_service.select_candidate_canonicals  # noqa: SLF001
+        assert (
+            selection.await_args.kwargs["request_timeout"]
+            == reference_service_module.settings.dedup_scoring.retrieval_timeout_seconds
+        )
+
+
+class TestDeepDeduplicationRetrievalTelemetry:
+    """What the measurement-only retrieval records about itself."""
+
+    SPAN = "Deep deduplication retrieval"
+
+    @pytest.fixture
+    def fixed_peak_rss(self, monkeypatch):
+        from app.domain.references import service as reference_service_module
+
+        monkeypatch.setattr(
+            reference_service_module, "_peak_resident_bytes", lambda: 12345
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixed_peak_rss")
+    async def test_a_completed_retrieval_records_what_it_cost_the_worker(
+        self, duplicate_processing_service, span_attributes
+    ):
+        service, decision = duplicate_processing_service
+
+        await service.run_deep_deduplication_retrieval(decision.reference_id)
+
+        assert span_attributes(self.SPAN) == {
+            "app.deep_deduplication.outcome": "completed",
+            "app.deep_deduplication.active_retrievals": 1,
+            "app.deep_deduplication.peak_rss_bytes": 12345,
+        }
+
+    @pytest.mark.asyncio
+    async def test_peak_rss_is_read_after_the_retrieval_not_before(
+        self, duplicate_processing_service, span_attributes, monkeypatch
+    ):
+        """Read at the top, the high-water mark cannot include this retrieval."""
+        from app.domain.references import service as reference_service_module
+
+        peak = {"bytes": 100}
+        monkeypatch.setattr(
+            reference_service_module, "_peak_resident_bytes", lambda: peak["bytes"]
+        )
+        service, decision = duplicate_processing_service
+
+        async def _retrieval_that_allocates(_reference_id, **_kwargs):
+            peak["bytes"] = 500
+
+        monkeypatch.setattr(
+            service._deduplication_service,  # noqa: SLF001
+            "select_candidate_canonicals",
+            _retrieval_that_allocates,
+        )
+
+        await service.run_deep_deduplication_retrieval(decision.reference_id)
+
+        assert (
+            span_attributes(self.SPAN)["app.deep_deduplication.peak_rss_bytes"] == 500
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.usefixtures("fixed_peak_rss")
+    async def test_concurrent_retrievals_count_each_other(
+        self, fake_repository, fake_uow, all_span_attributes
+    ):
+        """A single in-flight reading cannot tell a real count from a hardcoded one."""
+        both_arrived = asyncio.Barrier(2)
+
+        async def _wait_for_the_other(_reference_id, **_kwargs):
+            await both_arrived.wait()
+
+        services = []
+        for _ in range(2):
+            service = ReferenceService(
+                ReferenceAntiCorruptionService(fake_repository()),
+                fake_uow(),
+                fake_uow(),
+            )
+            service._deduplication_service.select_candidate_canonicals = (  # noqa: SLF001
+                _wait_for_the_other
+            )
+            services.append(service)
+
+        await asyncio.gather(
+            *(s.run_deep_deduplication_retrieval(uuid7()) for s in services)
+        )
+
+        counts = [
+            attributes["app.deep_deduplication.active_retrievals"]
+            for attributes in all_span_attributes(self.SPAN)
+        ]
+        assert max(counts) == 2
+
+        # The count must come back down, or every later reading is inflated.
+        service = ReferenceService(
+            ReferenceAntiCorruptionService(fake_repository()), fake_uow(), fake_uow()
+        )
+        service._deduplication_service.select_candidate_canonicals = AsyncMock()  # noqa: SLF001
+        await service.run_deep_deduplication_retrieval(uuid7())
+        latest = all_span_attributes(self.SPAN)[-1]
+        assert latest["app.deep_deduplication.active_retrievals"] == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("platform", "ru_maxrss", "expected"),
+        [("linux", 2048, 2048 * 1024), ("darwin", 2048, 2048)],
+    )
+    async def test_peak_rss_is_recorded_in_bytes_on_either_platform(
+        self,
+        duplicate_processing_service,
+        span_attributes,
+        monkeypatch,
+        platform,
+        ru_maxrss,
+        expected,
+    ):
+        """getrusage reports kibibytes on Linux and bytes on macOS."""
+        import resource
+        import sys
+
+        service, decision = duplicate_processing_service
+        monkeypatch.setattr(sys, "platform", platform)
+        monkeypatch.setattr(
+            resource, "getrusage", lambda _who: SimpleNamespace(ru_maxrss=ru_maxrss)
+        )
+
+        await service.run_deep_deduplication_retrieval(decision.reference_id)
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.deep_deduplication.peak_rss_bytes"] == expected
+
+    @pytest.mark.asyncio
+    async def test_a_failed_retrieval_records_the_failed_outcome(
+        self, duplicate_processing_service, span_attributes
+    ):
+        """A raise is groupable as an outcome, not only visible as a span status."""
+        service, decision = duplicate_processing_service
+        service._deduplication_service.select_candidate_canonicals = AsyncMock(  # noqa: SLF001
+            side_effect=RuntimeError("retrieval boom")
+        )
+
+        with pytest.raises(RuntimeError):
+            await service.run_deep_deduplication_retrieval(decision.reference_id)
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.deep_deduplication.outcome"] == "failed"
+        assert "app.deep_deduplication.peak_rss_bytes" in attributes
+
+
 class TestDeduplicationDecisionTelemetry:
     """Which route decided a reference, and what it decided, reaching the trace."""
 
@@ -1686,6 +1852,7 @@ class TestDeduplicationDecisionTelemetry:
             "app.reference.id": str(decision.reference_id),
             "app.deduplication.candidate_search_enabled": True,
             "app.deduplication.trusted_identifier_shortcut_enabled": False,
+            "app.deduplication.deep_deduplication_enabled": False,
             "app.deduplication.route": "candidate_search",
             "app.deduplication.determination": "canonical",
             "app.deduplication.decision_changed": True,
@@ -1762,6 +1929,7 @@ class TestDeduplicationDecisionTelemetry:
             "app.reference.id": str(decision.reference_id),
             "app.deduplication.candidate_search_enabled": False,
             "app.deduplication.trusted_identifier_shortcut_enabled": True,
+            "app.deduplication.deep_deduplication_enabled": False,
             "app.deduplication.route": "identifier_shortcut",
             "app.deduplication.determination": "duplicate",
             "app.deduplication.side_effect_decision_count": 1,

@@ -209,10 +209,6 @@ def _trace_candidate_selection(
         Attributes.CANDIDATE_SELECTION_PUBLICATION_YEAR_PRESENT,
         bool(search_fields.publication_year),
     )
-    if result.index_version is not None:
-        trace_attribute(
-            Attributes.CANDIDATE_SELECTION_INDEX_VERSION, result.index_version
-        )
     if diagnostics.es_took_ms is not None:
         trace_attribute(
             Attributes.CANDIDATE_SELECTION_ES_TOOK_MS, diagnostics.es_took_ms
@@ -250,9 +246,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
     @tracer.start_as_current_span("Select deduplication candidates")
     async def get_deduplication_candidates(
-        self, request: CandidateSelectionRequest
+        self,
+        request: CandidateSelectionRequest,
+        *,
+        deep_deduplication: bool = False,
+        request_timeout: float | None = None,
     ) -> CandidateSelectionResult:
         """Return ranked candidates with provenance, without persisting state."""
+        trace_attribute(
+            Attributes.CANDIDATE_SELECTION_DEEP_DEDUPLICATION, deep_deduplication
+        )
         k = request.k or settings.dedup_scoring.candidate_k
         policy_name = (
             request.retrieval_policy or settings.dedup_scoring.default_retrieval_policy
@@ -278,12 +281,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 identifier_lookups, self_id=self_id
             )
 
-        # The ES query and index-version stamp only apply to searchable input.
         searchable = policy.is_input_searchable(search_fields)
         es_result = None
-        index_version = None
         if searchable:
-            index_version = await self.es_uow.references.get_current_index_name()
             query = build_candidate_canonical_search_query(
                 search_fields,
                 scoring_config=settings.dedup_scoring,
@@ -294,6 +294,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 query,
                 k=k,
                 track_total_hits=request.track_total_hits,
+                request_timeout=request_timeout,
             )
 
         es_hits = es_result.hits if es_result else []
@@ -347,7 +348,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         es_returned = len(es_hits)
         result = CandidateSelectionResult(
             retrieval_policy=policy.name,
-            index_version=index_version,
             k_requested=k,
             input_searchability=InputSearchability(
                 searchable=searchable,
@@ -576,14 +576,25 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     async def select_candidate_canonicals(
-        self, reference_id: UUID
+        self,
+        reference_id: UUID,
+        *,
+        deep_deduplication: bool = False,
+        request_timeout: float | None = None,
     ) -> CandidateSelectionResult:
-        """Select candidates and return their complete retrieval provenance."""
+        """
+        Select candidates and return their complete retrieval provenance.
+
+        The caller sets the Elasticsearch budget: the duplicate decision shares
+        this method and needs the patient client-wide timeout.
+        """
         return await self.get_deduplication_candidates(
             CandidateSelectionRequest(
                 input=CandidateSelectionInput(reference_id=reference_id),
                 hydrate=False,
-            )
+            ),
+            deep_deduplication=deep_deduplication,
+            request_timeout=request_timeout,
         )
 
     async def _placeholder_duplicate_determinator(

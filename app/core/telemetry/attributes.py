@@ -105,7 +105,6 @@ class Attributes(StrEnum):
     # Deduplication candidate retrieval
     CANDIDATE_SELECTION_RETRIEVAL_POLICY = "app.candidate_selection.retrieval_policy"
     CANDIDATE_SELECTION_K_REQUESTED = "app.candidate_selection.k_requested"
-    CANDIDATE_SELECTION_INDEX_VERSION = "app.candidate_selection.index_version"
     CANDIDATE_SELECTION_SEARCHABLE = "app.candidate_selection.searchable"
     CANDIDATE_SELECTION_TITLE_PRESENT = "app.candidate_selection.title_present"
     CANDIDATE_SELECTION_AUTHORS_PRESENT = "app.candidate_selection.authors_present"
@@ -123,6 +122,14 @@ class Attributes(StrEnum):
     )
     CANDIDATE_SELECTION_CANDIDATE_COUNT = "app.candidate_selection.candidate_count"
     CANDIDATE_SELECTION_TRUNCATED = "app.candidate_selection.truncated"
+    CANDIDATE_SELECTION_DEEP_DEDUPLICATION = (
+        "app.candidate_selection.deep_deduplication"
+    )
+
+    # Deep deduplication retrieval
+    DEEP_DEDUPLICATION_OUTCOME = "app.deep_deduplication.outcome"
+    DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS = "app.deep_deduplication.active_retrievals"
+    DEEP_DEDUPLICATION_PEAK_RSS_BYTES = "app.deep_deduplication.peak_rss_bytes"
 
     # Deduplication decisions
     DEDUPLICATION_ROUTE = "app.deduplication.route"
@@ -136,6 +143,9 @@ class Attributes(StrEnum):
     )
     DEDUPLICATION_TRUSTED_IDENTIFIER_SHORTCUT_ENABLED = (
         "app.deduplication.trusted_identifier_shortcut_enabled"
+    )
+    DEDUPLICATION_DEEP_DEDUPLICATION_ENABLED = (
+        "app.deduplication.deep_deduplication_enabled"
     )
 
     # Other

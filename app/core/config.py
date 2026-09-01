@@ -377,6 +377,7 @@ class FeatureFlags(BaseModel):
 
     enable_percolation: bool = True
     enable_canonical_candidate_search: bool = True
+    enable_deep_deduplication: bool = False
 
 
 class DedupCandidateScoringConfig(BaseModel):
@@ -399,6 +400,11 @@ class DedupCandidateScoringConfig(BaseModel):
         ge=1,
         le=1000,
         description="Default number of candidate references to retrieve.",
+    )
+    retrieval_timeout_seconds: float = Field(
+        default=5.0,
+        gt=0,
+        description="Per-request Elasticsearch budget for ingestion-driven retrieval.",
     )
     default_retrieval_policy: RetrievalPolicyName = Field(
         default=RetrievalPolicyName.CANDIDATE_SELECTION_V1,

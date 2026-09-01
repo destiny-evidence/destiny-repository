@@ -1,6 +1,8 @@
 """Tests for service-side candidate author-query construction."""
 
-from unittest.mock import AsyncMock
+import contextlib
+from typing import ClassVar
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from elastic_transport import ApiResponseMeta, ConnectionTimeout
@@ -95,6 +97,21 @@ class TestBuildCandidateAuthorQueries:
         assert "雷" in queries[1]
 
 
+def _candidate_query() -> CandidateCanonicalSearchQuery:
+    return CandidateCanonicalSearchQuery(
+        title="A study",
+        title_fuzziness="AUTO",
+        title_boost=1.0,
+        title_operator="or",
+        title_minimum_should_match="50%",
+        author_terms=("Jane Doe",),
+        author_tie_breaker=0.3,
+        publication_year_range=(2023, 2025),
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+        excluded_reference_id=None,
+    )
+
+
 class TestCandidateSearchFailureTranslation:
     """Transient Elasticsearch failures become ESError; defects stay fatal."""
 
@@ -112,18 +129,7 @@ class TestCandidateSearchFailureTranslation:
         monkeypatch.setattr(AsyncSearch, "execute", execute)
         repository = ReferenceESRepository(client=AsyncMock())
         return await repository.search_for_candidate_canonicals(
-            CandidateCanonicalSearchQuery(
-                title="A study",
-                title_fuzziness="AUTO",
-                title_boost=1.0,
-                title_operator="or",
-                title_minimum_should_match="50%",
-                author_terms=("Jane Doe",),
-                author_tie_breaker=0.3,
-                publication_year_range=(2023, 2025),
-                duplicate_determination=DuplicateDetermination.CANONICAL,
-                excluded_reference_id=None,
-            ),
+            _candidate_query(),
             k=10,
         )
 
@@ -151,3 +157,48 @@ class TestCandidateSearchFailureTranslation:
         """A malformed query is a defect: it must not be retried per record."""
         with pytest.raises(ApiError):
             await self._search(monkeypatch, self._api_error(status))
+
+
+class TestCandidateRetrievalRequestBudget:
+    """A bounded call must not inherit the client-wide timeout and retries."""
+
+    BOUNDED: ClassVar = {
+        "request_timeout": 5.0,
+        "max_retries": 0,
+        "retry_on_timeout": False,
+    }
+
+    @staticmethod
+    def _client() -> tuple[AsyncMock, AsyncMock]:
+        """`options()` is sync and returns a client, which AsyncMock gets wrong."""
+        client, bounded = AsyncMock(), AsyncMock()
+        client.options = MagicMock(return_value=bounded)
+        return client, bounded
+
+    async def _search_using(self, monkeypatch, **kwargs) -> tuple[AsyncMock, AsyncMock]:
+        """Return the client and whichever client the search actually used."""
+        captured = {}
+
+        async def execute(self):
+            captured["using"] = self._using
+            raise RuntimeError
+
+        monkeypatch.setattr(AsyncSearch, "execute", execute)
+        client, bounded = self._client()
+        with contextlib.suppress(RuntimeError):
+            await ReferenceESRepository(client=client).search_for_candidate_canonicals(
+                _candidate_query(), k=10, **kwargs
+            )
+        return client, captured["using"]
+
+    async def test_a_budget_makes_the_search_fail_fast(self, monkeypatch):
+        client, using = await self._search_using(monkeypatch, request_timeout=5.0)
+
+        client.options.assert_called_once_with(**self.BOUNDED)
+        assert using is client.options.return_value
+
+    async def test_no_budget_leaves_the_search_on_the_shared_client(self, monkeypatch):
+        client, using = await self._search_using(monkeypatch)
+
+        client.options.assert_not_called()
+        assert using is client

@@ -86,10 +86,8 @@ def build_service(fake_uow, anti_corruption_service):
         found_references: list[Reference] | None = None,
         hydrated: list[Reference] | None = None,
         reference: Reference | None = None,
-        index_name: str | None = "reference_v3",
     ) -> tuple[ReferenceService, MagicMock, MagicMock, MagicMock]:
         es_refs = MagicMock()
-        es_refs.get_current_index_name = AsyncMock(return_value=index_name)
         es_refs.search_for_candidate_canonicals = AsyncMock(
             return_value=es_result if es_result is not None else _es_result()
         )
@@ -307,7 +305,6 @@ async def test_inline_input_returns_ranked_es_candidates(build_service):
     )
 
     assert result.retrieval_policy == RetrievalPolicyName.CANDIDATE_SELECTION_V1
-    assert result.index_version == "reference_v3"
     assert result.input_searchability.searchable is True
     assert [c.reference_id for c in result.candidates] == [id1, id2]
     assert [c.rank for c in result.candidates] == [1, 2]

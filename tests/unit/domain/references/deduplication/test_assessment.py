@@ -172,7 +172,6 @@ def _selection(
 ) -> CandidateSelectionResult:
     return CandidateSelectionResult(
         retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
-        index_version="reference_v3" if searchable else None,
         k_requested=10,
         input_searchability=InputSearchability(
             searchable=searchable,
@@ -816,7 +815,6 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
     )
     es_uow = MagicMock()
     es_references = MagicMock()
-    es_references.get_current_index_name = AsyncMock(return_value="reference_v3")
     es_references.search_for_candidate_canonicals = AsyncMock(
         return_value=CandidateCanonicalSearchResult(
             hits=[],

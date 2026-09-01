@@ -2,6 +2,8 @@
 
 import contextlib
 import datetime
+import resource
+import sys
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Sequence
 from uuid import UUID
@@ -28,6 +30,7 @@ from app.domain.references.models.models import (
     CandidateSelectionResult,
     CrossFacetResult,
     DeduplicationRoute,
+    DeepDeduplicationOutcome,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -101,6 +104,33 @@ from app.utils.time_and_date import apply_positive_timedelta
 logger = get_logger(__name__)
 settings = get_settings()
 tracer = get_tracer(__name__)
+
+
+def _peak_resident_bytes() -> int:
+    """
+    Peak RSS for this worker process, in bytes.
+
+    getrusage reports kibibytes on Linux and bytes on macOS.
+    """
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak if sys.platform == "darwin" else peak * 1024
+
+
+class _ActiveRetrievals:
+    """In-flight deep deduplication retrievals on this worker."""
+
+    def __init__(self) -> None:
+        self._count = 0
+
+    def __enter__(self) -> int:
+        self._count += 1
+        return self._count
+
+    def __exit__(self, *_exc: object) -> None:
+        self._count -= 1
+
+
+_active_retrievals = _ActiveRetrievals()
 
 
 class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
@@ -551,6 +581,41 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         diagnostics. It writes no duplicate-decision or candidate state.
         """
         return await self._deduplication_service.get_deduplication_candidates(request)
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    @tracer.start_as_current_span("Deep deduplication retrieval")
+    async def run_deep_deduplication_retrieval(self, reference_id: UUID) -> None:
+        """
+        Retrieve candidates for measurement only, discarding the result.
+
+        Exceptions propagate so the caller logs the failure and the unit of work
+        marks its span errored.
+        """
+        with _active_retrievals as active:
+            trace_attribute(Attributes.DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS, active)
+            try:
+                await self._deduplication_service.select_candidate_canonicals(
+                    reference_id,
+                    deep_deduplication=True,
+                    request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
+                )
+            except Exception:
+                trace_attribute(
+                    Attributes.DEEP_DEDUPLICATION_OUTCOME,
+                    DeepDeduplicationOutcome.FAILED.value,
+                )
+                raise
+            else:
+                trace_attribute(
+                    Attributes.DEEP_DEDUPLICATION_OUTCOME,
+                    DeepDeduplicationOutcome.COMPLETED.value,
+                )
+            finally:
+                # After the work, or the high-water mark predates this retrieval.
+                trace_attribute(
+                    Attributes.DEEP_DEDUPLICATION_PEAK_RSS_BYTES, _peak_resident_bytes()
+                )
 
     @sql_unit_of_work
     async def add_identifier(
@@ -1290,6 +1355,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         trace_attribute(
             Attributes.DEDUPLICATION_TRUSTED_IDENTIFIER_SHORTCUT_ENABLED,
             bool(settings.trusted_unique_identifier_types),
+        )
+        trace_attribute(
+            Attributes.DEDUPLICATION_DEEP_DEDUPLICATION_ENABLED,
+            settings.feature_flags.enable_deep_deduplication,
         )
         if settings.trusted_unique_identifier_types:
             shortcutted_decisions = await self._deduplication_service.shortcut_deduplication_using_identifiers(  # noqa: E501

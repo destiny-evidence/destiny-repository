@@ -130,7 +130,6 @@ from app.domain.references.models.sql import (
     RobotEnhancementBatch as SQLRobotEnhancementBatch,
 )
 from app.domain.references.models.sql import SearchExport as SQLSearchExport
-from app.persistence.es.index_manager import IndexManager
 from app.persistence.es.persistence import (
     CandidateCanonicalSearchResult,
     ESFacetBucket,
@@ -808,6 +807,16 @@ class ReferenceESRepository(
             max_boost=decay.max_boost,
         )
 
+    def _client_within_budget(
+        self, request_timeout: float | None
+    ) -> AsyncElasticsearch:
+        """Measurement cannot wait out the client-wide timeout and its retries."""
+        if request_timeout is None:
+            return self._client
+        return self._client.options(
+            request_timeout=request_timeout, max_retries=0, retry_on_timeout=False
+        )
+
     @trace_repository_method(tracer)
     async def search_for_candidate_canonicals(
         self,
@@ -815,6 +824,7 @@ class ReferenceESRepository(
         *,
         k: int,
         track_total_hits: bool = False,
+        request_timeout: float | None = None,
     ) -> CandidateCanonicalSearchResult:
         """
         Execute a candidate-canonical search specification in Elasticsearch.
@@ -835,7 +845,10 @@ class ReferenceESRepository(
         :rtype: CandidateCanonicalSearchResult
         """
         search = (
-            AsyncSearch(using=self._client, index=self._persistence_cls.Index.name)
+            AsyncSearch(
+                using=self._client_within_budget(request_timeout),
+                index=self._persistence_cls.Index.name,
+            )
             .query(self._to_es_candidate_query(query))
             .source(fields=False)
             .extra(size=k)
@@ -874,13 +887,6 @@ class ReferenceESRepository(
             ),
             took_ms=response.took,
         )
-
-    @trace_repository_method(tracer)
-    async def get_current_index_name(self) -> str | None:
-        """Return the physical index name currently behind the alias, if any."""
-        return await IndexManager(
-            self._persistence_cls, self._client
-        ).get_current_index_name()
 
 
 class ExternalIdentifierRepositoryBase(
