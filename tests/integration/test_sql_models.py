@@ -620,6 +620,87 @@ async def test_add_bulk_ignore_conflicts_deduplicates_originals_and_exempts_retr
     assert missing_timestamps == 0
 
 
+async def test_add_bulk_ignore_conflicts_skips_references_absent_from_sql(
+    session: AsyncSession,
+):
+    """Pending enhancements for unknown references are dropped, not fatal."""
+    reference = SQLReference.from_domain(Reference(id=uuid7()))
+    session.add(reference)
+    robot_id = uuid7()
+    session.add(
+        SQLRobot.from_domain(
+            Robot(
+                id=robot_id,
+                name="Test Robot",
+                description="A test robot",
+                owner="test@example.com",
+                client_secret="test-secret",
+            )
+        )
+    )
+    request_id = uuid7()
+    session.add(
+        SQLEnhancementRequest.from_domain(
+            EnhancementRequest(
+                id=request_id,
+                reference_ids=[reference.id],
+                robot_id=robot_id,
+                request_status=EnhancementRequestStatus.RECEIVED,
+            )
+        )
+    )
+    await session.flush()
+    await session.commit()
+
+    repo = PendingEnhancementSQLRepository(session)
+    expires_at = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(hours=1)
+    missing_reference_id = uuid7()
+
+    inserted = await repo.add_bulk_ignore_conflicts(
+        [
+            PendingEnhancement(
+                reference_id=reference_id,
+                robot_id=robot_id,
+                enhancement_request_id=request_id,
+                expires_at=expires_at,
+            )
+            for reference_id in (missing_reference_id, reference.id)
+        ]
+    )
+    await session.commit()
+
+    assert inserted == 1
+    persisted = (
+        (
+            await session.execute(
+                text(
+                    "SELECT reference_id FROM pending_enhancement "
+                    "WHERE enhancement_request_id = :rid"
+                ),
+                {"rid": request_id},
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert persisted == [reference.id]
+
+    # Every reference missing means nothing to insert, still not fatal.
+    assert (
+        await repo.add_bulk_ignore_conflicts(
+            [
+                PendingEnhancement(
+                    reference_id=uuid7(),
+                    robot_id=robot_id,
+                    enhancement_request_id=request_id,
+                    expires_at=expires_at,
+                )
+            ]
+        )
+        == 0
+    )
+
+
 async def test_claim_search_request_reentrant_and_respects_terminal(
     session: AsyncSession,
 ):
