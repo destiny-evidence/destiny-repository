@@ -62,7 +62,8 @@ class SearchResultMixIn(BaseModel):
     """A mixin class for models that represent search results."""
 
     total: SearchResultTotal = Field(
-        description="The total number of results matching the search criteria.",
+        description="The total number of results matching the search criteria, "
+        "counted exactly even beyond the pageable window.",
     )
     page: SearchResultPage = Field(
         description="Information about the page of results.",

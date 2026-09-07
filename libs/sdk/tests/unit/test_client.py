@@ -148,6 +148,7 @@ class TestOAuthClient:
                 "page": {
                     "count": 1,
                     "number": 1,
+                    "max_result_window": 10_000,
                 },
                 "total": {
                     "count": 1,
@@ -162,6 +163,7 @@ class TestOAuthClient:
         assert len(result.references) == 1
         assert result.references[0].id == test_reference_id
         assert result.total.count == 1
+        assert result.page.max_result_window == 10_000
 
     def test_search_with_filters(
         self,
@@ -183,6 +185,7 @@ class TestOAuthClient:
                 "page": {
                     "count": 1,
                     "number": 2,
+                    "max_result_window": 10_000,
                 },
                 "page_size": 10,
             },
@@ -222,7 +225,7 @@ class TestOAuthClient:
             json={
                 "references": [mock_reference_response],
                 "total": {"count": 1, "is_lower_bound": False},
-                "page": {"count": 1, "number": 1},
+                "page": {"count": 1, "number": 1, "max_result_window": 10_000},
                 "page_size": 10,
             },
         )

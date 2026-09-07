@@ -34,6 +34,7 @@ from app.domain.references.models.models import (
     RobotResultValidationEntry,
     SearchExport,
     SearchQuery,
+    SearchResultPage,
 )
 from app.domain.references.services.access_control_service import RedactedReference
 from app.domain.service import GenericAntiCorruptionService
@@ -581,6 +582,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         self,
         search_result: ESSearchResult,
         references: list[RedactedReference],
+        *,
+        page: SearchResultPage,
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert a search result and retrieved references to the SDK model."""
         try:
@@ -595,10 +598,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "count": search_result.total.value,
                     "is_lower_bound": search_result.total.relation == "gte",
                 },
-                page={
-                    "count": len(search_result.hits),
-                    "number": search_result.page,
-                },
+                page=page.model_dump(),
                 references=sdk_references,
             )
         except ValidationError as exception:

@@ -33,6 +33,7 @@ export interface SearchResult {
     page: {
       count: number;
       number: number;
+      max_result_window?: number;
     };
   };
   error: null | {

@@ -23,6 +23,11 @@ class SearchResultPage(BaseModel):
     number: int = Field(
         description="The page number of results returned, indexed from 1.",
     )
+    max_result_window: int | None = Field(
+        default=None,
+        description="How many results pagination can reach. Reachable pages are "
+        "ceil(min(total.count, this) / page size); absent on older servers.",
+    )
 
 
 class AnnotationFilter(BaseModel):

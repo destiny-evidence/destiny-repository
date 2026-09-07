@@ -155,8 +155,15 @@ async def test_query_string_search_invalid_syntax(
         await simple_repository.search_with_query_string(query)
 
 
+@pytest.mark.parametrize(
+    ("options", "expected_count", "expected_relation"),
+    [({}, 10_000, "gte"), ({"track_total_hits": True}, 10_001, "eq")],
+)
 async def test_query_string_search_many_results(
     simple_repository: SimpleRepository,
+    options: dict,
+    expected_count: int,
+    expected_relation: str,
 ):
     """Test searching with many results returns proper total count."""
     # Use bulk API for better performance
@@ -179,11 +186,13 @@ async def test_query_string_search_many_results(
         index=SimpleDoc.Index.name
     )
 
-    results = await simple_repository.search_with_query_string("title:common")
+    results = await simple_repository.search_with_query_string(
+        "title:common", **options
+    )
 
     assert len(results.hits) == 20
-    assert results.total.value == 10000
-    assert results.total.relation == "gte"
+    assert results.total.value == expected_count
+    assert results.total.relation == expected_relation
 
 
 async def test_query_string_search_with_fields(
@@ -647,7 +656,7 @@ async def test_count_with_query_string_is_exact(simple_repository: SimpleReposit
 
 
 async def test_count_exceeds_result_window(simple_repository: SimpleRepository):
-    """count is exact beyond ES's 10,000 window, unlike a bounded search."""
+    """Counting returns an exact total beyond the 10,000-result retrieval window."""
     count = ES_MAX_PAGE_SIZE + 1
     await bulk_index(simple_repository, build_simple_docs(count, title="many"))
     total = await simple_repository.count_with_query_string("title:many")

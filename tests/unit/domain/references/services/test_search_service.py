@@ -26,7 +26,7 @@ from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
-from app.persistence.es.persistence import ESSearchTotal
+from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import (
@@ -574,3 +574,17 @@ async def test_aggregate_cross_facet_scheme_axis_fetches_members_once(
     (_query, axes), _ = service.es_uow.references.aggregate_cross_facet.call_args  # type: ignore[union-attr]
     assert axes[0].include == _TOPICS
     assert axes[1].include == _REGIONS
+
+
+@pytest.mark.parametrize("match_count", [0, 45, 10_001])
+def test_get_result_page_publishes_the_window_not_a_page_count(
+    match_count: int,
+) -> None:
+    """The window is retrieval policy, so it does not vary with what matched."""
+    result = ESSearchResult(
+        hits=[], total=ESSearchTotal(value=match_count, relation="eq"), page=1
+    )
+
+    page = SearchService.get_result_page(result)
+
+    assert page.max_result_window == 10_000

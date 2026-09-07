@@ -209,7 +209,10 @@ Returns a :class:`ReferenceSearchResult <libs.sdk.src.destiny_sdk.references.Ref
 Limitations
 """""""""""
 
-There is a hard cap on the number of results at 10,000. You cannot page past this point, nor will :class:`total <libs.sdk.src.destiny_sdk.search.SearchResultTotal>` show more than this.
+Pagination is limited to the first ``page.max_result_window`` results, currently
+10,000. The :class:`total <libs.sdk.src.destiny_sdk.search.SearchResultTotal>` counts
+all matching references exactly, including matches beyond that limit. To find how many
+pages can be reached, clamp the total to the window and divide by the page size.
 
 .. _facets-procedure:
 
