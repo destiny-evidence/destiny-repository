@@ -2,14 +2,16 @@
 
 import React from "react";
 import BaseReferenceDisplay from "./BaseReferenceDisplay";
-import { reachablePageCount } from "../../lib/api/searchPagination";
+import {
+  reachablePageCount,
+  resolveMaxResultWindow,
+} from "../../lib/api/searchPagination";
 
 interface SearchResultsDisplayProps {
   results?: {
     references: any[];
     total: {
       count: number;
-      is_lower_bound: boolean;
     };
     page: {
       count: number;
@@ -33,13 +35,10 @@ export default function SearchResultsDisplay({
     );
   }
 
-  const totalPages = reachablePageCount(
-    results.total.count,
+  const maxResultWindow = resolveMaxResultWindow(
     results.page.max_result_window,
   );
-  const displayTotal = results.total.is_lower_bound
-    ? `>${results.total.count.toLocaleString()}`
-    : results.total.count.toLocaleString();
+  const totalPages = reachablePageCount(results.total.count, maxResultWindow);
 
   const visualTabLabel = `Visual`;
   const downloadFilename = `search-results-${
@@ -50,7 +49,11 @@ export default function SearchResultsDisplay({
   const headerContent = (
     <div className="pagination-info">
       <strong>Page {results.page.number}</strong> of {totalPages} (Total:{" "}
-      {displayTotal} results, showing {results.references.length} per page)
+      {results.total.count.toLocaleString()} results, showing{" "}
+      {results.references.length} per page)
+      {results.total.count > maxResultWindow && (
+        <> Only the first {maxResultWindow.toLocaleString()} are retrievable.</>
+      )}
     </div>
   );
 

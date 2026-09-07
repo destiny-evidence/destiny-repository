@@ -7,10 +7,14 @@ export const RESULTS_PER_PAGE = 20;
 // field still cap retrieval here.
 const FALLBACK_MAX_RESULT_WINDOW = 10000;
 
+export function resolveMaxResultWindow(maxResultWindow?: number): number {
+  return maxResultWindow ?? FALLBACK_MAX_RESULT_WINDOW;
+}
+
 export function reachablePageCount(
   totalCount: number,
   maxResultWindow?: number,
 ): number {
-  const window = maxResultWindow ?? FALLBACK_MAX_RESULT_WINDOW;
+  const window = resolveMaxResultWindow(maxResultWindow);
   return Math.ceil(Math.min(totalCount, window) / RESULTS_PER_PAGE);
 }

@@ -7,10 +7,12 @@ class SearchResultTotal(BaseModel):
     """Information about the total number of search results."""
 
     count: int = Field(
-        description="The total number of results matching the search criteria.",
+        description="The total number of results matching the search criteria, "
+        "counted exactly rather than capped at the pageable window.",
     )
     is_lower_bound: bool = Field(
-        description="Whether the count is a lower bound (true) or exact (false).",
+        description="Whether the count is capped rather than exact. False from "
+        "servers that count exactly; older ones set it beyond 10,000.",
     )
 
 

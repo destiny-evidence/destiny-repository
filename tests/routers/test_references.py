@@ -1115,11 +1115,11 @@ async def test_search_reference_ids_returns_ids_only(
     assert mock_search.call_args.kwargs["page_size"] == SearchService.MAX_RESULT_WINDOW
 
 
-async def test_search_reference_ids_reports_lower_bound_when_truncated(
+async def test_search_reference_ids_maps_gte_total_to_lower_bound(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A `gte` total surfaces as `is_lower_bound: true`."""
+    """A `gte` total surfaces as `is_lower_bound: true`; no live path emits `gte`."""
     reference = ReferenceFactory.build()
     mock_search_result = ESSearchResult(
         hits=[ESHit(id=reference.id, score=1.0)],
