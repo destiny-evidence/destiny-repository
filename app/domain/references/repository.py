@@ -1437,7 +1437,9 @@ class PendingEnhancementSQLRepository(
         existing_reference_ids = set(
             (
                 await self._session.scalars(
-                    select(SQLReference.id).where(SQLReference.id.in_(reference_ids))
+                    select(SQLReference.id).where(
+                        self.any_of(SQLReference.id, reference_ids)
+                    )
                 )
             ).all()
         )
