@@ -384,12 +384,6 @@ class TestPendingEnhancementSQLRepository:
         these sizes - and reintroduce asyncpg's 32767 bind parameter ceiling.
         """
         n_records = 7000
-        mock_session = AsyncMock(spec=AsyncSession)
-        mock_session.execute.return_value = MagicMock(
-            all=MagicMock(return_value=[object()] * n_records)
-        )
-        repo = PendingEnhancementSQLRepository(mock_session)
-
         records = [
             PendingEnhancement(
                 reference_id=uuid7(),
@@ -399,6 +393,16 @@ class TestPendingEnhancementSQLRepository:
             )
             for _ in range(n_records)
         ]
+
+        mock_session = AsyncMock(spec=AsyncSession)
+        mock_session.execute.return_value = MagicMock(
+            all=MagicMock(return_value=[object()] * n_records)
+        )
+        # Every reference exists, so no row is filtered out.
+        mock_session.scalars.return_value = MagicMock(
+            all=MagicMock(return_value=[record.reference_id for record in records])
+        )
+        repo = PendingEnhancementSQLRepository(mock_session)
 
         inserted = await repo.add_bulk_ignore_conflicts(records)
 

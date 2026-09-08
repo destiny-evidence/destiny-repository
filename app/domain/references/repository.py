@@ -40,6 +40,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import get_settings
 from app.core.exceptions import ESError, SQLIntegrityError
 from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.telemetry.logger import get_logger
 from app.core.telemetry.repository import (
     trace_repository_generator,
     trace_repository_method,
@@ -144,6 +145,7 @@ from app.persistence.sql.repository import GenericAsyncSqlRepository
 
 settings = get_settings()
 tracer = trace.get_tracer(__name__)
+logger = get_logger(__name__)
 
 
 class ReferenceRepositoryBase(
@@ -1423,13 +1425,40 @@ class PendingEnhancementSQLRepository(
 
         A row is skipped when it collides with an existing *original* (non-retry)
         pending enhancement for the same ``(enhancement_request_id,
-        reference_id)``.
+        reference_id)``, or when its reference has no SQL row.
 
         Returns the number of rows actually inserted.
         """
         records = list(records)
         if not records:
             return 0
+
+        reference_ids = {record.reference_id for record in records}
+        existing_reference_ids = set(
+            (
+                await self._session.scalars(
+                    select(SQLReference.id).where(
+                        self.any_of(SQLReference.id, reference_ids)
+                    )
+                )
+            ).all()
+        )
+        if missing_reference_ids := reference_ids - existing_reference_ids:
+            logger.warning(
+                "Skipping pending enhancements for absent references",
+                n_missing=len(missing_reference_ids),
+                sample_reference_ids=[
+                    str(reference_id)
+                    for reference_id in list(missing_reference_ids)[:10]
+                ],
+            )
+            records = [
+                record
+                for record in records
+                if record.reference_id in existing_reference_ids
+            ]
+            if not records:
+                return 0
 
         rows = [
             SQLPendingEnhancement.from_domain(record).to_write_values()
