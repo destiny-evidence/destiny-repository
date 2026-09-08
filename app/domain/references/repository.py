@@ -1550,6 +1550,7 @@ class PendingEnhancementSQLRepository(
         self,
         now: datetime.datetime,
         statuses: list[PendingEnhancementStatus],
+        limit: int,
     ) -> list[DomainPendingEnhancement]:
         """
         Atomically find and expire pending enhancements past their expiry time.
@@ -1560,17 +1561,26 @@ class PendingEnhancementSQLRepository(
         Args:
             now: Current datetime to compare against expires_at
             statuses: List of statuses to filter by (e.g., PROCESSING)
+            limit: Maximum number of records to expire, oldest expiry first.
 
         Returns:
             List of pending enhancements that were expired
 
         """
-        stmt = (
-            update(SQLPendingEnhancement)
+        candidates = (
+            select(SQLPendingEnhancement.id)
             .where(
                 SQLPendingEnhancement.expires_at < now,
                 SQLPendingEnhancement.status.in_([status.value for status in statuses]),
             )
+            .order_by(SQLPendingEnhancement.expires_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+            .scalar_subquery()
+        )
+        stmt = (
+            update(SQLPendingEnhancement)
+            .where(SQLPendingEnhancement.id.in_(candidates))
             .values(status=PendingEnhancementStatus.EXPIRED.value)
             .returning(SQLPendingEnhancement)
         )

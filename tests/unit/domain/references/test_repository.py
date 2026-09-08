@@ -197,8 +197,9 @@ class TestPendingEnhancementSQLRepository:
     ):
         """Retry chains still resolve when the id list exceeds asyncpg's limit.
 
-        The expiry sweep feeding this method is unbounded, so the seed list can
-        outgrow the number of bind parameters a single statement may carry.
+        The expiry sweep feeding this method is capped by a configurable batch
+        size, which may be set above the number of bind parameters a single
+        statement may carry.
         """
         repo = PendingEnhancementSQLRepository(session)
 
@@ -237,6 +238,7 @@ class TestPendingEnhancementSQLRepository:
         result = await repo.expire_pending_enhancements_past_expiry(
             now=utc_now(),
             statuses=[PendingEnhancementStatus.PROCESSING],
+            limit=10,
         )
 
         # Should only return and update the expired one
@@ -251,6 +253,32 @@ class TestPendingEnhancementSQLRepository:
         # Verify non-expired is still PROCESSING
         non_expired = await repo.get_by_pk(non_expired_pe.id)
         assert non_expired.status == PendingEnhancementStatus.PROCESSING
+
+    async def test_expire_pending_enhancements_past_expiry_respects_limit(
+        self, session: AsyncSession, pending_enhancement_factory
+    ):
+        """The limit caps the batch and takes the longest-expired records first."""
+        repo = PendingEnhancementSQLRepository(session)
+
+        stale = [
+            await pending_enhancement_factory(
+                status=PendingEnhancementStatus.PROCESSING,
+                expires_at=utc_now() - datetime.timedelta(minutes=minutes),
+            )
+            for minutes in (30, 20, 10)
+        ]
+        await session.commit()
+
+        result = await repo.expire_pending_enhancements_past_expiry(
+            now=utc_now(),
+            statuses=[PendingEnhancementStatus.PROCESSING],
+            limit=2,
+        )
+
+        assert {pe.id for pe in result} == {stale[0].id, stale[1].id}
+
+        untouched = await repo.get_by_pk(stale[2].id)
+        assert untouched.status == PendingEnhancementStatus.PROCESSING
 
     async def test_update_by_pk_validates_status_transitions(
         self, session: AsyncSession, pending_enhancement_factory
