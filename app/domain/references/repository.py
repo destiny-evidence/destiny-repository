@@ -1445,7 +1445,7 @@ class PendingEnhancementSQLRepository(
         )
         if missing_reference_ids := reference_ids - existing_reference_ids:
             logger.warning(
-                "Skipping pending enhancements for references absent from SQL",
+                "Skipping pending enhancements for absent references",
                 n_missing=len(missing_reference_ids),
                 sample_reference_ids=[
                     str(reference_id)
