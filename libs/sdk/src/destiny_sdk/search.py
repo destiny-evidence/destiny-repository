@@ -11,8 +11,8 @@ class SearchResultTotal(BaseModel):
         "counted exactly rather than capped at the pageable window.",
     )
     is_lower_bound: bool = Field(
-        description="Whether the count is capped rather than exact. False from "
-        "servers that count exactly; older ones set it beyond 10,000.",
+        description="True when the count is a lower bound at the result window, "
+        "as older servers report. Not a truncation signal: compare items to total.",
     )
 
 

@@ -12,6 +12,7 @@ interface SearchResultsDisplayProps {
     references: any[];
     total: {
       count: number;
+      is_lower_bound: boolean;
     };
     page: {
       count: number;
@@ -40,6 +41,12 @@ export default function SearchResultsDisplay({
   );
   const totalPages = reachablePageCount(results.total.count, maxResultWindow);
 
+  // Servers predating page.max_result_window cap the count rather than reporting
+  // it, so this survives for rollbacks and mid-deploy transitions.
+  const displayTotal = results.total.is_lower_bound
+    ? `>${results.total.count.toLocaleString()}`
+    : results.total.count.toLocaleString();
+
   const visualTabLabel = `Visual`;
   const downloadFilename = `search-results-${
     new Date().toISOString().split("T")[0]
@@ -49,8 +56,7 @@ export default function SearchResultsDisplay({
   const headerContent = (
     <div className="pagination-info">
       <strong>Page {results.page.number}</strong> of {totalPages} (Total:{" "}
-      {results.total.count.toLocaleString()} results, showing{" "}
-      {results.references.length} per page)
+      {displayTotal} results, showing {results.references.length} per page)
       {results.total.count > maxResultWindow && (
         <> Only the first {maxResultWindow.toLocaleString()} are retrievable.</>
       )}

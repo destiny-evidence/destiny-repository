@@ -27,6 +27,7 @@ from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.es.persistence import ESSearchResult, ESSearchTotal
+from app.persistence.es.repository import ES_MAX_PAGE_SIZE
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import (
@@ -588,3 +589,8 @@ def test_get_result_page_publishes_the_window_not_a_page_count(
     page = SearchService.get_result_page(result)
 
     assert page.max_result_window == 10_000
+
+
+def test_result_window_fits_within_the_es_page_ceiling() -> None:
+    """Export and ID search pass the window straight in as an ES page size."""
+    assert SearchService.MAX_RESULT_WINDOW <= ES_MAX_PAGE_SIZE
