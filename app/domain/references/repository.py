@@ -1567,6 +1567,12 @@ class PendingEnhancementSQLRepository(
             List of pending enhancements that were expired
 
         """
+        # Select candidates as a common table expression to force evaluation of the
+        # size-limited candidate selection prior to expiring any records.
+        # In-lined evaluation can result in extra candidates as changing status
+        # to `Expired`` removes candidates from the candidate set
+        # and the planner refills the limited selection,
+        # overshooting the limit on actual rows changed.
         candidates = (
             select(SQLPendingEnhancement.id)
             .where(
@@ -1576,11 +1582,11 @@ class PendingEnhancementSQLRepository(
             .order_by(SQLPendingEnhancement.expires_at)
             .limit(limit)
             .with_for_update(skip_locked=True)
-            .scalar_subquery()
+            .cte("expiry_candidates")
         )
         stmt = (
             update(SQLPendingEnhancement)
-            .where(SQLPendingEnhancement.id.in_(candidates))
+            .where(SQLPendingEnhancement.id == candidates.c.id)
             .values(status=PendingEnhancementStatus.EXPIRED.value)
             .returning(SQLPendingEnhancement)
         )
