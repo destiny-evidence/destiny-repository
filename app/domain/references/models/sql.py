@@ -937,9 +937,8 @@ class PendingEnhancement(GenericSQLPersistence[DomainPendingEnhancement]):
 
     __tablename__ = "pending_enhancement"
 
-    reference_id: Mapped[UUID] = mapped_column(
-        SQL_UUID, ForeignKey("reference.id"), nullable=False
-    )
+    # Deliberately not a ForeignKey. Enforcing at scale is expensive.
+    reference_id: Mapped[UUID] = mapped_column(SQL_UUID, nullable=False)
     robot_id: Mapped[UUID] = mapped_column(
         SQL_UUID, ForeignKey("robot.id"), nullable=False
     )
