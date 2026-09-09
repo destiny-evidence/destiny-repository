@@ -403,6 +403,8 @@ class TestReferenceSearchFieldsProjection:
         )
 
         most_recent_taxonomy_annotation = EnhancementFactory.build(
+            # Same source, so this supersedes the older taxonomy annotation
+            source=taxonomy_annotation_enhancement.source,
             content=AnnotationEnhancementFactory.build(
                 annotations=[
                     BooleanAnnotationFactory.build(
@@ -417,6 +419,7 @@ class TestReferenceSearchFieldsProjection:
         )
 
         most_recent_destiny_inclusion_annotation = EnhancementFactory.build(
+            source=destiny_inclusion_annotation_enhancement.source,
             content=AnnotationEnhancementFactory.build(
                 annotations=[
                     BooleanAnnotationFactory.build(
@@ -630,8 +633,8 @@ class TestReferenceSearchFieldsProjection:
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert result.publication_year == 2022  # From publication_date
 
-    def test_get_from_reference_prioritises_annotations_by_scheme(self):
-        """Test that we prioritise annotations by scheme, not by label."""
+    def test_get_from_reference_prioritises_annotations_by_source_and_scheme(self):
+        """A source's later annotation of a scheme supersedes its earlier one."""
         reference_id = uuid7()
 
         annotation_enhancement_1 = EnhancementFactory.build(
@@ -654,6 +657,8 @@ class TestReferenceSearchFieldsProjection:
 
         annotation_enhancement_2 = EnhancementFactory.build(
             reference_id=reference_id,
+            # Same source, so this supersedes scheme1 from the first enhancement
+            source=annotation_enhancement_1.source,
             content=AnnotationEnhancementFactory.build(
                 annotations=[
                     BooleanAnnotationFactory.build(
@@ -671,10 +676,62 @@ class TestReferenceSearchFieldsProjection:
         )
 
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
-        # Should get scheme1 from annotation_enhancement_1
-        # and scheme2 from annotation_enhancement_2
+        # scheme1 comes wholly from the later enhancement, which marked label1
+        # false and dropped label2, so only scheme2/label3 survives.
         assert set(result.annotations) == {"scheme2/label3"}
         assert set(result.evaluated_schemes) == {"scheme1", "scheme2"}
+
+    def test_get_from_reference_keeps_a_scheme_split_across_sources(self):
+        """
+        Two sources writing one scheme both project.
+
+        A scheme is not necessarily wholly represented in a single enhancement -
+        one robot may annotate part of it and another the rest. Keying only on
+        scheme dropped whichever enhancement sorted earlier.
+        """
+        reference_id = uuid7()
+
+        prefilter = EnhancementFactory.build(
+            reference_id=reference_id,
+            source="prefilter robot",
+            content=AnnotationEnhancementFactory.build(
+                annotations=[
+                    BooleanAnnotationFactory.build(
+                        scheme="domain-inclusion", label="prefilter", value=True
+                    ),
+                ]
+            ),
+            created_at=datetime(year=2021, month=2, day=17, tzinfo=UTC),
+        )
+
+        llm = EnhancementFactory.build(
+            reference_id=reference_id,
+            source="llm robot",
+            content=AnnotationEnhancementFactory.build(
+                annotations=[
+                    BooleanAnnotationFactory.build(
+                        scheme="domain-inclusion", label="high-recall", value=True
+                    ),
+                    BooleanAnnotationFactory.build(
+                        scheme="domain-inclusion", label="high-precision", value=False
+                    ),
+                ]
+            ),
+            # Created after the prefilter, so it sorts last and previously won
+            created_at=prefilter.created_at + timedelta(days=1),
+        )
+
+        reference = ReferenceFactory.build(
+            id=reference_id, enhancements=[prefilter, llm]
+        )
+
+        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+
+        assert set(result.annotations) == {
+            "domain-inclusion/prefilter",
+            "domain-inclusion/high-recall",
+        }
+        assert set(result.evaluated_schemes) == {"domain-inclusion"}
 
     def test_get_from_reference_empty_enhancements(self):
         """Test extracting reference search feilds with empty enhancements"""

@@ -112,8 +112,8 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
             title, publication_year, publication_date = None, None, None
             abstract = None
             authorship: list[destiny_sdk.enhancements.Authorship] = []
-            annotations_by_scheme: dict[
-                str, list[destiny_sdk.enhancements.Annotation]
+            annotations_by_source_scheme: dict[
+                tuple[str, str], list[destiny_sdk.enhancements.Annotation]
             ] = {}
             singly_projected_annotations: dict[
                 tuple[str, str | None], destiny_sdk.enhancements.Annotation
@@ -153,16 +153,13 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                     linked_data_content = enhancement.content
 
                 elif enhancement.content.enhancement_type == EnhancementType.ANNOTATION:
-                    # Pre-work: collect annotations by scheme, preserving the
-                    # highest priority. Thus, if a scheme is processed twice,
-                    # we only use the highest priority one. Coalescing is not
+                    # Pre-work: collect annotations by scheme and source, preserving the
+                    # highest priority. Thus, if a scheme is processed twice by the same
+                    # source, we only use the highest priority one. Coalescing is not
                     # performed, as an annotation that was once present that is missing
                     # in a later enhancement should be treated as removed.
-                    #
-                    # NB this makes the assumption that annotation schemes will always
-                    # be wholly represented in a single enhancement.
-                    _annotations_by_scheme: dict[
-                        str, list[destiny_sdk.enhancements.Annotation]
+                    _annotations: dict[
+                        tuple[str, str], list[destiny_sdk.enhancements.Annotation]
                     ] = defaultdict(list)
                     for annotation in enhancement.content.annotations or []:
                         for key in [
@@ -172,11 +169,15 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                             if key in cls._singly_projected_annotations:
                                 singly_projected_annotations[key] = annotation
 
-                        _annotations_by_scheme[annotation.scheme].append(annotation)
+                        _annotations[(enhancement.source, annotation.scheme)].append(
+                            annotation
+                        )
 
-                    annotations_by_scheme |= _annotations_by_scheme
+                    annotations_by_source_scheme |= _annotations
 
-            annotations = cls.__positive_boolean_annotations(annotations_by_scheme)
+            annotations = cls.__positive_boolean_annotations(
+                annotations_by_source_scheme
+            )
 
             destiny_inclusion_annotation = singly_projected_annotations.get(
                 ("inclusion:destiny", None)
@@ -189,7 +190,9 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
                 publication_year=publication_year,
                 title=title,
                 annotations=annotations,
-                evaluated_schemes=annotations_by_scheme.keys(),
+                evaluated_schemes={
+                    scheme for _, scheme in annotations_by_source_scheme
+                },
                 destiny_inclusion_score=cls.__positive_annotation_score(
                     destiny_inclusion_annotation
                 ),
@@ -203,12 +206,14 @@ class ReferenceSearchFieldsProjection(GenericProjection[ReferenceSearchFields]):
     @classmethod
     def __positive_boolean_annotations(
         cls,
-        annotations_by_scheme: dict[str, list[destiny_sdk.enhancements.Annotation]],
+        annotations_by_source_scheme: dict[
+            tuple[str, str], list[destiny_sdk.enhancements.Annotation]
+        ],
     ) -> set[str]:
         """Process annotations into a set of positive annotation labels."""
         return {
             annotation.qualified_label
-            for annotations in annotations_by_scheme.values()
+            for annotations in annotations_by_source_scheme.values()
             for annotation in annotations
             if (
                 annotation.annotation_type
