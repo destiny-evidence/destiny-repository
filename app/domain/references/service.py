@@ -902,6 +902,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def expire_and_replace_stale_pending_enhancements(
         self,
         max_retry_count: int = 3,
+        batch_size: int = settings.expire_pending_enhancements_batch_size,
     ) -> dict[str, int]:
         """
         Expire stale pending enhancements and create replacements.
@@ -913,6 +914,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
         Args:
             max_retry_count: Maximum number of retries allowed (default: 3)
+            batch_size: Maximum number of enhancements to expire in this run
 
         Returns:
             Dictionary with counts of expired and replaced_with pending enhancements
@@ -925,6 +927,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             statuses=[
                 PendingEnhancementStatus.PROCESSING,
             ],
+            limit=batch_size,
         )
 
         if not expired_enhancements:
@@ -932,7 +935,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             return {"expired": 0, "replaced_with": 0}
 
         logger.info(
-            "Found stale pending enhancements",
+            "Found batch of stale pending enhancements",
             count=len(expired_enhancements),
         )
 
