@@ -1173,17 +1173,15 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         ] = await self._get_deduplicated_references(
             [enhancement.reference_id for enhancement in enhancements]
         )
+        references_by_id = {r.id: r for r in deduplicated_references}
         return [
             ReferenceWithChangeset(
-                **reference.model_dump(),
+                **references_by_id[enhancement.reference_id].model_dump(),
                 changeset=Reference(
-                    id=enhancement.reference_id,
-                    enhancements=[enhancement],
+                    id=enhancement.reference_id, enhancements=[enhancement]
                 ),
             )
-            for enhancement, reference in zip(
-                enhancements, deduplicated_references, strict=True
-            )
+            for enhancement in enhancements
         ]
 
     async def _detect_robot_automations(
