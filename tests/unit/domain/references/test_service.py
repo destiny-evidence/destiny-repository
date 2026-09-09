@@ -67,6 +67,33 @@ def test_robot():
     )
 
 
+@pytest.fixture
+def stale_pending_enhancement_repo(fake_repository):
+    """Build a pending enhancement repo mimicking the SQL expiry sweep."""
+
+    def _build(pending_enhancements, retry_depths=None):
+        class FakePendingEnhancementRepo(fake_repository):
+            async def get_retry_depths(self, ids):
+                return {pe_id: (retry_depths or {}).get(pe_id, 0) for pe_id in ids}
+
+            async def expire_pending_enhancements_past_expiry(
+                self, now, statuses, limit
+            ):
+                """Atomically find and expire pending enhancements."""
+                expired = [
+                    pe
+                    for pe in self.repository.values()
+                    if pe.expires_at < now and pe.status in statuses
+                ][:limit]
+                for pe in expired:
+                    pe.status = PendingEnhancementStatus.EXPIRED
+                return expired
+
+        return FakePendingEnhancementRepo(init_entries=pending_enhancements)
+
+    return _build
+
+
 @pytest.mark.asyncio
 async def test_get_reference_happy_path(fake_repository, fake_uow):
     dummy_id = uuid7()
@@ -1084,7 +1111,7 @@ async def test_renew_robot_enhancement_batch_lease(
 
 @pytest.mark.asyncio
 async def test_expire_and_replace_stale_pending_enhancements_no_expired(
-    fake_repository, fake_uow, test_robot
+    fake_repository, fake_uow, test_robot, stale_pending_enhancement_repo
 ):
     """Test when there are no expired pending enhancements."""
     # Create pending enhancements that are NOT expired
@@ -1101,19 +1128,7 @@ async def test_expire_and_replace_stale_pending_enhancements_no_expired(
         for _ in range(3)
     ]
 
-    class FakePendingEnhancementRepo(fake_repository):
-        async def expire_pending_enhancements_past_expiry(self, now, statuses):
-            """Atomically find and expire pending enhancements."""
-            expired = [
-                pe
-                for pe in self.repository.values()
-                if pe.expires_at < now and pe.status in statuses
-            ]
-            for pe in expired:
-                pe.status = PendingEnhancementStatus.EXPIRED
-            return expired
-
-    repo = FakePendingEnhancementRepo(init_entries=pending_enhancements)
+    repo = stale_pending_enhancement_repo(pending_enhancements)
     uow = fake_uow(pending_enhancements=repo)
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
@@ -1132,7 +1147,7 @@ async def test_expire_and_replace_stale_pending_enhancements_no_expired(
 
 @pytest.mark.asyncio
 async def test_expire_and_replace_stale_pending_enhancements_with_expired(
-    fake_repository, fake_uow, test_robot
+    fake_repository, fake_uow, test_robot, stale_pending_enhancement_repo
 ):
     """Test expiring and creating retries for expired pending enhancements."""
     # Create expired pending enhancements (PROCESSING status, past expiry)
@@ -1174,24 +1189,7 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
 
     all_enhancements = [*expired_enhancements, non_expired, pending_past_expiry]
 
-    class FakePendingEnhancementRepo(fake_repository):
-        async def get_retry_depths(self, ids):
-            """No previous retries, so depth is 0 for all."""
-            return {pe_id: 0 for pe_id in ids}
-
-        async def expire_pending_enhancements_past_expiry(self, now, statuses):
-            """Atomically find and expire pending enhancements."""
-            expired = [
-                pe
-                for pe in self.repository.values()
-                if pe.expires_at < now and pe.status in statuses
-            ]
-            # Update status to EXPIRED for matched records
-            for pe in expired:
-                pe.status = PendingEnhancementStatus.EXPIRED
-            return expired
-
-    repo = FakePendingEnhancementRepo(init_entries=all_enhancements)
+    repo = stale_pending_enhancement_repo(all_enhancements)
     uow = fake_uow(pending_enhancements=repo)
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
@@ -1237,6 +1235,43 @@ async def test_expire_and_replace_stale_pending_enhancements_with_expired(
         assert new_pe.enhancement_request_id == enhancement_request_id
         assert new_pe.source == "test-source"
         assert new_pe.status == PendingEnhancementStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_expire_and_replace_stale_pending_enhancements_caps_batch(
+    fake_repository, fake_uow, test_robot, stale_pending_enhancement_repo
+):
+    """Test that a run expires at most batch_size pending enhancements."""
+    past_expiry = utc_now() - datetime.timedelta(minutes=5)
+    expired_enhancements = [
+        PendingEnhancement(
+            id=uuid7(),
+            reference_id=uuid7(),
+            robot_id=test_robot.id,
+            source="test-source",
+            status=PendingEnhancementStatus.PROCESSING,
+            expires_at=past_expiry,
+        )
+        for _ in range(5)
+    ]
+
+    repo = stale_pending_enhancement_repo(expired_enhancements)
+    uow = fake_uow(pending_enhancements=repo)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    result = await service.expire_and_replace_stale_pending_enhancements(batch_size=2)
+
+    assert result["expired"] == 2
+    assert result["replaced_with"] == 2
+
+    still_processing = [
+        pe
+        for pe in await repo.get_all()
+        if pe.status == PendingEnhancementStatus.PROCESSING
+    ]
+    assert len(still_processing) == 3
 
 
 @pytest.mark.asyncio
@@ -1346,7 +1381,7 @@ async def test_make_duplicate_decisions_reapplies_side_effects_for_old_canonical
 
 @pytest.mark.asyncio
 async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
-    fake_repository, fake_uow, test_robot, caplog
+    fake_repository, fake_uow, test_robot, caplog, stale_pending_enhancement_repo
 ):
     """Test that enhancements at retry limit are not retried."""
     past_expiry = utc_now() - datetime.timedelta(minutes=5)
@@ -1380,29 +1415,14 @@ async def test_expire_and_replace_stale_pending_enhancements_at_retry_limit(
 
     all_enhancements = [expired_low_depth, expired_at_limit, expired_over_limit]
 
-    # Create repository that returns different retry depths
-    class FakePendingEnhancementRepo(fake_repository):
-        async def get_retry_depths(self, ids):
-            """Return different depths based on ID."""
-            depth_by_id = {
-                expired_low_depth.id: 1,  # Below limit
-                expired_at_limit.id: 3,  # At limit
-                expired_over_limit.id: 4,  # Over limit
-            }
-            return {pe_id: depth_by_id[pe_id] for pe_id in ids}
-
-        async def expire_pending_enhancements_past_expiry(self, now, statuses):
-            """Atomically find and expire pending enhancements."""
-            expired = [
-                pe
-                for pe in self.repository.values()
-                if pe.expires_at < now and pe.status in statuses
-            ]
-            for pe in expired:
-                pe.status = PendingEnhancementStatus.EXPIRED
-            return expired
-
-    repo = FakePendingEnhancementRepo(init_entries=all_enhancements)
+    repo = stale_pending_enhancement_repo(
+        all_enhancements,
+        retry_depths={
+            expired_low_depth.id: 1,  # Below limit
+            expired_at_limit.id: 3,  # At limit
+            expired_over_limit.id: 4,  # Over limit
+        },
+    )
     uow = fake_uow(pending_enhancements=repo)
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()

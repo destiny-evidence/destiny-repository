@@ -843,7 +843,13 @@ locals {
     expire_pending_enhancements = {
       cron_expression = "*/10 * * * *" # Every 10 minutes
       command         = ["python", "-m", "app.run_task", "app.domain.references.tasks:expire_and_replace_stale_pending_enhancements"]
-      timeout_seconds = 120
+      timeout_seconds = 180
+      env_vars = [
+        {
+          name  = "EXPIRE_PENDING_ENHANCEMENTS_BATCH_SIZE"
+          value = var.expire_pending_enhancements_batch_size
+        }
+      ]
     }
   }
 }
@@ -910,7 +916,7 @@ resource "azurerm_container_app_job" "scheduled_jobs" {
             name  = "AZURE_CLIENT_ID"
             value = azurerm_user_assigned_identity.container_apps_tasks_identity.client_id
           }
-        ])
+        ], lookup(each.value, "env_vars", []))
         content {
           name        = env.value.name
           value       = lookup(env.value, "value", null)

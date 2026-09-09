@@ -392,6 +392,12 @@ variable "max_reference_export_size" {
   default     = 10000
 }
 
+variable "expire_pending_enhancements_batch_size" {
+  description = "Maximum number of stale pending enhancements expired and replaced by a single run of the expire_pending_enhancements job"
+  type        = number
+  default     = 10000
+}
+
 variable "search_enhancement_scan_page_size" {
   description = "References scanned per page when collecting a search-based enhancement request"
   type        = number
