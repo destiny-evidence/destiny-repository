@@ -666,6 +666,10 @@ class DeduplicationValueError(DeduplicationError, ValueError):
         super().__init__(detail)
 
 
+class EvaluationConfigurationMismatchError(DestinyRepositoryError):
+    """An evaluation run contradicted the configuration its manifest publishes."""
+
+
 class ParseError(DestinyRepositoryError):
     """An exception for when we fail to parse some input."""
 
