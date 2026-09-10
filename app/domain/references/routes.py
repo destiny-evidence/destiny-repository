@@ -581,10 +581,7 @@ SortParam = Annotated[
     "search over fields on the root level of the Reference document.\n\n"
     "The total count is exact, including when more than "
     f"{SearchService.MAX_RESULT_WINDOW:,} references match. Pagination is limited to "
-    "the first `page.max_result_window` results, so the number of reachable pages "
-    f"is `ceil(min(total.count, page.max_result_window) / {SearchService.PAGE_SIZE})`"
-    ". `page.count` is the size of the page returned, which is smaller on the last "
-    "page, so do not divide by it.",
+    "the first `page.max_result_window` results.",
 )
 async def search_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],

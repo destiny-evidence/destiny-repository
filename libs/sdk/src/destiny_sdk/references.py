@@ -72,7 +72,7 @@ class ReferenceFileInput(_JsonlFileInputMixIn, BaseModel):
 
 
 class ReferenceSearchResult(SearchResultMixIn, BaseModel):
-    """A page of references with an exact total; only the first 10,000 are pageable."""
+    """A page of references with an exact total and the window pagination can reach."""
 
     references: list[Reference] = Field(
         description="The references returned by the search.",
@@ -84,10 +84,11 @@ class ReferenceIDSearchResult(BaseModel):
 
     total: SearchResultTotal = Field(
         description="The total number of matching references, counted across all "
-        "matches even beyond the first 10,000 returned IDs."
+        "matches even beyond the IDs returned."
     )
     reference_ids: list[UUID] = Field(
-        description="The first 10,000 matching reference IDs, in result order."
+        description="The matching reference IDs, in result order, limited to the "
+        "server's result window."
     )
 
 

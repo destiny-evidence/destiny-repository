@@ -14,7 +14,6 @@ from app.domain.references.models.models import (
     FacetType,
     LinkedDataConceptFilter,
     SearchQuery,
-    SearchResultPage,
     SiblingGroup,
 )
 from app.domain.references.services.anti_corruption_service import (
@@ -28,6 +27,7 @@ from app.external.vocabulary.client import (
 )
 from app.persistence.es.persistence import (
     ESFacetBucket,
+    ESSearchPage,
     ESSearchResult,
     ESSearchTotal,
 )
@@ -82,9 +82,9 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @classmethod
-    def get_result_page(cls, result: ESSearchResult) -> SearchResultPage:
+    def get_result_page(cls, result: ESSearchResult) -> ESSearchPage:
         """Describe a public search page and the window bounding pagination."""
-        return SearchResultPage(
+        return ESSearchPage(
             number=result.page,
             count=len(result.hits),
             max_result_window=cls.MAX_RESULT_WINDOW,

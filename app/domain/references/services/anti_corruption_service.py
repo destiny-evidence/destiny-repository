@@ -34,7 +34,6 @@ from app.domain.references.models.models import (
     RobotResultValidationEntry,
     SearchExport,
     SearchQuery,
-    SearchResultPage,
 )
 from app.domain.references.services.access_control_service import RedactedReference
 from app.domain.service import GenericAntiCorruptionService
@@ -42,6 +41,7 @@ from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
 from app.persistence.es.persistence import (
     ESFacetBucket,
+    ESSearchPage,
     ESSearchResult,
     ESSearchTotal,
 )
@@ -583,7 +583,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         search_result: ESSearchResult,
         references: list[RedactedReference],
         *,
-        page: SearchResultPage,
+        page: ESSearchPage,
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert a search result and retrieved references to the SDK model."""
         try:

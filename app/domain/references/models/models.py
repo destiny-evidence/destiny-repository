@@ -1919,17 +1919,6 @@ class CrossFacetResult(BaseModel):
     )
 
 
-class SearchResultPage(BaseModel):
-    """The current search page and the retrieval window bounding pagination."""
-
-    number: int = Field(description="The current page number, indexed from 1.")
-    count: int = Field(description="The number of results on the current page.")
-    max_result_window: int = Field(
-        description="How many results pagination can reach, independent of "
-        "how many matched."
-    )
-
-
 class ReferenceSearchResult(BaseModel):
     """Wrapping class for Elasticsearch search results."""
 
