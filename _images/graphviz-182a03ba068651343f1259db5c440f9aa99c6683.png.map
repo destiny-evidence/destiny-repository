@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.enhancements.Authorship
+
+Represents a single author and their association with a reference.
+
+This is a simplification of the OpenAlex [Authorship
+object](https://docs.openalex.org/api&#45;entities/works/work&#45;object/authorship&#45;object)
+for our purposes.
+" alt="" coords="5,5,233,117"/>
+</map>

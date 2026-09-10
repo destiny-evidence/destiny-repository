@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.LinkedDataConceptFilter
+
+A set of fully&#45;qualified concept URIs to match on ``linked_data_concepts``.
+
+Within a single filter, references must carry at least one of the listed URIs
+(logical OR). Multiple filters on a query are ANDed together.
+" alt="" coords="5,5,213,61"/>
+</map>

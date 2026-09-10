@@ -1,0 +1,13 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.enhancements.AbstractContentEnhancement
+
+An enhancement which is specific to the abstract of a reference.
+
+This is separate from the `BibliographicMetadata` for two reasons:
+
+1. Abstracts are increasingly missing from sources like OpenAlex, and may be
+backfilled from other sources, without the bibliographic metadata.
+2. They are also subject to copyright limitations in ways which metadata are
+not, and thus need separate visibility controls.
+" alt="" coords="5,5,453,117"/>
+</map>

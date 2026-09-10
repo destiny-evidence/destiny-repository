@@ -1,0 +1,17 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.CrossFacetCell
+
+A single non&#45;zero cell of a cross&#45;facet matrix.
+" alt="" coords="432,5,583,89"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.CrossFacetResult
+
+The cells of a cross&#45;facet matrix and the two totals that bound it.
+" alt="" coords="5,53,267,165"/>
+<area shape="rect" id="node3" title="app.persistence.es.persistence.ESSearchTotal
+
+Class for total results in Elasticsearch search results.
+
+Unless otherwise specified in the request, Elasticsearch will stop counting after
+10,000 and return a lower bound with relation &quot;gte&quot;.
+" alt="" coords="411,137,604,221"/>
+</map>
