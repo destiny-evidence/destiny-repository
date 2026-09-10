@@ -41,6 +41,7 @@ from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
 from app.persistence.es.persistence import (
     ESFacetBucket,
+    ESSearchPage,
     ESSearchResult,
     ESSearchTotal,
 )
@@ -581,6 +582,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         self,
         search_result: ESSearchResult,
         references: list[RedactedReference],
+        *,
+        page: ESSearchPage,
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert a search result and retrieved references to the SDK model."""
         try:
@@ -595,10 +598,7 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     "count": search_result.total.value,
                     "is_lower_bound": search_result.total.relation == "gte",
                 },
-                page={
-                    "count": len(search_result.hits),
-                    "number": search_result.page,
-                },
+                page=page.model_dump(),
                 references=sdk_references,
             )
         except ValidationError as exception:

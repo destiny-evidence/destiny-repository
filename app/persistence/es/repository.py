@@ -237,6 +237,7 @@ class GenericAsyncESRepository(
         filter_clauses: Sequence[Query] | None = None,
         *,
         parse_document: bool = False,
+        track_total_hits: bool = False,
     ) -> ESSearchResult:
         """
         Search for records using a query string with optional structured filters.
@@ -259,6 +260,9 @@ class GenericAsyncESRepository(
         :param parse_document: Whether to retrieve the documents and include them in the
             hits as domain models.
         :type parse_document: bool
+        :param track_total_hits: Request exact totals; otherwise retain Elasticsearch's
+            default counting threshold.
+        :type track_total_hits: bool
         :return: A list of matching records.
         :rtype: ESSearchResult
         """
@@ -268,6 +272,8 @@ class GenericAsyncESRepository(
             .extra(from_=(page - 1) * page_size)
             .query(self._compose_query(query, fields, filter_clauses))
         )
+        if track_total_hits:
+            search = search.extra(track_total_hits=True)
         if sort:
             search = search.sort(*sort)
         if not parse_document:

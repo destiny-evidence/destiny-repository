@@ -7,10 +7,14 @@ class SearchResultTotal(BaseModel):
     """Information about the total number of search results."""
 
     count: int = Field(
-        description="The total number of results matching the search criteria.",
+        description="The total number of results matching the search criteria, "
+        "counted exactly rather than capped at the pageable window.",
     )
     is_lower_bound: bool = Field(
-        description="Whether the count is a lower bound (true) or exact (false).",
+        default=False,
+        deprecated=True,
+        description="Whether the count is a lower bound. Totals are exact, so "
+        "it is false.",
     )
 
 
@@ -22,6 +26,11 @@ class SearchResultPage(BaseModel):
     )
     number: int = Field(
         description="The page number of results returned, indexed from 1.",
+    )
+    # Defaulted so a newer SDK can still parse a server that predates this field.
+    max_result_window: int | None = Field(
+        default=None,
+        description="How many results pagination can reach.",
     )
 
 

@@ -6,8 +6,10 @@ from uuid import UUID, uuid7
 
 import pytest
 from elasticsearch import AsyncElasticsearch
+from elasticsearch.helpers import async_bulk
 from fastapi import FastAPI, status
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.exception_handlers import (
@@ -16,7 +18,9 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import ESQueryError, ParseError
 from app.domain.references import routes as references
-from app.domain.references.models.models import SearchQuery
+from app.domain.references.models.es import ReferenceDocument
+from app.domain.references.models.models import SearchQuery, Visibility
+from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.repository import (
     ReferenceESRepository,
     ReferenceSQLRepository,
@@ -315,6 +319,7 @@ async def test_pagination(
     assert data["total"]["count"] == 25
     assert data["page"]["number"] == 1
     assert data["page"]["count"] == 20
+    assert data["page"]["max_result_window"] == 10_000
 
     # Get second page
     response = await client.get(
@@ -325,6 +330,74 @@ async def test_pagination(
     data = response.json()
     assert data["page"]["number"] == 2
     assert data["page"]["count"] == 5
+    assert data["page"]["max_result_window"] == 10_000
+
+
+async def test_exact_search_totals_above_result_window(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+    session: AsyncSession,
+) -> None:
+    """Search, id and map totals agree above 10,000 while retrieval stays capped."""
+    # The corpus must exceed 10,000 to be meaningful: that is Elasticsearch's own
+    # counting threshold, which `track_total_hits` lifts, not our result window.
+    ids = [uuid7() for _ in range(10_003)]
+    await session.execute(
+        insert(SQLReference),
+        [{"id": id_, "visibility": Visibility.PUBLIC} for id_ in ids],
+    )
+    await session.commit()
+    await async_bulk(
+        es_client,
+        (
+            {
+                "_index": ReferenceDocument.Index.name,
+                "_id": str(id_),
+                "_source": {
+                    "id": str(id_),
+                    "visibility": Visibility.PUBLIC,
+                    "title": "control" if i == 10_002 else "exacttotal",
+                    "linked_data_countries": ["US" if i == 10_001 else "KE"],
+                    "linked_data_country_wb_regions": ["SSF"],
+                },
+            }
+            for i, id_ in enumerate(ids)
+        ),
+        refresh=True,
+    )
+
+    # Two sentinels sit in that corpus: one titled "control" and one in US. The
+    # filtered query must miss both, so an exact total cannot just be the index size.
+    for params, expected_total in (
+        ({"q": "*"}, 10_003),
+        ({"q": "title:exacttotal", "country": "KE"}, 10_001),
+    ):
+        expected = {"count": expected_total, "is_lower_bound": False}
+        for page in (1, 500):
+            response = await client.get(
+                "/v1/references/search/", params={**params, "page": page}
+            )
+            assert response.status_code == status.HTTP_200_OK, response.text
+            body = response.json()
+            assert body["total"] == expected
+            assert body["page"] == {
+                "number": page,
+                "count": 20,
+                "max_result_window": 10_000,
+            }
+            assert len(body["references"]) == 20
+
+        response = await client.get("/v1/references/search/ids/", params=params)
+        assert response.status_code == status.HTTP_200_OK, response.text
+        assert response.json()["total"] == expected
+        assert len(response.json()["reference_ids"]) == 10_000
+
+        response = await client.get(
+            "/v1/references/search/cross-facets/",
+            params={**params, "axes": ["countries", "country_wb_regions"]},
+        )
+        assert response.status_code == status.HTTP_200_OK, response.text
+        assert response.json()["totals"]["search"] == expected
 
 
 async def test_empty_search_results(
@@ -339,6 +412,7 @@ async def test_empty_search_results(
     assert response.status_code == status.HTTP_200_OK
     data = response.json()
     assert data["total"]["count"] == 0
+    assert data["page"]["max_result_window"] == 10_000
     assert data["references"] == []
 
 

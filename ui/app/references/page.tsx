@@ -14,6 +14,7 @@ import { ReferenceLookupParams, SearchParams } from "../../lib/api/types";
 import LookupResultsDisplay from "@/components/ui/LookupResultsDisplay";
 import SearchResultsDisplay from "@/components/ui/SearchResultsDisplay";
 import { toIdentifierString } from "../../lib/api/identifierUtils";
+import { reachablePageCount } from "../../lib/api/searchPagination";
 
 export default function ReferenceLookupPage() {
   const [activeTab, setActiveTab] = useState<"lookup" | "search">("lookup");
@@ -234,8 +235,9 @@ export default function ReferenceLookupPage() {
               currentPage={searchResult?.page.number}
               totalPages={
                 searchResult
-                  ? Math.ceil(
-                      searchResult.total.count / searchResult.page.count,
+                  ? reachablePageCount(
+                      searchResult.total.count,
+                      searchResult.page.max_result_window,
                     )
                   : undefined
               }

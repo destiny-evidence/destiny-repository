@@ -579,9 +579,9 @@ SortParam = Annotated[
     f"[{', '.join(ReferenceESRepository.default_search_fields)}]. The query string "
     "can only "
     "search over fields on the root level of the Reference document.\n\n"
-    "A natural limit of 10,000 results is imposed. You cannot page beyond this limit, "
-    "and if a query would return more than 10,000 results the total count is listed as "
-    ">10,000.",
+    "The total count is exact, including when more than "
+    f"{SearchService.MAX_RESULT_WINDOW:,} references match. Pagination is limited to "
+    "the first `page.max_result_window` results.",
 )
 async def search_references(
     reference_service: Annotated[ReferenceService, Depends(reference_service)],
@@ -597,9 +597,9 @@ async def search_references(
         int,
         Query(
             ge=1,
-            le=SearchService.MAX_RESULT_WINDOW / 20,
+            le=SearchService.MAX_RESULT_WINDOW // SearchService.PAGE_SIZE,
             description="The page number to retrieve, indexed from 1. "
-            "Each page contains 20 results.",
+            f"Each page contains {SearchService.PAGE_SIZE} results.",
         ),
     ] = 1,
 ) -> destiny_sdk.references.ReferenceSearchResult:
@@ -607,6 +607,7 @@ async def search_references(
     search_result = await reference_service.search_references(
         query,
         page=page,
+        page_size=SearchService.PAGE_SIZE,
         sort=sort,
     )
     references = (
@@ -622,6 +623,7 @@ async def search_references(
             access_control_service.redact_reference(reference)
             for reference in references
         ],
+        page=SearchService.get_result_page(search_result),
     )
 
 
@@ -650,8 +652,8 @@ async def search_reference_ids(
     Returns the matching reference IDs without the reference data. Accepts the
     same query and filter parameters as `/references/search/` without
     pagination. Returns the IDs in result order, capped at the first 10,000
-    matches. When more references match than are returned,
-    `total.is_lower_bound` is true.
+    matches. `total.count` is the exact number of matches, so when more
+    references match than are returned it exceeds the number of IDs.
     """
     search_result = await reference_service.search_references(
         query,

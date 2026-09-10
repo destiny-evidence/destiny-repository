@@ -2,6 +2,10 @@
 
 import React from "react";
 import BaseReferenceDisplay from "./BaseReferenceDisplay";
+import {
+  reachablePageCount,
+  resolveMaxResultWindow,
+} from "../../lib/api/searchPagination";
 
 interface SearchResultsDisplayProps {
   results?: {
@@ -13,6 +17,7 @@ interface SearchResultsDisplayProps {
     page: {
       count: number;
       number: number;
+      max_result_window?: number;
     };
   };
   onPageChange?: (page: number) => void;
@@ -31,9 +36,13 @@ export default function SearchResultsDisplay({
     );
   }
 
-  // Calculate pagination info
-  const pageSize = results.page.count;
-  const totalPages = Math.ceil(results.total.count / pageSize);
+  const maxResultWindow = resolveMaxResultWindow(
+    results.page.max_result_window,
+  );
+  const totalPages = reachablePageCount(results.total.count, maxResultWindow);
+
+  // Servers predating page.max_result_window cap the count rather than reporting
+  // it, so this survives for rollbacks and mid-deploy transitions.
   const displayTotal = results.total.is_lower_bound
     ? `>${results.total.count.toLocaleString()}`
     : results.total.count.toLocaleString();
@@ -48,6 +57,9 @@ export default function SearchResultsDisplay({
     <div className="pagination-info">
       <strong>Page {results.page.number}</strong> of {totalPages} (Total:{" "}
       {displayTotal} results, showing {results.references.length} per page)
+      {results.total.count > maxResultWindow && (
+        <> Only the first {maxResultWindow.toLocaleString()} are retrievable.</>
+      )}
     </div>
   );
 

@@ -432,6 +432,8 @@ class ReferenceESRepository(
         page: int = 1,
         page_size: int = 20,
         sort: list[str] | None = None,
+        *,
+        track_total_hits: bool = False,
     ) -> ESSearchResult:
         """Search references matching ``query``; structured filters AND with q."""
         # Append the unique doc id as a final tie-breaker so equal-sort-value hits
@@ -452,6 +454,7 @@ class ReferenceESRepository(
             sort=[*sort_keys, tiebreaker],
             filter_clauses=self._build_filter_clauses(query),
             parse_document=False,
+            track_total_hits=track_total_hits,
         )
 
     @trace_repository_generator(tracer)

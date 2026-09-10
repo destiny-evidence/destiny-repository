@@ -72,7 +72,7 @@ class ReferenceFileInput(_JsonlFileInputMixIn, BaseModel):
 
 
 class ReferenceSearchResult(SearchResultMixIn, BaseModel):
-    """A search result for references."""
+    """A page of references with an exact total and the window pagination can reach."""
 
     references: list[Reference] = Field(
         description="The references returned by the search.",
@@ -83,10 +83,12 @@ class ReferenceIDSearchResult(BaseModel):
     """The matching reference IDs for a search, without the reference data."""
 
     total: SearchResultTotal = Field(
-        description="The total number of references matching the search criteria."
+        description="The total number of matching references, counted across all "
+        "matches even beyond the IDs returned."
     )
     reference_ids: list[UUID] = Field(
-        description="The IDs of the references matching the search, in result order."
+        description="The matching reference IDs, in result order, limited to the "
+        "server's result window."
     )
 
 

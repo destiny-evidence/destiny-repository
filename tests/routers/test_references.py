@@ -1011,6 +1011,76 @@ async def test_search_references_preserves_es_order(
     assert returned_ids == [str(ref_a.id), str(ref_b.id), str(ref_c.id)]
 
 
+@pytest.mark.parametrize("match_count", [0, 10_001])
+async def test_search_references_reports_the_exact_total_and_the_window(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    match_count: int,
+) -> None:
+    """The exact match count and the pageable window describe different quantities."""
+    monkeypatch.setattr(
+        ReferenceService,
+        "search_references",
+        AsyncMock(
+            return_value=ESSearchResult(
+                hits=[], total=ESSearchTotal(value=match_count, relation="eq"), page=1
+            )
+        ),
+    )
+    response = await client.get("/v1/references/search/", params={"q": "test"})
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["total"] == {"count": match_count, "is_lower_bound": False}
+    assert response.json()["page"]["max_result_window"] == 10_000
+
+
+@pytest.mark.parametrize(
+    ("page", "expected_status"),
+    [(500, status.HTTP_200_OK), (501, status.HTTP_422_UNPROCESSABLE_CONTENT)],
+)
+async def test_search_references_bounds_the_page_at_the_result_window(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    page: int,
+    expected_status: int,
+) -> None:
+    """The last reachable page is the window divided by the page size."""
+    monkeypatch.setattr(
+        ReferenceService,
+        "search_references",
+        AsyncMock(
+            return_value=ESSearchResult(
+                hits=[], total=ESSearchTotal(value=10_001, relation="eq"), page=page
+            )
+        ),
+    )
+    response = await client.get(
+        "/v1/references/search/", params={"q": "test", "page": page}
+    )
+
+    assert response.status_code == expected_status
+
+
+async def test_search_endpoints_read_the_window_at_request_time(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both endpoints read the window rather than assuming its current value."""
+    monkeypatch.setattr(SearchService, "MAX_RESULT_WINDOW", 50)
+    mock_search = AsyncMock(
+        return_value=ESSearchResult(
+            hits=[], total=ESSearchTotal(value=120, relation="eq"), page=1
+        )
+    )
+    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
+
+    response = await client.get("/v1/references/search/", params={"q": "test"})
+    assert response.json()["page"]["max_result_window"] == 50
+
+    await client.get("/v1/references/search/ids/", params={"q": "test"})
+    assert mock_search.call_args.kwargs["page_size"] == 50
+
+
 async def test_search_reference_ids_returns_ids_only(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -1045,11 +1115,11 @@ async def test_search_reference_ids_returns_ids_only(
     assert mock_search.call_args.kwargs["page_size"] == SearchService.MAX_RESULT_WINDOW
 
 
-async def test_search_reference_ids_reports_lower_bound_when_truncated(
+async def test_search_reference_ids_maps_gte_total_to_lower_bound(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """A `gte` total surfaces as `is_lower_bound: true`."""
+    """A `gte` total surfaces as `is_lower_bound: true`; no live path emits `gte`."""
     reference = ReferenceFactory.build()
     mock_search_result = ESSearchResult(
         hits=[ESHit(id=reference.id, score=1.0)],

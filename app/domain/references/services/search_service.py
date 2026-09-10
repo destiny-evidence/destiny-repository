@@ -27,6 +27,7 @@ from app.external.vocabulary.client import (
 )
 from app.persistence.es.persistence import (
     ESFacetBucket,
+    ESSearchPage,
     ESSearchResult,
     ESSearchTotal,
 )
@@ -41,10 +42,10 @@ tracer = trace.get_tracer(__name__)
 class SearchService(GenericService[ReferenceAntiCorruptionService]):
     """Service for searching references."""
 
-    # ES's default `track_total_hits` threshold. Pagination beyond this
-    # produces `relation == "gte"` totals rather than exact counts. Lifting
-    # the cap is tracked in destiny-repository#661.
+    # Bounds retrieval; the exact match count is reported independently of it.
+    # Paging beyond the window is an open design question (destiny-repository#842).
     MAX_RESULT_WINDOW = 10_000
+    PAGE_SIZE = 20
 
     # The terms `size` for each literal (non-scheme) axis. A token is a literal axis
     # iff `FacetType(token)` is one of these; their value sets are small and bounded.
@@ -68,7 +69,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query: SearchQuery,
         page: int = 1,
-        page_size: int = 20,
+        page_size: int = PAGE_SIZE,
         sort: list[str] | None = None,
     ) -> ESSearchResult:
         """Search for references matching the given query specification."""
@@ -77,6 +78,16 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             page=page,
             page_size=page_size,
             sort=sort,
+            track_total_hits=True,
+        )
+
+    @classmethod
+    def get_result_page(cls, result: ESSearchResult) -> ESSearchPage:
+        """Describe a public search page and the window bounding pagination."""
+        return ESSearchPage(
+            number=result.page,
+            count=len(result.hits),
+            max_result_window=cls.MAX_RESULT_WINDOW,
         )
 
     async def scan(
