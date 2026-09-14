@@ -1577,10 +1577,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         facets: Sequence[FacetType],
         vocabulary_uri: str | None = None,
+        axes: tuple[str, str] | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """Count occurrences per facet across references matching the query."""
         return await self._search_service.aggregate_facets(
-            query, facets, vocabulary_uri
+            query, facets, vocabulary_uri, axes
         )
 
     @es_unit_of_work

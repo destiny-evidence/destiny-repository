@@ -506,16 +506,12 @@ class ReferenceESRepository(
         *,
         sibling_groups_by_facet: Mapping[FacetType, Sequence[SiblingGroup]]
         | None = None,
+        map_axes: Sequence[CrossFacetAxis] | None = None,
         max_buckets: int,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """
-        Count occurrences per facet over references matching ``query``.
-
-        For simplicity, constructs and executes different queries per facet type. If
-        we're hunting down performance gains later, consider constructing a single
-        query - it won't be easy though.
-        """
+        """Count facet terms matching ``query`` and optional ``map_axes`` presence."""
         sibling_groups_by_facet = sibling_groups_by_facet or {}
+        axis_clauses = [self._axis_presence_clause(axis) for axis in map_axes or ()]
         results: dict[FacetType, list[ESFacetBucket]] = {}
 
         ungrouped_facets = [f for f in facets if not sibling_groups_by_facet.get(f)]
@@ -526,7 +522,7 @@ class ReferenceESRepository(
                 query.query_string,
                 aggregate_on=list(facet_to_field.values()),
                 query_fields=self.default_search_fields,
-                filter_clauses=self._build_filter_clauses(query),
+                filter_clauses=[*self._build_filter_clauses(query), *axis_clauses],
                 max_buckets=max_buckets,
             )
             results.update(
@@ -538,7 +534,11 @@ class ReferenceESRepository(
             if not groups:
                 continue
             results[facet] = await self._aggregate_facet_sibling_aware(
-                query, facet, groups, max_buckets=max_buckets
+                query,
+                facet,
+                groups,
+                axis_clauses=axis_clauses,
+                max_buckets=max_buckets,
             )
 
         return results
@@ -549,6 +549,7 @@ class ReferenceESRepository(
         facet: FacetType,
         groups: Sequence[SiblingGroup],
         *,
+        axis_clauses: Sequence[Query] = (),
         max_buckets: int,
     ) -> list[ESFacetBucket]:
         """
@@ -566,7 +567,10 @@ class ReferenceESRepository(
         search = self._build_aggregation_search(
             query.query_string,
             self.default_search_fields,
-            self._build_filter_clauses(query, exclude_facet=facet),
+            [
+                *self._build_filter_clauses(query, exclude_facet=facet),
+                *axis_clauses,
+            ],
         )
 
         # Attach aggregate groupings

@@ -720,12 +720,22 @@ async def count_facets_for_search(
             ],
         ),
     ] = None,
+    axes: Annotated[
+        tuple[str, str] | None,
+        Query(
+            description=(
+                "Optional. Evidence map axes, matching `/cross-facets/`, to scope "
+                "facet counts. Pass `?vocabulary=` for concept-scheme axes."
+            ),
+        ),
+    ] = None,
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
     buckets_by_facet = await reference_service.aggregate_facets(
         query,
         anti_corruption_service.facet_types_from_sdk(facet),
         vocabulary_uri=str(vocabulary) if vocabulary else None,
+        axes=axes,
     )
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)
 
