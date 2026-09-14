@@ -510,6 +510,8 @@ class ReferenceESRepository(
         max_buckets: int,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """Count facet terms matching ``query`` and optional ``map_axes`` presence."""
+        # A separate query per facet type, for simplicity. Collapsing them into one
+        # is where to look for performance gains later, but it won't be easy.
         sibling_groups_by_facet = sibling_groups_by_facet or {}
         axis_clauses = [self._axis_presence_clause(axis) for axis in map_axes or ()]
         results: dict[FacetType, list[ESFacetBucket]] = {}

@@ -513,10 +513,10 @@ async def test_sibling_facets_accept_parent_and_child_in_one_filter(
 TOPICS_SCHEME = "https://vocab.example.org/test/Topics"
 MAP_AXIS_PARAMS = [("axes", TOPICS_SCHEME), ("axes", "countries")]
 _PARTLY_MAPPABLE_ROWS = [
-    ("Botany with a country", [BOTANY], [COUNTRY_KE]),
-    ("Botany without a country", [BOTANY], None),
-    ("Zoology with a country", [ZOOLOGY], [COUNTRY_KE]),
-    ("A country but no concepts", None, [COUNTRY_KE]),
+    ("Botany with a country", [BOTANY], [COUNTRY_KE], [REGION_SSF]),
+    ("Botany without a country", [BOTANY], None, None),
+    ("Zoology with a country", [ZOOLOGY], [COUNTRY_KE], None),
+    ("A country but no concepts", None, [COUNTRY_KE], [REGION_SSF]),
 ]
 
 
@@ -542,8 +542,9 @@ async def partly_mappable_references(es_client: AsyncElasticsearch) -> None:
                 title=title,
                 linked_data_concepts=concepts,
                 linked_data_countries=countries,
+                linked_data_country_wb_regions=regions,
             )
-            for title, concepts, countries in _PARTLY_MAPPABLE_ROWS
+            for title, concepts, countries, regions in _PARTLY_MAPPABLE_ROWS
         ],
     )
 
@@ -565,6 +566,25 @@ async def test_concept_counts_scoped_to_axes_drop_unmappable_references(
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     assert _counts_by_concept(response.json()) == {BOTANY: 1, ZOOLOGY: 1}
+
+
+async def test_literal_only_axes_scope_without_a_vocabulary(
+    client: AsyncClient,
+    partly_mappable_references: None,  # noqa: ARG001
+) -> None:
+    """Two literal axes resolve with no `vocabulary=`, as the route documents."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "countries"),
+            ("axes", "countries"),
+            ("axes", "country_wb_regions"),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # KE is on three references; only the two carrying a region can be plotted.
+    assert response.json()["countries"] == [{"country": COUNTRY_KE, "count": 2}]
 
 
 async def test_scoped_facets_reject_scheme_axis_without_vocabulary(
