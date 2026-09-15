@@ -85,6 +85,7 @@ def primed_vocab() -> Iterator[str]:
         client._vocabulary_cache.pop(VOCAB_URI, None)  # noqa: SLF001
         client.get_concept_labels.cache_clear()
         client.get_concept_schemes.cache_clear()
+        client.get_scheme_members.cache_clear()
         client.get_concept_scheme_members.cache_clear()
 
 
@@ -506,3 +507,152 @@ async def test_sibling_facets_accept_parent_and_child_in_one_filter(
         MICROBIOLOGY: 1,
         AFRICA: 2,
     }
+
+
+# ---- Counts scoped to an evidence map's axes --------------------------------------
+
+TOPICS_SCHEME = "https://vocab.example.org/test/Topics"
+MAP_AXIS_PARAMS = [("axes", TOPICS_SCHEME), ("axes", "countries")]
+_PARTLY_MAPPABLE_ROWS = [
+    ("Botany with a country", [BOTANY], [COUNTRY_KE], [REGION_SSF]),
+    ("Botany without a country", [BOTANY], None, None),
+    ("Zoology with a country", [ZOOLOGY], [COUNTRY_KE], None),
+    ("A country but no concepts", None, [COUNTRY_KE], [REGION_SSF]),
+]
+
+
+async def _save_references(
+    es_client: AsyncElasticsearch,
+    references: list[ReferenceDocument],
+) -> None:
+    for reference in references:
+        await reference.save(using=es_client)
+    await es_client.indices.refresh(index=ReferenceDocument.Index.name)
+
+
+@pytest.fixture
+async def partly_mappable_references(es_client: AsyncElasticsearch) -> None:
+    """Index references with and without values on both Topics x countries axes."""
+    await _save_references(
+        es_client,
+        [
+            ReferenceDocument(
+                meta={"id": uuid7()},
+                id=uuid7(),
+                visibility=Visibility.PUBLIC,
+                title=title,
+                linked_data_concepts=concepts,
+                linked_data_countries=countries,
+                linked_data_country_wb_regions=regions,
+            )
+            for title, concepts, countries, regions in _PARTLY_MAPPABLE_ROWS
+        ],
+    )
+
+
+async def test_concept_counts_scoped_to_axes_drop_unmappable_references(
+    client: AsyncClient,
+    partly_mappable_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """`axes=` counts only references the corresponding map could plot."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "concepts"),
+            *MAP_AXIS_PARAMS,
+            ("vocabulary", primed_vocab),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _counts_by_concept(response.json()) == {BOTANY: 1, ZOOLOGY: 1}
+
+
+async def test_literal_only_axes_scope_without_a_vocabulary(
+    client: AsyncClient,
+    partly_mappable_references: None,  # noqa: ARG001
+) -> None:
+    """Two literal axes resolve with no `vocabulary=`, as the route documents."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "countries"),
+            ("axes", "countries"),
+            ("axes", "country_wb_regions"),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    # KE is on three references; only the two carrying a region can be plotted.
+    assert response.json()["countries"] == [{"country": COUNTRY_KE, "count": 2}]
+
+
+async def test_scoped_facets_reject_scheme_axis_without_vocabulary(
+    client: AsyncClient,
+) -> None:
+    """A scheme axis on `/facets/` needs `vocabulary=`, just like cross-facets."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "concepts"),
+            *MAP_AXIS_PARAMS,
+        ],
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.text
+    assert "vocabulary" in response.text
+
+
+async def test_concept_counts_without_axes_are_unscoped(
+    client: AsyncClient,
+    partly_mappable_references: None,  # noqa: ARG001
+) -> None:
+    """Omitting `axes=` leaves the existing whole-corpus counts untouched."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "*", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _counts_by_concept(response.json()) == {BOTANY: 2, ZOOLOGY: 1}
+
+
+async def test_country_counts_scoped_to_axes_drop_unmappable_references(
+    client: AsyncClient,
+    partly_mappable_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """Scoping applies to every requested facet, not only the axis scheme's own."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "countries"),
+            *MAP_AXIS_PARAMS,
+            ("vocabulary", primed_vocab),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    body = response.json()
+    # KE is on three references but only two of them can be plotted.
+    assert body["countries"] == [{"country": COUNTRY_KE, "count": 2}]
+
+
+async def test_sibling_aware_counts_are_also_scoped_to_axes(
+    client: AsyncClient,
+    partly_mappable_references: None,  # noqa: ARG001
+    primed_vocab: str,
+) -> None:
+    """Filtering on a concept takes the sibling-aware path, which also scopes."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("concept", BOTANY),
+            ("facet", "concepts"),
+            *MAP_AXIS_PARAMS,
+            ("vocabulary", primed_vocab),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _counts_by_concept(response.json()) == {BOTANY: 1, ZOOLOGY: 1}

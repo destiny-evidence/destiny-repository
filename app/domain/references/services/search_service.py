@@ -114,8 +114,9 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         facets: Sequence[FacetType],
         vocabulary_uri: str | None,
+        axes: tuple[str, str] | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Count occurrences per facet over references matching ``query``."""
+        """Count facet terms with optional axis scoping and sibling-aware selections."""
         max_buckets = settings.es_aggregation_max_buckets
         sibling_groups_by_facet: dict[FacetType, tuple[SiblingGroup, ...]] = {}
         if query.linked_data_concept_filters and FacetType.CONCEPTS in facets:
@@ -150,6 +151,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             query,
             facets,
             sibling_groups_by_facet=sibling_groups_by_facet,
+            map_axes=await self._resolve_axes(axes, vocabulary_uri) if axes else None,
             max_buckets=max_buckets,
         )
 
@@ -166,17 +168,24 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         via ``vocabulary_uri``). Cells are reported in the given axis order. Returns
         the non-zero cells and both exact totals.
         """
-        scheme_members: dict[str, frozenset[str]] | None = None
-        if vocabulary_uri and any(self._is_concept_scheme(token) for token in axes):
-            scheme_members = await self._vocab_client.get_scheme_members(vocabulary_uri)
-        resolved = tuple(
-            self._resolve_cross_facet_axis(token, vocabulary_uri, scheme_members)
-            for token in axes
-        )
+        resolved = await self._resolve_axes(axes, vocabulary_uri)
         self._validate_cross_facet_cell_count(
             resolved, settings.es_cross_facet_max_cells
         )
         return await self.es_uow.references.aggregate_cross_facet(query, resolved)
+
+    async def _resolve_axes(
+        self, axes: tuple[str, str], vocabulary_uri: str | None
+    ) -> tuple[CrossFacetAxis, CrossFacetAxis]:
+        """Resolve axis tokens to axes, scoping concept schemes to their members."""
+        scheme_members: dict[str, frozenset[str]] | None = None
+        if vocabulary_uri and any(self._is_concept_scheme(token) for token in axes):
+            scheme_members = await self._vocab_client.get_scheme_members(vocabulary_uri)
+        first, second = (
+            self._resolve_cross_facet_axis(token, vocabulary_uri, scheme_members)
+            for token in axes
+        )
+        return (first, second)
 
     @classmethod
     def _literal_axis_facet(cls, token: str) -> FacetType | None:
