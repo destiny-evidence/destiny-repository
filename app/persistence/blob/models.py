@@ -133,6 +133,17 @@ class BlobStorageFile(BaseModel):
     model_config = ConfigDict(frozen=True)
 
 
+class BlobDigest(BaseModel):
+    """Model to represent the size and checksum of a streamed blob storage file."""
+
+    byte_size: int = Field(
+        description="The size of the streamed file in bytes.",
+    )
+    sha256_checksum: str = Field(
+        description="The SHA256 checksum of the streamed file.",
+    )
+
+
 class BlobCopyResult(BaseModel):
     """Model to represent the result of copying a blob storage file."""
 
