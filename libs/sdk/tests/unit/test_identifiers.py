@@ -166,6 +166,84 @@ def test_invalid_open_alex():
         )
 
 
+@pytest.mark.parametrize(
+    ("url_input", "expected"),
+    [
+        (
+            "https://theses.example.edu/handle/1234/5678",
+            "https://theses.example.edu/handle/1234/5678",
+        ),
+        # The host is case-insensitive, the path is not
+        (
+            "HTTPS://Theses.Example.EDU/handle/AB12",
+            "https://theses.example.edu/handle/AB12",
+        ),
+        # Surrounding whitespace
+        (
+            "  https://theses.example.edu/handle/1234  ",
+            "https://theses.example.edu/handle/1234",
+        ),
+        # Query and fragment are preserved
+        (
+            "http://registry.example.org/record?id=7#abstract",
+            "http://registry.example.org/record?id=7#abstract",
+        ),
+        # Only an empty path gains a trailing slash, so these are three identifiers
+        ("https://theses.example.edu", "https://theses.example.edu/"),
+        ("https://theses.example.edu/handle", "https://theses.example.edu/handle"),
+        ("https://theses.example.edu/handle/", "https://theses.example.edu/handle/"),
+    ],
+)
+def test_url_canonicalization(url_input: str, expected: str):
+    obj = destiny_sdk.identifiers.URLIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.URL,
+        identifier=url_input,
+    )
+    assert obj.identifier == expected
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "not a url",
+        "theses.example.edu/handle/1234",
+        "/handle/1234",
+    ],
+)
+def test_invalid_url(url: str):
+    with pytest.raises(ValidationError, match="Input should be a valid URL"):
+        destiny_sdk.identifiers.URLIdentifier(
+            identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.URL,
+            identifier=url,
+        )
+
+
+def test_url_rejects_non_http_scheme():
+    with pytest.raises(ValidationError, match="URL scheme should be"):
+        destiny_sdk.identifiers.URLIdentifier(
+            identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.URL,
+            identifier="ftp://theses.example.edu/handle/1234",
+        )
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        # A host with its own identifier type is a data quality problem, not a
+        # validation one: the host list it would take is unmaintainable, and a
+        # DOI-shaped path can belong to a URL that is not a DOI.
+        "https://doi.org/10.1000/xyz123",
+        "https://www.cochranelibrary.com/central/doi/10.1002/central/CN-00796769/full",
+    ],
+)
+def test_url_accepts_any_host(url: str):
+    obj = destiny_sdk.identifiers.URLIdentifier(
+        identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.URL,
+        identifier=url,
+    )
+    assert obj.identifier == url
+
+
 def test_valid_other_identifier():
     obj = destiny_sdk.identifiers.OtherIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OTHER,
@@ -220,6 +298,12 @@ class TestIdentifierLookupSerialization:
                 "W123456789",
                 None,
                 "open_alex:W123456789",
+            ),
+            (
+                destiny_sdk.identifiers.ExternalIdentifierType.URL,
+                "https://theses.example.edu/handle/1234",
+                None,
+                "url:https://theses.example.edu/handle/1234",
             ),
             # Other identifier type
             (
@@ -301,6 +385,18 @@ class TestIdentifierLookup:
                     identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.OPEN_ALEX,
                 ),
                 "open_alex:W123456789",
+            ),
+            # URI identifier
+            (
+                destiny_sdk.identifiers.URLIdentifier(
+                    identifier="https://theses.example.edu/handle/1234",
+                    identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.URL,
+                ),
+                destiny_sdk.identifiers.IdentifierLookup(
+                    identifier="https://theses.example.edu/handle/1234",
+                    identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.URL,
+                ),
+                "url:https://theses.example.edu/handle/1234",
             ),
             # Other identifier type
             (

@@ -877,6 +877,32 @@ async def test_lookup_references_accepts_csv(
     assert str(reference_doi.id) in returned_ids
 
 
+async def test_lookup_references_by_url(
+    session: AsyncSession,
+    client: AsyncClient,
+) -> None:
+    """A reference whose only identifier is a URL is returned by that URL."""
+    url = "https://theses.example.edu/handle/1234/5678"
+    reference = SQLReference(visibility=Visibility.RESTRICTED)
+    session.add(reference)
+    await session.commit()
+    session.add(
+        ExternalIdentifier(
+            reference_id=reference.id,
+            identifier=url,
+            identifier_type="url",
+        )
+    )
+    await session.commit()
+
+    response = await client.get(
+        "/v1/references/",
+        params={"identifier": f"url:{url}"},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert [item["id"] for item in response.json()] == [str(reference.id)]
+
+
 async def test_lookup_references_too_many_identifiers(
     client: AsyncClient,
 ) -> None:

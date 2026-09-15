@@ -34,6 +34,7 @@ from destiny_sdk.identifiers import (
     OtherIdentifier,
     ProQuestIdentifier,
     PubMedIdentifier,
+    URLIdentifier,
 )
 from faker import Faker
 from faker.providers import BaseProvider
@@ -141,6 +142,15 @@ class OpenAlexIdentifierFactory(factory.Factory):
     )
 
 
+class URLIdentifierFactory(factory.Factory):
+    class Meta:
+        model = URLIdentifier
+
+    identifier = factory.LazyFunction(
+        lambda: f"https://theses.{fake.domain_name()}/handle/{fake.pyint()}"
+    )
+
+
 class OtherIdentifierFactory(factory.Factory):
     class Meta:
         model = OtherIdentifier
@@ -155,6 +165,7 @@ ExternalIdentifierFactories = [
     PubMedIdentifierFactory(),
     ProquestIdentifierFactory(),
     OpenAlexIdentifierFactory(),
+    URLIdentifierFactory(),
     OtherIdentifierFactory(),
 ]
 
