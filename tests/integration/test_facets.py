@@ -85,6 +85,7 @@ def primed_vocab() -> Iterator[str]:
         client._vocabulary_cache.pop(VOCAB_URI, None)  # noqa: SLF001
         client.get_concept_labels.cache_clear()
         client.get_concept_schemes.cache_clear()
+        client.get_scheme_members.cache_clear()
         client.get_concept_scheme_members.cache_clear()
 
 
