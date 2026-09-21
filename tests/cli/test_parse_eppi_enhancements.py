@@ -36,7 +36,7 @@ def _export(tmp_path: Path, *references: dict) -> Path:
     return path
 
 
-def _args(export: Path, output: Path) -> argparse.Namespace:
+def _args(export: Path, output: Path, *extra: str) -> argparse.Namespace:
     """Build the arguments for a run against the given export."""
     return argument_parser().parse_args(
         [
@@ -50,6 +50,7 @@ def _args(export: Path, output: Path) -> argparse.Namespace:
             "EEF additional coding request",
             "--source-export-date",
             "2026-09-16",
+            *extra,
         ]
     )
 
@@ -114,6 +115,19 @@ def test_reference_without_an_id_is_never_verified(
 
     assert not httpx_mock.get_requests()
     assert not output.exists()
+
+
+def test_skip_verification_asks_the_repository_nothing(
+    tmp_path: Path, httpx_mock: HTTPXMock
+) -> None:
+    """A disconnected run writes the enhancements without checking them."""
+    export = _export(tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL})
+    output = tmp_path / "enhancements.jsonl"
+
+    parse_eppi_enhancements(_args(export, output, "--skip-verification"))
+
+    assert not httpx_mock.get_requests()
+    assert len(output.read_text().splitlines()) == 1
 
 
 def test_unauthorized_verification_is_not_reported_as_a_missing_reference(

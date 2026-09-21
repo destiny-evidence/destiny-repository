@@ -1,12 +1,13 @@
-r"""
+"""
 A utility to parse an EPPI export into raw enhancements to add to existing references.
 
 Each reference in the export must carry the id of the destiny reference it codes in
 its URL field, e.g.
 https://data.evidence-repository.org/esea/references/019f880e-2c39-7138-a387-221808f02d98
 
-References are verified to exist in the environment they're run against.
-If the export contains a missing reference the parsing fails.
+References are verified to exist in the environment they're run against, unless
+``--skip-verification`` is passed. If the export contains a missing reference the
+parsing fails.
 
 Parse an export into Enhancements for existing references::
 
@@ -71,11 +72,14 @@ def parse_eppi_enhancements(args: argparse.Namespace) -> None:
     )
     print(f"Parsed {len(enhancements)} enhancement(s) from {args.input}.")
 
-    with args.client as client:
-        verify_references(
-            client,
-            {enhancement.reference_id for enhancement in enhancements},
-        )
+    if args.skip_verification:
+        print("Skipping verification that the references exist.")
+    else:
+        with args.client as client:
+            verify_references(
+                client,
+                {enhancement.reference_id for enhancement in enhancements},
+            )
 
     with Path(args.output).open("w") as f:
         f.writelines(enhancement.to_jsonl() + "\n" for enhancement in enhancements)
@@ -126,6 +130,15 @@ def argument_parser() -> ApiArgumentParser:
         help=(
             "Any fields to exclude from the raw enhancements. "
             "Defaults to 'Abstract' as this is stored in its own enhancement."
+        ),
+    )
+    parser.add_argument(
+        "--skip-verification",
+        action="store_true",
+        default=False,
+        help=(
+            "Write the enhancements without checking their references exist. "
+            "Defaults to false."
         ),
     )
     return parser
