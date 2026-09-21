@@ -1,14 +1,12 @@
 """Import references from a EPPI export file and write them to a .jsonl file."""
 
 import argparse
-import base64
-import hashlib
 import json
 import re
 from datetime import datetime
 from pathlib import Path
 
-from destiny_sdk.parsers.eppi_parser import EPPIParser
+from destiny_sdk.parsers.eppi_parser import EPPIParser, load_eppi_export
 
 
 def parse_date(date_to_parse: str) -> datetime:
@@ -136,17 +134,7 @@ def main() -> None:
             f"e.g. '{DOMAIN_INCLUSION_TAG_SCHEME}/hpv'."
         )
 
-    input_path = Path(args.input)
-
-    with input_path.open("rb") as f:
-        file_bytes = f.read()
-        checksum = base64.b64encode(hashlib.md5(file_bytes).digest()).decode("ascii")  # noqa: S324
-
-    # errors='replace' is deliberate: EPPI exports occasionally contain CESU-8
-    # surrogate pairs for non-BMP chars (e.g. mathematical italics) that strict
-    # UTF-8 rejects. We'd rather degrade those rare chars to U+FFFD than fail
-    # the whole import.
-    data = json.loads(file_bytes.decode(args.input_codec, errors="replace"))
+    data, checksum = load_eppi_export(Path(args.input), args.input_codec)
 
     eppi_parser = EPPIParser(
         tags=args.tags,
@@ -157,7 +145,7 @@ def main() -> None:
         raw_enhancement_excludes=args.exclude_from_raw,
     )
 
-    references, failed_refs = eppi_parser.parse_data(
+    references, failed_refs = eppi_parser.parse_references(
         data,
         source=args.source,
         robot_version=checksum,

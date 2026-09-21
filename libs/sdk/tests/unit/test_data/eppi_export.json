@@ -1,0 +1,161 @@
+{
+  "CodeSets": [
+    {
+      "SetName": "EEF main data extraction v 2.1 Jan 2024",
+      "SetId": 96392,
+      "ReviewSetId": 96410,
+      "SetDescription": "Updated on January 2024 to address the nested problem of \"EEF evaluation report\" question (Section 5).",
+      "SetType": {
+        "SetTypeDescription": "The Standard codeset type is used for regular coding such as keywording or data-extraction. This codeset type can contain multiple levels of child codes but cannot contain the special code types \"Include\" and \"Exclude\".",
+        "SetTypeName": "Standard",
+        "SetTypeId": 3
+      },
+      "OldestKnownId": 0,
+      "OriginalSetId": 0,
+      "Attributes": {
+        "AttributesList": []
+      }
+    },
+    {
+      "SetName": "EEF attainment effect size data extraction v 2.1 Jan 2024",
+      "SetId": 99762,
+      "ReviewSetId": 99780,
+      "SetDescription": "Data extraction tool to support meta-analysis of the impact data from included studies. Updated January 2024 to add CEDIL strands.",
+      "SetType": {
+        "SetTypeDescription": "The Standard codeset type is used for regular coding such as keywording or data-extraction. This codeset type can contain multiple levels of child codes but cannot contain the special code types \"Include\" and \"Exclude\".",
+        "SetTypeName": "Standard",
+        "SetTypeId": 3
+      },
+      "OldestKnownId": 0,
+      "OriginalSetId": 0,
+      "Attributes": {
+        "AttributesList": []
+      }
+    },
+    {
+      "SetName": "Jacobs MVP data extraction Sept 2026",
+      "SetId": 391604,
+      "ReviewSetId": 391668,
+      "SetDescription": "",
+      "SetType": {
+        "SetTypeDescription": "The Standard codeset type is used for regular coding such as keywording or data-extraction. This codeset type can contain multiple levels of child codes but cannot contain the special code types \"Include\" and \"Exclude\".",
+        "SetTypeName": "Standard",
+        "SetTypeId": 3
+      },
+      "OldestKnownId": 361020,
+      "OriginalSetId": 361020,
+      "Attributes": {
+        "AttributesList": []
+      }
+    }
+  ],
+  "References": [
+    {
+      "Codes": [
+        {
+          "AttributeId": 5215229,
+          "AdditionalText": "",
+          "ArmId": 0,
+          "ArmTitle": "",
+          "ItemAttributeFullTextDetails": []
+        },
+        {
+          "AttributeId": 5215238,
+          "AdditionalText": "",
+          "ArmId": 0,
+          "ArmTitle": "",
+          "ItemAttributeFullTextDetails": [
+            {
+              "ItemDocumentId": 1418527,
+              "TextFrom": 0,
+              "TextTo": 0,
+              "Text": "Page 12:\n[¬s]\"Early Childhood Care and Development Programme\n(ECCD)[¬e]\"",
+              "IsFromPDF": true,
+              "DocTitle": "Rao (2020).pdf",
+              "ItemArm": ""
+            }
+          ]
+        },
+        {
+          "AttributeId": 5215564,
+          "AdditionalText": "",
+          "ArmId": 0,
+          "ArmTitle": "",
+          "ItemAttributeFullTextDetails": [
+            {
+              "ItemDocumentId": 1418527,
+              "TextFrom": 0,
+              "TextTo": 0,
+              "Text": "Page 12:\n[¬s]\"The objectives of this study were to assess the relevance, effectiveness, efficiency,\nand sustainability of the provision of ECCD services in Bhutan[¬e]\"",
+              "IsFromPDF": true,
+              "DocTitle": "Rao (2020).pdf",
+              "ItemArm": ""
+            }
+          ]
+        }
+      ],
+      "Outcomes": [
+        {
+          "OutcomeId": 138630,
+          "ItemSetId": 147616272,
+          "OutcomeTypeId": 1,
+          "OutcomeTypeName": "Continuous",
+          "Title": "Early Childhood Development Index (ECDI) - Rural ",
+          "ShortTitle": "Rao (2020)",
+          "OutcomeDescription": "Attending ECCD  vs non attendance - Table 11 - ECDI assesses children on items in four domains: literacy, physical, social-emotional and learning. On a scale of 1 to 100, the ECDI for chil- dren in Bhutan was found to be only 71.5 overall, with minimal gender differences. Gen- erally, children scored high on physical, social and learning items but very low on literacy and numeracy items.",
+          "SMD": 0.4508986130553956,
+          "SESMD": 0.10464134192728905,
+          "CILowerSMD": 0.24580158287790904,
+          "CIUpperSMD": 0.6559956432328822,
+          "ES": 0.4508986130553956,
+          "SEES": 0.10464134192728905,
+          "OutcomeCodes": {
+            "OutcomeItemAttributesList": [
+              {
+                "AdditionalText": "",
+                "AttributeId": 5407009,
+                "AttributeName": "Sample: All",
+                "OutcomeId": 138630,
+                "OutcomeItemAttributeId": 438912
+              },
+              {
+                "AdditionalText": "",
+                "AttributeId": 5407010,
+                "AttributeName": "Post-test unadjusted (select one from this group)",
+                "OutcomeId": 138630,
+                "OutcomeItemAttributeId": 438913
+              },
+              {
+                "AdditionalText": "",
+                "AttributeId": 5407029,
+                "AttributeName": "Test type: Researcher developed test",
+                "OutcomeId": 138630,
+                "OutcomeItemAttributeId": 438914
+              },
+              {
+                "AdditionalText": "",
+                "AttributeId": 7755575,
+                "AttributeName": "Other outcome",
+                "OutcomeId": 138630,
+                "OutcomeItemAttributeId": 438915
+              }
+            ]
+          }
+        }
+      ],
+      "Arms": [],
+      "Timepoints": [],
+      "ItemId": 116012899,
+      "Title": "An Evaluation of the Early Childhood Care and Development Programme in Bhutan",
+      "ShortTitle": "Rao (2020)",
+      "Year": "2020",
+      "Publisher": "UNICEF Bhutan; Ministry of Education, Royal Government of Bhutan",
+      "URL": "https://data.evidence-repository.org/esea/references/019f880e-2c39-7138-a387-221808f02d98",
+      "Abstract": "This evaluation of the Early Childhood Care and Development Programme (ECCD) in Bhutan focuses on the critical contributions of ECCD services in achieving national objectives and global priorities that are aligned with UN Sustainable Development Goals (SDG) Target 4.2. This Target specifies that countries need to ensure that all girls and boys have access to quality early childhood development, care and pre-primary education so that they are ready for primary education. Findings from this evaluation highlight good practices as well as gaps in planning, implementation, budgeting, and coordination, and identify impacts of the ECCD programme on child development. The evaluation also proposes practical and contextualised recommendations for the National Multi-Sectoral ECCD Strategic Plan to strengthen ECCD programmes. In addition, some of the data collected will set a baseline to assess progress towards SDG Target 4.2. KW - early childhood care and development",
+      "TypeName": "Report",
+      "Authors": "Rao Nirmala; Cohrssen Caroline; Chan Stephanie W. Y; Richards Ben; ",
+      "DOI": "",
+      "ItemStatus": "I"
+    }
+  ]
+}
