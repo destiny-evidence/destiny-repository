@@ -34,6 +34,7 @@ from tests.factories import (
     EnhancementFactory,
     LinkedExternalIdentifierFactory,
     ReferenceFactory,
+    URLIdentifierFactory,
 )
 
 
@@ -751,6 +752,47 @@ async def test_identifier_only_input_matches_when_es_unsearchable(build_service)
     assert result.candidates[0].routes[0].type == "identifier"
     assert result.diagnostics.identifier_returned == 1
     assert result.diagnostics.es_total_hits is None
+
+
+@pytest.mark.asyncio
+async def test_url_identifier_input_is_not_union_matched(build_service):
+    """A URL is a location rather than a work identifier, so it stays out of the union.
+
+    It still gets exact-duplicate protection at import, which keys off any
+    non-``other`` identifier.
+    """
+    url = URLIdentifierFactory.build(
+        identifier="https://theses.example.edu/handle/1234"
+    )
+    identifier_ref = ReferenceFactory.build(visibility="public")
+    identifier_ref = identifier_ref.model_copy(
+        update={
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    identifier=url, reference_id=identifier_ref.id
+                )
+            ],
+            "duplicate_decision": None,
+        }
+    )
+    service, _, sql_refs, _ = build_service(found_references=[identifier_ref])
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                identifiers=[
+                    CandidateIdentifier(
+                        identifier_type=ExternalIdentifierType.URL,
+                        identifier=url.identifier,
+                    )
+                ]
+            ),
+            hydrate=False,
+        )
+    )
+
+    sql_refs.find_with_identifiers.assert_not_awaited()
+    assert result.candidates == []
 
 
 async def test_invalid_identifier_raises_deduplication_value_error(build_service):
