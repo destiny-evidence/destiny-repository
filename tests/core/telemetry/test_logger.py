@@ -1,13 +1,21 @@
 """Tests for the logger module."""
 
+import io
 import logging
+import logging.config
+from collections.abc import Generator
 from unittest.mock import patch
 
+import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
+from uvicorn.config import LOGGING_CONFIG
 
 from app.core.config import LogSamplingConfig
-from app.core.telemetry.logger import OrphanLogLevelSamplingFilter
+from app.core.telemetry.logger import (
+    OrphanLogLevelSamplingFilter,
+    UvicornAccessFilter,
+)
 
 
 class TestOrphanLogLevelSamplingFilter:
@@ -77,3 +85,80 @@ class TestOrphanLogLevelSamplingFilter:
             assert trace.get_current_span().get_span_context().is_valid
             # Log should pass even with 0.0 sample rate
             assert filter_.filter(record) is True
+
+
+@pytest.fixture
+def _restore_uvicorn_loggers() -> Generator[None]:
+    """Snapshot and restore uvicorn logger state around a dictConfig call."""
+    names = ("uvicorn", "uvicorn.error", "uvicorn.access")
+    saved = {
+        name: (
+            logging.getLogger(name).handlers[:],
+            logging.getLogger(name).filters[:],
+            logging.getLogger(name).level,
+            logging.getLogger(name).propagate,
+            logging.getLogger(name).disabled,
+        )
+        for name in names
+    }
+    yield
+    for name, (handlers, filters, level, propagate, disabled) in saved.items():
+        restored = logging.getLogger(name)
+        restored.handlers[:] = handlers
+        restored.filters[:] = filters
+        restored.setLevel(level)
+        restored.propagate = propagate
+        restored.disabled = disabled
+
+
+class TestUvicornAccessFilter:
+    """Tests for UvicornAccessFilter."""
+
+    def test_drops_every_record(self):
+        """The filter drops access records regardless of level or content."""
+        filter_ = UvicornAccessFilter()
+        record = logging.LogRecord(
+            name="uvicorn.access",
+            level=logging.INFO,
+            pathname="",
+            lineno=0,
+            msg="test message",
+            args=(),
+            exc_info=None,
+        )
+
+        assert filter_.filter(record) is False
+
+    @pytest.mark.usefixtures("_restore_uvicorn_loggers")
+    def test_access_log_stays_silent_after_uvicorn_log_config(self):
+        """Uvicorn's dictConfig resets `disabled`, so the filter must do the work."""
+        logging.config.dictConfig(LOGGING_CONFIG)
+        access = logging.getLogger("uvicorn.access")
+        stream = io.StringIO()
+        for handler in access.handlers:
+            handler.setStream(stream)
+
+        access.info(
+            '%s - "%s %s HTTP/%s" %d',
+            "10.0.0.1:1234",
+            "GET",
+            "/v1/system/ping/",
+            "1.1",
+            200,
+        )
+
+        assert access.disabled is False
+        assert stream.getvalue() == ""
+
+    @pytest.mark.usefixtures("_restore_uvicorn_loggers")
+    def test_uvicorn_error_log_is_not_silenced(self):
+        """Startup lines and ASGI tracebacks ride uvicorn.error and must survive."""
+        logging.config.dictConfig(LOGGING_CONFIG)
+        stream = io.StringIO()
+        # uvicorn.error carries no handler of its own; the parent serves it.
+        for handler in logging.getLogger("uvicorn").handlers:
+            handler.setStream(stream)
+
+        logging.getLogger("uvicorn.error").info("Application startup complete.")
+
+        assert "Application startup complete." in stream.getvalue()
