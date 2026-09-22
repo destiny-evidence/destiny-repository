@@ -177,6 +177,17 @@ class LoggerConfigurer:
         self._root_logger.addHandler(handler)
         self._root_logger.setLevel(getattr(logging, log_level.upper()))
 
+    def route_uvicorn_logs_to_root(self) -> None:
+        """
+        Send uvicorn's own logs through our handlers only.
+
+        Call after uvicorn has configured logging: its dictConfig adds a plain
+        stderr handler, so until then every record is rendered twice.
+        """
+        uvicorn_logger = logging.getLogger("uvicorn")
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
+
     def configure_otel_logger(
         self, handler: LoggingHandler, orphan_log_sampling_config: "LogSamplingConfig"
     ) -> None:

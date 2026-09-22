@@ -7,6 +7,7 @@ from collections.abc import Generator
 from unittest.mock import patch
 
 import pytest
+from fastapi_cli.utils.cli import get_uvicorn_log_config
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from uvicorn.config import LOGGING_CONFIG
@@ -15,6 +16,7 @@ from app.core.config import LogSamplingConfig
 from app.core.telemetry.logger import (
     OrphanLogLevelSamplingFilter,
     UvicornAccessFilter,
+    logger_configurer,
 )
 
 
@@ -101,7 +103,10 @@ def _restore_uvicorn_loggers() -> Generator[None]:
         )
         for name in names
     }
+    root_handlers, root_level = logging.root.handlers[:], logging.root.level
     yield
+    logging.root.handlers[:] = root_handlers
+    logging.root.setLevel(root_level)
     for name, (handlers, filters, level, propagate, disabled) in saved.items():
         restored = logging.getLogger(name)
         restored.handlers[:] = handlers
@@ -162,3 +167,42 @@ class TestUvicornAccessFilter:
         logging.getLogger("uvicorn.error").info("Application startup complete.")
 
         assert "Application startup complete." in stream.getvalue()
+
+    @pytest.mark.usefixtures("_restore_uvicorn_loggers")
+    def test_uvicorn_logs_reach_root_exactly_once(self):
+        """Uvicorn's own stderr handler duplicates what our root handler renders."""
+        logging.config.dictConfig(LOGGING_CONFIG)
+        own_stream = io.StringIO()
+        for handler in logging.getLogger("uvicorn").handlers:
+            handler.setStream(own_stream)
+        root_stream = io.StringIO()
+        logging.root.addHandler(logging.StreamHandler(root_stream))
+        logging.root.setLevel(logging.INFO)
+
+        logger_configurer.route_uvicorn_logs_to_root()
+        logging.getLogger("uvicorn.error").info("Application startup complete.")
+
+        assert own_stream.getvalue() == ""
+        assert "Application startup complete." in root_stream.getvalue()
+
+    @pytest.mark.usefixtures("_restore_uvicorn_loggers")
+    def test_lines_logged_before_the_lifespan_still_duplicate(self):
+        """
+        Uvicorn logs two lines before entering the lifespan that reroutes it.
+
+        `fastapi run` leaves `uvicorn.propagate` at its default, so until the
+        lifespan runs each record reaches both uvicorn's handler and ours.
+        """
+        logging.config.dictConfig(get_uvicorn_log_config())
+        own_stream = io.StringIO()
+        for handler in logging.getLogger("uvicorn").handlers:
+            handler.setStream(own_stream)
+        root_stream = io.StringIO()
+        logging.root.addHandler(logging.StreamHandler(root_stream))
+        logging.root.setLevel(logging.INFO)
+
+        logging.getLogger("uvicorn.error").info("Started server process [1]")
+
+        assert logging.getLogger("uvicorn").propagate is True
+        assert "Started server process" in own_stream.getvalue()
+        assert "Started server process" in root_stream.getvalue()
