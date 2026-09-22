@@ -276,11 +276,11 @@ class AzureServiceBusBroker(AsyncBroker):
                 b"message_id",
                 sb_message.application_properties.get("message_id"),
             )
-            logger.info("Attempting to complete message", task_id=task_id)
+            logger.debug("Attempting to complete message", task_id=task_id)
             async with self._receive_lock:
-                logger.info("Completing message", task_id=task_id)
+                logger.debug("Completing message", task_id=task_id)
                 await receiver.complete_message(sb_message)
-                logger.info("Completed message", task_id=task_id)
+                logger.debug("Completed message", task_id=task_id)
 
         async def lock_renewal_failure_callback(
             sb_message: ServiceBusReceivedMessage | ServiceBusSession,
@@ -367,7 +367,7 @@ class AzureServiceBusBroker(AsyncBroker):
                         max_wait_time=settings.message_broker_priority_queue_max_wait
                     )
                 for sb_message in priority_batch:
-                    logger.info("Yielding priority message")
+                    logger.debug("Yielding priority message")
                     yield self._build_ackable(sb_message, self.priority_receiver)
                 if priority_batch:
                     # Keep draining priority before touching the default queue
@@ -378,7 +378,7 @@ class AzureServiceBusBroker(AsyncBroker):
                         max_wait_time=settings.message_broker_queue_max_wait
                     )
                 for sb_message in batch_messages:
-                    logger.info("Yielding message")
+                    logger.debug("Yielding message")
                     yield self._build_ackable(sb_message, self.receiver)
             except Exception:
                 logger.exception("Error receiving messages")
