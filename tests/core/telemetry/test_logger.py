@@ -7,13 +7,15 @@ from collections.abc import Generator
 from unittest.mock import patch
 
 import pytest
+import structlog
 from fastapi_cli.utils.cli import get_uvicorn_log_config
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from uvicorn.config import LOGGING_CONFIG
 
-from app.core.config import LogSamplingConfig
+from app.core.config import LogLevel, LogSamplingConfig
 from app.core.telemetry.logger import (
+    LoggerConfigurer,
     OrphanLogLevelSamplingFilter,
     UvicornAccessFilter,
     logger_configurer,
@@ -114,6 +116,45 @@ def _restore_uvicorn_loggers() -> Generator[None]:
         restored.setLevel(level)
         restored.propagate = propagate
         restored.disabled = disabled
+
+
+@pytest.fixture
+def _restore_logging_config() -> Generator[None]:
+    """Snapshot and restore root handlers and structlog config around a reconfigure."""
+    saved_structlog = structlog.get_config()
+    root_handlers, root_level = logging.root.handlers[:], logging.root.level
+    yield
+    logging.root.handlers[:] = root_handlers
+    logging.root.setLevel(root_level)
+    structlog.configure(**saved_structlog)
+
+
+class TestConsoleElasticTransport:
+    """Tests for elastic transport noise on the console handler."""
+
+    @pytest.mark.usefixtures("_restore_logging_config")
+    def test_elastic_transport_is_dropped_but_app_logs_are_not(self):
+        """
+        Logs every Elasticsearch request, and stdout is the billed destination.
+
+        OTEL keeps its own copy where instrument_elasticsearch is on.
+        """
+        structlog.reset_defaults()
+        LoggerConfigurer().configure_console_logger(
+            log_level=LogLevel.INFO, rich_rendering=False
+        )
+        stream = io.StringIO()
+        for handler in logging.root.handlers:
+            handler.setStream(stream)
+
+        logging.getLogger("elastic_transport.transport").info(
+            "GET /reference_v3/_search"
+        )
+        logging.getLogger("app.domain.references.tasks").info("kept this one")
+
+        written = stream.getvalue()
+        assert "kept this one" in written
+        assert "_search" not in written
 
 
 class TestUvicornAccessFilter:

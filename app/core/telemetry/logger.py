@@ -164,6 +164,9 @@ class LoggerConfigurer:
         # Override root python logging
         # This primarily applies to third-party libraries
         handler = logging.StreamHandler(sys.stdout)
+        # Logs every Elasticsearch request, a third of the worker's log volume.
+        # The OTEL handler decides separately, gated on instrument_elasticsearch.
+        handler.addFilter(ElasticTransportFilter())
         handler.setFormatter(
             structlog.stdlib.ProcessorFormatter(
                 processors=[
