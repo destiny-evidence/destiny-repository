@@ -18,6 +18,8 @@ from app.core.telemetry.logger import (
     LoggerConfigurer,
     OrphanLogLevelSamplingFilter,
     UvicornAccessFilter,
+    add_trace_context,
+    filter_otel_attributes,
     logger_configurer,
 )
 
@@ -247,3 +249,53 @@ class TestUvicornAccessFilter:
         assert logging.getLogger("uvicorn").propagate is True
         assert "Started server process" in own_stream.getvalue()
         assert "Started server process" in root_stream.getvalue()
+
+
+class TestTraceContext:
+    """Tests for trace correlation on log events."""
+
+    def test_adds_ids_inside_a_span(self):
+        """Console logs are plain text, so the ids must ride in the event itself."""
+        tracer = TracerProvider().get_tracer(__name__)
+
+        with tracer.start_as_current_span("test-span") as span:
+            event_dict = add_trace_context(None, "info", {})
+            span_context = span.get_span_context()
+
+        assert event_dict["trace_id"] == format(span_context.trace_id, "032x")
+        assert event_dict["span_id"] == format(span_context.span_id, "016x")
+
+    def test_adds_nothing_outside_a_span(self):
+        """A log with no active span has nothing to correlate to."""
+        assert add_trace_context(None, "info", {}) == {}
+
+    def test_otel_body_does_not_repeat_trace_context(self):
+        """OTLP transports trace context on the record, so the body would duplicate."""
+        event_dict = {
+            "event": "something",
+            "timestamp": "2026-09-22T00:00:00Z",
+            "trace_id": "0af7651916cd43dd8448eb211c80319c",
+            "span_id": "b7ad6b7169203331",
+        }
+
+        assert filter_otel_attributes(None, "info", event_dict) == {
+            "event": "something"
+        }
+
+    @pytest.mark.usefixtures("_restore_logging_config")
+    def test_console_output_carries_the_trace_id(self):
+        """The whole point is correlating a stdout line back to its trace."""
+        structlog.reset_defaults()
+        LoggerConfigurer().configure_console_logger(
+            log_level=LogLevel.INFO, rich_rendering=False
+        )
+        stream = io.StringIO()
+        for handler in logging.root.handlers:
+            handler.setStream(stream)
+        tracer = TracerProvider().get_tracer(__name__)
+
+        with tracer.start_as_current_span("test-span") as span:
+            structlog.get_logger("app.test").info("inside a span")
+            expected = format(span.get_span_context().trace_id, "032x")
+
+        assert expected in stream.getvalue()
