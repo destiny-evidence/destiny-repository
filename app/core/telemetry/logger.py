@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, cast
 import structlog
 from opentelemetry import trace
 from opentelemetry.sdk._logs import LoggingHandler
+from opentelemetry.trace import SpanContext
 from opentelemetry.util.types import AnyValue
 
 if TYPE_CHECKING:
@@ -35,6 +36,24 @@ class AttrFilteredLoggingHandler(LoggingHandler):
         return attributes
 
 
+def format_span_context(span_context: SpanContext) -> dict[str, str]:
+    """Render trace and span ids as the hex strings OpenTelemetry uses on the wire."""
+    return {
+        "trace_id": format(span_context.trace_id, "032x"),
+        "span_id": format(span_context.span_id, "016x"),
+    }
+
+
+def add_trace_context(
+    _logger: object, _method_name: str, event_dict: structlog.typing.EventDict
+) -> structlog.typing.EventDict:
+    """Add the active trace and span ids so a console line can be correlated."""
+    span_context = trace.get_current_span().get_span_context()
+    if span_context.is_valid:
+        event_dict.update(format_span_context(span_context))
+    return event_dict
+
+
 def filter_otel_attributes(
     _logger: object, _method_name: str, event_dict: structlog.typing.EventDict
 ) -> structlog.typing.EventDict:
@@ -42,6 +61,9 @@ def filter_otel_attributes(
     # Remove timestamp from the event so we can aggregate event bodies
     # otel will add its own timestamp to the event
     event_dict.pop("timestamp", None)
+    # OTLP carries trace context on the record, so the body would only repeat it.
+    event_dict.pop("trace_id", None)
+    event_dict.pop("span_id", None)
     return event_dict
 
 
@@ -121,6 +143,7 @@ class LoggerConfigurer:
                 structlog.processors.TimeStamper(fmt="iso", utc=True),
                 structlog.processors.add_log_level,
                 structlog.stdlib.add_logger_name,
+                add_trace_context,
             ],
         )
 
@@ -164,6 +187,8 @@ class LoggerConfigurer:
         # Override root python logging
         # This primarily applies to third-party libraries
         handler = logging.StreamHandler(sys.stdout)
+        # On the handler rather than the logger's level, so OTEL output is unaffected.
+        handler.addFilter(ElasticTransportFilter())
         handler.setFormatter(
             structlog.stdlib.ProcessorFormatter(
                 processors=[

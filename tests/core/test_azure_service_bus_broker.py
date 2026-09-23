@@ -6,11 +6,13 @@ including initialization, message sending, and delayed message delivery.
 """
 
 import asyncio
+import logging
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid7
 
 import pytest
+import structlog
 from azure.servicebus.aio import (
     AutoLockRenewer,
     ServiceBusClient,
@@ -523,3 +525,50 @@ async def test_only_renew_lock_when_specified(
         mock_lock_renewer.register.assert_called_once()
     else:
         mock_lock_renewer.register.assert_not_called()
+
+
+@pytest.mark.anyio
+async def test_message_lifecycle_logs_at_debug(
+    broker: AzureServiceBusBroker,
+    caplog: pytest.LogCaptureFixture,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Per-message broker chatter is half the worker's log volume, so it stays debug."""
+    # structlog filters by level before stdlib sees the record, so caplog alone
+    # cannot observe debug output from the module's configured logger.
+    monkeypatch.setattr(
+        "app.core.azure_service_bus_broker.logger",
+        structlog.wrap_logger(
+            logging.getLogger("app.core.azure_service_bus_broker"),
+            wrapper_class=structlog.make_filtering_bound_logger(logging.DEBUG),
+        ),
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="lifecycle-1",
+            task_name="normal",
+            message=b"hi",
+            labels={},
+        )
+    )
+
+    with caplog.at_level(logging.DEBUG, logger="app.core.azure_service_bus_broker"):
+        async for ackable in broker.listen():
+            await maybe_awaitable(ackable.ack())
+            break
+
+    emitted = [
+        record
+        for record in caplog.records
+        if record.name == "app.core.azure_service_bus_broker"
+    ]
+
+    for expected in (
+        "Yielding message",
+        "Attempting to complete message",
+        "Completing message",
+        "Completed message",
+    ):
+        matching = [record for record in emitted if expected in record.message]
+        assert matching, f"{expected} was not logged at all"
+        assert all(record.levelno == logging.DEBUG for record in matching)
