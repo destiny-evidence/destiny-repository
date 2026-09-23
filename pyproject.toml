@@ -53,6 +53,7 @@ dependencies = [
     "azure-servicebus>=7.14.2,<8",
     "azure-storage-blob>=12.25.1,<13",
     "cachetools>=5.5.2,<6",
+    "destiny-deduper>=0.2.6,<0.3",
     "destiny-sdk",
     "elasticsearch[async]>=9.1.2,<9.2",
     "fastapi[standard]~=0.140.13",
@@ -160,6 +161,7 @@ default-groups = [
 ]
 exclude-dependencies = [
     "ecdsa", # Required until https://github.com/mpdavis/python-jose/issues/390 is resolved
+    "python-semantic-release", # Release tool; not imported at runtime
 ]
 package = false
 
