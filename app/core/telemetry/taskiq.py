@@ -18,7 +18,7 @@ from taskiq import (
 )
 
 from app.core.telemetry.attributes import Attributes
-from app.core.telemetry.logger import get_logger
+from app.core.telemetry.logger import format_span_context, get_logger
 
 tracer = trace.get_tracer(__name__)
 logger = get_logger(__name__)
@@ -86,11 +86,7 @@ async def queue_task_with_trace(
 
     # Pass span context for linking (not propagation) so tasks
     # create their own traces with independent sampling decisions
-    span_context = trace.get_current_span().get_span_context()
-    trace_link = {
-        "trace_id": format(span_context.trace_id, "032x"),
-        "span_id": format(span_context.span_id, "016x"),
-    }
+    trace_link = format_span_context(trace.get_current_span().get_span_context())
     await task.kiq(
         *args,
         **kwargs,

@@ -136,11 +136,7 @@ class TestConsoleElasticTransport:
 
     @pytest.mark.usefixtures("_restore_logging_config")
     def test_elastic_transport_is_dropped_but_app_logs_are_not(self):
-        """
-        Logs every Elasticsearch request, and stdout is the billed destination.
-
-        OTEL keeps its own copy where instrument_elasticsearch is on.
-        """
+        """One line per Elasticsearch request, and stdout is the billed destination."""
         structlog.reset_defaults()
         LoggerConfigurer().configure_console_logger(
             log_level=LogLevel.INFO, rich_rendering=False
