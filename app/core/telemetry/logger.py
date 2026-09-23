@@ -53,6 +53,14 @@ class ElasticTransportFilter(logging.Filter):
         return record.name != "elastic_transport.transport"
 
 
+class UvicornAccessFilter(logging.Filter):
+    """Filter out uvicorn's access log, which duplicates LoggerMiddleware."""
+
+    def filter(self, record: logging.LogRecord) -> bool:  # noqa: ARG002
+        """Return False to drop every uvicorn access record."""
+        return False
+
+
 class OrphanLogLevelSamplingFilter(logging.Filter):
     """
     Logging filter that samples orphan logs based on their level.
@@ -100,7 +108,9 @@ class LoggerConfigurer:
         self._root_logger.handlers.clear()
 
         logging.getLogger("uvicorn.access").disabled = True
-        logging.getLogger("uvicorn.error").disabled = True
+        # uvicorn's dictConfig runs after this import and resets `disabled`,
+        # but leaves filters alone, so the filter is what actually holds.
+        logging.getLogger("uvicorn.access").addFilter(UvicornAccessFilter())
         # pyld emits verbose INFO logs during JSON-LD expansion
         logging.getLogger("pyld").setLevel(logging.WARNING)
 
@@ -165,6 +175,17 @@ class LoggerConfigurer:
         )
         self._root_logger.addHandler(handler)
         self._root_logger.setLevel(getattr(logging, log_level.upper()))
+
+    def route_uvicorn_logs_to_root(self) -> None:
+        """
+        Send uvicorn's own logs through our handlers only.
+
+        Call after uvicorn has configured logging: its dictConfig adds a plain
+        stderr handler, so until then every record is rendered twice.
+        """
+        uvicorn_logger = logging.getLogger("uvicorn")
+        uvicorn_logger.handlers.clear()
+        uvicorn_logger.propagate = True
 
     def configure_otel_logger(
         self, handler: LoggingHandler, orphan_log_sampling_config: "LogSamplingConfig"
