@@ -108,7 +108,6 @@ class LoggerConfigurer:
         self._root_logger.handlers.clear()
 
         logging.getLogger("uvicorn.access").disabled = True
-        logging.getLogger("uvicorn.error").disabled = True
         # uvicorn's dictConfig runs after this import and resets `disabled`,
         # but leaves filters alone, so the filter is what actually holds.
         logging.getLogger("uvicorn.access").addFilter(UvicornAccessFilter())
