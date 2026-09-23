@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.enhancements.BooleanAnnotation
+
+An annotation is a way of tagging the content with a label of some kind.
+
+This class will probably be broken up in the future, but covers most of our
+initial cases.
+" alt="" coords="5,5,408,201"/>
+</map>

@@ -1,0 +1,24 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.AssessmentCandidateSummary
+
+One candidate as persisted on an assessment record.
+
+Deliberately narrower than :class:`ScoredDeduplicationCandidate`: compared values
+and per&#45;field scores stay in the blob payload, which is where the evidence lives.
+" alt="" coords="5,16,637,324"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.CandidateElasticsearchRoute
+
+Provenance for a candidate surfaced by the Elasticsearch query.
+" alt="" coords="831,5,1068,145"/>
+<area shape="rect" id="node3" title="app.domain.references.models.models.CandidateIdentifierRoute
+
+Provenance for a candidate surfaced by an exact identifier match.
+" alt="" coords="781,193,1117,277"/>
+<area shape="rect" id="node4" title="app.domain.references.models.models.CandidateIdentifier
+
+An external identifier used as candidate&#45;search input and match provenance.
+
+Narrows :class:`GenericExternalIdentifier` to require an explicit type;
+candidate search does not accept database&#45;id (untyped) lookups.
+" alt="" coords="1261,251,1604,363"/>
+</map>

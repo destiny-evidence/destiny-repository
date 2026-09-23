@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="destiny_sdk.search.SearchResultTotal
+
+Information about the total number of search results.
+" alt="" coords="401,35,568,119"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.references.ReferenceIDSearchResult
+
+The matching reference IDs for a search, without the reference data.
+" alt="" coords="5,5,257,89"/>
+</map>

@@ -1,0 +1,7 @@
+/* Some extra width to give our big schemas some breathing room */
+.bd-main .bd-content .bd-article-container {
+  max-width: 100rem; /* default is 60rem */
+}
+.bd-page-width {
+  max-width: 100rem; /* default is 88rem */
+}
