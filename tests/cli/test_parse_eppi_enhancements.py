@@ -2,13 +2,15 @@
 
 import argparse
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid7
 
 import httpx
 import pytest
-from destiny_sdk.enhancements import Enhancement, EnhancementType
+from destiny_sdk.enhancements import Enhancement, EnhancementType, RawEnhancement
 from destiny_sdk.parsers.exceptions import ReferenceIdNotFoundError
+from destiny_sdk.visibility import Visibility
 from pytest_httpx import HTTPXMock
 
 from app.core.config import Environment
@@ -38,6 +40,40 @@ def _export(tmp_path: Path, *references: dict) -> Path:
         ).encode("utf-8")
     )
     return path
+
+
+def _raw_enhancement(reference_id: UUID, title: str | None = None) -> Enhancement:
+    """Build a parsed enhancement, as ``parse_enhancements`` would return it."""
+    data: dict = {"ItemId": 116012899}
+    if title:
+        data["Title"] = title
+    return Enhancement(
+        reference_id=reference_id,
+        source=SOURCE,
+        visibility=Visibility.PUBLIC,
+        content=RawEnhancement(
+            source_export_date=datetime(2026, 9, 16, tzinfo=UTC),
+            description="EEF additional coding request",
+            data=data,
+        ),
+    )
+
+
+def _reference_response(reference_id: UUID, *titles: str) -> dict:
+    """Build the repository's view of a reference, one enhancement per title."""
+    return {
+        "id": str(reference_id),
+        "visibility": "public",
+        "enhancements": [
+            {
+                "reference_id": str(reference_id),
+                "source": "open-alex",
+                "visibility": "public",
+                "content": {"enhancement_type": "bibliographic", "title": title},
+            }
+            for title in titles
+        ],
+    }
 
 
 def _args(export: Path, output: Path, *extra: str) -> argparse.Namespace:
@@ -147,6 +183,113 @@ def test_duplicate_references_are_reported_before_verification(
     assert not output.exists()
 
 
+TITLE = "An Evaluation of the Early Childhood Care and Development Programme in Bhutan"
+
+
+def test_title_differing_from_the_repository_warns_without_failing(
+    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A title the repository disagrees with is reported, and still written out."""
+    export = _export(
+        tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
+    )
+    output = tmp_path / "enhancements.jsonl"
+    httpx_mock.add_response(
+        method="GET",
+        url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
+        json=_reference_response(REFERENCE_ID, "A Study of Something Else Entirely"),
+    )
+
+    parse_eppi_enhancements(_args(export, output))
+
+    printed = capsys.readouterr().out
+    assert "WARNING: 1 reference(s) have a title differing" in printed
+    assert str(REFERENCE_ID) in printed
+    assert "A Study of Something Else Entirely" in printed
+    assert len(output.read_text().splitlines()) == 1
+
+
+def test_title_differing_only_in_case_and_whitespace_does_not_warn(
+    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Incidental formatting differences are not worth warning about."""
+    export = _export(
+        tmp_path,
+        {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": f"  {TITLE.upper()}  "},
+    )
+    output = tmp_path / "enhancements.jsonl"
+    httpx_mock.add_response(
+        method="GET",
+        url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
+        json=_reference_response(REFERENCE_ID, TITLE.replace(" the ", "\n the  ")),
+    )
+
+    parse_eppi_enhancements(_args(export, output))
+
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_matching_one_of_several_repository_titles_does_not_warn(
+    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A reference titled by several sources matches if any one of them agrees."""
+    export = _export(
+        tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
+    )
+    output = tmp_path / "enhancements.jsonl"
+    httpx_mock.add_response(
+        method="GET",
+        url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
+        json=_reference_response(REFERENCE_ID, "An Evaluation of the ECCD", TITLE),
+    )
+
+    parse_eppi_enhancements(_args(export, output))
+
+    assert "WARNING" not in capsys.readouterr().out
+
+
+def test_reference_the_repository_holds_no_title_for_is_not_a_mismatch(
+    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Nothing to compare against is counted, not warned about."""
+    export = _export(
+        tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
+    )
+    output = tmp_path / "enhancements.jsonl"
+    httpx_mock.add_response(
+        method="GET",
+        url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
+        json=_reference_response(REFERENCE_ID),
+    )
+
+    parse_eppi_enhancements(_args(export, output))
+
+    printed = capsys.readouterr().out
+    assert "WARNING" not in printed
+    assert "1 reference(s) had no title to compare." in printed
+
+
+def test_excluding_the_title_from_the_raw_enhancement_leaves_nothing_to_compare(
+    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A title kept out of the enhancement is reported rather than silently skipped."""
+    export = _export(
+        tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
+    )
+    output = tmp_path / "enhancements.jsonl"
+    httpx_mock.add_response(
+        method="GET",
+        url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
+        json=_reference_response(REFERENCE_ID, "A Study of Something Else Entirely"),
+    )
+
+    parse_eppi_enhancements(_args(export, output, "--exclude-from-raw", "Title"))
+
+    printed = capsys.readouterr().out
+    assert "WARNING" not in printed
+    assert "1 reference(s) had no title to compare." in printed
+
+
 def test_skip_verification_asks_the_repository_nothing(
     tmp_path: Path, httpx_mock: HTTPXMock
 ) -> None:
@@ -175,4 +318,4 @@ def test_unauthorized_verification_is_not_reported_as_a_missing_reference(
         get_client(Environment.LOCAL) as client,
         pytest.raises(httpx.HTTPStatusError),
     ):
-        verify_references(client, {reference_id})
+        verify_references(client, [_raw_enhancement(reference_id)])

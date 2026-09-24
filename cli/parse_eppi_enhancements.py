@@ -9,6 +9,8 @@ References are verified to exist in the environment they're run against, unless
 ``--skip-verification`` is passed. If the export contains a missing reference the
 parsing fails.
 
+Warnings are raised for references that have title mismatches.
+
 Parse an export into Enhancements for existing references::
 
     uv run python -m cli.parse_eppi_enhancements --env staging \
@@ -31,9 +33,10 @@ from pathlib import Path
 from uuid import UUID
 
 import httpx
-from destiny_sdk.enhancements import Enhancement
+from destiny_sdk.enhancements import Enhancement, EnhancementType
 from destiny_sdk.parsers.eppi_parser import EPPIParser, load_eppi_export
 from destiny_sdk.parsers.exceptions import ReferenceIdNotFoundError
+from destiny_sdk.references import Reference
 from fastapi import status
 
 from cli.client import ApiArgumentParser
@@ -63,16 +66,77 @@ def verify_one_enhancement_per_reference(
         raise ValueError(msg)
 
 
-def verify_references(client: httpx.Client, reference_ids: set[UUID]) -> None:
-    """Check each reference exists, reporting every missing one at once."""
-    print(f"Verifying {len(reference_ids)} reference(s) exist...")
+def _comparable_title(title: str) -> str:
+    """Fold the case and whitespace EPPI and the repository differ in incidentally."""
+    return " ".join(title.split()).casefold()
+
+
+def exported_title(enhancement: Enhancement) -> str | None:
+    """Read the EPPI title from a raw enhancement, unless it was excluded."""
+    if enhancement.content.enhancement_type is not EnhancementType.RAW:
+        return None
+    title = enhancement.content.data.get("Title")
+    return title if isinstance(title, str) and title.strip() else None
+
+
+def repository_titles(reference: Reference) -> list[str]:
+    """Every title the repository holds for a reference, one per contributing source."""
+    return [
+        enhancement.content.title
+        for enhancement in reference.enhancements or []
+        if enhancement.content.enhancement_type is EnhancementType.BIBLIOGRAPHIC
+        and enhancement.content.title
+    ]
+
+
+def report_title_mismatches(
+    mismatched: list[tuple[UUID, str, list[str]]], incomparable: list[UUID]
+) -> None:
+    """Warn about titles that disagree, without failing the run."""
+    if mismatched:
+        print(
+            f"WARNING: {len(mismatched)} reference(s) have a title differing from "
+            "the repository:"
+        )
+        for reference_id, exported, repository in mismatched:
+            print(f"  {reference_id}")
+            print(f"    export:     {exported!r}")
+            print(f"    repository: {', '.join(repr(t) for t in repository)}")
+
+    if incomparable:
+        print(f"{len(incomparable)} reference(s) had no title to compare.")
+
+
+def verify_references(
+    client: httpx.Client, enhancements: Sequence[Enhancement]
+) -> None:
+    """
+    Check each reference exists, reporting every missing one at once.
+
+    Titles that disagree with the repository's are warned about rather than raised.
+    """
+    print(f"Verifying {len(enhancements)} reference(s) exist...")
     missing: list[UUID] = []
-    for reference_id in sorted(reference_ids):
+    mismatched: list[tuple[UUID, str, list[str]]] = []
+    incomparable: list[UUID] = []
+
+    for enhancement in enhancements:
+        reference_id = enhancement.reference_id
         response = client.get(f"/references/{reference_id}/")
         if response.status_code == status.HTTP_404_NOT_FOUND:
             missing.append(reference_id)
             continue
         response.raise_for_status()
+
+        exported = exported_title(enhancement)
+        repository = repository_titles(Reference.model_validate(response.json()))
+        if not exported or not repository:
+            incomparable.append(reference_id)
+        elif not any(
+            _comparable_title(title) == _comparable_title(exported)
+            for title in repository
+        ):
+            mismatched.append((reference_id, exported, repository))
 
     if missing:
         msg = (
@@ -80,6 +144,8 @@ def verify_references(client: httpx.Client, reference_ids: set[UUID]) -> None:
             f"{', '.join(str(reference_id) for reference_id in missing)}."
         )
         raise ValueError(msg)
+
+    report_title_mismatches(mismatched, incomparable)
 
 
 def parse_eppi_enhancements(args: argparse.Namespace) -> None:
@@ -110,10 +176,7 @@ def parse_eppi_enhancements(args: argparse.Namespace) -> None:
         print("Skipping verification that the references exist.")
     else:
         with args.client as client:
-            verify_references(
-                client,
-                {enhancement.reference_id for enhancement in enhancements},
-            )
+            verify_references(client, enhancements)
 
     with Path(args.output).open("w") as f:
         f.writelines(enhancement.to_jsonl() + "\n" for enhancement in enhancements)
