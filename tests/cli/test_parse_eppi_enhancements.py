@@ -21,6 +21,10 @@ from cli.parse_eppi_enhancements import (
 
 REFERENCE_ID = UUID("019f880e-2c39-7138-a387-221808f02d98")
 REFERENCE_URL = f"https://data.evidence-repository.org/esea/references/{REFERENCE_ID}"
+EARLIER_REFERENCE_ID = UUID("019f880d-1b28-7027-9276-110707e01c87")
+EARLIER_REFERENCE_URL = (
+    f"https://data.evidence-repository.org/esea/references/{EARLIER_REFERENCE_ID}"
+)
 SOURCE = "eef-eppi-review"
 
 
@@ -113,6 +117,32 @@ def test_reference_without_an_id_is_never_verified(
     with pytest.raises(ReferenceIdNotFoundError, match="ItemId 116012899"):
         parse_eppi_enhancements(_args(export, output))
 
+    assert not httpx_mock.get_requests()
+    assert not output.exists()
+
+
+def test_duplicate_references_are_reported_before_verification(
+    tmp_path: Path, httpx_mock: HTTPXMock
+) -> None:
+    """Every reference enhanced more than once is named, in the export's order."""
+    export = _export(
+        tmp_path,
+        {"ItemId": 116012899, "URL": REFERENCE_URL},
+        {"ItemId": 116012900, "URL": EARLIER_REFERENCE_URL},
+        {"ItemId": 116012901, "URL": EARLIER_REFERENCE_URL},
+        {"ItemId": 116012902, "URL": REFERENCE_URL},
+        {"ItemId": 116012903, "URL": REFERENCE_URL},
+    )
+    output = tmp_path / "enhancements.jsonl"
+
+    with pytest.raises(ValueError, match="Duplicate enhancements") as exc_info:
+        parse_eppi_enhancements(_args(export, output))
+
+    assert str(exc_info.value).endswith(
+        "2 reference id(s) are enhanced more than once: "
+        f"{REFERENCE_ID} (3 enhancements), "
+        f"{EARLIER_REFERENCE_ID} (2 enhancements)."
+    )
     assert not httpx_mock.get_requests()
     assert not output.exists()
 

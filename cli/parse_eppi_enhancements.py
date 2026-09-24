@@ -24,16 +24,43 @@ These can then be added to the references with the cli/add_static_enhancements u
 # ruff: noqa: T201
 import argparse
 import sys
+from collections import Counter
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
 import httpx
+from destiny_sdk.enhancements import Enhancement
 from destiny_sdk.parsers.eppi_parser import EPPIParser, load_eppi_export
 from destiny_sdk.parsers.exceptions import ReferenceIdNotFoundError
 from fastapi import status
 
 from cli.client import ApiArgumentParser
+
+
+def verify_one_enhancement_per_reference(
+    enhancements: Sequence[Enhancement],
+) -> None:
+    """Check no reference is enhanced twice, reporting every duplicate."""
+    reference_counts = Counter(enhancement.reference_id for enhancement in enhancements)
+    duplicated = {
+        reference_id: count
+        for reference_id, count in reference_counts.items()
+        if count > 1
+    }
+
+    if duplicated:
+        msg = (
+            "Duplicate enhancements for the same reference id are not allowed. "
+            f"{len(duplicated)} reference id(s) are enhanced more than once: "
+            + ", ".join(
+                f"{reference_id} ({count} enhancements)"
+                for reference_id, count in duplicated.items()
+            )
+            + "."
+        )
+        raise ValueError(msg)
 
 
 def verify_references(client: httpx.Client, reference_ids: set[UUID]) -> None:
@@ -56,7 +83,12 @@ def verify_references(client: httpx.Client, reference_ids: set[UUID]) -> None:
 
 
 def parse_eppi_enhancements(args: argparse.Namespace) -> None:
-    """Parse the export, check its references exist, and write the enhancements."""
+    """
+    Parse the export, check its references exist, and write the enhancements.
+
+    Raises ValueError if there is more than one enhancement for the same reference
+    or if any references do not exist.
+    """
     data, checksum = load_eppi_export(Path(args.input), args.input_codec)
 
     eppi_parser = EPPIParser(
@@ -71,6 +103,8 @@ def parse_eppi_enhancements(args: argparse.Namespace) -> None:
         robot_version=checksum,
     )
     print(f"Parsed {len(enhancements)} enhancement(s) from {args.input}.")
+
+    verify_one_enhancement_per_reference(enhancements)
 
     if args.skip_verification:
         print("Skipping verification that the references exist.")
@@ -129,7 +163,8 @@ def argument_parser() -> ApiArgumentParser:
         default=["Abstract"],
         help=(
             "Any fields to exclude from the raw enhancements. "
-            "Defaults to 'Abstract' as this is stored in its own enhancement."
+            "Defaults to 'Abstract' as we expect to already have abstracts for"
+            "references we're adding raw enhancements to."
         ),
     )
     parser.add_argument(
