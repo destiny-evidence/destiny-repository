@@ -15,3 +15,19 @@ class ExternalIdentifierNotFoundError(Exception):
         """
         self.detail = detail or "No detail provided."
         super().__init__(detail, *args)
+
+
+class ReferenceIdNotFoundError(Exception):
+    """Raised when a reference has no destiny reference id in its URL field."""
+
+    def __init__(self, detail: str | None = None, *args: object) -> None:
+        """
+        Initialize the ReferenceIdNotFoundError.
+
+        Args:
+            *args: Additional arguments for the exception.
+            **kwargs: Additional keyword arguments for the exception.
+
+        """
+        self.detail = detail or "No detail provided."
+        super().__init__(detail, *args)
