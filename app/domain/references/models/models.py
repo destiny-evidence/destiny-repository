@@ -1226,9 +1226,8 @@ class DeduplicationPaper(ProjectedBaseModel):
     """
     The record shape the Deduper scores, built here rather than by the toolkit.
 
-    Mirrors the toolkit's ``Paper`` constructor so it can be handed over as
-    ``model_dump(exclude_none=True)``. Carries the fields the checked-in weights
-    score, plus identifiers and volume, which are unweighted today.
+    Fields sharing a name with the toolkit's ``Paper`` keep its type; ``Paper`` ignores
+    the rest.
     """
 
     doi: destiny_sdk.identifiers.DOIIdentifier | None = None
@@ -1238,6 +1237,12 @@ class DeduplicationPaper(ProjectedBaseModel):
     authors: list[destiny_sdk.enhancements.Authorship] | None = None
     year: int | None = None
     journal: str | None = None
+    """The venue's name, which may be a repository rather than a journal."""
+    venue_type: destiny_sdk.enhancements.PublicationVenueType | None = None
+    """What kind of venue ``journal`` names, so a repository can be told apart."""
+    issn: str | None = None
+    """The venue's linking ISSN."""
+    publisher: str | None = None
     pages: str | None = None
     volume: str | None = None
     issue: str | None = None
