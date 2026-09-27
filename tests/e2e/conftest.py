@@ -273,9 +273,7 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
 def minio():
     """MinIO container with default credentials."""
     logger.info("Starting MinIO container...")
-    with MinioContainer("quay.io/minio/minio").with_name(
-        f"{container_prefix}-minio"
-    ) as minio:
+    with MinioContainer("pgsty/minio").with_name(f"{container_prefix}-minio") as minio:
         logger.info("MinIO container ready.")
         yield minio
 
