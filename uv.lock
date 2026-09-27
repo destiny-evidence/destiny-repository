@@ -8,10 +8,7 @@ resolution-markers = [
 ]
 
 [manifest]
-excludes = [
-    "ecdsa",
-    "python-semantic-release",
-]
+excludes = ["ecdsa"]
 
 [[package]]
 name = "accessible-pygments"
@@ -559,7 +556,7 @@ wheels = [
 
 [[package]]
 name = "destiny-deduper"
-version = "0.2.6"
+version = "0.2.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "destiny-sdk" },
@@ -570,9 +567,9 @@ dependencies = [
     { name = "pydantic-settings", extra = ["yaml"] },
     { name = "rapidfuzz" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/14/95/eeff06d26d35f6b3f803337898f242ffd443e52f172d418bde5517a5e43a/destiny_deduper-0.2.6.tar.gz", hash = "sha256:e9319b19caa00533c558245570a121fb0c7a2e5e6154cd156f272d56648f77a8", size = 52747, upload-time = "2026-08-20T15:54:46.173Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/25/ae/65d010ced17b00f1ec019205cc4110b512834e0c4c9a1cb25260bc2f1744/destiny_deduper-0.2.7.tar.gz", hash = "sha256:9f7c5b938b8ddfbd12cd1a30bc61bbd975dd3ffcab8336266fca7846a189b65f", size = 52938, upload-time = "2026-08-30T22:21:58.884Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/91/bf/22f1f287bc2ae9bfe08acceec62311d79db43915380a8c8ff711d2a0d4d7/destiny_deduper-0.2.6-py3-none-any.whl", hash = "sha256:b19d4c39dcbd3f6a4a2123a0436eee1cb6ea33b6ecc0e4420b21bbba79095340", size = 49321, upload-time = "2026-08-20T15:54:45.116Z" },
+    { url = "https://files.pythonhosted.org/packages/22/8d/970b5b45ebab033307b45d468afd0009d567838417aee9207fa25631a224/destiny_deduper-0.2.7-py3-none-any.whl", hash = "sha256:1c35acb1c5e514a3f02a6804ed68e18e98249e1edcb8d9a69bd177a3b016306b", size = 49309, upload-time = "2026-08-30T22:21:57.835Z" },
 ]
 
 [[package]]
@@ -661,7 +658,7 @@ requires-dist = [
     { name = "azure-servicebus", specifier = ">=7.14.2,<8" },
     { name = "azure-storage-blob", specifier = ">=12.25.1,<13" },
     { name = "cachetools", specifier = ">=5.5.2,<6" },
-    { name = "destiny-deduper", specifier = ">=0.2.6,<0.3" },
+    { name = "destiny-deduper", specifier = ">=0.2.7,<0.3" },
     { name = "destiny-sdk", editable = "libs/sdk" },
     { name = "elasticsearch", extras = ["async"], specifier = ">=9.1.2,<9.2" },
     { name = "fastapi", extras = ["standard"], specifier = "~=0.140.13" },
