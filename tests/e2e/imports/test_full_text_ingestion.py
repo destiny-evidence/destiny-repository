@@ -57,7 +57,7 @@ async def test_happy_full_text_ingestion(
     destiny_client_v1: httpx.AsyncClient,
     get_import_file_signed_url: GetImportFileSignedUrl,
     serve_fixture_pdf: Callable[[], AbstractAsyncContextManager[str]],
-    minio_proxy_client: httpx.AsyncClient,
+    signed_url_client: httpx.AsyncClient,
 ):
     """
     Full-text storage round-trip.
@@ -125,6 +125,6 @@ async def test_happy_full_text_ingestion(
         assert signed_url
         assert signed_url != fixture_url
 
-        download = await minio_proxy_client.get("", params={"url": signed_url})
+        download = await signed_url_client.get(signed_url)
         assert download.status_code == 200
         assert download.content == expected_bytes

@@ -646,7 +646,7 @@ test = [
     { name = "pytest" },
     { name = "pytest-env" },
     { name = "pytest-order" },
-    { name = "testcontainers", extra = ["minio", "rabbitmq"] },
+    { name = "testcontainers", extra = ["azurite", "rabbitmq"] },
 ]
 
 [package.metadata]
@@ -720,7 +720,7 @@ test = [
     { name = "pytest", specifier = ">=8.3.4,<9" },
     { name = "pytest-env", specifier = ">=1.1.5,<2" },
     { name = "pytest-order", specifier = ">=1.3.0,<2" },
-    { name = "testcontainers", extras = ["elasticsearch", "minio", "postgres", "rabbitmq"], specifier = ">=4.14" },
+    { name = "testcontainers", extras = ["azurite", "elasticsearch", "postgres", "rabbitmq"], specifier = ">=4.14" },
 ]
 
 [[package]]
@@ -2843,8 +2843,8 @@ wheels = [
 ]
 
 [package.optional-dependencies]
-minio = [
-    { name = "minio" },
+azurite = [
+    { name = "azure-storage-blob" },
 ]
 rabbitmq = [
     { name = "pika" },
