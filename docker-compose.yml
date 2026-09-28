@@ -15,7 +15,7 @@ services:
       timeout: 10s
       retries: 5
   fs:
-    image: pgsty/minio:latest
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     environment:
       MINIO_ROOT_USER: localuser
       MINIO_ROOT_PASSWORD: localpass
@@ -31,7 +31,7 @@ services:
       timeout: 10s
       retries: 5
   createbuckets:
-    image: pgsty/mc:latest
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     depends_on:
       fs:
         condition: service_healthy
