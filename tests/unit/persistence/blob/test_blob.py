@@ -557,3 +557,42 @@ async def test_azure_blob_client_aclose_no_credential_when_using_account_key():
     default_credential_cls.assert_not_called()
     fake_service_client.close.assert_awaited_once()
     assert client._aio_credential is None  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("public_endpoint", "expected_prefix"),
+    [
+        (None, "http://azurite:10000/devstoreaccount1"),
+        (
+            "http://localhost:10000/devstoreaccount1",
+            "http://localhost:10000/devstoreaccount1",
+        ),
+    ],
+)
+async def test_azure_blob_client_signed_url_uses_public_account_url(
+    public_endpoint: str | None, expected_prefix: str
+):
+    """Signed URLs are built on the public account URL."""
+    config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        credential="a2V5",
+        endpoint="http://azurite:10000/devstoreaccount1",
+        public_endpoint=public_endpoint,
+        containers={c: "test" for c in BlobContainer},
+    )
+    file = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
+        container="test",
+        path="p",
+        filename="f.jsonl",
+    )
+
+    with patch("app.persistence.blob.clients.azure.BlobServiceClient"):
+        client = AzureBlobStorageClient(config, presigned_url_expiry_seconds=60)
+        url = await client.generate_signed_url(
+            file, BlobSignedUrlType.DOWNLOAD, "attachment"
+        )
+
+    assert url.startswith(f"{expected_prefix}/test/p/f.jsonl?")
+    assert "sig=" in url

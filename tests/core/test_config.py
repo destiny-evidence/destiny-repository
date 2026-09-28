@@ -72,6 +72,42 @@ def test_blob_backend_config_requires_all_containers():
         )
 
 
+def test_azure_blob_config_account_urls_default_to_storage_account():
+    """Without overrides, both account URLs are the public Azure endpoint."""
+    config = AzureBlobConfig(
+        storage_account_name="acct",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    assert config.account_url == "https://acct.blob.core.windows.net"
+    assert config.public_account_url == "https://acct.blob.core.windows.net"
+
+
+def test_azure_blob_config_endpoint_overrides_both_account_urls():
+    """An endpoint override applies to the public account URL when it is unset."""
+    config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        endpoint="http://azurite:10000/devstoreaccount1/",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    assert config.account_url == "http://azurite:10000/devstoreaccount1"
+    assert config.public_account_url == "http://azurite:10000/devstoreaccount1"
+
+
+def test_azure_blob_config_public_endpoint_overrides_public_account_url():
+    """A public endpoint override applies only to the public account URL."""
+    config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        endpoint="http://azurite:10000/devstoreaccount1",
+        public_endpoint="http://localhost:10000/devstoreaccount1/",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    assert config.account_url == "http://azurite:10000/devstoreaccount1"
+    assert config.public_account_url == "http://localhost:10000/devstoreaccount1"
+
+
 def test_candidate_selection_config_defaults_to_production_policy_and_k():
     """Candidate selection uses the deployed policy unless explicitly overridden."""
     config = DedupCandidateScoringConfig()

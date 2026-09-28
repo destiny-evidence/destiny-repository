@@ -52,6 +52,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         Raises BlobStorageError if configuration is missing.
         """
         self.account_url = config.account_url
+        self.public_account_url = config.public_account_url
         self.account_name = config.storage_account_name
         self.credential = config.credential
         self.presigned_url_expiry_seconds = presigned_url_expiry_seconds
@@ -180,4 +181,4 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             msg = f"Failed to generate signed URL for Azure Blob Storage: {e}"
             raise AzureBlobStorageError(msg) from e
         else:
-            return f"{self.account_url}/{file.container}/{blob_name}?{sas_token}"
+            return f"{self.public_account_url}/{file.container}/{blob_name}?{sas_token}"
