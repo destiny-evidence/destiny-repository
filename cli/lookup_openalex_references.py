@@ -10,17 +10,17 @@ Reference ids differ per environment, and a lookup built against the wrong one
 matches nothing without raising, so name the output for the environment and date::
 
     uv run python -m cli.lookup_openalex_references --env production \
-        --identifier-file round-one-wids.txt \
-        --identifier-file stage-two-identifiers.txt \
+        --identifier-file openalex-matches.csv --column openalex_id \
         --output production-lookup-2026-09-28.jsonl
 
-Work ids may be bare (`W3121659249`), lookup-prefixed (`open_alex:W3121659249`) or
-the full OpenAlex URL. All three appear in the files this reads.
+Without ``--column`` each file holds one work id per line. Work ids may be bare
+(`W3121659249`), lookup-prefixed (`open_alex:W3121659249`) or the full OpenAlex URL.
 
 See also: https://github.com/destiny-evidence/destiny-repository/issues/555
 """
 
 # ruff: noqa: T201
+import csv
 import re
 from collections.abc import Iterable
 from itertools import batched
@@ -54,13 +54,27 @@ def normalise_work_id(raw: str) -> str:
     return value
 
 
-def load_work_ids(paths: Iterable[Path]) -> list[str]:
+def read_column(path: Path, column: str) -> list[str]:
+    """Read one column of a CSV, skipping blank cells."""
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        if column not in (reader.fieldnames or []):
+            msg = f"{path} has no column {column!r}"
+            raise ValueError(msg)
+        return [row[column] for row in reader if row[column].strip()]
+
+
+def load_work_ids(paths: Iterable[Path], column: str | None = None) -> list[str]:
     """Read work ids from files, normalised and deduplicated, in first-seen order."""
     work_ids = [
-        normalise_work_id(line)
+        normalise_work_id(value)
         for path in paths
-        for line in path.read_text(encoding="utf-8").splitlines()
-        if line.strip()
+        for value in (
+            read_column(path, column)
+            if column
+            else path.read_text(encoding="utf-8").splitlines()
+        )
+        if value.strip()
     ]
     return list(dict.fromkeys(work_ids))
 
@@ -111,7 +125,11 @@ def argument_parser() -> ApiArgumentParser:
         action="append",
         dest="identifier_files",
         type=Path,
-        help="File of OpenAlex work ids, one per line. Repeatable.",
+        help="File of work ids, one per line, or a CSV with --column. Repeatable.",
+    )
+    parser.add_argument(
+        "--column",
+        help="Read work ids from this column of each identifier file, as CSV.",
     )
     parser.add_argument(
         "--output",
@@ -125,7 +143,7 @@ def argument_parser() -> ApiArgumentParser:
 if __name__ == "__main__":
     args = argument_parser().parse_args()
 
-    work_ids = load_work_ids(args.identifier_files)
+    work_ids = load_work_ids(args.identifier_files, args.column)
     print(f"{len(work_ids)} distinct work(s) to resolve against {args.env}.")
 
     references = fetch_references(args.oauth_client, work_ids)

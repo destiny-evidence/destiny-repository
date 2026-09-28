@@ -90,6 +90,28 @@ class TestLoadWorkIds:
 
         assert load_work_ids([path]) == ["W1", "W2"]
 
+    def test_reads_a_named_csv_column(self, tmp_path: Path) -> None:
+        """Match files carry the work as a URL beside quoted multi-line fields."""
+        path = tmp_path / "matches.csv"
+        path.write_text(
+            "PaperID,openalex_id,supplied_title\n"
+            '1,https://openalex.org/W1,"Title split\nacross lines"\n'
+            "2,,Unmatched\n"
+            "3,https://openalex.org/W1,Delivered twice\n"
+            "4,https://openalex.org/W2,Plain\n",
+            encoding="utf-8-sig",
+        )
+
+        assert load_work_ids([path], column="openalex_id") == ["W1", "W2"]
+
+    def test_rejects_a_column_the_file_lacks(self, tmp_path: Path) -> None:
+        """A misspelt column would otherwise read as a file with no works."""
+        path = tmp_path / "matches.csv"
+        path.write_text("PaperID,openalex_id\n1,W1\n")
+
+        with pytest.raises(ValueError, match="no column .openalex."):
+            load_work_ids([path], column="openalex")
+
 
 class TestUnresolvedWorkIds:
     """Tests for unresolved_work_ids."""
