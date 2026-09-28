@@ -399,6 +399,7 @@ class ReferenceRisProjection(GenericProjection[RisRecord]):
         destiny_sdk.identifiers.ExternalIdentifierType.PRO_QUEST: (
             "https://www.proquest.com/docview/{}"
         ),
+        destiny_sdk.identifiers.ExternalIdentifierType.URL: "{}",
     }
 
     VENUE_TYPE_TO_RIS_TYPE: ClassVar[

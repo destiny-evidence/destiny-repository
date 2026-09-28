@@ -6,9 +6,18 @@ import uuid
 from enum import StrEnum, auto
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, Field, PositiveInt, TypeAdapter, field_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    HttpUrl,
+    PositiveInt,
+    TypeAdapter,
+    field_validator,
+)
 
 from .core import UUID
+
+_HTTP_URL_ADAPTER: TypeAdapter[HttpUrl] = TypeAdapter(HttpUrl)
 
 # Case-insensitive patterns for DOI URL prefix stripping
 _DOI_URL_PREFIX_RE = re.compile(r"^(?:https?://)?(?:dx\.)?doi\.org/", re.IGNORECASE)
@@ -43,6 +52,10 @@ class ExternalIdentifierType(StrEnum):
     """A ProQuest ID which is a unique identifier for a document in ProQuest."""
     OPEN_ALEX = auto()
     """An OpenAlex ID which is a unique identifier for a document in OpenAlex."""
+    URL = auto()
+    """The web address at which a document is published, for documents such as grey
+    literature that carry no other identifier.
+    """
     OTHER = auto()
     """Any other identifier not defined. This should be used sparingly."""
 
@@ -183,6 +196,32 @@ class OpenAlexIdentifier(BaseModel):
         )
 
 
+class URLIdentifier(BaseModel):
+    """An external identifier representing the web address of a document."""
+
+    identifier: str = Field(
+        description=(
+            "The web address of the reference. "
+            "Format: an absolute http(s) URL. "
+            "Example: https://theses.example.edu/handle/1234/5678"
+        ),
+    )
+    identifier_type: Literal[ExternalIdentifierType.URL] = Field(
+        ExternalIdentifierType.URL, description="The type of identifier used."
+    )
+
+    @field_validator("identifier", mode="before")
+    @classmethod
+    def canonicalize_url(cls, value: str) -> str:
+        """
+        Normalize the URL as far as ``HttpUrl`` does, and no further.
+
+        Distinct URLs stay distinct identifiers: deciding which addresses point at
+        the same document takes per-site knowledge.
+        """
+        return str(_HTTP_URL_ADAPTER.validate_python(str(value).strip()))
+
+
 class OtherIdentifier(BaseModel):
     """An external identifier not otherwise defined by the repository."""
 
@@ -202,6 +241,7 @@ ExternalIdentifier = Annotated[
     | PubMedIdentifier
     | ProQuestIdentifier
     | OpenAlexIdentifier
+    | URLIdentifier
     | OtherIdentifier,
     Field(discriminator="identifier_type"),
 ]

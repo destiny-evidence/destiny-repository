@@ -41,6 +41,7 @@ from tests.factories import (
     OtherIdentifierFactory,
     RawEnhancementFactory,
     ReferenceFactory,
+    URLIdentifierFactory,
 )
 from tests.unit.domain.conftest import link_fake_repos
 
@@ -172,6 +173,35 @@ async def test_find_exact_duplicate_only_other_identifier(
     service = DeduplicationService(anti_corruption_service, uow, fake_uow())
     result = await service.find_exact_duplicate(ref)
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_find_exact_duplicate_only_url_identifier(
+    anti_corruption_service, fake_uow, fake_repository
+):
+    """A reference identified only by a URL is still searched for duplicates."""
+    ref = ReferenceFactory.build(
+        identifiers=[
+            LinkedExternalIdentifierFactory.build(
+                identifier=URLIdentifierFactory.build(
+                    identifier="https://theses.example.edu/handle/1234"
+                )
+            )
+        ],
+    )
+    candidate = ref.model_copy(update={"id": uuid7()})
+
+    uow = fake_uow(references=fake_repository([candidate]))
+    uow.references.find_with_identifiers = AsyncMock(return_value=[candidate])
+    service = DeduplicationService(anti_corruption_service, uow, fake_uow())
+
+    result = await service.find_exact_duplicate(ref)
+    assert result == candidate
+
+    queried_identifiers = uow.references.find_with_identifiers.call_args[0][0]
+    assert [i.identifier_type for i in queried_identifiers] == [
+        ExternalIdentifierType.URL
+    ]
 
 
 @pytest.mark.asyncio

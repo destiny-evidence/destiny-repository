@@ -1,10 +1,16 @@
 """Parser for a EPPI JSON export file."""
 
+import base64
+import hashlib
+import json
+import re
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
+from destiny_sdk.core import UUID
 from destiny_sdk.enhancements import (
     AbstractContentEnhancement,
     AbstractProcessType,
@@ -14,6 +20,7 @@ from destiny_sdk.enhancements import (
     Authorship,
     BibliographicMetadataEnhancement,
     BooleanAnnotation,
+    Enhancement,
     EnhancementContent,
     EnhancementFileInput,
     RawEnhancement,
@@ -26,9 +33,40 @@ from destiny_sdk.identifiers import (
     OtherIdentifier,
     ProQuestIdentifier,
 )
-from destiny_sdk.parsers.exceptions import ExternalIdentifierNotFoundError
+from destiny_sdk.parsers.exceptions import (
+    ExternalIdentifierNotFoundError,
+    ReferenceIdNotFoundError,
+)
 from destiny_sdk.references import ReferenceFileInput
 from destiny_sdk.visibility import Visibility
+
+# The URL field of an EPPI export may hold a link to the reference in destiny, e.g.
+# https://data.evidence-repository.org/esea/references/019f880e-2c39-7138-a387-221808f02d98
+REFERENCE_URL_PATTERN = re.compile(r"/references/(?P<reference_id>[0-9a-fA-F-]{36})/?$")
+
+_REFERENCE_ID_ADAPTER: TypeAdapter[UUID] = TypeAdapter(UUID)
+
+
+def load_eppi_export(export_path: Path, codec: str = "utf-8") -> tuple[dict, str]:
+    """
+    Load an EPPI export, returning its data and a checksum of the file.
+
+    Args:
+        export_path (Path): The EPPI export file to load.
+        codec (str): The codec to decode the file with.
+
+    Returns:
+        tuple[dict, str]: The parsed export and the base64 md5 checksum of the file.
+
+    """
+    file_bytes = export_path.read_bytes()
+    checksum = base64.b64encode(hashlib.md5(file_bytes).digest()).decode("ascii")  # noqa: S324
+
+    # errors='replace' is deliberate: EPPI exports occasionally contain CESU-8
+    # surrogate pairs for non-BMP chars (e.g. mathematical italics) that strict
+    # UTF-8 rejects. We'd rather degrade those rare chars to U+FFFD than fail
+    # the whole import.
+    return json.loads(file_bytes.decode(codec, errors="replace")), checksum
 
 
 class EPPIParser:
@@ -113,6 +151,18 @@ class EPPIParser:
 
         return identifiers
 
+    def _parse_reference_id(self, ref_to_import: dict[str, Any]) -> UUID | None:
+        """Attempt to parse a destiny reference id from the URL field."""
+        url = (ref_to_import.get("URL") or "").strip()
+        match = REFERENCE_URL_PATTERN.search(url)
+        if not match:
+            return None
+
+        try:
+            return _REFERENCE_ID_ADAPTER.validate_python(match.group("reference_id"))
+        except ValidationError:
+            return None
+
     def _parse_doi(self, doi: str) -> DOIIdentifier | None:
         """Attempt to parse a DOI from a string."""
         try:
@@ -192,9 +242,17 @@ class EPPIParser:
             authorship=authorships if authorships else None,
         )
 
+    def _raw_enhancement_metadata(self, data: dict[str, Any]) -> dict[str, Any]:
+        """Identify the codesets the codes in an export belong to."""
+        return {
+            "codeset_ids": [
+                codeset.get("SetId") for codeset in data.get("CodeSets", [])
+            ]
+        }
+
     def _parse_raw_enhancement(
         self, ref_to_import: dict[str, Any], raw_enhancement_metadata: dict[str, Any]
-    ) -> EnhancementContent | None:
+    ) -> RawEnhancement:
         """Add Reference data as a raw enhancement."""
         raw_enhancement_data = ref_to_import.copy()
 
@@ -231,7 +289,7 @@ class EPPIParser:
             annotations=annotations,
         )
 
-    def parse_data(
+    def parse_references(
         self,
         data: dict,
         source: str | None = None,
@@ -251,10 +309,7 @@ class EPPIParser:
 
         """
         parser_source = source if source is not None else self.parser_source
-
-        if self.include_raw_data:
-            codesets = [codeset.get("SetId") for codeset in data.get("CodeSets", [])]
-            raw_enhancement_metadata = {"codeset_ids": codesets}
+        raw_enhancement_metadata = self._raw_enhancement_metadata(data)
 
         references = []
         failed_refs = []
@@ -271,13 +326,12 @@ class EPPIParser:
                 ]
 
                 if self.include_raw_data:
-                    raw_enhancement = self._parse_raw_enhancement(
-                        ref_to_import=ref_to_import,
-                        raw_enhancement_metadata=raw_enhancement_metadata,
+                    enhancement_contents.append(
+                        self._parse_raw_enhancement(
+                            ref_to_import=ref_to_import,
+                            raw_enhancement_metadata=raw_enhancement_metadata,
+                        )
                     )
-
-                    if raw_enhancement:
-                        enhancement_contents.append(raw_enhancement)
 
                 enhancements = [
                     EnhancementFileInput(
@@ -303,3 +357,69 @@ class EPPIParser:
                 failed_refs.append(ref_to_import)
 
         return references, failed_refs
+
+    def parse_enhancements(
+        self,
+        data: dict,
+        source: str,
+        robot_version: str | None = None,
+    ) -> list[Enhancement]:
+        """
+        Parse an EPPI JSON export dict into raw enhancements for existing references.
+
+        Each reference in the export must carry the id of the destiny reference it
+        codes in its URL field, e.g.
+        https://data.evidence-repository.org/esea/references/019f880e-2c39-7138-a387-221808f02d98
+
+        Args:
+            data (dict): Parsed EPPI JSON export data.
+            source (str): Source string for deduplication/provenance.
+            robot_version (str | None): Optional robot version string for provenance.
+
+        Returns:
+            list[Enhancement]: One raw enhancement per reference in the export.
+
+        Raises:
+            ReferenceIdNotFoundError: If any reference's URL field holds no
+                destiny reference id the whole export is rejected.
+
+        """
+        if not self.include_raw_data:
+            msg = "Cannot parse enhancements without include_raw_data set."
+            raise RuntimeError(msg)
+
+        raw_enhancement_metadata = self._raw_enhancement_metadata(data)
+
+        enhancements = []
+        unidentified_refs = []
+        for ref_to_import in data.get("References", []):
+            reference_id = self._parse_reference_id(ref_to_import)
+            if not reference_id:
+                unidentified_refs.append(ref_to_import)
+                continue
+
+            enhancements.append(
+                Enhancement(
+                    reference_id=reference_id,
+                    source=source,
+                    visibility=Visibility.PUBLIC,
+                    robot_version=robot_version,
+                    content=self._parse_raw_enhancement(
+                        ref_to_import=ref_to_import,
+                        raw_enhancement_metadata=raw_enhancement_metadata,
+                    ),
+                )
+            )
+
+        if unidentified_refs:
+            unidentified = ", ".join(
+                f"ItemId {ref.get('ItemId')} (URL: {ref.get('URL') or None})"
+                for ref in unidentified_refs
+            )
+            msg = (
+                f"No destiny reference id found in the URL field of "
+                f"{len(unidentified_refs)} reference(s): {unidentified}."
+            )
+            raise ReferenceIdNotFoundError(detail=msg)
+
+        return enhancements

@@ -46,6 +46,7 @@ from tests.factories import (
     RawEnhancementFactory,
     ReferenceFactory,
     ScoreAnnotationFactory,
+    URLIdentifierFactory,
 )
 
 
@@ -1159,6 +1160,12 @@ class TestReferenceRisProjection:
             (
                 ProquestIdentifierFactory.build(identifier="12345678"),
                 "https://www.proquest.com/docview/12345678",
+            ),
+            (
+                URLIdentifierFactory.build(
+                    identifier="https://theses.example.edu/handle/1234"
+                ),
+                "https://theses.example.edu/handle/1234",
             ),
         ],
     )
