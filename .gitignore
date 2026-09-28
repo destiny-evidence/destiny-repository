@@ -199,6 +199,7 @@ infra/app/*.py
 .certs
 
 libs/fake_data/*.jsonl
+*-lookup-*.jsonl
 
 .data
 .env.*

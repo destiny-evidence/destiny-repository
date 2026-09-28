@@ -1,15 +1,23 @@
-"""Tests for the OpenAlex reference lookup script."""
+"""Tests for the OpenAlex reference lookup utility."""
 
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
+from destiny_sdk.enhancements import (
+    AbstractContentEnhancement,
+    AbstractProcessType,
+    Enhancement,
+)
 from destiny_sdk.identifiers import ExternalIdentifierType
 from destiny_sdk.references import Reference
-from lookup_openalex_references.lookup_openalex_references import (
+
+from cli.lookup_openalex_references import (
+    argument_parser,
     load_work_ids,
     normalise_work_id,
     unresolved_work_ids,
+    write_references,
 )
 
 WORK = "W3121659249"
@@ -109,3 +117,45 @@ class TestUnresolvedWorkIds:
         )
 
         assert unresolved_work_ids(["W1"], [reference]) == []
+
+
+def test_identifier_file_is_repeatable(tmp_path: Path) -> None:
+    """Works come from several hand-maintained files in one run."""
+    args = argument_parser().parse_args(
+        [
+            "--identifier-file",
+            "first.txt",
+            "--identifier-file",
+            "second.txt",
+            "--output",
+            str(tmp_path / "lookup.jsonl"),
+        ]
+    )
+
+    assert args.identifier_files == [Path("first.txt"), Path("second.txt")]
+
+
+def test_unicode_line_separators_stay_on_one_line(tmp_path: Path) -> None:
+    """Readers split the file with str.splitlines, which breaks on U+2028/U+2029."""
+    reference = _reference(WORK)
+    reference.enhancements = [
+        Enhancement(
+            reference_id=reference.id,
+            source="test",
+            visibility="public",
+            content=AbstractContentEnhancement(
+                abstract="first\u2028second\u2029third",
+                process=AbstractProcessType.OTHER,
+            ),
+        )
+    ]
+    following = _reference("W1")
+    output = tmp_path / "lookup.jsonl"
+
+    write_references(output, [reference, following])
+
+    lines = output.read_text(encoding="utf-8").splitlines()
+    assert [Reference.model_validate_json(line).id for line in lines] == [
+        reference.id,
+        following.id,
+    ]
