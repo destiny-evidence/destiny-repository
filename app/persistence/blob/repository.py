@@ -123,10 +123,10 @@ class BlobRepository:
     def _write_backend(self) -> AzureBlobConfig | MinioConfig:
         """The blob backend that new files will be written to."""
         if settings.running_locally:
-            if settings.minio_config:
-                return settings.minio_config
             if settings.azure_blob_config:
                 return settings.azure_blob_config
+            if settings.minio_config:
+                return settings.minio_config
             if settings.env == Environment.TEST:
                 # No blob config in tests; assume mocked.
                 return MinioConfig(

@@ -108,6 +108,25 @@ def test_azure_blob_config_public_endpoint_overrides_public_account_url():
     assert config.public_account_url == "http://localhost:10000/devstoreaccount1"
 
 
+def test_azure_blob_config_shared_key_credential():
+    """An account key yields a named key credential; managed identity yields None."""
+    key_config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        credential="a2V5",
+        containers={c: "test" for c in BlobContainer},
+    )
+    managed_identity_config = AzureBlobConfig(
+        storage_account_name="acct",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    credential = key_config.shared_key_credential
+    assert credential is not None
+    assert credential.named_key.name == "devstoreaccount1"
+    assert credential.named_key.key == "a2V5"
+    assert managed_identity_config.shared_key_credential is None
+
+
 def test_candidate_selection_config_defaults_to_production_policy_and_k():
     """Candidate selection uses the deployed policy unless explicitly overridden."""
     config = DedupCandidateScoringConfig()

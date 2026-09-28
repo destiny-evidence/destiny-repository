@@ -10,8 +10,9 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.config import AzureBlobConfig
+from app.core.config import AzureBlobConfig, MinioConfig
 from app.core.exceptions import BlobSizeExceededError, BlobStorageError
+from app.persistence.blob import repository
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.clients.azure import AzureBlobStorageClient
 from app.persistence.blob.models import (
@@ -350,6 +351,26 @@ async def test_copy_rejects_destination_on_other_backend():
     assert repo._write_backend.location == BlobStorageLocation.MINIO  # noqa: SLF001
     with pytest.raises(BlobStorageError):
         await repo.copy(source, destination)
+
+
+def test_write_backend_prefers_azure_when_both_configured(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Locally, Azure config takes priority over MinIO config for writes."""
+    azure_config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        containers={c: "azure" for c in BlobContainer},
+    )
+    minio_config = MinioConfig(
+        host="h",
+        access_key="a",
+        secret_key="s",
+        containers={c: "minio" for c in BlobContainer},
+    )
+    monkeypatch.setattr(repository.settings, "azure_blob_config", azure_config)
+    monkeypatch.setattr(repository.settings, "minio_config", minio_config)
+
+    assert BlobRepository()._write_backend is azure_config  # noqa: SLF001
 
 
 _STREAM_FILE = BlobStorageFile(

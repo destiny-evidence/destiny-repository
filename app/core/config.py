@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Self
 
+from azure.core.credentials import AzureNamedKeyCredential
 from pydantic import (
     BaseModel,
     Field,
@@ -255,6 +256,13 @@ class AzureBlobConfig(BlobBackendConfig):
         if self.public_endpoint:
             return self.public_endpoint.rstrip("/")
         return self.account_url
+
+    @property
+    def shared_key_credential(self) -> AzureNamedKeyCredential | None:
+        """Return the account name and key credential, if an account key is set."""
+        if self.credential is None:
+            return None
+        return AzureNamedKeyCredential(self.storage_account_name, self.credential)
 
 
 class LogLevel(StrEnum):

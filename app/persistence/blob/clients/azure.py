@@ -68,7 +68,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
             self.account_url,
             credential=self._aio_credential
             if self._aio_credential is not None
-            else self.credential,
+            else config.shared_key_credential,
         )
         self._user_delegation_key_cache: TTLCache[None, UserDelegationKey] = TTLCache(
             maxsize=1, ttl=self.user_delegation_key_duration / 2
