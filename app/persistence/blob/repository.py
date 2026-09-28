@@ -129,10 +129,8 @@ class BlobRepository:
                 return settings.minio_config
             if settings.env == Environment.TEST:
                 # No blob config in tests; assume mocked.
-                return MinioConfig(
-                    host="test",
-                    access_key="test",
-                    secret_key="test",  # noqa: S106
+                return AzureBlobConfig(
+                    storage_account_name="test",
                     containers={c: "test" for c in BlobContainer},
                 )
         if not settings.azure_blob_config:

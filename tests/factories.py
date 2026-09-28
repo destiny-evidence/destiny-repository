@@ -333,7 +333,7 @@ class BlobStorageFileFactory(factory.Factory):
     class Meta:
         model = BlobStorageFile
 
-    location = BlobStorageLocation.MINIO
+    location = BlobStorageLocation.AZURE
     container = factory.Faker("word")
     path = factory.LazyFunction(lambda: "/".join(fake.words(nb=2)))
     filename = factory.LazyFunction(lambda: f"{fake.word()}.pdf")

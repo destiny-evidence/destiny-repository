@@ -94,7 +94,7 @@ def create_enhancement_request(reference_ids, status=EnhancementRequestStatus.RE
         robot_id=uuid7(),
         request_status=status,
         result_file=BlobStorageFile(
-            location="minio",
+            location="azure",
             container="cont",
             path="p",
             filename="f.jsonl",
@@ -117,7 +117,7 @@ def create_pending_enhancement(reference_id, status=PendingEnhancementStatus.PEN
 def create_result_file():
     """Helper to create a BlobStorageFile for results."""
     return BlobStorageFile(
-        location="minio",
+        location="azure",
         container="cont",
         path="p",
         filename="f.jsonl",
@@ -147,7 +147,7 @@ async def test_build_robot_request_happy_path(fake_uow, fake_repository):
     mock_blob_repo = MagicMock()
     mock_blob_repo.upload_file_to_blob_storage = AsyncMock(
         return_value=BlobStorageFile(
-            location="minio",
+            location="azure",
             container="cont",
             path="p",
             filename="f",
@@ -872,7 +872,7 @@ async def test_process_robot_result_stores_full_text_before_persistence():
     result_file = create_result_file()
 
     owned_destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="some-path",
         filename="some-file.pdf",
@@ -924,7 +924,7 @@ async def test_process_robot_result_stores_full_text_before_persistence():
     mock_blob_repo.copy.assert_awaited_once()
     # The enhancement reaching add_enhancement has an owned blob, not remote.
     assert len(added) == 1
-    assert added[0].content.blob.location == BlobStorageLocation.MINIO
+    assert added[0].content.blob.location == BlobStorageLocation.AZURE
 
 
 @pytest.mark.asyncio
@@ -975,7 +975,7 @@ def _ft_enhancement(*, remote: bool, sha256_declared: bool, byte_size_declared: 
     blob = (
         BlobStorageFile.from_uri("https://example.com/papers/foo.pdf")
         if remote
-        else BlobStorageFileFactory.build(location=BlobStorageLocation.MINIO)
+        else BlobStorageFileFactory.build(location=BlobStorageLocation.AZURE)
     )
     ft = FullTextEnhancementFactory.build(
         blob=blob,
@@ -986,7 +986,7 @@ def _ft_enhancement(*, remote: bool, sha256_declared: bool, byte_size_declared: 
 
 
 def _owned_destination():
-    return BlobStorageFileFactory.build(location=BlobStorageLocation.MINIO)
+    return BlobStorageFileFactory.build(location=BlobStorageLocation.AZURE)
 
 
 def _service_with_blob_repo(blob_repo):
@@ -1015,7 +1015,7 @@ async def test_store_full_text_copies_remote_ft_and_swaps_blob():
     await _service_with_blob_repo(blob_repo).store_full_text(ft, blob_repo)
 
     blob_repo.copy.assert_awaited_once()
-    assert ft.content.blob.location == BlobStorageLocation.MINIO
+    assert ft.content.blob.location == BlobStorageLocation.AZURE
     assert ft.content.sha256_checksum == "b" * 64
     assert ft.content.byte_size == 999
 

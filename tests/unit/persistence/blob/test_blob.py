@@ -50,7 +50,7 @@ async def test_upload_file_to_blob_storage():
 async def test_stream_file_from_blob_storage():
     repo = BlobRepository()
     file = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="test-container",
         path="test/path",
         filename="test.txt",
@@ -66,7 +66,7 @@ async def test_stream_file_from_blob_storage():
 async def test_get_signed_url():
     repo = BlobRepository()
     file = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="test-container",
         path="test/path",
         filename="test.txt",
@@ -233,7 +233,7 @@ async def test_copy_streams_through_and_computes_sha256_and_size():
 
     source = BlobStorageFile.from_uri("https://example.com/papers/foo.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="2026/05",
         filename="foo.pdf",
@@ -264,7 +264,7 @@ async def test_copy_empty_source_yields_known_sha256():
 
     source = BlobStorageFile.from_uri("https://example.com/empty.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="p",
         filename="empty.pdf",
@@ -291,7 +291,7 @@ async def test_copy_aborts_when_max_bytes_exceeded():
 
     source = BlobStorageFile.from_uri("https://example.com/big.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="p",
         filename="big.pdf",
@@ -317,7 +317,7 @@ async def test_copy_max_bytes_none_disables_check():
 
     source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="p",
         filename="foo.pdf",
@@ -340,17 +340,25 @@ async def test_copy_max_bytes_none_disables_check():
 async def test_copy_rejects_destination_on_other_backend():
     """A destination not on the active write backend should be refused."""
     source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
-    destination = BlobStorageFile(
-        location=BlobStorageLocation.AZURE,
-        container="cont",
-        path="p",
-        filename="foo.pdf",
-    )
+    destination = BlobStorageFile.from_uri("https://example.com/bar.pdf")
 
     repo = BlobRepository()
-    assert repo._write_backend.location == BlobStorageLocation.MINIO  # noqa: SLF001
+    assert repo._write_backend.location == BlobStorageLocation.AZURE  # noqa: SLF001
     with pytest.raises(BlobStorageError):
         await repo.copy(source, destination)
+
+
+def test_write_backend_defaults_to_azure_in_tests_without_config(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """With no blob config under ENV=test, writes target a placeholder Azure config."""
+    monkeypatch.setattr(repository.settings, "azure_blob_config", None)
+    monkeypatch.setattr(repository.settings, "minio_config", None)
+
+    backend = BlobRepository()._write_backend  # noqa: SLF001
+
+    assert backend.location == BlobStorageLocation.AZURE
+    assert backend.containers == {c: "test" for c in BlobContainer}
 
 
 def test_write_backend_prefers_azure_when_both_configured(
@@ -374,7 +382,7 @@ def test_write_backend_prefers_azure_when_both_configured(
 
 
 _STREAM_FILE = BlobStorageFile(
-    location=BlobStorageLocation.MINIO,
+    location=BlobStorageLocation.AZURE,
     container="c",
     path="p",
     filename="f.txt",
@@ -461,14 +469,14 @@ class _CloseRecordingClient(GenericBlobStorageClient):
 async def test_blob_registry_get_reuses_client_per_location():
     """Repeated get()s for one location instantiate once; distinct per location."""
     registry = _BlobClientRegistry()
-    minio_file_a = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+    azure_file_a = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
         container="c",
         path="p",
         filename="a.txt",
     )
-    minio_file_b = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+    azure_file_b = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
         container="c",
         path="p",
         filename="b.txt",
@@ -486,14 +494,14 @@ async def test_blob_registry_get_reuses_client_per_location():
     with patch.object(
         _BlobClientRegistry, "_instantiate", side_effect=fake_instantiate
     ):
-        first = await registry.get(minio_file_a)
-        second = await registry.get(minio_file_b)
+        first = await registry.get(azure_file_a)
+        second = await registry.get(azure_file_b)
         remote = await registry.get(https_file)
 
-    assert first is second  # cached: same instance for two MINIO gets
+    assert first is second  # cached: same instance for two AZURE gets
     assert first is not remote  # distinct backend, distinct instance
     assert instantiate_count == {
-        BlobStorageLocation.MINIO: 1,
+        BlobStorageLocation.AZURE: 1,
         BlobStorageLocation.HTTPS: 1,
     }
 
@@ -506,7 +514,7 @@ async def test_blob_registry_aclose_closes_each_and_clears(
     registry = _BlobClientRegistry()
     good = _CloseRecordingClient()
     bad = _CloseRecordingClient(raise_on_close=True)
-    registry._clients[BlobStorageLocation.MINIO] = good  # noqa: SLF001
+    registry._clients[BlobStorageLocation.AZURE] = good  # noqa: SLF001
     registry._clients[BlobStorageLocation.HTTPS] = bad  # noqa: SLF001
 
     with caplog.at_level(logging.WARNING, logger="app.persistence.blob.repository"):
