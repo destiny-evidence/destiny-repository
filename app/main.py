@@ -33,6 +33,7 @@ if settings.otel_config and settings.otel_enabled:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     """Lifespan hook for FastAPI."""
+    logger_configurer.route_uvicorn_logs_to_root()
     db_manager.init(settings.db_config, settings.app_name)
     await es_manager.init(settings.es_config)
     await broker.startup()
