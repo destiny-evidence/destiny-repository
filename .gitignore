@@ -198,8 +198,8 @@ infra/app/*.py
 
 .certs
 
-libs/fake_data/*.jsonl
-*-lookup-*.jsonl
+*.jsonl
+!libs/sdk/tests/unit/test_data/*.jsonl
 
 .data
 .env.*

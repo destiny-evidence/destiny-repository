@@ -6,29 +6,31 @@ to its reference id in the target environment. This pulls that mapping from a
 repository environment and writes it as JSONL, one `Reference` per line, which is
 the shape those ingestors read.
 
-Reference ids differ per environment, and a lookup built against the wrong one
-matches nothing without raising, so name the output for the environment and date::
+A lookup against the wrong environment succeeds, just with that environment's ids,
+so name the output for the environment and date::
 
     uv run python -m cli.lookup_openalex_references --env production \
         --identifier-file openalex-matches.csv --column openalex_id \
         --output production-lookup-2026-09-28.jsonl
 
 Without ``--column`` each file holds one work id per line. Work ids may be bare
-(`W3121659249`), lookup-prefixed (`open_alex:W3121659249`) or the full OpenAlex URL.
-
-See also: https://github.com/destiny-evidence/destiny-repository/issues/555
+(`W3121659249`), lookup-prefixed (`open_alex:W3121659249`) or an OpenAlex URL.
 """
 
 # ruff: noqa: T201
 import csv
-import re
 from collections.abc import Iterable
 from itertools import batched
 from pathlib import Path
 
 from destiny_sdk.client import OAuthClient
-from destiny_sdk.identifiers import ExternalIdentifierType
+from destiny_sdk.identifiers import (
+    ExternalIdentifierType,
+    IdentifierLookup,
+    OpenAlexIdentifier,
+)
 from destiny_sdk.references import Reference
+from pydantic import ValidationError
 
 from cli.client import ApiArgumentParser
 
@@ -36,22 +38,16 @@ from cli.client import ApiArgumentParser
 LOOKUP_REFERENCES_CHUNK_SIZE = 100
 
 OPENALEX_IDENTIFIER_PREFIX = f"{ExternalIdentifierType.OPEN_ALEX.value}:"
-OPENALEX_URL_PREFIX = "https://openalex.org/"
-# Anchored: an unanchored pattern accepts anything containing a work id.
-WORK_ID_PATTERN = re.compile(r"W\d+")
 
 
 def normalise_work_id(raw: str) -> str:
     """Reduce any accepted OpenAlex work form to the bare id the repository stores."""
-    value = (
-        raw.strip()
-        .removeprefix(OPENALEX_IDENTIFIER_PREFIX)
-        .removeprefix(OPENALEX_URL_PREFIX)
-    )
-    if not WORK_ID_PATTERN.fullmatch(value):
+    value = raw.strip().removeprefix(OPENALEX_IDENTIFIER_PREFIX)
+    try:
+        return OpenAlexIdentifier(identifier=value).identifier
+    except ValidationError as exc:
         msg = f"{raw.strip()!r} is not an OpenAlex work id"
-        raise ValueError(msg)
-    return value
+        raise ValueError(msg) from exc
 
 
 def read_column(path: Path, column: str) -> list[str]:
@@ -65,8 +61,8 @@ def read_column(path: Path, column: str) -> list[str]:
 
 
 def load_work_ids(paths: Iterable[Path], column: str | None = None) -> list[str]:
-    """Read work ids from files, normalised and deduplicated, in first-seen order."""
-    work_ids = [
+    """Read work ids from files, normalised, deduplicated and sorted."""
+    work_ids = {
         normalise_work_id(value)
         for path in paths
         for value in (
@@ -75,8 +71,8 @@ def load_work_ids(paths: Iterable[Path], column: str | None = None) -> list[str]
             else path.read_text(encoding="utf-8").splitlines()
         )
         if value.strip()
-    ]
-    return list(dict.fromkeys(work_ids))
+    }
+    return sorted(work_ids)
 
 
 def unresolved_work_ids(requested: list[str], references: list[Reference]) -> list[str]:
@@ -99,7 +95,10 @@ def fetch_references(client: OAuthClient, work_ids: list[str]) -> list[Reference
     references: list[Reference] = []
     for chunk in batched(work_ids, LOOKUP_REFERENCES_CHUNK_SIZE):
         found = client.lookup(
-            [f"{OPENALEX_IDENTIFIER_PREFIX}{work_id}" for work_id in chunk]
+            [
+                IdentifierLookup.from_identifier(OpenAlexIdentifier(identifier=work_id))
+                for work_id in chunk
+            ]
         )
         print(f"  {len(chunk)} requested, {len(found)} returned")
         references.extend(found)

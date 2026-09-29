@@ -9,11 +9,12 @@ from destiny_sdk.enhancements import (
     AbstractProcessType,
     Enhancement,
 )
-from destiny_sdk.identifiers import ExternalIdentifierType
+from destiny_sdk.identifiers import OpenAlexIdentifier
 from destiny_sdk.references import Reference
 
 from cli.lookup_openalex_references import (
     argument_parser,
+    fetch_references,
     load_work_ids,
     normalise_work_id,
     unresolved_work_ids,
@@ -27,13 +28,7 @@ def _reference(*work_ids: str) -> Reference:
     """Create a reference carrying the given OpenAlex works."""
     return Reference(
         id=uuid4(),
-        identifiers=[
-            {
-                "identifier": work_id,
-                "identifier_type": ExternalIdentifierType.OPEN_ALEX,
-            }
-            for work_id in work_ids
-        ],
+        identifiers=[OpenAlexIdentifier(identifier=work_id) for work_id in work_ids],
     )
 
 
@@ -48,9 +43,17 @@ class TestNormaliseWorkId:
         """The lookup-parameter form is accepted as input."""
         assert normalise_work_id(f"open_alex:{WORK}") == WORK
 
-    def test_url_form_is_reduced_to_the_work_id(self) -> None:
-        """OpenAlex exports carry the full URL."""
-        assert normalise_work_id(f"https://openalex.org/{WORK}") == WORK
+    @pytest.mark.parametrize(
+        "url",
+        [
+            f"https://openalex.org/{WORK}",
+            f"http://openalex.org/{WORK}",
+            f"https://openalex.org/works/{WORK}",
+        ],
+    )
+    def test_url_forms_are_reduced_to_the_work_id(self, url: str) -> None:
+        """OpenAlex exports and pasted links carry the work as a URL."""
+        assert normalise_work_id(url) == WORK
 
     def test_surrounding_whitespace_is_ignored(self) -> None:
         """Input files are read line by line."""
@@ -74,7 +77,7 @@ class TestLoadWorkIds:
 
         assert load_work_ids([bare, prefixed]) == ["W1", "W2", "W3"]
 
-    def test_deduplicates_across_files_preserving_order(self, tmp_path: Path) -> None:
+    def test_deduplicates_across_files(self, tmp_path: Path) -> None:
         """A work named twice is looked up once."""
         first = tmp_path / "first.txt"
         first.write_text("W1\nW2\n")
@@ -82,6 +85,13 @@ class TestLoadWorkIds:
         second.write_text("open_alex:W2\nW3\n")
 
         assert load_work_ids([first, second]) == ["W1", "W2", "W3"]
+
+    def test_is_sorted_so_reruns_chunk_identically(self, tmp_path: Path) -> None:
+        """Input order carries no meaning, and a set's order varies between runs."""
+        path = tmp_path / "wids.txt"
+        path.write_text("W3\nW1\nW2\n")
+
+        assert load_work_ids([path]) == ["W1", "W2", "W3"]
 
     def test_blank_lines_are_skipped(self, tmp_path: Path) -> None:
         """Hand-maintained files carry stray blank lines."""
@@ -111,6 +121,30 @@ class TestLoadWorkIds:
 
         with pytest.raises(ValueError, match="no column .openalex."):
             load_work_ids([path], column="openalex")
+
+
+class _RecordingClient:
+    """Stands in for OAuthClient, recording each lookup it is asked for."""
+
+    def __init__(self) -> None:
+        self.lookups: list[list[str]] = []
+
+    def lookup(self, identifiers: list) -> list[Reference]:
+        lookup = [str(identifier) for identifier in identifiers]
+        self.lookups.append(lookup)
+        return [_reference(value.removeprefix("open_alex:")) for value in lookup]
+
+
+def test_fetch_references_chunks_at_the_lookup_limit() -> None:
+    """The API rejects more than 100 identifiers in one lookup."""
+    client = _RecordingClient()
+    work_ids = [f"W{n}" for n in range(150)]
+
+    references = fetch_references(client, work_ids)  # type: ignore[arg-type]
+
+    assert [len(lookup) for lookup in client.lookups] == [100, 50]
+    assert client.lookups[0][0] == "open_alex:W0"
+    assert len(references) == 150
 
 
 class TestUnresolvedWorkIds:
