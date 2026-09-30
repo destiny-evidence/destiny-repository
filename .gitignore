@@ -208,3 +208,5 @@ infra/app/*.py
 .idea/
 
 .test.tmp
+
+docker-compose.override.yml
