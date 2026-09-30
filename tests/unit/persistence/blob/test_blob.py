@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.core.config import AzureBlobConfig, MinioConfig
+from app.core.config import AzureBlobConfig
 from app.core.exceptions import BlobSizeExceededError, BlobStorageError
 from app.persistence.blob import repository
 from app.persistence.blob.client import GenericBlobStorageClient
@@ -78,7 +78,7 @@ async def test_get_signed_url():
 
 
 @pytest.mark.asyncio
-async def test_filestream_stream_and_read_fn():
+async def test_filestream_stream_fn():
     async def fake_fn(_dummy):
         return '{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}'
 
@@ -86,13 +86,12 @@ async def test_filestream_stream_and_read_fn():
         fn=fake_fn,
         fn_kwargs=[{"_dummy": "value"}, {"_dummy": "value"}, {"_dummy": "value"}],
     )
-    # Test read (implicitly tests stream also)
-    result = await fs.read()
-    assert b'{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}' in result.getvalue()
+    result = b"".join([chunk async for chunk in fs.stream()])
+    assert b'{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}' in result
 
 
 @pytest.mark.asyncio
-async def test_filestream_stream_and_read_gen():
+async def test_filestream_stream_gen():
     async def fake_gen():
         yield '{"foo": "bar"}'
         yield '{"foo": "bar2"}'
@@ -100,9 +99,8 @@ async def test_filestream_stream_and_read_gen():
     fs = FileStream(
         generator=fake_gen(),
     )
-    # Test read (implicitly tests stream also)
-    result = await fs.read()
-    assert b'{"foo": "bar"}\n{"foo": "bar2"}' in result.getvalue()
+    result = b"".join([chunk async for chunk in fs.stream()])
+    assert b'{"foo": "bar"}\n{"foo": "bar2"}' in result
 
 
 @pytest.mark.parametrize(
@@ -353,32 +351,11 @@ def test_write_backend_defaults_to_azure_in_tests_without_config(
 ):
     """With no blob config under ENV=test, writes target a placeholder Azure config."""
     monkeypatch.setattr(repository.settings, "azure_blob_config", None)
-    monkeypatch.setattr(repository.settings, "minio_config", None)
 
     backend = BlobRepository()._write_backend  # noqa: SLF001
 
     assert backend.location == BlobStorageLocation.AZURE
     assert backend.containers == {c: "test" for c in BlobContainer}
-
-
-def test_write_backend_prefers_azure_when_both_configured(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    """Locally, Azure config takes priority over MinIO config for writes."""
-    azure_config = AzureBlobConfig(
-        storage_account_name="devstoreaccount1",
-        containers={c: "azure" for c in BlobContainer},
-    )
-    minio_config = MinioConfig(
-        host="h",
-        access_key="a",
-        secret_key="s",
-        containers={c: "minio" for c in BlobContainer},
-    )
-    monkeypatch.setattr(repository.settings, "azure_blob_config", azure_config)
-    monkeypatch.setattr(repository.settings, "minio_config", minio_config)
-
-    assert BlobRepository()._write_backend is azure_config  # noqa: SLF001
 
 
 _STREAM_FILE = BlobStorageFile(

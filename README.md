@@ -53,15 +53,15 @@ Once the database server is running, run the migrations to setup the database.
 uv run alembic upgrade head
 ```
 
-#### MinIO
+#### Azurite
 
-You also may need the MinIO fileserver. This requires the MinIO Client. Install instructions for Mac:
+Blob storage is provided by the `azurite` service at `http://localhost:10000/localuser`, using the storage account `localuser` with key `bG9jYWxwYXNz` (`base64("localpass")`). The `blob_setup` service creates the `destiny-repository` container and its CORS rule.
 
-```sh
-brew install minio-mc
+To browse it, connect [Azure Storage Explorer](https://azure.microsoft.com/products/storage/storage-explorer/) with the connection string:
+
+```text
+DefaultEndpointsProtocol=http;AccountName=localuser;AccountKey=bG9jYWxwYXNz;BlobEndpoint=http://localhost:10000/localuser;
 ```
-
-This can be accessed at localhost:9001 or automatically seeded using the below:
 
 #### Seeding the database
 

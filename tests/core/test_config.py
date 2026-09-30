@@ -9,7 +9,6 @@ from app.core.config import (
     DedupAssessmentRecordingConfig,
     DedupCandidateScoringConfig,
     ESConfig,
-    MinioConfig,
 )
 from app.domain.references.models.models import RetrievalPolicyName
 from app.persistence.blob.models import BlobContainer
@@ -64,10 +63,8 @@ def test_blob_backend_config_requires_all_containers():
             containers={BlobContainer.FULL_TEXTS: "full-texts"},
         )
     with pytest.raises(ValidationError, match="full_texts"):
-        MinioConfig(
-            host="h",
-            access_key="a",
-            secret_key="s",
+        AzureBlobConfig(
+            storage_account_name="acct",
             containers={BlobContainer.OPERATIONS: "ops"},
         )
 

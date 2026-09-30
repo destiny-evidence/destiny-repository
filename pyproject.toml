@@ -60,7 +60,6 @@ dependencies = [
     "frozenlist==1.6.0",
     "greenlet>=3.1.1,<4",
     "joserfc>=1.6.3",
-    "minio>=7.2.15,<8",
     "numpy>=2.5.1",
     "opentelemetry-distro>=0.65b0,<0.66",
     "opentelemetry-exporter-otlp>=1.39.1,<2",

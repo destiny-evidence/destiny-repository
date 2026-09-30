@@ -13,19 +13,16 @@ from pydantic import HttpUrl
 from app.core.config import (
     AzureBlobConfig,
     Environment,
-    MinioConfig,
     get_settings,
 )
 from app.core.exceptions import (
     AzureBlobStorageError,
     BlobSizeExceededError,
     BlobStorageError,
-    MinioBlobStorageError,
 )
 from app.core.telemetry.logger import get_logger
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.clients.azure import AzureBlobStorageClient
-from app.persistence.blob.clients.minio import MinioBlobStorageClient
 from app.persistence.blob.clients.remote import RemoteBlobStorageClient
 from app.persistence.blob.models import (
     BlobContainer,
@@ -84,13 +81,6 @@ class _BlobClientRegistry:
             return AzureBlobStorageClient(
                 settings.azure_blob_config, settings.presigned_url_expiry_seconds
             )
-        if file.location == BlobStorageLocation.MINIO:
-            if not settings.minio_config:
-                msg = "MinIO configuration is not given."
-                raise MinioBlobStorageError(msg)
-            return MinioBlobStorageClient(
-                settings.minio_config, settings.presigned_url_expiry_seconds
-            )
         if file.is_remote:
             return RemoteBlobStorageClient()
         msg = "Unsupported blob storage location."
@@ -120,23 +110,18 @@ class BlobRepository:
     """Repository for managing files in blob storage."""
 
     @cached_property
-    def _write_backend(self) -> AzureBlobConfig | MinioConfig:
+    def _write_backend(self) -> AzureBlobConfig:
         """The blob backend that new files will be written to."""
-        if settings.running_locally:
-            if settings.azure_blob_config:
-                return settings.azure_blob_config
-            if settings.minio_config:
-                return settings.minio_config
-            if settings.env == Environment.TEST:
-                # No blob config in tests; assume mocked.
-                return AzureBlobConfig(
-                    storage_account_name="test",
-                    containers={c: "test" for c in BlobContainer},
-                )
-        if not settings.azure_blob_config:
-            msg = "Azure Blob Storage configuration is not given."
-            raise ValueError(msg)
-        return settings.azure_blob_config
+        if settings.azure_blob_config:
+            return settings.azure_blob_config
+        if settings.env == Environment.TEST:
+            # No blob config in tests; assume mocked.
+            return AzureBlobConfig(
+                storage_account_name="test",
+                containers={c: "test" for c in BlobContainer},
+            )
+        msg = "Azure Blob Storage configuration is not given."
+        raise ValueError(msg)
 
     async def _preload_config(
         self,

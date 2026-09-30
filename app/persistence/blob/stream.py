@@ -2,7 +2,6 @@
 
 from asyncio import gather
 from collections.abc import AsyncGenerator, Awaitable, Callable, Sequence
-from io import BytesIO
 from typing import Any, TypeVar
 
 from opentelemetry import trace
@@ -109,21 +108,3 @@ class FileStream:
             for kwargs in self.fn_kwargs:
                 data = await self.fn(**kwargs)
                 yield await self._to_bytes(data)
-
-    async def read(self) -> BytesIO:
-        """
-        Read all data from the FileStream into memory and return as a file-like object.
-
-        For implementations where async generators are not supported we read all data
-        into memory and return a BytesIO object. Currently this applies only to MinIO
-        which is only used for local and testing purposes. If this becomes a problem
-        we can also look into composing blobs: https://min.io/docs/minio/linux/developers/python/API.html#compose_object
-
-        :return: A BytesIO object containing all the data.
-        :rtype: BytesIO
-        """
-        buffer = BytesIO()
-        async for chunk in self.stream():
-            buffer.write(chunk)
-        buffer.seek(0)
-        return buffer
