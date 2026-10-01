@@ -29,10 +29,12 @@ class TaskPriority(IntEnum):
     Priority levels for queued tasks.
 
     May be used to set on-wire priority header, or to route to different
-    queues depending on broker implementation.
+    queues depending on broker implementation. Values must be non-negative
+    to be valid AMQP priorities.
     """
 
-    NORMAL = 0
+    LOW = 0
+    NORMAL = 1
     HIGH = 5
 
 
