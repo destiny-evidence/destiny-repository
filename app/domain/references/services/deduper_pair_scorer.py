@@ -36,7 +36,7 @@ FIELD_STATUSES = {
 
 def _compared_values(paper: DeduplicationPaper) -> "dict[str, JsonValue]":
     """Return JSON values keyed by scorer fields."""
-    values = cast("dict[str, JsonValue]", paper.model_dump(mode="json"))
+    values: dict[str, JsonValue] = paper.model_dump(mode="json")
     if paper.authors is not None:
         # The comparator reads only display names.
         values["authors"] = [author.display_name for author in paper.authors]
