@@ -1226,8 +1226,8 @@ class DeduplicationPaper(ProjectedBaseModel):
     """
     The record shape the Deduper scores, built here rather than by the toolkit.
 
-    Fields sharing a name with the toolkit's ``Paper`` keep its type; ``Paper`` ignores
-    the rest.
+    Fields sharing a name with the toolkit's ``Paper`` keep its type, and ``venue`` is
+    its ``journal``; ``Paper`` ignores the rest.
     """
 
     doi: destiny_sdk.identifiers.DOIIdentifier | None = None
@@ -1236,14 +1236,14 @@ class DeduplicationPaper(ProjectedBaseModel):
     title: str | None = None
     authors: list[destiny_sdk.enhancements.Authorship] | None = None
     year: int | None = None
-    journal: str | None = Field(
+    venue: str | None = Field(
         default=None,
         description="The venue's name, which may be a repository rather than a "
         "journal.",
     )
     venue_type: destiny_sdk.enhancements.PublicationVenueType | None = Field(
         default=None,
-        description="What kind of venue `journal` names, so a repository can be told "
+        description="What kind of venue `venue` names, so a repository can be told "
         "apart.",
     )
     issn: str | None = Field(default=None, description="The venue's linking ISSN.")

@@ -74,7 +74,7 @@ def test_projects_bibliographic_fields():
 
     assert paper.title == "Trial of a thing"
     assert paper.year == 2024
-    assert paper.journal == "The Lancet"
+    assert paper.venue == "The Lancet"
     assert paper.volume == "12"
     assert paper.issue == "4"
     assert paper.pages == "101-115"
@@ -132,7 +132,7 @@ def _reference_with_venues(*venues) -> Reference:
     )
 
 
-def test_venue_type_describes_the_venue_that_supplied_journal():
+def test_venue_type_describes_the_venue_that_supplied_the_name():
     # A type taken from a different venue than the name would mislabel the journal.
     reference = _reference_with_venues(
         PublicationVenueFactory.build(
@@ -145,11 +145,11 @@ def test_venue_type_describes_the_venue_that_supplied_journal():
 
     paper = DeduplicationPaperProjection.get_from_reference(reference)
 
-    assert paper.journal == "The Lancet"
+    assert paper.venue == "The Lancet"
     assert paper.venue_type == PublicationVenueType.JOURNAL
 
 
-def test_issn_describes_the_venue_that_supplied_journal():
+def test_issn_describes_the_venue_that_supplied_the_name():
     # An exact ISSN match on another venue's number would be confidently wrong.
     reference = _reference_with_venues(
         PublicationVenueFactory.build(display_name="The Lancet", issn_l="0140-6736"),
@@ -158,7 +158,7 @@ def test_issn_describes_the_venue_that_supplied_journal():
 
     paper = DeduplicationPaperProjection.get_from_reference(reference)
 
-    assert paper.journal == "Zenodo"
+    assert paper.venue == "Zenodo"
     assert paper.issn is None
 
 
@@ -252,7 +252,7 @@ def test_venue_never_comes_from_a_location_enhancement():
 
     paper = DeduplicationPaperProjection.get_from_reference(reference)
 
-    assert paper.journal == "The Lancet"
+    assert paper.venue == "The Lancet"
     assert paper.volume == "12"
     assert paper.issue == "4"
 
@@ -298,7 +298,7 @@ def test_missing_fields_fall_back_to_a_lower_priority_enhancement():
     paper = DeduplicationPaperProjection.get_from_reference(reference)
 
     assert paper.title == "Newer title"
-    assert paper.journal == "The Lancet"
+    assert paper.venue == "The Lancet"
 
 
 def test_projects_supplied_reference_without_created_at():

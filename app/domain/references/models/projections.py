@@ -326,7 +326,7 @@ class DeduplicationPaperProjection(GenericProjection[DeduplicationPaper]):
             open_alex = identifiers.get(ExternalIdentifierType.OPEN_ALEX)
             pubmed = identifiers.get(ExternalIdentifierType.PM_ID)
 
-            title, year, journal, pages, volume, issue = (None,) * 6
+            title, year, venue_name, pages, volume, issue = (None,) * 6
             issn, publisher = None, None
             authors: list[destiny_sdk.enhancements.Authorship] | None = None
             venue_type: destiny_sdk.enhancements.PublicationVenueType | None = None
@@ -348,7 +348,7 @@ class DeduplicationPaperProjection(GenericProjection[DeduplicationPaper]):
                 if venue := content.publication_venue:
                     # Type and ISSN travel with the name they describe
                     if venue.display_name:
-                        journal = venue.display_name
+                        venue_name = venue.display_name
                         venue_type = venue.venue_type
                         issn = venue.issn_l
                     publisher = venue.host_organization_name or publisher
@@ -371,7 +371,7 @@ class DeduplicationPaperProjection(GenericProjection[DeduplicationPaper]):
                 title=title,
                 authors=authors,
                 year=year,
-                journal=journal,
+                venue=venue_name,
                 venue_type=venue_type,
                 issn=issn,
                 publisher=publisher,
