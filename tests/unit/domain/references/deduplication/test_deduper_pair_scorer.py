@@ -4,6 +4,7 @@ from importlib.metadata import version
 import pytest
 from destiny_deduper import FieldResult as DeduperFieldResult
 from destiny_deduper import FieldStatus, PairLabel, PairScoreResult, get_library_info
+from destiny_deduper.data_models import Paper
 from destiny_deduper.logger import logger as deduper_logger
 from destiny_sdk.enhancements import AuthorPosition, Authorship
 from destiny_sdk.identifiers import DOIIdentifier
@@ -36,6 +37,16 @@ def _paper(**overrides) -> DeduplicationPaper:
             **overrides,
         }
     )
+
+
+def test_sends_every_paper_field_the_deduper_reads():
+    # Paper drops fields it does not know, so a rename on either side scores silently
+    # without them. A Deduper release that changes Paper's fields fails here.
+    ours = (set(DeduplicationPaper.model_fields) - {"venue"}) | {"journal"}
+    deduper_fields = set(Paper.model_fields)
+
+    assert deduper_fields - ours == {"isbn"}
+    assert ours - deduper_fields == {"venue_type"}
 
 
 def test_metadata_reports_the_installed_deduper():
