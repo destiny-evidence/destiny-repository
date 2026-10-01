@@ -104,12 +104,19 @@ class DeduperPairScorer:
         return await asyncio.to_thread(_score, incoming, candidate)
 
 
+def _deduper_paper(paper: DeduplicationPaper) -> Paper:
+    """Build the Deduper's own record, which calls the venue its journal."""
+    return Paper(
+        **paper.model_dump(exclude_none=True, exclude={"venue"}), journal=paper.venue
+    )
+
+
 def _run_deduper(
     incoming: DeduplicationPaper, candidate: DeduplicationPaper
 ) -> PairScoreResult:
     """Build the Deduper's own records and score them, incoming first."""
-    incoming_paper = Paper(**incoming.model_dump(exclude_none=True))
-    candidate_paper = Paper(**candidate.model_dump(exclude_none=True))
+    incoming_paper = _deduper_paper(incoming)
+    candidate_paper = _deduper_paper(candidate)
     # The constructor requires the same records ``score_pair`` receives.
     deduper = Deduper(reference=incoming_paper, candidates=[candidate_paper])
     return deduper.score_pair(incoming_paper, candidate_paper)

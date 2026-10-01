@@ -32,7 +32,7 @@ def _paper(**overrides) -> DeduplicationPaper:
             "title": TITLE,
             "authors": _authors("Ada Lovelace", "Grace Hopper"),
             "year": 2019,
-            "journal": "Journal of Bone Research",
+            "venue": "Journal of Bone Research",
             **overrides,
         }
     )
@@ -56,7 +56,7 @@ def test_metadata_reports_the_installed_deduper():
 async def test_scores_a_matching_pair():
     # DOI makes this abbreviation match clear the threshold.
     result = await DeduperPairScorer().score_pair(
-        incoming=_paper(doi=DOI), candidate=_paper(doi=DOI, journal="J Bone Res")
+        incoming=_paper(doi=DOI), candidate=_paper(doi=DOI, venue="J Bone Res")
     )
 
     assert result.probability is not None
@@ -72,6 +72,11 @@ async def test_scores_a_matching_pair():
     authors = result.field_comparisons["authors"]
     assert authors.normalised_incoming_value == "Ada Lovelace, Grace Hopper"
     assert authors.normalised_candidate_value == "Ada Lovelace, Grace Hopper"
+    # The Deduper scores the venue as its journal.
+    journal = result.field_comparisons["journal"]
+    assert journal.status == DeduplicationFieldStatus.COMPARED
+    assert journal.incoming_value == "Journal of Bone Research"
+    assert journal.candidate_value == "J Bone Res"
 
 
 @pytest.mark.asyncio
@@ -109,8 +114,8 @@ async def test_keeps_the_deduper_value_for_a_field_no_paper_carries(monkeypatch)
         probability=0.5,
         doi_mismatch_adjustment_applied=False,
         field_results={
-            "publisher": DeduperFieldResult(
-                status=FieldStatus.MISSING_A, value_b="Elsevier"
+            "isbn": DeduperFieldResult(
+                status=FieldStatus.MISSING_A, value_b="978-3-16-148410-0"
             )
         },
         label=PairLabel.NOT_DUPLICATE,
@@ -121,7 +126,7 @@ async def test_keeps_the_deduper_value_for_a_field_no_paper_carries(monkeypatch)
 
     result = await DeduperPairScorer().score_pair(incoming=_paper(), candidate=_paper())
 
-    assert result.field_comparisons["publisher"].candidate_value == "Elsevier"
+    assert result.field_comparisons["isbn"].candidate_value == "978-3-16-148410-0"
 
 
 @pytest.mark.asyncio
