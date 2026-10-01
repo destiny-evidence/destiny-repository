@@ -1236,12 +1236,17 @@ class DeduplicationPaper(ProjectedBaseModel):
     title: str | None = None
     authors: list[destiny_sdk.enhancements.Authorship] | None = None
     year: int | None = None
-    journal: str | None = None
-    """The venue's name, which may be a repository rather than a journal."""
-    venue_type: destiny_sdk.enhancements.PublicationVenueType | None = None
-    """What kind of venue ``journal`` names, so a repository can be told apart."""
-    issn: str | None = None
-    """The venue's linking ISSN."""
+    journal: str | None = Field(
+        default=None,
+        description="The venue's name, which may be a repository rather than a "
+        "journal.",
+    )
+    venue_type: destiny_sdk.enhancements.PublicationVenueType | None = Field(
+        default=None,
+        description="What kind of venue `journal` names, so a repository can be told "
+        "apart.",
+    )
+    issn: str | None = Field(default=None, description="The venue's linking ISSN.")
     publisher: str | None = None
     pages: str | None = None
     volume: str | None = None
