@@ -69,13 +69,14 @@ class AzureServiceBusBroker(AsyncBroker):
     See https://taskiq-python.github.io/extending-taskiq/broker.html
     """
 
-    def __init__(
+    def __init__(  # noqa: PLR0913
         self,
         max_lock_renewal_duration: int = 10800,  # 3 hours
         connection_string: str | None = None,
         namespace: str | None = None,
         queue_name: str = "taskiq",
         priority_queue_name: str = "taskiq-priority",
+        low_priority_queue_name: str = "taskiq-low-priority",
     ) -> None:
         """
         Construct a new broker.
@@ -87,6 +88,8 @@ class AzureServiceBusBroker(AsyncBroker):
         :param queue_name: queue used to get normal priority incoming messages with.
         :param priority_queue_name: queue used to get high priority incoming
             messages with.
+        :param low_priority_queue_name: queue used to get low priority incoming
+            messages with.
         """
         super().__init__()
 
@@ -94,6 +97,7 @@ class AzureServiceBusBroker(AsyncBroker):
         self.namespace = namespace
         self._queue_name = queue_name
         self._priority_queue_name = priority_queue_name
+        self._low_priority_queue_name = low_priority_queue_name
         self.max_lock_renewal_duration = max_lock_renewal_duration
 
         self.service_bus_client: ServiceBusClient | None = None
@@ -101,6 +105,8 @@ class AzureServiceBusBroker(AsyncBroker):
         self.receiver: ServiceBusReceiver | None = None
         self.priority_sender: ServiceBusSender | None = None
         self.priority_receiver: ServiceBusReceiver | None = None
+        self.low_priority_sender: ServiceBusSender | None = None
+        self.low_priority_receiver: ServiceBusReceiver | None = None
         self.credential: DefaultAzureCredential | None = None
         self.auto_lock_renewer: AutoLockRenewer | None = None
 
@@ -134,6 +140,10 @@ class AzureServiceBusBroker(AsyncBroker):
             queue_name=self._priority_queue_name
         )
 
+        self.low_priority_sender = self.service_bus_client.get_queue_sender(
+            queue_name=self._low_priority_queue_name
+        )
+
         if self.is_worker_process:
             self.receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._queue_name,
@@ -142,6 +152,11 @@ class AzureServiceBusBroker(AsyncBroker):
 
             self.priority_receiver = self.service_bus_client.get_queue_receiver(
                 queue_name=self._priority_queue_name,
+                receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
+            )
+
+            self.low_priority_receiver = self.service_bus_client.get_queue_receiver(
+                queue_name=self._low_priority_queue_name,
                 receive_mode=ServiceBusReceiveMode.PEEK_LOCK,
             )
 
@@ -158,10 +173,14 @@ class AzureServiceBusBroker(AsyncBroker):
             await self.sender.close()
         if self.priority_sender:
             await self.priority_sender.close()
+        if self.low_priority_sender:
+            await self.low_priority_sender.close()
         if self.receiver:
             await self.receiver.close()
         if self.priority_receiver:
             await self.priority_receiver.close()
+        if self.low_priority_receiver:
+            await self.low_priority_receiver.close()
         if self.service_bus_client:
             await self.service_bus_client.close()
         if self.credential:
@@ -196,7 +215,8 @@ class AzureServiceBusBroker(AsyncBroker):
         This function constructs a service bus message and sends it with the
         appropriate metadata and routing.
 
-        Messages with TaskPriority.HIGH label are sent to the priority queue.
+        Messages with TaskPriority.HIGH label are sent to the priority queue,
+        and messages with TaskPriority.LOW label to the low priority queue.
 
         :raises MessageBrokerError:detail= if startup wasn't called.
         :raises MessageTooLargeError:detail= if the message is too large.
@@ -205,12 +225,18 @@ class AzureServiceBusBroker(AsyncBroker):
         if (
             self.sender is None
             or self.priority_sender is None
+            or self.low_priority_sender is None
             or self.service_bus_client is None
         ):
             raise MessageBrokerError(detail="Please run startup before kicking.")
 
         priority = self._resolve_priority(message)
-        sender = self.priority_sender if priority > TaskPriority.NORMAL else self.sender
+        if priority > TaskPriority.NORMAL:
+            sender = self.priority_sender
+        elif priority < TaskPriority.NORMAL:
+            sender = self.low_priority_sender
+        else:
+            sender = self.sender
 
         body = message.message
         compressed = False
@@ -341,14 +367,14 @@ class AzureServiceBusBroker(AsyncBroker):
 
     async def listen(self) -> AsyncGenerator[AckableMessage, None]:
         """
-        Listen on the priority queue first, then the default queue.
+        Listen on the priority, default and low priority queues in that order.
 
         Each iteration drains the priority queue with a short wait, then
-        polls the default queue with a longer wait.
+        polls the default queue, then the low priority queue, with longer waits.
 
-        If priority messages are received, re-enter priority branch to ensure
-        full consumption of priority messages before moving to
-        normal priority queue.
+        If messages are received from a queue, restart the iteration so that
+        every higher priority queue is fully consumed before polling a lower
+        priority queue.
 
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
@@ -356,6 +382,7 @@ class AzureServiceBusBroker(AsyncBroker):
         if (
             self.receiver is None
             or self.priority_receiver is None
+            or self.low_priority_receiver is None
             or self.auto_lock_renewer is None
         ):
             raise MessageBrokerError(detail="Call startup before starting listening.")
@@ -374,12 +401,24 @@ class AzureServiceBusBroker(AsyncBroker):
                     continue
 
                 async with self._receive_lock:
-                    batch_messages = await self.receiver.receive_messages(
+                    normal_batch = await self.receiver.receive_messages(
                         max_wait_time=settings.message_broker_queue_max_wait
                     )
-                for sb_message in batch_messages:
+                for sb_message in normal_batch:
                     logger.debug("Yielding message")
                     yield self._build_ackable(sb_message, self.receiver)
+                if normal_batch:
+                    # Keep draining default before touching the low priority queue
+                    continue
+
+                low_receiver = self.low_priority_receiver
+                async with self._receive_lock:
+                    low_priority_batch = await low_receiver.receive_messages(
+                        max_wait_time=settings.message_broker_low_priority_queue_max_wait
+                    )
+                for sb_message in low_priority_batch:
+                    logger.debug("Yielding low priority message")
+                    yield self._build_ackable(sb_message, low_receiver)
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying
