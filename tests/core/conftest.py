@@ -117,8 +117,8 @@ class FakeServiceBusClient:
     """
     Fake Service Bus client for testing.
 
-    Keeps a separate pending-task list per queue so default/priority queue
-    routing can be verified.
+    Keeps a separate pending-task list per queue so default/priority/low
+    priority queue routing can be verified.
     """
 
     def __init__(self) -> None:
@@ -182,6 +182,16 @@ def priority_queue_name() -> str:
 
 
 @pytest.fixture
+def low_priority_queue_name() -> str:
+    """
+    Get test low priority queue name.
+
+    :return: test low priority queue name.
+    """
+    return "taskiq-test-queue-low-priority"
+
+
+@pytest.fixture
 def connection_string() -> str | None:
     """
     Get custom Azure Service Bus connection string.
@@ -199,6 +209,7 @@ async def broker(
     connection_string: str,
     queue_name: str,
     priority_queue_name: str,
+    low_priority_queue_name: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> AsyncGenerator[AzureServiceBusBroker, None]:
     """
@@ -210,12 +221,14 @@ async def broker(
     :param connection_string: connection string for Azure Service Bus.
     :param queue_name: test queue name.
     :param priority_queue_name: test priority queue name.
+    :param low_priority_queue_name: test low priority queue name.
     :yield: broker.
     """
     broker = AzureServiceBusBroker(
         connection_string=connection_string,
         queue_name=queue_name,
         priority_queue_name=priority_queue_name,
+        low_priority_queue_name=low_priority_queue_name,
     )
     broker.auto_lock_renewer = FakeServiceBusAutoLockRenewer()
     broker.is_worker_process = True
