@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.robots.LinkedRobotError
+
+A record of something going wrong when processing an individual reference.
+
+Used in results for batch requests &#45; in single requests, the reference
+id is derived from the request id.
+" alt="" coords="5,5,217,89"/>
+</map>

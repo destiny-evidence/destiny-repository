@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.DeduplicationFieldComparison
+
+Compared values, availability and score for one Deduper field.
+" alt="" coords="633,61,1041,257"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.DeduplicationPairResult
+
+Structured evidence returned by a Deduper adapter for one pair.
+" alt="" coords="5,5,489,201"/>
+</map>

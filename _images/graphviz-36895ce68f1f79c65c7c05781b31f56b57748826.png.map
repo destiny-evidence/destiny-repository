@@ -1,0 +1,37 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="destiny_sdk.identifiers.DOIIdentifier
+
+An external identifier representing a DOI.
+" alt="" coords="1447,5,1831,89"/>
+<area shape="rect" id="node2" title="destiny_sdk.identifiers.ERICIdentifier
+
+An external identifier representing an ERIC Number.
+
+An ERIC Number is defined as a unique identifying number preceded by
+ED (for a non&#45;journal document) or EJ (for a journal article).
+" alt="" coords="1442,137,1835,221"/>
+<area shape="rect" id="node3" title="destiny_sdk.identifiers.OpenAlexIdentifier
+
+An external identifier representing an OpenAlex ID.
+" alt="" coords="1411,269,1867,353"/>
+<area shape="rect" id="node4" title="destiny_sdk.identifiers.OtherIdentifier
+
+An external identifier not otherwise defined by the repository.
+" alt="" coords="1405,402,1872,514"/>
+<area shape="rect" id="node5" title="destiny_sdk.identifiers.ProQuestIdentifier
+
+An external identifier representing a ProQuest ID.
+" alt="" coords="1411,563,1866,647"/>
+<area shape="rect" id="node6" title="destiny_sdk.identifiers.PubMedIdentifier
+
+An external identifier representing a PubMed ID.
+" alt="" coords="1435,695,1843,779"/>
+<area shape="rect" id="node7" title="destiny_sdk.identifiers.URLIdentifier
+
+An external identifier representing the web address of a document.
+" alt="" coords="1445,827,1833,911"/>
+<area shape="rect" id="node8" title="libs.sdk.src.destiny_sdk.enhancements.ReferenceAssociationEnhancement
+
+An enhancement for storing associations between references.
+" alt="" coords="5,345,1261,457"/>
+</map>
