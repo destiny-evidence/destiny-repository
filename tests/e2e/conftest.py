@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import pathlib
+from base64 import b64encode
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -81,7 +82,7 @@ logger.info("Current working directory: %s", _cwd)
 app_port = 8000
 blob_container_name = "test"
 azurite_account_name = "localuser"
-azurite_account_key = "bG9jYWxwYXNz"
+azurite_account_key = b64encode("localpass".encode("ascii")).decode("ascii")
 host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
 container_prefix = "e2e"
 
