@@ -352,6 +352,37 @@ async def test_copy_rejects_destination_on_other_backend():
         await repo.copy(source, destination)
 
 
+@pytest.mark.asyncio
+async def test_digest_returns_size_and_sha256_without_uploading():
+    """A digest reads the source only, so immutable input stays untouched."""
+    payload_chunks = [b'{"query_id": "a"}\n', b'{"query_id": "b"}\n']
+    payload = b"".join(payload_chunks)
+    source = BlobStorageFile.from_uri("azure://dedup-evals/input.jsonl")
+    client = _RecordingClient(chunks=payload_chunks)
+
+    repo = BlobRepository()
+    with patch.object(repo, "_preload_config", return_value=client):
+        result = await repo.digest(source)
+
+    assert result.byte_size == len(payload)
+    assert result.sha256_checksum == hashlib.sha256(payload).hexdigest()
+    assert client.uploaded_to is None
+
+
+@pytest.mark.asyncio
+async def test_digest_aborts_when_max_bytes_exceeded():
+    """The cap rejects oversized input before a caller spends work on it."""
+    source = BlobStorageFile.from_uri("azure://dedup-evals/big.jsonl")
+    client = _RecordingClient(chunks=[b"a" * 100, b"b" * 100])
+
+    repo = BlobRepository()
+    with (
+        patch.object(repo, "_preload_config", return_value=client),
+        pytest.raises(BlobSizeExceededError, match="max_bytes=150"),
+    ):
+        await repo.digest(source, max_bytes=150)
+
+
 _STREAM_FILE = BlobStorageFile(
     location=BlobStorageLocation.MINIO,
     container="c",
