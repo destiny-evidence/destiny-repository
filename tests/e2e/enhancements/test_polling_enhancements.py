@@ -60,7 +60,7 @@ async def _create_enhancement_request(
 
 async def _poll_robot_batches(  # noqa: PLR0913
     repo_client: httpx.AsyncClient,
-    minio_proxy_client: httpx.AsyncClient,
+    signed_url_client: httpx.AsyncClient,
     robot_id: str,
     reference_ids: list[str],
     request_id: str,
@@ -82,8 +82,8 @@ async def _poll_robot_batches(  # noqa: PLR0913
 
         robot_enhancement_batch_ids.append(str(result.id))
         robot_requests.append(result)
-        reference_storage_file = await minio_proxy_client.get(
-            "", params={"url": str(result.reference_storage_url)}
+        reference_storage_file = await signed_url_client.get(
+            str(result.reference_storage_url)
         )
         assert reference_storage_file.status_code == 200
         reference_lines = reference_storage_file.text.splitlines()
@@ -107,7 +107,7 @@ async def _poll_robot_batches(  # noqa: PLR0913
 
 
 async def _submit_robot_results(
-    minio_proxy_client: httpx.AsyncClient,
+    signed_url_client: httpx.AsyncClient,
     robot_enhancement_batch_ids: list[str],
     batch_references: list[list[str]],
     robot_requests: list[RobotEnhancementBatch],
@@ -139,13 +139,15 @@ async def _submit_robot_results(
 
         # Upload result file to the provided result storage URL
         result_content = "\n".join(result_entries)
-        upload_response = await minio_proxy_client.put(
-            "",
-            params={"url": str(robot_request.result_storage_url)},
+        upload_response = await signed_url_client.put(
+            str(robot_request.result_storage_url),
             content=result_content.encode("utf-8"),
-            headers={"Content-Type": "application/octet-stream"},
+            headers={
+                "Content-Type": "application/octet-stream",
+                "x-ms-blob-type": "BlockBlob",
+            },
         )
-        assert upload_response.status_code == 200
+        assert upload_response.status_code == 201
 
         robot_result = RobotEnhancementBatchResult(request_id=batch_id, error=None)
 
@@ -179,7 +181,7 @@ async def _wait_for_enhancement_request_status(
 async def test_polling_pending_enhancements(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
-    minio_proxy_client: httpx.AsyncClient,
+    signed_url_client: httpx.AsyncClient,
     add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
     """Test the happy path for a robot polling for pending enhancements."""
@@ -197,7 +199,7 @@ async def test_polling_pending_enhancements(
     assert request_status == EnhancementRequestStatus.RECEIVED
 
     batch_ids, batch_refs, robot_requests = await _poll_robot_batches(
-        destiny_client_v1, minio_proxy_client, robot_id, reference_ids, request_id
+        destiny_client_v1, signed_url_client, robot_id, reference_ids, request_id
     )
 
     # Verify no more batches available
@@ -206,7 +208,7 @@ async def test_polling_pending_enhancements(
     assert result is None
 
     await _submit_robot_results(
-        minio_proxy_client, batch_ids, batch_refs, robot_requests, repo_url
+        signed_url_client, batch_ids, batch_refs, robot_requests, repo_url
     )
 
     await _wait_for_enhancement_request_status(
@@ -236,7 +238,7 @@ async def send_expiry_task(worker: DockerContainer) -> None:
 async def test_cannot_submit_expired_enhancement_results(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
-    minio_proxy_client: httpx.AsyncClient,
+    signed_url_client: httpx.AsyncClient,
     worker: DockerContainer,
     add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
@@ -251,7 +253,7 @@ async def test_cannot_submit_expired_enhancement_results(
 
     batch_ids, batch_refs, batches = await _poll_robot_batches(
         destiny_client_v1,
-        minio_proxy_client,
+        signed_url_client,
         robot_id,
         reference_ids,
         request_id,
@@ -264,7 +266,7 @@ async def test_cannot_submit_expired_enhancement_results(
 
     with pytest.raises(httpx.HTTPStatusError) as exc_info:
         await _submit_robot_results(
-            minio_proxy_client, batch_ids, batch_refs, batches, repo_url
+            signed_url_client, batch_ids, batch_refs, batches, repo_url
         )
 
     assert exc_info.value.response.status_code == 422
@@ -277,7 +279,7 @@ async def test_cannot_submit_expired_enhancement_results(
 async def test_can_submit_results_after_renewing_lease(
     destiny_client_v1: httpx.AsyncClient,
     robot: Robot,
-    minio_proxy_client: httpx.AsyncClient,
+    signed_url_client: httpx.AsyncClient,
     worker: DockerContainer,
     add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
@@ -292,7 +294,7 @@ async def test_can_submit_results_after_renewing_lease(
 
     batch_ids, batch_refs, batches = await _poll_robot_batches(
         destiny_client_v1,
-        minio_proxy_client,
+        signed_url_client,
         robot_id,
         reference_ids,
         request_id,
@@ -312,7 +314,7 @@ async def test_can_submit_results_after_renewing_lease(
     await asyncio.sleep(3)  # Wait for worker to process task
 
     await _submit_robot_results(
-        minio_proxy_client, batch_ids, batch_refs, batches, repo_url
+        signed_url_client, batch_ids, batch_refs, batches, repo_url
     )
 
     await _wait_for_enhancement_request_status(

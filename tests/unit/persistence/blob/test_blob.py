@@ -12,6 +12,7 @@ import pytest
 
 from app.core.config import AzureBlobConfig
 from app.core.exceptions import BlobSizeExceededError, BlobStorageError
+from app.persistence.blob import repository
 from app.persistence.blob.client import GenericBlobStorageClient
 from app.persistence.blob.clients.azure import AzureBlobStorageClient
 from app.persistence.blob.models import (
@@ -49,7 +50,7 @@ async def test_upload_file_to_blob_storage():
 async def test_stream_file_from_blob_storage():
     repo = BlobRepository()
     file = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="test-container",
         path="test/path",
         filename="test.txt",
@@ -65,7 +66,7 @@ async def test_stream_file_from_blob_storage():
 async def test_get_signed_url():
     repo = BlobRepository()
     file = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="test-container",
         path="test/path",
         filename="test.txt",
@@ -77,7 +78,7 @@ async def test_get_signed_url():
 
 
 @pytest.mark.asyncio
-async def test_filestream_stream_and_read_fn():
+async def test_filestream_stream_fn():
     async def fake_fn(_dummy):
         return '{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}'
 
@@ -85,13 +86,12 @@ async def test_filestream_stream_and_read_fn():
         fn=fake_fn,
         fn_kwargs=[{"_dummy": "value"}, {"_dummy": "value"}, {"_dummy": "value"}],
     )
-    # Test read (implicitly tests stream also)
-    result = await fs.read()
-    assert b'{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}' in result.getvalue()
+    result = b"".join([chunk async for chunk in fs.stream()])
+    assert b'{"foo": "bar"}\n{"foo": "bar"}\n{"foo": "bar"}' in result
 
 
 @pytest.mark.asyncio
-async def test_filestream_stream_and_read_gen():
+async def test_filestream_stream_gen():
     async def fake_gen():
         yield '{"foo": "bar"}'
         yield '{"foo": "bar2"}'
@@ -99,9 +99,8 @@ async def test_filestream_stream_and_read_gen():
     fs = FileStream(
         generator=fake_gen(),
     )
-    # Test read (implicitly tests stream also)
-    result = await fs.read()
-    assert b'{"foo": "bar"}\n{"foo": "bar2"}' in result.getvalue()
+    result = b"".join([chunk async for chunk in fs.stream()])
+    assert b'{"foo": "bar"}\n{"foo": "bar2"}' in result
 
 
 @pytest.mark.parametrize(
@@ -232,7 +231,7 @@ async def test_copy_streams_through_and_computes_sha256_and_size():
 
     source = BlobStorageFile.from_uri("https://example.com/papers/foo.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="2026/05",
         filename="foo.pdf",
@@ -263,7 +262,7 @@ async def test_copy_empty_source_yields_known_sha256():
 
     source = BlobStorageFile.from_uri("https://example.com/empty.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="p",
         filename="empty.pdf",
@@ -290,7 +289,7 @@ async def test_copy_aborts_when_max_bytes_exceeded():
 
     source = BlobStorageFile.from_uri("https://example.com/big.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="p",
         filename="big.pdf",
@@ -316,7 +315,7 @@ async def test_copy_max_bytes_none_disables_check():
 
     source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
     destination = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+        location=BlobStorageLocation.AZURE,
         container="full-texts",
         path="p",
         filename="foo.pdf",
@@ -339,21 +338,28 @@ async def test_copy_max_bytes_none_disables_check():
 async def test_copy_rejects_destination_on_other_backend():
     """A destination not on the active write backend should be refused."""
     source = BlobStorageFile.from_uri("https://example.com/foo.pdf")
-    destination = BlobStorageFile(
-        location=BlobStorageLocation.AZURE,
-        container="cont",
-        path="p",
-        filename="foo.pdf",
-    )
+    destination = BlobStorageFile.from_uri("https://example.com/bar.pdf")
 
     repo = BlobRepository()
-    assert repo._write_backend.location == BlobStorageLocation.MINIO  # noqa: SLF001
+    assert repo._write_backend.location == BlobStorageLocation.AZURE  # noqa: SLF001
     with pytest.raises(BlobStorageError):
         await repo.copy(source, destination)
 
 
+def test_write_backend_defaults_to_azure_in_tests_without_config(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """With no blob config under ENV=test, writes target a placeholder Azure config."""
+    monkeypatch.setattr(repository.settings, "azure_blob_config", None)
+
+    backend = BlobRepository()._write_backend  # noqa: SLF001
+
+    assert backend.location == BlobStorageLocation.AZURE
+    assert backend.containers == {c: "test" for c in BlobContainer}
+
+
 _STREAM_FILE = BlobStorageFile(
-    location=BlobStorageLocation.MINIO,
+    location=BlobStorageLocation.AZURE,
     container="c",
     path="p",
     filename="f.txt",
@@ -440,14 +446,14 @@ class _CloseRecordingClient(GenericBlobStorageClient):
 async def test_blob_registry_get_reuses_client_per_location():
     """Repeated get()s for one location instantiate once; distinct per location."""
     registry = _BlobClientRegistry()
-    minio_file_a = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+    azure_file_a = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
         container="c",
         path="p",
         filename="a.txt",
     )
-    minio_file_b = BlobStorageFile(
-        location=BlobStorageLocation.MINIO,
+    azure_file_b = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
         container="c",
         path="p",
         filename="b.txt",
@@ -465,14 +471,14 @@ async def test_blob_registry_get_reuses_client_per_location():
     with patch.object(
         _BlobClientRegistry, "_instantiate", side_effect=fake_instantiate
     ):
-        first = await registry.get(minio_file_a)
-        second = await registry.get(minio_file_b)
+        first = await registry.get(azure_file_a)
+        second = await registry.get(azure_file_b)
         remote = await registry.get(https_file)
 
-    assert first is second  # cached: same instance for two MINIO gets
+    assert first is second  # cached: same instance for two AZURE gets
     assert first is not remote  # distinct backend, distinct instance
     assert instantiate_count == {
-        BlobStorageLocation.MINIO: 1,
+        BlobStorageLocation.AZURE: 1,
         BlobStorageLocation.HTTPS: 1,
     }
 
@@ -485,7 +491,7 @@ async def test_blob_registry_aclose_closes_each_and_clears(
     registry = _BlobClientRegistry()
     good = _CloseRecordingClient()
     bad = _CloseRecordingClient(raise_on_close=True)
-    registry._clients[BlobStorageLocation.MINIO] = good  # noqa: SLF001
+    registry._clients[BlobStorageLocation.AZURE] = good  # noqa: SLF001
     registry._clients[BlobStorageLocation.HTTPS] = bad  # noqa: SLF001
 
     with caplog.at_level(logging.WARNING, logger="app.persistence.blob.repository"):
@@ -557,3 +563,42 @@ async def test_azure_blob_client_aclose_no_credential_when_using_account_key():
     default_credential_cls.assert_not_called()
     fake_service_client.close.assert_awaited_once()
     assert client._aio_credential is None  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("public_endpoint", "expected_prefix"),
+    [
+        (None, "http://azurite:10000/devstoreaccount1"),
+        (
+            "http://localhost:10000/devstoreaccount1",
+            "http://localhost:10000/devstoreaccount1",
+        ),
+    ],
+)
+async def test_azure_blob_client_signed_url_uses_public_account_url(
+    public_endpoint: str | None, expected_prefix: str
+):
+    """Signed URLs are built on the public account URL."""
+    config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        credential="a2V5",
+        endpoint="http://azurite:10000/devstoreaccount1",
+        public_endpoint=public_endpoint,
+        containers={c: "test" for c in BlobContainer},
+    )
+    file = BlobStorageFile(
+        location=BlobStorageLocation.AZURE,
+        container="test",
+        path="p",
+        filename="f.jsonl",
+    )
+
+    with patch("app.persistence.blob.clients.azure.BlobServiceClient"):
+        client = AzureBlobStorageClient(config, presigned_url_expiry_seconds=60)
+        url = await client.generate_signed_url(
+            file, BlobSignedUrlType.DOWNLOAD, "attachment"
+        )
+
+    assert url.startswith(f"{expected_prefix}/test/p/f.jsonl?")
+    assert "sig=" in url

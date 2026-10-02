@@ -74,7 +74,7 @@ Azure Blob Storage is used for application deployments. At present there is one 
         │   └── <request_id>.jsonl - the reference data provided to the robot for the enhancement request
 
 
-MinIO
-^^^^^
+Azurite
+^^^^^^^
 
-MinIO is used for testing and local development. It is S3-compatible, if an AWS implementation is ever desired. However the current implementation is synchronous and so does not utilise the memory efficiency of the FileStream interface.
+`Azurite <https://learn.microsoft.com/azure/storage/common/storage-use-azurite>`_ emulates Azure Blob Storage for local development and end-to-end tests, through the same Azure client. ``AzureBlobConfig.endpoint`` sets the account URL the client connects to, and ``AzureBlobConfig.public_endpoint`` sets the account URL used in signed URLs.

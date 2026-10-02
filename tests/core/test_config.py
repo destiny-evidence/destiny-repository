@@ -9,7 +9,6 @@ from app.core.config import (
     DedupAssessmentRecordingConfig,
     DedupCandidateScoringConfig,
     ESConfig,
-    MinioConfig,
 )
 from app.domain.references.models.models import RetrievalPolicyName
 from app.persistence.blob.models import BlobContainer
@@ -64,12 +63,65 @@ def test_blob_backend_config_requires_all_containers():
             containers={BlobContainer.FULL_TEXTS: "full-texts"},
         )
     with pytest.raises(ValidationError, match="full_texts"):
-        MinioConfig(
-            host="h",
-            access_key="a",
-            secret_key="s",
+        AzureBlobConfig(
+            storage_account_name="acct",
             containers={BlobContainer.OPERATIONS: "ops"},
         )
+
+
+def test_azure_blob_config_account_urls_default_to_storage_account():
+    """Without overrides, both account URLs are the public Azure endpoint."""
+    config = AzureBlobConfig(
+        storage_account_name="acct",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    assert config.account_url == "https://acct.blob.core.windows.net"
+    assert config.public_account_url == "https://acct.blob.core.windows.net"
+
+
+def test_azure_blob_config_endpoint_overrides_both_account_urls():
+    """An endpoint override applies to the public account URL when it is unset."""
+    config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        endpoint="http://azurite:10000/devstoreaccount1/",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    assert config.account_url == "http://azurite:10000/devstoreaccount1"
+    assert config.public_account_url == "http://azurite:10000/devstoreaccount1"
+
+
+def test_azure_blob_config_public_endpoint_overrides_public_account_url():
+    """A public endpoint override applies only to the public account URL."""
+    config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        endpoint="http://azurite:10000/devstoreaccount1",
+        public_endpoint="http://localhost:10000/devstoreaccount1/",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    assert config.account_url == "http://azurite:10000/devstoreaccount1"
+    assert config.public_account_url == "http://localhost:10000/devstoreaccount1"
+
+
+def test_azure_blob_config_shared_key_credential():
+    """An account key yields a named key credential; managed identity yields None."""
+    key_config = AzureBlobConfig(
+        storage_account_name="devstoreaccount1",
+        credential="a2V5",
+        containers={c: "test" for c in BlobContainer},
+    )
+    managed_identity_config = AzureBlobConfig(
+        storage_account_name="acct",
+        containers={c: "test" for c in BlobContainer},
+    )
+
+    credential = key_config.shared_key_credential
+    assert credential is not None
+    assert credential.named_key.name == "devstoreaccount1"
+    assert credential.named_key.key == "a2V5"
+    assert managed_identity_config.shared_key_credential is None
 
 
 def test_candidate_selection_config_defaults_to_production_policy_and_k():

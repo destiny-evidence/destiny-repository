@@ -4,6 +4,7 @@ import contextlib
 import json
 import os
 import pathlib
+from base64 import b64encode
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -12,14 +13,15 @@ import pytest
 import testcontainers.elasticsearch
 import testcontainers.rabbitmq
 from alembic.command import upgrade
+from azure.storage.blob import BlobServiceClient
 from elasticsearch import AsyncElasticsearch
-from minio import Minio
 from opentelemetry import context, trace
 from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
 from opentelemetry.trace import set_span_in_context
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
+from testcontainers.azurite import AzuriteContainer
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.docker_client import DockerClient
 from testcontainers.core.wait_strategies import (
@@ -28,7 +30,6 @@ from testcontainers.core.wait_strategies import (
     LogMessageWaitStrategy,
 )
 from testcontainers.elasticsearch import ElasticSearchContainer
-from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
@@ -79,7 +80,9 @@ _cwd = pathlib.Path.cwd()
 logger.info("Current working directory: %s", _cwd)
 
 app_port = 8000
-bucket_name = "test"
+blob_container_name = "test"
+azurite_account_name = "localuser"
+azurite_account_key = b64encode("localpass".encode("ascii")).decode("ascii")
 host_name = os.getenv("DOCKER_HOSTNAME", "host.docker.internal")
 container_prefix = "e2e"
 
@@ -115,37 +118,9 @@ async def trace_test(request: pytest.FixtureRequest):
 
 
 @pytest.fixture(scope="session")
-def minio_proxy():
-    """
-    Yield a simple proxy container for MinIO signed URLs.
-
-    MinIO signed URLs are signed with the connection URL.
-    App->MinIO uses `host_name` connection URL.
-    Tests cannot access `host_name` (without special hosts.etc configuration).
-    This tiny proxy container fetches the signed URL and serves it on localhost.
-    Uses only Python standard library.
-    """
-    proxy_script_path = str(_cwd / "tests/e2e/_minio_proxy.py")
-    container = (
-        DockerContainer("python:3.11-slim")
-        .with_command(["python", "/proxy.py"])
-        .with_volume_mapping(proxy_script_path, "/proxy.py")
-        .with_exposed_ports(8080)
-        .with_name(f"{container_prefix}-minio-proxy")
-        .waiting_for(HttpWaitStrategy(port=8080, path="/health"))
-    )
-    with container as proxy:
-        yield proxy
-
-
-@pytest.fixture(scope="session")
-async def minio_proxy_client(minio_proxy: DockerContainer):
-    """Yield a client for the minio proxy."""
-    host = minio_proxy.get_container_host_ip()
-    port = minio_proxy.get_exposed_port(8080)
-    url = f"http://{host}:{port}/proxy"
-    logger.info("Creating httpx client for MinIO proxy at %s", url)
-    async with httpx.AsyncClient(base_url=url) as client:
+async def signed_url_client():
+    """Yield a client for fetching and uploading to signed blob URLs."""
+    async with httpx.AsyncClient() as client:
         yield client
 
 
@@ -269,32 +244,34 @@ async def es_lifecycle(elasticsearch: ElasticSearchContainer):
         context.detach(token)
 
 
+def get_azurite_account_url(azurite: AzuriteContainer, host: str) -> str:
+    """Get the Azurite blob account URL for the given host."""
+    port = azurite.get_exposed_port(azurite.blob_service_port)
+    return f"http://{host}:{port}/{azurite_account_name}"
+
+
 @pytest.fixture(scope="session")
-def minio():
-    """MinIO container with default credentials."""
-    logger.info("Starting MinIO container...")
-    with MinioContainer("pgsty/minio:RELEASE.2026-08-04T00-00-00Z").with_name(
-        f"{container_prefix}-minio"
-    ) as minio:
-        logger.info("MinIO container ready.")
-        yield minio
+def azurite():
+    """Azurite container with a custom storage account."""
+    logger.info("Starting Azurite container...")
+    with AzuriteContainer(
+        "mcr.microsoft.com/azure-storage/azurite:3.37.0",
+        account_name=azurite_account_name,
+        account_key=azurite_account_key,
+    ).with_name(f"{container_prefix}-azurite") as azurite:
+        logger.info("Azurite container ready.")
+        yield azurite
 
 
 @pytest.fixture(autouse=True)
-def minio_lifecycle(minio: MinioContainer):
-    """Clean buckets around each test."""
-    config = minio.get_config()
-    client = Minio(
-        endpoint=config["endpoint"],
-        access_key=config["access_key"],
-        secret_key=config["secret_key"],
-        secure=False,
-    )
-    client.make_bucket(bucket_name)
+def azurite_lifecycle(azurite: AzuriteContainer):
+    """Create and delete the blob container around each test."""
+    client = BlobServiceClient.from_connection_string(
+        azurite.get_connection_string()
+    ).get_container_client(blob_container_name)
+    client.create_container()
     yield
-    for obj in client.list_objects(bucket_name, recursive=True):
-        client.remove_object(bucket_name, obj.object_name)
-    client.remove_bucket(bucket_name)
+    client.delete_container()
 
 
 @pytest.fixture(scope="session")
@@ -327,10 +304,9 @@ def _add_env(
     postgres: PostgresContainer,
     elasticsearch: ElasticSearchContainer,
     rabbitmq: RabbitMqContainer,
-    minio: MinioContainer,
+    azurite: AzuriteContainer,
 ) -> DockerContainer:
     """Add environment variables to a container."""
-    minio_config = minio.get_config()
     container = (
         container.with_env(
             "MESSAGE_BROKER_URL",
@@ -349,15 +325,18 @@ def _add_env(
             ),
         )
         .with_env(
-            "MINIO_CONFIG",
+            "AZURE_BLOB_CONFIG",
             json.dumps(
                 {
-                    "HOST": minio_config["endpoint"].replace("localhost", host_name),
-                    "ACCESS_KEY": minio_config["access_key"],
-                    "SECRET_KEY": minio_config["secret_key"],
+                    "STORAGE_ACCOUNT_NAME": azurite_account_name,
+                    "CREDENTIAL": azurite_account_key,
+                    "ENDPOINT": get_azurite_account_url(azurite, host_name),
+                    "PUBLIC_ENDPOINT": get_azurite_account_url(
+                        azurite, azurite.get_container_host_ip()
+                    ),
                     "CONTAINERS": {
-                        "operations": bucket_name,
-                        "full_texts": bucket_name,
+                        "operations": blob_container_name,
+                        "full_texts": blob_container_name,
                     },
                 }
             ),
@@ -389,7 +368,7 @@ async def worker(
     postgres: PostgresContainer,
     elasticsearch: ElasticSearchContainer,
     rabbitmq: RabbitMqContainer,
-    minio: MinioContainer,
+    azurite: AzuriteContainer,
     destiny_repository_image: str,
 ):
     """Get the worker container."""
@@ -400,7 +379,7 @@ async def worker(
             postgres,
             elasticsearch,
             rabbitmq,
-            minio,
+            azurite,
         )
         .with_name(f"{container_prefix}-worker")
         .with_command(
@@ -433,7 +412,7 @@ async def app(  # noqa: PLR0913
     postgres: PostgresContainer,
     elasticsearch: ElasticSearchContainer,
     rabbitmq: RabbitMqContainer,
-    minio: MinioContainer,
+    azurite: AzuriteContainer,
     destiny_repository_image: str,
     worker: DockerContainer,  # noqa: ARG001, used for ordering dependencies
 ):
@@ -445,7 +424,7 @@ async def app(  # noqa: PLR0913
             postgres,
             elasticsearch,
             rabbitmq,
-            minio,
+            azurite,
         )
         .with_env("APP_NAME", "destiny-app")
         .with_name(f"{container_prefix}-app")

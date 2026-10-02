@@ -7,6 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal, Self
 
+from azure.core.credentials import AzureNamedKeyCredential
 from pydantic import (
     BaseModel,
     Field,
@@ -187,33 +188,6 @@ class BlobBackendConfig(BaseModel):
         return v
 
 
-class MinioConfig(BlobBackendConfig):
-    """Minio configuration."""
-
-    location: Literal[BlobStorageLocation.MINIO] = BlobStorageLocation.MINIO
-
-    host: str
-    access_key: str
-    secret_key: str
-    public_host: str | None = Field(
-        default=None,
-        description=(
-            "Host used when signing download/upload URLs, if different from `host`. "
-            "Presigning is offline, so this lets the app reach MinIO at an internal "
-            "host (e.g. `fs:9000` in Docker) while signing URLs for a host the "
-            "consumer can reach (e.g. `localhost:9000`). Defaults to `host`."
-        ),
-    )
-    region: str = Field(
-        default="us-east-1",
-        description=(
-            "Region for the signing client. Set explicitly so presigning against "
-            "`public_host` stays offline (no GetBucketLocation lookup). Matches "
-            "MinIO's default region."
-        ),
-    )
-
-
 class AzureBlobConfig(BlobBackendConfig):
     """Azure Blob Storage configuration."""
 
@@ -222,6 +196,20 @@ class AzureBlobConfig(BlobBackendConfig):
     storage_account_name: str
     credential: str | None = None
     user_delegation_key_duration: int = 60 * 60 * 24  # 1 day
+    endpoint: str | None = Field(
+        default=None,
+        description=(
+            "Account URL override, e.g. `http://azurite:10000/devstoreaccount1`. "
+            "Defaults to `https://<storage_account_name>.blob.core.windows.net`."
+        ),
+    )
+    public_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "Account URL used in signed URLs, if different from `endpoint`. "
+            "Defaults to `account_url`."
+        ),
+    )
 
     @property
     def uses_managed_identity(self) -> bool:
@@ -231,7 +219,23 @@ class AzureBlobConfig(BlobBackendConfig):
     @property
     def account_url(self) -> str:
         """Return the account URL for Azure Blob Storage."""
+        if self.endpoint:
+            return self.endpoint.rstrip("/")
         return f"https://{self.storage_account_name}.blob.core.windows.net"
+
+    @property
+    def public_account_url(self) -> str:
+        """Return the account URL used in signed URLs."""
+        if self.public_endpoint:
+            return self.public_endpoint.rstrip("/")
+        return self.account_url
+
+    @property
+    def shared_key_credential(self) -> AzureNamedKeyCredential | None:
+        """Return the account name and key credential, if an account key is set."""
+        if self.credential is None:
+            return None
+        return AzureNamedKeyCredential(self.storage_account_name, self.credential)
 
 
 class LogLevel(StrEnum):
@@ -450,7 +454,6 @@ class Settings(BaseSettings):
 
     db_config: DatabaseConfig
     es_config: ESConfig
-    minio_config: MinioConfig | None = None
     azure_blob_config: AzureBlobConfig | None = None
     otel_config: OTelConfig | None = None
     otel_enabled: bool = False

@@ -25,7 +25,6 @@ class BlobStorageLocation(StrEnum):
     """Blob Storage locations."""
 
     AZURE = auto()
-    MINIO = auto()
     HTTP = auto()
     HTTPS = auto()
 

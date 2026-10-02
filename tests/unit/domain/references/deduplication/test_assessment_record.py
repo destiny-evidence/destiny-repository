@@ -4,7 +4,7 @@ from uuid import UUID, uuid7
 import pytest
 
 from app.core.config import DedupAssessmentRecordingConfig
-from app.core.exceptions import MinioBlobStorageError
+from app.core.exceptions import AzureBlobStorageError
 from app.domain.references.models.models import (
     AssessmentPayloadState,
     Candidate,
@@ -464,7 +464,7 @@ async def test_failed_payload_write_keeps_the_summary_record(
     record_store: FakeRecordStore,
     payload_writer: FakePayloadWriter,
 ) -> None:
-    payload_writer.error = MinioBlobStorageError("bucket gone")
+    payload_writer.error = AzureBlobStorageError("bucket gone")
 
     record = await record_assessment(recorder, assessment_scoring([0.95]))
 

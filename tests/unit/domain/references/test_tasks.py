@@ -590,7 +590,7 @@ async def test_run_search_export_task_skips_non_pending_row(
 ) -> None:
     """A redelivered task must not redo work or clobber an already-completed row."""
     existing_file = BlobStorageFile(
-        location="minio",
+        location="azure",
         container="destiny-repository",
         path="search_exports",
         filename="prior.jsonl",

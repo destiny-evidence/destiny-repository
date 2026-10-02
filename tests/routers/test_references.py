@@ -212,8 +212,8 @@ async def add_robot_enhancement_batch(
     robot_enhancement_batch = SQLRobotEnhancementBatch(
         robot_id=pending_enhancement.robot_id,
         pending_enhancements=[pending_enhancement],
-        reference_data_file="minio://destiny-repository/robot_enhancement_batch_reference_data/some_fake_reference_data.jsonl",
-        result_file="minio://destiny-repository/enhancement_result/some_fake_enhancement_results.jsonl",
+        reference_data_file="azure://destiny-repository/robot_enhancement_batch_reference_data/some_fake_reference_data.jsonl",
+        result_file="azure://destiny-repository/enhancement_result/some_fake_enhancement_results.jsonl",
     )
     pending_enhancement.robot_enhancement_batch_id = robot_enhancement_batch.id
 
@@ -1237,7 +1237,7 @@ async def test_request_search_export_happy_path(
     """Test queuing a reference export, then polling its completed status."""
     fake_reference_id = uuid7()
     fake_result_file = BlobStorageFile(
-        location="minio",
+        location="azure",
         container="destiny-repository",
         path="search_exports",
         filename="fake.jsonl",
