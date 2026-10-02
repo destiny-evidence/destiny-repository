@@ -128,7 +128,7 @@ async def signed_url_client():
 def postgres():
     """Postgres container with alembic migrations applied."""
     logger.info("Creating Postgres container...")
-    postgres = PostgresContainer("postgres:17", driver="asyncpg").with_name(
+    postgres = PostgresContainer("postgres:18", driver="asyncpg").with_name(
         f"{container_prefix}-postgres"
     )
 
