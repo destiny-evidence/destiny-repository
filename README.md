@@ -77,7 +77,7 @@ To browse it, use [Azure Storage Explorer](https://learn.microsoft.com/azure/sto
 
 ##### Install storage explorer
 
-Install the .NET 10 runtime and Storage Explorer:
+Install the .NET 10 runtime and Storage Explorer on Mac:
 
 ```sh
 brew install --cask dotnet-runtime microsoft-azure-storage-explorer
