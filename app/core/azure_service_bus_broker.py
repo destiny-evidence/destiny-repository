@@ -231,12 +231,12 @@ class AzureServiceBusBroker(AsyncBroker):
             raise MessageBrokerError(detail="Please run startup before kicking.")
 
         priority = self._resolve_priority(message)
-        if priority > TaskPriority.NORMAL:
-            sender = self.priority_sender
-        elif priority < TaskPriority.NORMAL:
-            sender = self.low_priority_sender
-        else:
+        if priority == TaskPriority.NORMAL:
             sender = self.sender
+        elif priority > TaskPriority.NORMAL:
+            sender = self.priority_sender
+        else:
+            sender = self.low_priority_sender
 
         body = message.message
         compressed = False
