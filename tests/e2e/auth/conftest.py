@@ -5,6 +5,7 @@ import pathlib
 
 import httpx
 import pytest
+from testcontainers.azurite import AzuriteContainer
 from testcontainers.core.container import DockerContainer
 from testcontainers.core.wait_strategies import (
     CompositeWaitStrategy,
@@ -12,7 +13,6 @@ from testcontainers.core.wait_strategies import (
     LogMessageWaitStrategy,
 )
 from testcontainers.elasticsearch import ElasticSearchContainer
-from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 from testcontainers.rabbitmq import RabbitMqContainer
 
@@ -147,7 +147,7 @@ def keycloak_app(  # noqa: PLR0913
     postgres: PostgresContainer,
     elasticsearch: ElasticSearchContainer,
     rabbitmq: RabbitMqContainer,
-    minio: MinioContainer,
+    azurite: AzuriteContainer,
     destiny_repository_image: str,
     keycloak: DockerContainer,
 ):
@@ -159,7 +159,7 @@ def keycloak_app(  # noqa: PLR0913
             postgres,
             elasticsearch,
             rabbitmq,
-            minio,
+            azurite,
         )
         .with_env("APP_NAME", "destiny-app-keycloak")
         .with_env("BYPASS_AUTH", "false")  # Enforce auth for Keycloak testing

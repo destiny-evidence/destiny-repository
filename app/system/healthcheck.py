@@ -64,7 +64,7 @@ async def healthcheck(
             else:
                 async with BlobServiceClient(
                     account_url=settings.azure_blob_config.account_url,
-                    credential=settings.azure_blob_config.credential,
+                    credential=settings.azure_blob_config.shared_key_credential,
                 ) as client:
                     await client.get_container_client(
                         settings.azure_blob_config.containers[BlobContainer.OPERATIONS]

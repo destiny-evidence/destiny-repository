@@ -53,16 +53,6 @@ Once the database server is running, run the migrations to setup the database.
 uv run alembic upgrade head
 ```
 
-#### MinIO
-
-You also may need the MinIO fileserver. This requires the MinIO Client. Install instructions for Mac:
-
-```sh
-brew install minio-mc
-```
-
-This can be accessed at localhost:9001 or automatically seeded using the below:
-
 #### Seeding the database
 
 We have a database seed in `.db_seed` to give us some local data to work with and to test out migrations, load this in with
@@ -77,6 +67,28 @@ After generating a database migration, you will need to update the data seed. Ap
 
 ```sh
 PGPASSWORD=localpass pg_dump --data-only --exclude-table=alembic_version -U localuser -h 0.0.0.0 -p 5432 destiny_dev > .db_seed/local.sql
+```
+
+#### Browsing blob storage
+
+Blob storage is provided by the `azurite` service at `http://localhost:10000/localuser`.
+
+To browse it, use [Azure Storage Explorer](https://learn.microsoft.com/azure/storage/storage-explorer/vs-azure-tools-storage-manage-with-storage-explorer). Storage Explorer 1.42.0 and later requires a .NET 10 runtime matching the Storage Explorer architecture.
+
+##### Install storage explorer
+
+Install the .NET 10 runtime and Storage Explorer on Mac:
+
+```sh
+brew install --cask dotnet-runtime microsoft-azure-storage-explorer
+```
+
+##### Connect storage account
+
+In Storage Explorer, select **Connect**, choose **Storage account**, then the connection string option, and paste:
+
+```text
+DefaultEndpointsProtocol=http;AccountName=localuser;AccountKey=bG9jYWxwYXNz;BlobEndpoint=http://localhost:10000/localuser;
 ```
 
 #### Application

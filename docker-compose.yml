@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:17
+    image: postgres:18
     environment:
       POSTGRES_USER: localuser
       POSTGRES_PASSWORD: localpass
@@ -8,37 +8,38 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD", "pg_isready", "-d", "destiny_dev", "-U", "localuser"]
       interval: 10s
       timeout: 10s
       retries: 5
-  fs:
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.37.0
+    command: azurite-blob --blobHost 0.0.0.0 --location /data --loose
     environment:
-      MINIO_ROOT_USER: localuser
-      MINIO_ROOT_PASSWORD: localpass
+      AZURITE_ACCOUNTS: "localuser:bG9jYWxwYXNz"
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "10000:10000"
     volumes:
-      - fs_data:/data
-    command: server /data --console-address ":9001"
+      - azurite_data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ["CMD", "nc", "-z", "127.0.0.1", "10000"]
       interval: 10s
       timeout: 10s
       retries: 5
-  createbuckets:
-    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+  blob_setup:
+    image: mcr.microsoft.com/azure-cli:2.77.0
     depends_on:
-      fs:
+      azurite:
         condition: service_healthy
+    environment:
+      AZURE_STORAGE_CONNECTION_STRING: "DefaultEndpointsProtocol=http;AccountName=localuser;AccountKey=bG9jYWxwYXNz;BlobEndpoint=http://azurite:10000/localuser;"
     entrypoint: >
       /bin/sh -c "
-      mc alias set fs http://fs:9000 localuser localpass &&
-      mc mb -p fs/destiny-repository;
+      az storage container create --name destiny-repository --output none &&
+      az storage cors clear --services b &&
+      az storage cors add --services b --methods GET HEAD PUT OPTIONS --origins '*' --allowed-headers '*' --exposed-headers '*' --max-age 3600
       "
   http:
     image: hashicorp/http-echo:latest
@@ -104,12 +105,12 @@ services:
         condition: service_started
       es_index_setup:
         condition: service_completed_successfully
-      createbuckets:
+      blob_setup:
         condition: service_completed_successfully
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      MINIO_CONFIG: '{"HOST":"fs:9000","PUBLIC_HOST":"localhost:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass", "CONTAINERS": {"operations": "destiny-repository", "full_texts": "destiny-repository"}}'
+      AZURE_BLOB_CONFIG: '{"STORAGE_ACCOUNT_NAME":"localuser","CREDENTIAL":"bG9jYWxwYXNz","ENDPOINT":"http://azurite:10000/localuser","PUBLIC_ENDPOINT":"http://localhost:10000/localuser","CONTAINERS":{"operations":"destiny-repository","full_texts":"destiny-repository"}}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
       APP_NAME: destiny-app
       CORS_ALLOW_ORIGINS: '["*"]'
@@ -126,9 +127,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      fs:
+      azurite:
         condition: service_healthy
-      createbuckets:
+      blob_setup:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
@@ -143,7 +144,7 @@ services:
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass", "CONTAINERS": {"operations": "destiny-repository", "full_texts": "destiny-repository"}}'
+      AZURE_BLOB_CONFIG: '{"STORAGE_ACCOUNT_NAME":"localuser","CREDENTIAL":"bG9jYWxwYXNz","ENDPOINT":"http://azurite:10000/localuser","CONTAINERS":{"operations":"destiny-repository","full_texts":"destiny-repository"}}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
       APP_NAME: destiny-worker
     networks:
@@ -159,9 +160,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      fs:
+      azurite:
         condition: service_healthy
-      createbuckets:
+      blob_setup:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
@@ -176,7 +177,7 @@ services:
     environment:
       MESSAGE_BROKER_URL: amqp://guest:guest@rabbitmq:5672
       DB_CONFIG: '{"DB_URL":"postgresql+asyncpg://localuser:localpass@db:5432/destiny_dev"}'
-      MINIO_CONFIG: '{"HOST":"fs:9000","ACCESS_KEY":"localuser","SECRET_KEY":"localpass", "CONTAINERS": {"operations": "destiny-repository", "full_texts": "destiny-repository"}}'
+      AZURE_BLOB_CONFIG: '{"STORAGE_ACCOUNT_NAME":"localuser","CREDENTIAL":"bG9jYWxwYXNz","ENDPOINT":"http://azurite:10000/localuser","CONTAINERS":{"operations":"destiny-repository","full_texts":"destiny-repository"}}'
       ES_CONFIG: '{"ES_URL": "https://elasticsearch:9200", "ES_USER": "elastic", "ES_PASS": "destiny", "ES_CA_PATH": "/app/certs/ca/ca.crt"}'
       APP_NAME: destiny-scheduler
     networks:
@@ -358,4 +359,4 @@ volumes:
     driver: local
   db_data:
   rabbitmq_data:
-  fs_data:
+  azurite_data:

@@ -928,7 +928,7 @@ async def test_claim_and_create_robot_enhancement_batch(
     """Test atomic claiming of pending enhancements and batch creation."""
     mock_blob_repository = AsyncMock()
     mock_blob_repository.upload_file_to_blob_storage.return_value = BlobStorageFile(
-        location="minio",
+        location="azure",
         container="test",
         filename="test.jsonl",
         path="robot_enhancement_batch_reference_data",
@@ -936,7 +936,7 @@ async def test_claim_and_create_robot_enhancement_batch(
     # destination is sync; override AsyncMock's default async-by-attribute behaviour.
     mock_blob_repository.destination = Mock(
         return_value=BlobStorageFile(
-            location="minio",
+            location="azure",
             container="test",
             filename="test_robot.jsonl",
             path="robot_enhancement_batch_result_data",
@@ -1015,8 +1015,8 @@ async def test_claim_and_create_robot_enhancement_batch(
 
     args, kwargs = mock_blob_repository.upload_file_to_blob_storage.call_args
     filestream = kwargs["content"]
-    file_content = await filestream.read()
-    content_lines = file_content.getvalue().decode().strip().split("\n")
+    file_content = b"".join([chunk async for chunk in filestream.stream()])
+    content_lines = file_content.decode().strip().split("\n")
 
     # Verify we have the correct number of references and each has the expected ID
     assert len(content_lines) == len(references)

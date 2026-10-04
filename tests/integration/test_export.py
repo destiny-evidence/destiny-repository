@@ -139,7 +139,7 @@ async def test_search_export_end_to_end(
         async for chunk in content.stream():
             captured.extend(chunk)
         return BlobStorageFile(
-            location="minio",
+            location="azure",
             container="destiny-repository",
             path=path,
             filename=filename,
@@ -239,7 +239,7 @@ async def test_search_export_ris_end_to_end(
         async for chunk in content.stream():
             captured.extend(chunk)
         return BlobStorageFile(
-            location="minio",
+            location="azure",
             container="destiny-repository",
             path=path,
             filename=filename,
@@ -295,7 +295,7 @@ def _patch_blob_storage(monkeypatch: pytest.MonkeyPatch) -> bytearray:
         async for chunk in content.stream():
             captured.extend(chunk)
         return BlobStorageFile(
-            location="minio",
+            location="azure",
             container="destiny-repository",
             path=path,
             filename=filename,

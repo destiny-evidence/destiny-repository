@@ -213,7 +213,7 @@ async def test_payload_location_can_be_attached_after_insert(
     updated = await repository.update_by_pk(
         record.id,
         payload_state=AssessmentPayloadState.STORED,
-        payload_blob_url="minio://operations/deduplication-assessments/x.json",
+        payload_blob_url="azure://operations/deduplication-assessments/x.json",
     )
 
     assert updated.payload_state == AssessmentPayloadState.STORED
@@ -253,7 +253,7 @@ async def test_proposed_canonical_that_is_not_held_is_rejected(
         pytest.param(AssessmentPayloadState.STORED, None, 10, id="stored-without-url"),
         pytest.param(
             AssessmentPayloadState.NOT_RETAINED,
-            "minio://operations/x.json",
+            "azure://operations/x.json",
             None,
             id="unretained-with-url",
         ),

@@ -24,7 +24,7 @@ def blob_repository() -> AsyncMock:
     repository = AsyncMock(spec=BlobRepository)
     repository.upload_file_to_blob_storage.side_effect = (
         lambda content, path, filename, container, **_: BlobStorageFile(  # noqa: ARG005
-            location="minio", container="operations", path=path, filename=filename
+            location="azure", container="operations", path=path, filename=filename
         )
     )
     return repository
@@ -51,7 +51,7 @@ async def test_payload_is_written_to_the_operations_container_under_the_record_i
     assert call["filename"] == f"{record_id}.json"
     assert (
         stored.location
-        == f"minio://operations/deduplication-assessments/{record_id}.json"
+        == f"azure://operations/deduplication-assessments/{record_id}.json"
     )
 
 
