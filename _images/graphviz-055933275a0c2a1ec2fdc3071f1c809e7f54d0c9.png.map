@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.enhancements.LinkedDataEnhancement
+
+An enhancement for storing structured data in a linked data format.
+
+The content is a JSON&#45;LD document conforming to the vocabulary and
+context specified. This enhancement type is produced by mapping robots
+that transform RawEnhancement data into the shared vocabulary.
+" alt="" coords="5,5,483,117"/>
+</map>

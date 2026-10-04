@@ -1,0 +1,29 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.DeduplicationPaper
+
+The record shape the Deduper scores, built here rather than by the toolkit.
+
+Fields sharing a name with the toolkit&#39;s ``Paper`` keep its type, and ``venue`` is
+its ``journal``; ``Paper`` ignores the rest.
+" alt="" coords="5,134,328,526"/>
+<area shape="rect" id="node2" title="destiny_sdk.enhancements.Authorship
+
+Represents a single author and their association with a reference.
+
+This is a simplification of the OpenAlex [Authorship
+object](https://docs.openalex.org/api&#45;entities/works/work&#45;object/authorship&#45;object)
+for our purposes.
+" alt="" coords="586,402,814,514"/>
+<area shape="rect" id="node3" title="destiny_sdk.identifiers.DOIIdentifier
+
+An external identifier representing a DOI.
+" alt="" coords="508,5,892,89"/>
+<area shape="rect" id="node4" title="destiny_sdk.identifiers.OpenAlexIdentifier
+
+An external identifier representing an OpenAlex ID.
+" alt="" coords="472,137,928,221"/>
+<area shape="rect" id="node5" title="destiny_sdk.identifiers.PubMedIdentifier
+
+An external identifier representing a PubMed ID.
+" alt="" coords="496,269,904,353"/>
+</map>
