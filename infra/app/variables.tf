@@ -160,6 +160,12 @@ variable "priority_queue_active_jobs_scaling_threshold" {
   default     = 20
 }
 
+variable "low_priority_queue_active_jobs_scaling_threshold" {
+  description = "Active jobs threshold for scaling the tasks container app for low priority tasks."
+  type        = number
+  default     = 100
+}
+
 
 variable "created_by" {
   description = "Who created this infrastructure. Required tag for resource groups"
