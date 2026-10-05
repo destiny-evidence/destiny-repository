@@ -533,6 +533,16 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
         default=None,
         description="List of enhancement IDs that this enhancement was derived from.",
     )
+    supersedes: UUID | None = Field(
+        default=None,
+        description="The ID of the enhancement in the same chain that this one "
+        "replaces. None for the root of a chain.",
+    )
+    root_id: UUID | None = Field(
+        default=None,
+        description="The ID of the root enhancement of this enhancement's "
+        "supersession chain. Equal to the enhancement's own ID for a root.",
+    )
     content: EnhancementContent = Field(
         discriminator="enhancement_type",
         description="The content of the enhancement.",

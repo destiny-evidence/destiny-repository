@@ -318,6 +318,16 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     derived_from: Mapped[list[UUID] | None] = mapped_column(
         ARRAY(SQL_UUID), nullable=True
     )
+    supersedes: Mapped[UUID | None] = mapped_column(
+        SQL_UUID,
+        ForeignKey(
+            "enhancement.id",
+            name="fk_enhancement_supersedes",
+            postgresql_not_valid=True,
+        ),
+        nullable=True,
+    )
+    root_id: Mapped[UUID | None] = mapped_column(SQL_UUID, nullable=True)
     content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
@@ -327,6 +337,23 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     __table_args__ = (
         Index("ix_enhancement_reference_id", "reference_id"),
         Index("ix_enhancement_enhancement_type", "enhancement_type"),
+        Index(
+            "uq_enhancement_supersedes",
+            "supersedes",
+            unique=True,
+            postgresql_where=text("supersedes IS NOT NULL"),
+        ),
+        Index(
+            "ix_enhancement_root_id_id_successors",
+            "root_id",
+            "id",
+            postgresql_where=text("supersedes IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "id > supersedes OR supersedes = root_id",
+            name="ck_enhancement_supersedes_order",
+            postgresql_not_valid=True,
+        ),
     )
 
     @classmethod
@@ -355,6 +382,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             visibility=domain_obj.visibility,
             robot_version=domain_obj.robot_version,
             derived_from=domain_obj.derived_from,
+            supersedes=domain_obj.supersedes,
+            root_id=domain_obj.root_id or domain_obj.id,
             content=domain_obj.content.model_dump(mode="json"),
         )
 
@@ -371,6 +400,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             reference_id=self.reference_id,
             robot_version=self.robot_version,
             derived_from=self.derived_from,
+            supersedes=self.supersedes,
+            root_id=self.root_id or self.id,
             content=self.content,
             reference=self.reference.to_domain()
             if "reference" in (preload or [])

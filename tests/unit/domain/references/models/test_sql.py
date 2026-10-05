@@ -24,6 +24,7 @@ from app.domain.references.models.sql import (
 )
 from app.persistence.blob.models import BlobStorageLocation
 from tests.factories import (
+    AbstractContentEnhancementFactory,
     BlobStorageFileFactory,
     EnhancementFactory,
     FullTextEnhancementFactory,
@@ -91,6 +92,8 @@ class DummyDomainEnhancement:
         robot_version,
         content,
         derived_from=None,
+        supersedes=None,
+        root_id=None,
     ):
         self.id = id
         self.reference_id = reference_id
@@ -98,6 +101,8 @@ class DummyDomainEnhancement:
         self.visibility = visibility
         self.robot_version = robot_version
         self.derived_from = derived_from
+        self.supersedes = supersedes
+        self.root_id = root_id
         self.content = content
         # For preload test on Enhancement.to_domain
         self.reference = None
@@ -223,6 +228,62 @@ async def test_enhancement_from_and_to_domain():
     # Verify that the preloaded reference was converted
     assert domain_enh.reference.id == dummy_sql_ref.id
     assert domain_enh.reference.visibility == dummy_sql_ref.visibility
+
+
+def test_enhancement_from_domain_root_defaults_root_id_to_id():
+    """A root enhancement without a root_id is persisted as its own chain root."""
+    enhancement = EnhancementFactory.build(
+        content=AbstractContentEnhancementFactory.build()
+    )
+    assert enhancement.root_id is None
+
+    sql_enhancement = Enhancement.from_domain(enhancement)
+
+    assert sql_enhancement.root_id == enhancement.id
+    assert sql_enhancement.supersedes is None
+
+
+def test_enhancement_from_domain_preserves_chain_fields():
+    """A successor keeps the supersedes and root_id it was given."""
+    root_id = uuid7()
+    predecessor_id = uuid7()
+    enhancement = EnhancementFactory.build(
+        content=AbstractContentEnhancementFactory.build(),
+        supersedes=predecessor_id,
+        root_id=root_id,
+    )
+
+    sql_enhancement = Enhancement.from_domain(enhancement)
+
+    assert sql_enhancement.supersedes == predecessor_id
+    assert sql_enhancement.root_id == root_id
+
+
+def test_enhancement_to_domain_round_trips_chain_fields():
+    """supersedes and root_id survive a domain -> SQL -> domain round trip."""
+    enhancement = EnhancementFactory.build(
+        content=AbstractContentEnhancementFactory.build(),
+        supersedes=uuid7(),
+        root_id=uuid7(),
+    )
+
+    domain_enhancement = Enhancement.from_domain(enhancement).to_domain()
+
+    assert domain_enhancement.supersedes == enhancement.supersedes
+    assert domain_enhancement.root_id == enhancement.root_id
+
+
+def test_enhancement_to_domain_without_root_id_presents_as_root():
+    """A row without a root_id is presented as the root of its own chain."""
+    sql_enhancement = Enhancement.from_domain(
+        EnhancementFactory.build(content=AbstractContentEnhancementFactory.build())
+    )
+    sql_enhancement.root_id = None
+
+    domain_enhancement = sql_enhancement.to_domain()
+
+    assert domain_enhancement.root_id == domain_enhancement.id
+    assert domain_enhancement.supersedes is None
 
 
 def test_enhancement_from_domain_rejects_unstored_full_text():
