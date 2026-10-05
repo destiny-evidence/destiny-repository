@@ -533,6 +533,16 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
         default=None,
         description="List of enhancement IDs that this enhancement was derived from.",
     )
+    supersedes: UUID | None = Field(
+        default=None,
+        description="The ID of the enhancement in the same chain that this one "
+        "replaces. None for the root of a chain.",
+    )
+    root_id: UUID | None = Field(
+        default=None,
+        description="The ID of the root enhancement of this enhancement's "
+        "supersession chain. Equal to the enhancement's own ID for a root.",
+    )
     content: EnhancementContent = Field(
         discriminator="enhancement_type",
         description="The content of the enhancement.",
@@ -545,6 +555,13 @@ class Enhancement(DomainBaseModel, SQLTimestampMixin):
         None,
         description="The reference this enhancement is associated with.",
     )
+
+    @model_validator(mode="after")
+    def _default_root_id_for_root(self) -> Self:
+        """Set a chain root's root_id to its own id."""
+        if self.root_id is None and self.supersedes is None:
+            self.root_id = self.id
+        return self
 
     def hash_data(self) -> int:
         """
