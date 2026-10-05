@@ -341,6 +341,12 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     __table_args__ = (
         Index("ix_enhancement_reference_id", "reference_id"),
         Index("ix_enhancement_enhancement_type", "enhancement_type"),
+        Index(
+            "uq_enhancement_supersedes",
+            "supersedes",
+            unique=True,
+            postgresql_where=text("supersedes IS NOT NULL"),
+        ),
         CheckConstraint(
             "id > supersedes OR supersedes = root_id",
             name="ck_enhancement_supersedes_order",
