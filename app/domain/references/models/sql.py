@@ -347,6 +347,12 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             unique=True,
             postgresql_where=text("supersedes IS NOT NULL"),
         ),
+        Index(
+            "ix_enhancement_successor_root_id_id",
+            "root_id",
+            "id",
+            postgresql_where=text("supersedes IS NOT NULL"),
+        ),
         CheckConstraint(
             "id > supersedes OR supersedes = root_id",
             name="ck_enhancement_supersedes_order",
