@@ -1,6 +1,7 @@
 """Identifier classes for the Destiny SDK."""
 
 import re
+import string
 import unicodedata
 import uuid
 from enum import StrEnum, auto
@@ -30,6 +31,8 @@ _DOI_CHAR_TRANSLATION = str.maketrans(
         "\u2010": "-",  # Unicode hyphen -> ASCII hyphen
     }
 )
+# DOI names are case-insensitive for ASCII only; non-ASCII case can distinguish DOIs
+_DOI_ASCII_LOWERCASE = str.maketrans(string.ascii_uppercase, string.ascii_lowercase)
 
 
 class ExternalIdentifierType(StrEnum):
@@ -69,7 +72,7 @@ class DOIIdentifier(BaseModel):
             "Format: '10.<registrant>/<suffix>' where registrant is 4-9 digits "
             "and suffix is any non-whitespace characters. "
             "Examples: 10.1000/journal.pone.0001, 10.18730/9WQ$D, 10.1000/édition. "
-            "DOIs are case-insensitive, so they are stored lowercase."
+            "ASCII letters are case-insensitive in DOIs, so they are stored lowercase."
         ),
         pattern=r"^10\.\d{4,9}/\S+$",
     )
@@ -81,12 +84,12 @@ class DOIIdentifier(BaseModel):
     @classmethod
     def canonicalize_doi(cls, value: str) -> str:
         """
-        Canonicalize DOI: strip URL prefixes, normalize Unicode and lowercase.
+        Canonicalize DOI: strip URL prefixes, normalize Unicode and fold ASCII case.
 
         - NFC Unicode normalization
         - Translate special characters (NBSP, Unicode hyphen) via translation table
         - Case-insensitive URL/scheme prefix stripping
-        - Lowercasing, matching OpenAlex, which emits every DOI lowercase
+        - ASCII letters lowercased, leaving non-ASCII case as given
         """
         # NFC normalization first
         value = unicodedata.normalize("NFC", str(value))
@@ -95,7 +98,7 @@ class DOIIdentifier(BaseModel):
         # Strip URL prefixes (case-insensitive)
         value = _DOI_URL_PREFIX_RE.sub("", value)
         value = _DOI_SCHEME_RE.sub("", value)
-        return value.strip().lower()
+        return value.strip().translate(_DOI_ASCII_LOWERCASE)
 
 
 class ProQuestIdentifier(BaseModel):

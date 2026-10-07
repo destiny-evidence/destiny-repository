@@ -35,17 +35,17 @@ def test_doi_url_removed():
     [
         # DataCite GLIS characters: = ~ * $
         # Crossref/legacy: #
-        "10.18730/9WQ$D",  # Dollar sign
-        "10.18730/9WQ*D",  # Asterisk
-        "10.18730/9WQ~D",  # Tilde
-        "10.18730/9WQ=D",  # Equals
-        "10.18730/9WQ#D",  # Hash
-        "10.18730/9WQ$~*=#D",  # Multiple special characters
+        "10.18730/9wq$d",  # Dollar sign
+        "10.18730/9wq*d",  # Asterisk
+        "10.18730/9wq~d",  # Tilde
+        "10.18730/9wq=d",  # Equals
+        "10.18730/9wq#d",  # Hash
+        "10.18730/9wq$~*=#d",  # Multiple special characters
         # Latin Extended characters (accented letters)
         "10.1000/journalÉdition",  # É (U+00C9)
         "10.1000/café",  # é (U+00E9)
         "10.1000/naïve",  # ï (U+00EF)
-        "10.1000/Müller",  # ü (U+00FC)
+        "10.1000/müller",  # ü (U+00FC)
         "10.1000/señor",  # ñ (U+00F1)
     ],
 )
@@ -55,7 +55,7 @@ def test_valid_doi_with_special_characters(doi: str):
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
         identifier=doi,
     )
-    assert obj.identifier == doi.lower()
+    assert obj.identifier == doi
 
 
 @pytest.mark.parametrize(
@@ -74,6 +74,8 @@ def test_valid_doi_with_special_characters(doi: str):
         ("doi: 10.1000/xyz123", "10.1000/xyz123"),
         # DOIs are case-insensitive, so the publisher's case is folded
         ("10.18743/PUB.00054728", "10.18743/pub.00054728"),
+        # Case-insensitivity covers ASCII only, so non-ASCII case is kept
+        ("10.1000/ÉDITION", "10.1000/Édition"),
     ],
 )
 def test_doi_canonicalization(doi_input: str, expected: str):
