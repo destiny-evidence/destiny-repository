@@ -55,7 +55,7 @@ def test_valid_doi_with_special_characters(doi: str):
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
         identifier=doi,
     )
-    assert obj.identifier == doi
+    assert obj.identifier == doi.lower()
 
 
 @pytest.mark.parametrize(
@@ -72,10 +72,12 @@ def test_valid_doi_with_special_characters(doi: str):
         ("https://DX.DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
         ("DOI:10.1000/xyz123", "10.1000/xyz123"),
         ("doi: 10.1000/xyz123", "10.1000/xyz123"),
+        # DOIs are case-insensitive, so the publisher's case is folded
+        ("10.18743/PUB.00054728", "10.18743/pub.00054728"),
     ],
 )
 def test_doi_canonicalization(doi_input: str, expected: str):
-    """Test DOI canonicalization: Unicode normalization and URL prefix stripping."""
+    """Test DOI canonicalization: Unicode, URL prefix stripping and lowercasing."""
     obj = destiny_sdk.identifiers.DOIIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
         identifier=doi_input,
