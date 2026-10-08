@@ -42,7 +42,7 @@ def test_doi_url_removed():
         "10.18730/9wq#d",  # Hash
         "10.18730/9wq$~*=#d",  # Multiple special characters
         # Latin Extended characters (accented letters)
-        "10.1000/journalÉdition",  # É (U+00C9)
+        "10.1000/journalédition",  # é (U+00E9)
         "10.1000/café",  # é (U+00E9)
         "10.1000/naïve",  # ï (U+00EF)
         "10.1000/müller",  # ü (U+00FC)
@@ -74,8 +74,8 @@ def test_valid_doi_with_special_characters(doi: str):
         ("doi: 10.1000/xyz123", "10.1000/xyz123"),
         # DOIs are case-insensitive, so the publisher's case is folded
         ("10.18743/PUB.00054728", "10.18743/pub.00054728"),
-        # Case-insensitivity covers ASCII only, so non-ASCII case is kept
-        ("10.1000/ÉDITION", "10.1000/Édition"),
+        # Non-ASCII letters are lowercased too, matching OpenAlex's stored form
+        ("10.1000/ÉDITION", "10.1000/édition"),
     ],
 )
 def test_doi_canonicalization(doi_input: str, expected: str):
