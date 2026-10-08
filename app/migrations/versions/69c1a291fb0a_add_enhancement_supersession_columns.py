@@ -26,7 +26,7 @@ def upgrade() -> None:
     op.add_column('enhancement', sa.Column('root_id', sa.UUID(), nullable=True))
     op.create_foreign_key('fk_enhancement_supersedes', 'enhancement', 'enhancement', ['supersedes'], ['id'], postgresql_not_valid=True)
     op.create_check_constraint('ck_enhancement_supersedes_order', 'enhancement', 'id > supersedes OR supersedes = root_id', postgresql_not_valid=True)
-    op.create_check_constraint('ck_enhancement_supersedes_root_id', 'enhancement', 'supersedes IS NULL OR root_id <> id', postgresql_not_valid=True)
+    op.create_check_constraint('ck_enhancement_supersedes_root_id', 'enhancement', '(supersedes IS NULL) = (root_id = id)', postgresql_not_valid=True)
     op.create_check_constraint('ck_enhancement_root_id_not_null', 'enhancement', 'root_id IS NOT NULL', postgresql_not_valid=True)
 
 

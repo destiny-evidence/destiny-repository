@@ -347,7 +347,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             postgresql_not_valid=True,
         ),
         CheckConstraint(
-            "supersedes IS NULL OR root_id <> id",
+            "(supersedes IS NULL) = (root_id = id)",
             name="ck_enhancement_supersedes_root_id",
             postgresql_not_valid=True,
         ),
