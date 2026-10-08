@@ -38,7 +38,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.core.exceptions import ESError, SQLIntegrityError
+from app.core.exceptions import ESError, SQLIntegrityError, SQLNotFoundError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.repository import (
@@ -949,6 +949,91 @@ class EnhancementSQLRepository(
             DomainEnhancement,
             SQLEnhancement,
         )
+
+    @staticmethod
+    def _supersession_chain(enhancement_id: UUID) -> Select[tuple[SQLEnhancement]]:
+        """Select every member of the supersession chain containing an enhancement."""
+        chain_root_id = (
+            select(func.coalesce(SQLEnhancement.root_id, SQLEnhancement.id))
+            .where(SQLEnhancement.id == enhancement_id)
+            .scalar_subquery()
+        )
+        return select(SQLEnhancement).where(
+            or_(
+                SQLEnhancement.id == chain_root_id,
+                and_(
+                    SQLEnhancement.root_id == chain_root_id,
+                    SQLEnhancement.supersedes.is_not(None),
+                ),
+            )
+        )
+
+    def _enhancement_not_found(self, enhancement_id: UUID) -> SQLNotFoundError:
+        return SQLNotFoundError(
+            detail=f"Unable to find Enhancement with pk {enhancement_id}",
+            lookup_model="Enhancement",
+            lookup_type="id",
+            lookup_value=enhancement_id,
+        )
+
+    @trace_repository_method(tracer)
+    async def get_supersession_chain(
+        self, enhancement_id: UUID
+    ) -> list[DomainEnhancement]:
+        """
+        Get the supersession chain containing an enhancement.
+
+        Args:
+            enhancement_id: The ID of any enhancement in the chain
+
+        Returns:
+            The chain, root first, then successors in the order they superseded
+            each other
+
+        Raises:
+            SQLNotFoundError: If the enhancement does not exist
+
+        """
+        trace_attribute(Attributes.DB_PK, str(enhancement_id))
+        query = self._supersession_chain(enhancement_id).order_by(
+            SQLEnhancement.supersedes.is_not(None), SQLEnhancement.id
+        )
+        chain = (await self._session.scalars(query)).all()
+        if not chain:
+            raise self._enhancement_not_found(enhancement_id)
+        return [enhancement.to_domain() for enhancement in chain]
+
+    @trace_repository_method(tracer)
+    async def get_supersession_chain_head(
+        self, enhancement_id: UUID
+    ) -> DomainEnhancement:
+        """
+        Get the head of the supersession chain containing an enhancement.
+
+        Args:
+            enhancement_id: The ID of any enhancement in the chain
+
+        Returns:
+            The newest successor in the chain, or the root if the chain has no
+            successors
+
+        Raises:
+            SQLNotFoundError: If the enhancement does not exist
+
+        """
+        trace_attribute(Attributes.DB_PK, str(enhancement_id))
+        query = (
+            self._supersession_chain(enhancement_id)
+            .order_by(
+                SQLEnhancement.supersedes.is_not(None).desc(),
+                SQLEnhancement.id.desc(),
+            )
+            .limit(1)
+        )
+        head = (await self._session.scalars(query)).one_or_none()
+        if head is None:
+            raise self._enhancement_not_found(enhancement_id)
+        return head.to_domain()
 
 
 class EnhancementRequestRepositoryBase(
