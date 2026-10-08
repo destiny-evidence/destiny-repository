@@ -68,7 +68,8 @@ class DOIIdentifier(BaseModel):
             "The DOI of the reference. "
             "Format: '10.<registrant>/<suffix>' where registrant is 4-9 digits "
             "and suffix is any non-whitespace characters. "
-            "Examples: 10.1000/journal.pone.0001, 10.18730/9WQ$D, 10.1000/édition"
+            "Examples: 10.1000/journal.pone.0001, 10.18730/9WQ$D, 10.1000/édition. "
+            "DOIs are stored lowercase."
         ),
         pattern=r"^10\.\d{4,9}/\S+$",
     )
@@ -80,11 +81,13 @@ class DOIIdentifier(BaseModel):
     @classmethod
     def canonicalize_doi(cls, value: str) -> str:
         """
-        Canonicalize DOI: strip URL prefixes and normalize Unicode.
+        Canonicalize DOI: strip URL prefixes, normalize Unicode and lowercase.
 
         - NFC Unicode normalization
         - Translate special characters (NBSP, Unicode hyphen) via translation table
         - Case-insensitive URL/scheme prefix stripping
+        - Lowercasing, including non-ASCII letters, the form the bulk of the
+          repository's corpus already uses
         """
         # NFC normalization first
         value = unicodedata.normalize("NFC", str(value))
@@ -93,7 +96,7 @@ class DOIIdentifier(BaseModel):
         # Strip URL prefixes (case-insensitive)
         value = _DOI_URL_PREFIX_RE.sub("", value)
         value = _DOI_SCHEME_RE.sub("", value)
-        return value.strip()
+        return value.strip().lower()
 
 
 class ProQuestIdentifier(BaseModel):
