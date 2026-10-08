@@ -225,8 +225,10 @@ async def add_robot_enhancement_batch(
 
 async def add_enhancement(session: AsyncSession, reference_id: UUID):
     """Add a basic enhancement to a reference."""
+    enhancement_id = uuid7()
     enhancement = SQLEnhancement(
-        id=uuid7(),
+        id=enhancement_id,
+        root_id=enhancement_id,
         reference_id=reference_id,
         visibility=Visibility.PUBLIC,
         source="test_source",
