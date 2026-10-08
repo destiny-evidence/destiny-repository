@@ -69,7 +69,7 @@ class DOIIdentifier(BaseModel):
             "Format: '10.<registrant>/<suffix>' where registrant is 4-9 digits "
             "and suffix is any non-whitespace characters. "
             "Examples: 10.1000/journal.pone.0001, 10.18730/9WQ$D, 10.1000/édition. "
-            "DOIs are stored lowercase, matching OpenAlex."
+            "DOIs are stored lowercase."
         ),
         pattern=r"^10\.\d{4,9}/\S+$",
     )
@@ -86,7 +86,8 @@ class DOIIdentifier(BaseModel):
         - NFC Unicode normalization
         - Translate special characters (NBSP, Unicode hyphen) via translation table
         - Case-insensitive URL/scheme prefix stripping
-        - Lowercasing, including non-ASCII letters, matching OpenAlex's stored form
+        - Lowercasing, including non-ASCII letters, the form the bulk of the
+          repository's corpus already uses
         """
         # NFC normalization first
         value = unicodedata.normalize("NFC", str(value))

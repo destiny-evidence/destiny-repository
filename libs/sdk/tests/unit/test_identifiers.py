@@ -74,7 +74,7 @@ def test_valid_doi_with_special_characters(doi: str):
         ("doi: 10.1000/xyz123", "10.1000/xyz123"),
         # DOIs are case-insensitive, so the publisher's case is folded
         ("10.18743/PUB.00054728", "10.18743/pub.00054728"),
-        # Non-ASCII letters are lowercased too, matching OpenAlex's stored form
+        # Non-ASCII letters are lowercased too, as in the bulk of the corpus
         ("10.1000/ÉDITION", "10.1000/édition"),
     ],
 )
