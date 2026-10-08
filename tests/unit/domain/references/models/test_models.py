@@ -38,6 +38,31 @@ from tests.factories import (
 )
 
 
+def test_enhancement_root_defaults_root_id_to_id():
+    """A root built without a root_id is the root of its own chain."""
+    enhancement = EnhancementFactory.build()
+
+    assert enhancement.root_id == enhancement.id
+
+
+def test_enhancement_keeps_given_root_id():
+    """An explicitly given root_id is kept, for a root or a successor."""
+    root_id = uuid7()
+
+    root = EnhancementFactory.build(root_id=root_id)
+    successor = EnhancementFactory.build(supersedes=uuid7(), root_id=root_id)
+
+    assert root.root_id == root_id
+    assert successor.root_id == root_id
+
+
+def test_enhancement_successor_has_no_default_root_id():
+    """A successor built without a root_id is left without one."""
+    enhancement = EnhancementFactory.build(supersedes=uuid7())
+
+    assert enhancement.root_id is None
+
+
 def test_deduplication_pair_result_accepts_unscorable_reason_without_probability():
     result = DeduplicationPairResult(unscorable_reason="insufficient comparable fields")
 
