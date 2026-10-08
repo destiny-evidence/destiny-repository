@@ -248,6 +248,19 @@ async def test_enhancement_successor_cannot_be_its_own_root(session: AsyncSessio
     with pytest.raises(SQLIntegrityError) as exc_info:
         await repo.add(successor)
     assert "ck_enhancement_supersedes_root_id" in str(exc_info.value.__cause__)
+
+
+async def test_enhancement_chain_cannot_fork(session: AsyncSession):
+    """Two successors cannot supersede the same enhancement."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    root = await repo.add(_enhancement(reference))
+    await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+    await session.commit()
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+    assert "uq_enhancement_supersedes" in str(exc_info.value.__cause__)
     await session.rollback()
 
 
