@@ -10,6 +10,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    ColumnElement,
     DateTime,
     Float,
     ForeignKey,
@@ -17,11 +18,12 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    exists,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
 
 from app.core.exceptions import (
     SQLPreloadError,
@@ -369,6 +371,12 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             postgresql_not_valid=True,
         ),
     )
+
+    @classmethod
+    def is_head(cls) -> ColumnElement[bool]:
+        """Select enhancements that no other enhancement supersedes."""
+        successor = aliased(cls)
+        return ~exists().where(successor.supersedes == cls.id)
 
     @classmethod
     def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
