@@ -1022,14 +1022,7 @@ class EnhancementSQLRepository(
 
         """
         trace_attribute(Attributes.DB_PK, str(enhancement_id))
-        query = (
-            self._supersession_chain(enhancement_id)
-            .order_by(
-                SQLEnhancement.supersedes.is_not(None).desc(),
-                SQLEnhancement.id.desc(),
-            )
-            .limit(1)
-        )
+        query = self._supersession_chain(enhancement_id).where(SQLEnhancement.is_head())
         head = (await self._session.scalars(query)).one_or_none()
         if head is None:
             raise self._enhancement_not_found(enhancement_id)
