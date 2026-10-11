@@ -580,3 +580,40 @@ async def test_enhancement_supersession_columns_migration(db_at_migration: str) 
 
     assert columns == []
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("migration_id", "target_revision", "index_name"),
+    [
+        ("69c1a291fb0a", "4ce1b7909690", "uq_enhancement_supersedes"),
+    ],
+)
+async def test_enhancement_supersession_index_migration(
+    db_at_migration: str, target_revision: str, index_name: str
+) -> None:
+    """Each supersession index migration builds a valid index and drops it."""
+    engine = create_async_engine(db_at_migration, future=True)
+    index_validity = sa.text(
+        "SELECT indisvalid FROM pg_index "
+        "WHERE indexrelid::regclass::text = :index_name"
+    )
+
+    await run_migration(db_at_migration, target_revision)
+
+    async with engine.begin() as conn:
+        valid = (
+            await conn.execute(index_validity, {"index_name": index_name})
+        ).scalar_one()
+
+    assert valid is True
+
+    await run_downgrade(db_at_migration, "-1")
+
+    async with engine.begin() as conn:
+        remaining = (
+            await conn.execute(index_validity, {"index_name": index_name})
+        ).all()
+
+    assert remaining == []
+    await engine.dispose()
