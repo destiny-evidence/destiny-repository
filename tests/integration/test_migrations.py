@@ -6,7 +6,7 @@ from uuid import uuid7
 import pytest
 import pytest_asyncio
 import sqlalchemy as sa
-from alembic.command import upgrade
+from alembic.command import downgrade, upgrade
 from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifierType
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -21,6 +21,15 @@ async def run_migration(db_url: str, target_revision: str) -> None:
     alembic_config = alembic_config_from_url(db_url)
     conftest.MIGRATION_TASK = None
     upgrade(alembic_config, target_revision)
+    if conftest.MIGRATION_TASK:
+        await conftest.MIGRATION_TASK
+
+
+async def run_downgrade(db_url: str, target_revision: str) -> None:
+    """Run Alembic downgrade to the specified target revision."""
+    alembic_config = alembic_config_from_url(db_url)
+    conftest.MIGRATION_TASK = None
+    downgrade(alembic_config, target_revision)
     if conftest.MIGRATION_TASK:
         await conftest.MIGRATION_TASK
 
@@ -469,4 +478,105 @@ async def test_duplicate_decision_provenance_accepts_pre_migration_inserts(
         ).one()
 
     assert provenance == ("unclassified", "unclassified")
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["a1c4f7e29b30"])
+async def test_enhancement_supersession_columns_migration(db_at_migration: str) -> None:
+    """Existing rows skip validation; inserts and updates require a root_id."""
+    engine = create_async_engine(db_at_migration, future=True)
+    now = datetime.datetime.now(datetime.UTC)
+    reference_id = str(uuid7())
+    existing_id = str(uuid7())
+    insert_enhancement = sa.text(
+        "INSERT INTO enhancement "
+        "(id, reference_id, visibility, source, enhancement_type, content, "
+        "created_at, updated_at) "
+        "VALUES (:id, :reference_id, 'public', 'test', 'abstract', '{}', :now, :now)"
+    )
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO reference (id, visibility, created_at, updated_at) "
+                "VALUES (:id, 'public', :now, :now)"
+            ),
+            {"id": reference_id, "now": now},
+        )
+        await conn.execute(
+            insert_enhancement,
+            {"id": existing_id, "reference_id": reference_id, "now": now},
+        )
+
+    await run_migration(db_at_migration, "69c1a291fb0a")
+
+    async with engine.begin() as conn:
+        existing = (
+            await conn.execute(
+                sa.text("SELECT supersedes, root_id FROM enhancement WHERE id = :id"),
+                {"id": existing_id},
+            )
+        ).one()
+        constraints = dict(
+            (
+                await conn.execute(
+                    sa.text(
+                        "SELECT conname, convalidated FROM pg_constraint "
+                        "WHERE conrelid = 'enhancement'::regclass "
+                        "AND conname IN ('fk_enhancement_supersedes', "
+                        "'ck_enhancement_supersedes_order', "
+                        "'ck_enhancement_supersedes_root_id', "
+                        "'ck_enhancement_root_id_not_null')"
+                    )
+                )
+            ).all()
+        )
+        root_id = str(uuid7())
+        await conn.execute(
+            sa.text(
+                "INSERT INTO enhancement "
+                "(id, reference_id, visibility, source, enhancement_type, content, "
+                "root_id, created_at, updated_at) "
+                "VALUES (:id, :reference_id, 'public', 'test', 'abstract', '{}', "
+                ":id, :now, :now)"
+            ),
+            {"id": root_id, "reference_id": reference_id, "now": now},
+        )
+
+    with pytest.raises(sa.exc.IntegrityError, match="ck_enhancement_root_id_not_null"):
+        async with engine.begin() as conn:
+            await conn.execute(
+                insert_enhancement,
+                {"id": str(uuid7()), "reference_id": reference_id, "now": now},
+            )
+
+    with pytest.raises(sa.exc.IntegrityError, match="ck_enhancement_root_id_not_null"):
+        async with engine.begin() as conn:
+            await conn.execute(
+                sa.text("UPDATE enhancement SET source = 'updated' WHERE id = :id"),
+                {"id": existing_id},
+            )
+
+    assert existing == (None, None)
+    assert constraints == {
+        "fk_enhancement_supersedes": False,
+        "ck_enhancement_supersedes_order": False,
+        "ck_enhancement_supersedes_root_id": False,
+        "ck_enhancement_root_id_not_null": False,
+    }
+
+    await run_downgrade(db_at_migration, "a1c4f7e29b30")
+
+    async with engine.begin() as conn:
+        columns = (
+            await conn.execute(
+                sa.text(
+                    "SELECT column_name FROM information_schema.columns "
+                    "WHERE table_name = 'enhancement' "
+                    "AND column_name IN ('supersedes', 'root_id')"
+                )
+            )
+        ).all()
+
+    assert columns == []
     await engine.dispose()
