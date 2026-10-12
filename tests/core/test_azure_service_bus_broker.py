@@ -130,6 +130,8 @@ async def test_happy_startup(broker: AzureServiceBusBroker) -> None:
     assert broker.priority_sender is not None
     assert broker.receiver is not None
     assert broker.priority_receiver is not None
+    assert broker.low_priority_sender is not None
+    assert broker.low_priority_receiver is not None
 
 
 @pytest.mark.anyio
@@ -216,8 +218,10 @@ async def test_priority_message_routes_to_priority_sender(
     """Priority messages go to the priority queue, normal messages to default."""
     assert broker.sender is not None
     assert broker.priority_sender is not None
+    assert broker.low_priority_sender is not None
     default_sends: list[AmqpAnnotatedMessage] = []
     priority_sends: list[AmqpAnnotatedMessage] = []
+    low_priority_sends: list[AmqpAnnotatedMessage] = []
 
     async def capture_default(message: AmqpAnnotatedMessage) -> None:
         default_sends.append(message)
@@ -225,8 +229,14 @@ async def test_priority_message_routes_to_priority_sender(
     async def capture_priority(message: AmqpAnnotatedMessage) -> None:
         priority_sends.append(message)
 
+    async def capture_low_priority(message: AmqpAnnotatedMessage) -> None:
+        low_priority_sends.append(message)
+
     monkeypatch.setattr(broker.sender, "send_messages", capture_default)
     monkeypatch.setattr(broker.priority_sender, "send_messages", capture_priority)
+    monkeypatch.setattr(
+        broker.low_priority_sender, "send_messages", capture_low_priority
+    )
 
     await broker.kick(
         BrokerMessage(
@@ -241,6 +251,14 @@ async def test_priority_message_routes_to_priority_sender(
             task_id="normal-task",
             task_name="normal-name",
             message=b"normal-message",
+            labels={"priority": "1"},
+        )
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="low-priority-task",
+            task_name="low-priority-name",
+            message=b"low-priority-message",
             labels={"priority": "0"},
         )
     )
@@ -255,6 +273,7 @@ async def test_priority_message_routes_to_priority_sender(
 
     assert len(priority_sends) == 1
     assert len(default_sends) == 2
+    assert len(low_priority_sends) == 1
 
 
 @pytest.mark.anyio
@@ -388,6 +407,46 @@ async def test_listen_drains_priority_before_default(
 
     assert yielded[0] == b"priority-1"
     assert set(yielded[1:]) == {b"normal-1", b"normal-2"}
+
+
+@pytest.mark.anyio
+async def test_listen_drains_default_before_low_priority(
+    broker: AzureServiceBusBroker,
+) -> None:
+    """Default-queue messages must yield before any low priority work."""
+    await broker.kick(
+        BrokerMessage(
+            task_id="low-1",
+            task_name="low",
+            message=b"low-1",
+            labels={"priority": "0"},
+        )
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="normal-1",
+            task_name="normal",
+            message=b"normal-1",
+            labels={},
+        )
+    )
+    await broker.kick(
+        BrokerMessage(
+            task_id="priority-1",
+            task_name="priority",
+            message=b"priority-1",
+            labels={"priority": "5"},
+        )
+    )
+
+    yielded: list[bytes] = []
+    async for ackable in broker.listen():
+        yielded.append(ackable.data)
+        await maybe_awaitable(ackable.ack())
+        if len(yielded) == 3:
+            break
+
+    assert yielded == [b"priority-1", b"normal-1", b"low-1"]
 
 
 @pytest.mark.anyio
