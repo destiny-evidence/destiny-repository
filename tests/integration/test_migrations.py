@@ -587,6 +587,7 @@ async def test_enhancement_supersession_columns_migration(db_at_migration: str) 
     ("migration_id", "target_revision", "index_name"),
     [
         ("69c1a291fb0a", "4ce1b7909690", "uq_enhancement_supersedes"),
+        ("4ce1b7909690", "068f01d7c1f8", "ix_enhancement_successor_root_id_id"),
     ],
 )
 async def test_enhancement_supersession_index_migration(
