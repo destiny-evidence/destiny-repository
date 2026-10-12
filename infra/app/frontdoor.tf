@@ -2,9 +2,14 @@ locals {
   api_hostname = "${var.api_subdomain}.${var.dnsimple_zone_name}"
   ui_hostname  = "${var.ui_subdomain}.${var.dnsimple_zone_name}"
 
-  use_shared_frontdoor_endpoint = var.environment != "production"
-  frontdoor_endpoint_id         = local.use_shared_frontdoor_endpoint ? data.azurerm_cdn_frontdoor_endpoint.shared[0].id : azurerm_cdn_frontdoor_endpoint.this[0].id
-  frontdoor_endpoint_host_name  = local.use_shared_frontdoor_endpoint ? data.azurerm_cdn_frontdoor_endpoint.shared[0].host_name : azurerm_cdn_frontdoor_endpoint.this[0].host_name
+  # Only the attributes both endpoint types share, so the conditional types match
+  frontdoor_endpoint = local.is_production ? {
+    id        = azurerm_cdn_frontdoor_endpoint.this[0].id
+    host_name = azurerm_cdn_frontdoor_endpoint.this[0].host_name
+    } : {
+    id        = data.azurerm_cdn_frontdoor_endpoint.shared[0].id
+    host_name = data.azurerm_cdn_frontdoor_endpoint.shared[0].host_name
+  }
 }
 
 data "azurerm_cdn_frontdoor_profile" "shared" {
@@ -13,14 +18,14 @@ data "azurerm_cdn_frontdoor_profile" "shared" {
 }
 
 data "azurerm_cdn_frontdoor_endpoint" "shared" {
-  count               = local.use_shared_frontdoor_endpoint ? 1 : 0
+  count               = local.is_production ? 0 : 1
   name                = "fde-${var.environment}"
   profile_name        = var.shared_frontdoor_profile_name
   resource_group_name = var.shared_resource_group_name
 }
 
 resource "azurerm_cdn_frontdoor_endpoint" "this" {
-  count                    = local.use_shared_frontdoor_endpoint ? 0 : 1
+  count                    = local.is_production ? 1 : 0
   name                     = "fde-${local.name}"
   cdn_frontdoor_profile_id = data.azurerm_cdn_frontdoor_profile.shared.id
   tags                     = local.minimum_resource_tags
@@ -76,7 +81,7 @@ resource "azurerm_cdn_frontdoor_custom_domain" "api" {
 
 resource "azurerm_cdn_frontdoor_route" "api" {
   name                            = "rt-api-${local.name}"
-  cdn_frontdoor_endpoint_id       = local.frontdoor_endpoint_id
+  cdn_frontdoor_endpoint_id       = local.frontdoor_endpoint.id
   cdn_frontdoor_origin_group_id   = azurerm_cdn_frontdoor_origin_group.api.id
   cdn_frontdoor_origin_ids        = [azurerm_cdn_frontdoor_origin.api.id]
   cdn_frontdoor_custom_domain_ids = [azurerm_cdn_frontdoor_custom_domain.api.id]
@@ -106,7 +111,7 @@ resource "dnsimple_zone_record" "api" {
   zone_name = var.dnsimple_zone_name
   name      = var.api_subdomain
   type      = "CNAME"
-  value     = local.frontdoor_endpoint_host_name
+  value     = local.frontdoor_endpoint.host_name
   ttl       = 3600
 }
 
@@ -153,7 +158,7 @@ resource "azurerm_cdn_frontdoor_custom_domain" "ui" {
 
 resource "azurerm_cdn_frontdoor_route" "ui" {
   name                            = "rt-ui-${local.name}"
-  cdn_frontdoor_endpoint_id       = local.frontdoor_endpoint_id
+  cdn_frontdoor_endpoint_id       = local.frontdoor_endpoint.id
   cdn_frontdoor_origin_group_id   = azurerm_cdn_frontdoor_origin_group.ui.id
   cdn_frontdoor_origin_ids        = [azurerm_cdn_frontdoor_origin.ui.id]
   cdn_frontdoor_custom_domain_ids = [azurerm_cdn_frontdoor_custom_domain.ui.id]
@@ -182,6 +187,6 @@ resource "dnsimple_zone_record" "ui" {
   zone_name = var.dnsimple_zone_name
   name      = var.ui_subdomain
   type      = "CNAME"
-  value     = local.frontdoor_endpoint_host_name
+  value     = local.frontdoor_endpoint.host_name
   ttl       = 3600
 }
