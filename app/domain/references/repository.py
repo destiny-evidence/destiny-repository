@@ -952,7 +952,7 @@ class EnhancementSQLRepository(
 
     @staticmethod
     def _supersession_chain(enhancement_id: UUID) -> Select[tuple[SQLEnhancement]]:
-        """Select every member of the supersession chain containing an enhancement."""
+        """Select every member of the supersession chain containing this enhancement."""
         chain_root_id = (
             select(func.coalesce(SQLEnhancement.root_id, SQLEnhancement.id))
             .where(SQLEnhancement.id == enhancement_id)

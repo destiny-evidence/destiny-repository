@@ -330,6 +330,8 @@ async def test_enhancement_non_root_must_supersede(session: AsyncSession):
         await repo.add(_enhancement(reference, root_id=root.id))
     assert "ck_enhancement_supersedes_root_id" in str(exc_info.value.__cause__)
     await session.rollback()
+
+
 async def test_get_supersession_chain_from_any_member(session: AsyncSession):
     """Every member of a chain returns the whole chain, root first."""
     reference = await _add_reference(session)
