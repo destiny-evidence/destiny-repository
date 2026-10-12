@@ -1,5 +1,6 @@
 locals {
   name                   = "${var.app_name}-${var.environment}"
+  is_production          = var.environment == "production"
   es_index_migrator_name = "es-index-migrator-${var.environment}"
   # var.app_name-* can be removed the list below after we migrate to versioned indicies
   managed_indices = [
