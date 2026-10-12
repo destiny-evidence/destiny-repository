@@ -1,6 +1,7 @@
 """Integration tests for SQL interface."""
 
 import datetime
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4, uuid7
 
 import pytest
@@ -9,7 +10,12 @@ from destiny_sdk.visibility import Visibility
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.entitlements import Entitlement
+from app.core.exceptions import (
+    InvalidSupersessionError,
+    SQLIntegrityError,
+    SQLNotFoundError,
+)
 from app.domain.imports.models.models import (
     ImportBatchStatus,
     ImportResultStatus,
@@ -55,8 +61,17 @@ from app.domain.references.repository import (
     ReferenceDuplicateDecisionSQLRepository,
     ReferenceSQLRepository,
 )
+from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
 from app.domain.robots.models.models import Robot
 from app.domain.robots.models.sql import Robot as SQLRobot
+from app.persistence.es.uow import AsyncESUnitOfWork
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import AbstractContentEnhancementFactory, EnhancementFactory
 
 
@@ -383,6 +398,47 @@ async def test_get_supersession_chain_of_lone_root(
 
     assert [e.id for e in found] == [root.id]
     assert head.id == root.id
+
+
+async def test_add_enhancement_builds_supersession_chain(session: AsyncSession):
+    """Successors added through the service join the chain behind its head."""
+    reference = await _add_reference(session)
+    (root,) = await _add_chain(session, reference, successors=0)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+    acl = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+
+    second = _enhancement(reference, supersedes=root.id)
+    await service.add_enhancement(second, acl)
+    third = _enhancement(reference, supersedes=second.id)
+    await service.add_enhancement(third, acl)
+
+    with pytest.raises(InvalidSupersessionError, match=str(third.id)):
+        await service.add_enhancement(_enhancement(reference, supersedes=root.id), acl)
+
+    repo = EnhancementSQLRepository(session)
+    chain = await repo.get_supersession_chain(root.id)
+    assert [e.id for e in chain] == [root.id, second.id, third.id]
+    assert all(e.root_id == root.id for e in chain)
+    assert (await repo.get_supersession_chain_head(root.id)).id == third.id
+
+
+async def test_supersession_race_collides_on_supersedes(session: AsyncSession):
+    """A second successor of one head fails on the unique supersedes index."""
+    reference = await _add_reference(session)
+    root, _ = await _add_chain(session, reference, successors=1)
+    repo = EnhancementSQLRepository(session)
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+
+    assert "supersedes" in exc_info.value.collision
+    await session.rollback()
 
 
 async def test_get_supersession_chain_not_found(session: AsyncSession):

@@ -5,16 +5,20 @@ import datetime
 import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, call, patch
-from uuid import uuid7
+from uuid import UUID, uuid4, uuid7
 
 import pytest
 from destiny_sdk.enhancements import BibliographicMetadataEnhancement
 from destiny_sdk.identifiers import DOIIdentifier
 from destiny_sdk.references import ReferenceFileInput
 
+from app.core.entitlements import Entitlement
 from app.core.exceptions import (
+    AuthError,
     DuplicateEnhancementError,
     InvalidParentEnhancementError,
+    InvalidSupersessionError,
+    SQLIntegrityError,
     SQLNotFoundError,
 )
 from app.domain.references.models.models import (
@@ -54,7 +58,10 @@ from app.persistence.blob.models import (
 )
 from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.utils.time_and_date import utc_now
-from tests.factories import SearchEnhancementRequestFactory
+from tests.factories import (
+    AbstractContentEnhancementFactory,
+    SearchEnhancementRequestFactory,
+)
 from tests.unit.domain.conftest import FakeRepository
 
 
@@ -295,7 +302,7 @@ async def test_add_enhancement_happy_path(
         reference_id=dummy_reference.id, **fake_enhancement_data
     )
 
-    await service.add_enhancement(enhancement_to_add)
+    await service.add_enhancement(enhancement_to_add, ReferenceAccessControlService())
 
     reference_enhancements = repo_refs.get_first_record().enhancements
 
@@ -318,7 +325,9 @@ async def test_add_enhancement_reference_does_not_exist(
     )
 
     with pytest.raises(SQLNotFoundError):
-        await service.add_enhancement(enhancement_to_add)
+        await service.add_enhancement(
+            enhancement_to_add, ReferenceAccessControlService()
+        )
 
 
 @pytest.mark.asyncio
@@ -339,7 +348,9 @@ async def test_add_enhancement_derived_from_does_not_exist(
     )
 
     with pytest.raises(InvalidParentEnhancementError):
-        await service.add_enhancement(enhancement_to_add)
+        await service.add_enhancement(
+            enhancement_to_add, ReferenceAccessControlService()
+        )
 
 
 @pytest.mark.asyncio
@@ -367,7 +378,9 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
     )
 
     with pytest.raises(InvalidParentEnhancementError, match="same reference tree"):
-        await service.add_enhancement(enhancement_to_add)
+        await service.add_enhancement(
+            enhancement_to_add, ReferenceAccessControlService()
+        )
 
 
 @pytest.mark.asyncio
@@ -397,7 +410,9 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
         **fake_enhancement_data,
     )
 
-    reference = await service.add_enhancement(enhancement_to_add)
+    reference = await service.add_enhancement(
+        enhancement_to_add, ReferenceAccessControlService()
+    )
     assert reference.enhancements[0].id == enhancement_to_add.id
 
 
@@ -417,11 +432,382 @@ async def test_add_enhancement_duplicate_enhancement(
     )
 
     # First addition should succeed
-    await service.add_enhancement(enhancement_to_add)
+    await service.add_enhancement(enhancement_to_add, ReferenceAccessControlService())
 
     # Second addition with the same data should raise DuplicateEnhancementError
     with pytest.raises(DuplicateEnhancementError):
-        await service.add_enhancement(enhancement_to_add)
+        await service.add_enhancement(
+            enhancement_to_add, ReferenceAccessControlService()
+        )
+
+
+@pytest.fixture
+def chained_enhancement_repo(fake_repository):
+    """Build an enhancement repo whose chain heads are declared explicitly."""
+
+    def _build(enhancements, heads=None):
+        class FakeEnhancementRepo(fake_repository):
+            async def get_supersession_chain_head(self, enhancement_id):
+                head_id = (heads or {}).get(enhancement_id, enhancement_id)
+                return await self.get_by_pk(head_id)
+
+        return FakeEnhancementRepo(init_entries=enhancements)
+
+    return _build
+
+
+@pytest.fixture
+def superseder_acl():
+    return ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+
+
+def _supersession_service(fake_repository, fake_uow, reference, repo_enhs):
+    repo_refs = fake_repository(init_entries=[reference])
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+    return service, repo_refs
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_chain_root(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    service, repo_refs = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "newer_source"},
+    )
+
+    await service.add_enhancement(successor, superseder_acl)
+
+    (persisted,) = repo_refs.get_first_record().enhancements
+    assert persisted.id == successor.id
+    assert persisted.supersedes == root.id
+    assert persisted.root_id == root.id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_chain_head(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    head = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        root_id=root.id,
+        **{**fake_enhancement_data, "source": "second_source"},
+    )
+    service, repo_refs = _supersession_service(
+        fake_repository,
+        fake_uow,
+        reference,
+        chained_enhancement_repo([root, head], heads={root.id: head.id}),
+    )
+    successor = Enhancement(
+        reference_id=reference.id,
+        supersedes=head.id,
+        **{**fake_enhancement_data, "source": "third_source"},
+    )
+
+    await service.add_enhancement(successor, superseder_acl)
+
+    (persisted,) = repo_refs.get_first_record().enhancements
+    assert persisted.root_id == root.id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_requires_entitlement(
+    fake_repository, fake_uow, fake_enhancement_data, chained_enhancement_repo
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    service, repo_refs = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "newer_source"},
+    )
+
+    with pytest.raises(AuthError) as exc_info:
+        await service.add_enhancement(
+            successor,
+            ReferenceAccessControlService(
+                entitlements=frozenset({Entitlement.RAW_ENHANCEMENT_WRITER})
+            ),
+        )
+
+    assert exc_info.value.status_code == 403
+    assert not repo_refs.get_first_record().enhancements
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_missing_enhancement(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([])
+    )
+    successor = Enhancement(
+        reference_id=reference.id, supersedes=uuid7(), **fake_enhancement_data
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="does not exist"):
+        await service.add_enhancement(successor, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_enhancement_on_other_reference(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=uuid7(), **fake_enhancement_data)
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        reference_id=reference.id, supersedes=root.id, **fake_enhancement_data
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="same reference"):
+        await service.add_enhancement(successor, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_enhancement_of_other_type(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(
+        reference_id=reference.id,
+        **{**fake_enhancement_data, "content": AbstractContentEnhancementFactory()},
+    )
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        reference_id=reference.id, supersedes=root.id, **fake_enhancement_data
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="same type"):
+        await service.add_enhancement(successor, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_non_head(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    head = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        root_id=root.id,
+        **{**fake_enhancement_data, "source": "second_source"},
+    )
+    service, _ = _supersession_service(
+        fake_repository,
+        fake_uow,
+        reference,
+        chained_enhancement_repo([root, head], heads={root.id: head.id}),
+    )
+    successor = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "third_source"},
+    )
+
+    with pytest.raises(InvalidSupersessionError, match=str(head.id)):
+        await service.add_enhancement(successor, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_newer_uuid7(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    successor_id = uuid7()
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    assert root.id > successor_id
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        id=successor_id,
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "newer_source"},
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="does not sort after"):
+        await service.add_enhancement(successor, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_legacy_uuid4_root(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(
+        id=UUID("ff" + uuid4().hex[2:]),
+        reference_id=reference.id,
+        **fake_enhancement_data,
+    )
+    service, repo_refs = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "newer_source"},
+    )
+    assert successor.id < root.id
+
+    await service.add_enhancement(successor, superseder_acl)
+
+    (persisted,) = repo_refs.get_first_record().enhancements
+    assert persisted.root_id == root.id
+
+
+@pytest.mark.asyncio
+async def test_handle_enhancement_result_entry_reports_rejected_supersession(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=uuid7(), **fake_enhancement_data)
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        reference_id=reference.id, supersedes=root.id, **fake_enhancement_data
+    )
+
+    status, message = await service.handle_enhancement_result_entry(
+        successor, superseder_acl
+    )
+
+    assert status == PendingEnhancementStatus.FAILED
+    assert "same reference" in message
+
+
+@pytest.mark.asyncio
+async def test_handle_enhancement_result_entry_reports_missing_entitlement(
+    fake_repository, fake_uow, fake_enhancement_data, chained_enhancement_repo
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "newer_source"},
+    )
+
+    status, message = await service.handle_enhancement_result_entry(
+        successor, ReferenceAccessControlService()
+    )
+
+    assert status == PendingEnhancementStatus.FAILED
+    assert message == "Robot is not entitled to supersede enhancements."
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("collision", "expected_message"),
+    [
+        (
+            "Violation: Key (supersedes)=(abc) already exists.",
+            "has already been superseded.",
+        ),
+        (
+            "Violation: Key (id)=(abc) already exists.",
+            "Failed to add enhancement to reference.",
+        ),
+    ],
+)
+async def test_handle_enhancement_result_entry_reports_supersession_race(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+    collision,
+    expected_message,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    service, repo_refs = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    repo_refs.merge = AsyncMock(
+        side_effect=SQLIntegrityError(
+            detail="Unable to perform operation on Reference.",
+            lookup_model="Reference",
+            collision=collision,
+        )
+    )
+    successor = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "newer_source"},
+    )
+
+    status, message = await service.handle_enhancement_result_entry(
+        successor, superseder_acl
+    )
+
+    assert status == PendingEnhancementStatus.FAILED
+    assert expected_message in message
 
 
 @pytest.mark.asyncio

@@ -317,6 +317,21 @@ class InvalidParentEnhancementError(InvalidPayloadError):
         super().__init__(detail, *args)
 
 
+class InvalidSupersessionError(InvalidPayloadError):
+    """Exception for when an enhancement cannot supersede the enhancement it names."""
+
+    def __init__(self, detail: str, *args: object) -> None:
+        """
+        Initialize the InvalidSupersessionError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            *args: Additional arguments for the exception.
+
+        """
+        super().__init__(detail, *args)
+
+
 class TaskError(DestinyRepositoryError):
     """An exception thrown in a background task."""
 

@@ -2,12 +2,14 @@
 
 import contextlib
 import datetime
+import functools
 import resource
 import sys
 from collections import defaultdict
 from collections.abc import Collection, Iterable, Sequence
 from uuid import UUID
 
+from fastapi import status
 from opentelemetry.trace import get_tracer
 
 from app.core.config import (
@@ -16,9 +18,13 @@ from app.core.config import (
     get_settings,
 )
 from app.core.exceptions import (
+    AuthError,
     DuplicateEnhancementError,
     FullTextIngestionError,
     InvalidParentEnhancementError,
+    InvalidPayloadError,
+    InvalidSupersessionError,
+    SQLIntegrityError,
     SQLNotFoundError,
     VocabularyFetchError,
 )
@@ -104,6 +110,8 @@ from app.utils.time_and_date import apply_positive_timedelta
 logger = get_logger(__name__)
 settings = get_settings()
 tracer = get_tracer(__name__)
+
+LEGACY_UUID_VERSION = 4
 
 
 def _peak_resident_bytes() -> int:
@@ -449,12 +457,78 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Persist a reference."""
         return await self._merge_reference(reference)
 
-    async def _add_enhancement(self, enhancement: Enhancement) -> Reference:
+    async def _resolve_supersession(
+        self,
+        enhancement: Enhancement,
+        superseded_id: UUID,
+        access_control_service: ReferenceAccessControlService,
+    ) -> None:
+        """Check the enhancement may supersede the one it names and join its chain."""
+        if not access_control_service.may_supersede_enhancements:
+            raise AuthError(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Robot is not entitled to supersede enhancements.",
+            )
+
+        try:
+            superseded = await self.sql_uow.enhancements.get_by_pk(superseded_id)
+        except SQLNotFoundError as e:
+            detail = f"Superseded enhancement {superseded_id} does not exist."
+            raise InvalidSupersessionError(detail) from e
+
+        if superseded.reference_id != enhancement.reference_id:
+            detail = (
+                f"Enhancement {superseded.id} belongs to reference "
+                f"{superseded.reference_id}, not {enhancement.reference_id}. "
+                "An enhancement can only supersede one on the same reference."
+            )
+            raise InvalidSupersessionError(detail)
+
+        if superseded.content.enhancement_type != enhancement.content.enhancement_type:
+            detail = (
+                f"Enhancement {superseded.id} is of type "
+                f"{superseded.content.enhancement_type}, not "
+                f"{enhancement.content.enhancement_type}. "
+                "An enhancement can only supersede one of the same type."
+            )
+            raise InvalidSupersessionError(detail)
+
+        head = await self.sql_uow.enhancements.get_supersession_chain_head(
+            superseded.id
+        )
+        if head.id != superseded.id:
+            detail = (
+                f"Enhancement {superseded.id} has already been superseded. "
+                f"The head of its chain is {head.id}."
+            )
+            raise InvalidSupersessionError(detail)
+
+        # Legacy UUID4 roots sort arbitrarily against UUID7 successors, so only
+        # time-ordered ids are required to be monotonic.
+        if (
+            superseded.id.version != LEGACY_UUID_VERSION
+            and enhancement.id <= superseded.id
+        ):
+            detail = (
+                f"Enhancement {enhancement.id} does not sort after {superseded.id} "
+                "and so cannot supersede it."
+            )
+            raise InvalidSupersessionError(detail)
+
+        enhancement.root_id = superseded.root_id
+
+    async def _add_enhancement(
+        self,
+        enhancement: Enhancement,
+        access_control_service: ReferenceAccessControlService,
+    ) -> Reference:
         """
         Add an enhancement to a reference.
 
         :param enhancement: The enhancement to add
         :type enhancement: Enhancement
+        :param access_control_service: The entitlements of the principal adding it
+        :type access_control_service: ReferenceAccessControlService
         """
         reference = await self.sql_uow.references.get_by_pk(
             enhancement.reference_id,
@@ -468,6 +542,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     "An exact duplicate enhancement already exists on this reference."
                 )
                 raise DuplicateEnhancementError(detail)
+
+        if enhancement.supersedes is not None:
+            await self._resolve_supersession(
+                enhancement, enhancement.supersedes, access_control_service
+            )
 
         if enhancement.derived_from:
             valid_derived_reference_ids = {
@@ -496,9 +575,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self.sql_uow.references.merge(reference)
 
     @sql_unit_of_work
-    async def add_enhancement(self, enhancement: Enhancement) -> Reference:
+    async def add_enhancement(
+        self,
+        enhancement: Enhancement,
+        access_control_service: ReferenceAccessControlService,
+    ) -> Reference:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(enhancement)
+        return await self._add_enhancement(enhancement, access_control_service)
 
     @sql_unit_of_work
     async def get_all_reference_ids(
@@ -1002,10 +1085,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
+        access_control_service: ReferenceAccessControlService,
     ) -> tuple[PendingEnhancementStatus, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self._add_enhancement(enhancement)
+            await self._add_enhancement(enhancement, access_control_service)
         except SQLNotFoundError:
             return (
                 PendingEnhancementStatus.FAILED,
@@ -1016,7 +1100,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 PendingEnhancementStatus.DISCARDED,
                 "Exact duplicate enhancement already exists on reference.",
             )
-        except Exception:
+        except (InvalidPayloadError, AuthError) as e:
+            return (PendingEnhancementStatus.FAILED, e.detail)
+        except Exception as e:
+            if (
+                isinstance(e, SQLIntegrityError)
+                and enhancement.supersedes
+                and "supersedes" in e.collision
+            ):
+                return (
+                    PendingEnhancementStatus.FAILED,
+                    f"Enhancement {enhancement.supersedes} has already been "
+                    "superseded.",
+                )
             logger.exception(
                 "Failed to add enhancement to reference.",
                 reference_id=enhancement.reference_id,
@@ -1076,7 +1172,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     blob_repository=blob_repository,
                     result_file=robot_enhancement_batch.result_file,
                     pending_enhancements=pending_enhancements,
-                    add_enhancement=self.handle_enhancement_result_entry,
+                    add_enhancement=functools.partial(
+                        self.handle_enhancement_result_entry,
+                        access_control_service=access_control_service,
+                    ),
                     results=results,
                     access_control_service=access_control_service,
                 )
