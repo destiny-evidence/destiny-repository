@@ -35,17 +35,17 @@ def test_doi_url_removed():
     [
         # DataCite GLIS characters: = ~ * $
         # Crossref/legacy: #
-        "10.18730/9WQ$D",  # Dollar sign
-        "10.18730/9WQ*D",  # Asterisk
-        "10.18730/9WQ~D",  # Tilde
-        "10.18730/9WQ=D",  # Equals
-        "10.18730/9WQ#D",  # Hash
-        "10.18730/9WQ$~*=#D",  # Multiple special characters
+        "10.18730/9wq$d",  # Dollar sign
+        "10.18730/9wq*d",  # Asterisk
+        "10.18730/9wq~d",  # Tilde
+        "10.18730/9wq=d",  # Equals
+        "10.18730/9wq#d",  # Hash
+        "10.18730/9wq$~*=#d",  # Multiple special characters
         # Latin Extended characters (accented letters)
-        "10.1000/journalÉdition",  # É (U+00C9)
+        "10.1000/journalédition",  # é (U+00E9)
         "10.1000/café",  # é (U+00E9)
         "10.1000/naïve",  # ï (U+00EF)
-        "10.1000/Müller",  # ü (U+00FC)
+        "10.1000/müller",  # ü (U+00FC)
         "10.1000/señor",  # ñ (U+00F1)
     ],
 )
@@ -72,10 +72,14 @@ def test_valid_doi_with_special_characters(doi: str):
         ("https://DX.DOI.ORG/10.1000/xyz123", "10.1000/xyz123"),
         ("DOI:10.1000/xyz123", "10.1000/xyz123"),
         ("doi: 10.1000/xyz123", "10.1000/xyz123"),
+        # DOIs are case-insensitive, so the publisher's case is folded
+        ("10.18743/PUB.00054728", "10.18743/pub.00054728"),
+        # Non-ASCII letters are lowercased too, as in the bulk of the corpus
+        ("10.1000/ÉDITION", "10.1000/édition"),
     ],
 )
 def test_doi_canonicalization(doi_input: str, expected: str):
-    """Test DOI canonicalization: Unicode normalization and URL prefix stripping."""
+    """Test DOI canonicalization: Unicode, URL prefix stripping and lowercasing."""
     obj = destiny_sdk.identifiers.DOIIdentifier(
         identifier_type=destiny_sdk.identifiers.ExternalIdentifierType.DOI,
         identifier=doi_input,

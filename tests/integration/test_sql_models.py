@@ -1,7 +1,7 @@
 """Integration tests for SQL interface."""
 
 import datetime
-from uuid import uuid7
+from uuid import UUID, uuid4, uuid7
 
 import pytest
 from destiny_sdk.imports import ImportRecordStatus
@@ -9,7 +9,7 @@ from destiny_sdk.visibility import Visibility
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import SQLIntegrityError
+from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
 from app.domain.imports.models.models import (
     ImportBatchStatus,
     ImportResultStatus,
@@ -50,12 +50,14 @@ from app.domain.references.models.sql import (
 )
 from app.domain.references.repository import (
     EnhancementRequestSQLRepository,
+    EnhancementSQLRepository,
     PendingEnhancementSQLRepository,
     ReferenceDuplicateDecisionSQLRepository,
     ReferenceSQLRepository,
 )
 from app.domain.robots.models.models import Robot
 from app.domain.robots.models.sql import Robot as SQLRobot
+from tests.factories import AbstractContentEnhancementFactory, EnhancementFactory
 
 
 async def test_enhancement_interface(
@@ -123,6 +125,274 @@ async def test_enhancement_interface(
     # from the database
     assert isinstance(enhancement.created_at, datetime.datetime)
     assert isinstance(enhancement.updated_at, datetime.datetime)
+
+
+async def _add_reference(session: AsyncSession) -> Reference:
+    reference = Reference(id=uuid7())
+    session.add(SQLReference.from_domain(reference))
+    await session.commit()
+    return reference
+
+
+def _enhancement(reference: Reference, **kwargs: object) -> Enhancement:
+    return EnhancementFactory.build(
+        reference_id=reference.id,
+        content=AbstractContentEnhancementFactory.build(),
+        **kwargs,
+    )
+
+
+async def _set_null_root_id_on_chain_root(
+    session: AsyncSession, chain: list[Enhancement]
+) -> None:
+    """
+    Explicitly the root_id of the chains root to null.
+
+    This bypasses our existing database check to prevent null root_ids on
+    any enhancement, so that we can miminc known legacy data patterns that
+    exist prior to the constraint being added.
+    """
+    constraint_definition = await session.scalar(
+        text(
+            "SELECT pg_get_constraintdef(oid) FROM pg_constraint "
+            "WHERE conrelid = 'enhancement'::regclass "
+            "AND conname = 'ck_enhancement_root_id_not_null'"
+        )
+    )
+    await session.execute(
+        text("ALTER TABLE enhancement DROP CONSTRAINT ck_enhancement_root_id_not_null")
+    )
+    await session.execute(
+        text("UPDATE enhancement SET root_id = NULL WHERE id = :id"),
+        {"id": chain[0].id},
+    )
+    await session.execute(
+        text(
+            "ALTER TABLE enhancement "
+            f"ADD CONSTRAINT ck_enhancement_root_id_not_null {constraint_definition}"
+        )
+    )
+
+
+async def _add_chain(
+    session: AsyncSession,
+    reference: Reference,
+    successors: int,
+    *,
+    root_kwargs: dict[str, object] | None = None,
+    legacy_root: bool = False,
+) -> list[Enhancement]:
+    repo = EnhancementSQLRepository(session)
+    chain = [await repo.add(_enhancement(reference, **(root_kwargs or {})))]
+    for _ in range(successors):
+        chain.append(
+            await repo.add(
+                _enhancement(reference, supersedes=chain[-1].id, root_id=chain[0].id)
+            )
+        )
+    if legacy_root:
+        await _set_null_root_id_on_chain_root(session, chain)
+    await session.commit()
+    session.expire_all()
+    return chain
+
+
+async def test_enhancement_supersession_chain_head(session: AsyncSession):
+    """The head of a chain is its newest successor, or the root without one."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    lone_root = await repo.add(_enhancement(reference))
+    root = await repo.add(_enhancement(reference))
+    first = await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+    second = await repo.add(
+        _enhancement(reference, supersedes=first.id, root_id=root.id)
+    )
+    await session.commit()
+
+    head_query = text(
+        """
+        SELECT COALESCE(
+            (SELECT id FROM enhancement
+             WHERE root_id = :root AND supersedes IS NOT NULL
+             ORDER BY id DESC LIMIT 1),
+            :root
+        )
+        """
+    )
+    head = await session.execute(head_query, {"root": root.id})
+    assert head.scalar_one() == second.id
+    lone_head = await session.execute(head_query, {"root": lone_root.id})
+    assert lone_head.scalar_one() == lone_root.id
+
+    assert root.root_id == root.id
+    assert second.root_id == root.id
+
+
+async def test_enhancement_supersedes_must_exist(session: AsyncSession):
+    """A successor cannot supersede an enhancement that does not exist."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    root = await repo.add(_enhancement(reference))
+    await session.commit()
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(_enhancement(reference, supersedes=uuid7(), root_id=root.id))
+    assert "fk_enhancement_supersedes" in str(exc_info.value.__cause__)
+    await session.rollback()
+
+
+async def test_enhancement_successor_id_must_follow_predecessor(
+    session: AsyncSession,
+):
+    """A non-first successor must have an id greater than its predecessor's."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    early_id = uuid7()
+    root = await repo.add(_enhancement(reference))
+    first = await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+    await session.commit()
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(
+            _enhancement(reference, id=early_id, supersedes=first.id, root_id=root.id)
+        )
+    assert "ck_enhancement_supersedes_order" in str(exc_info.value.__cause__)
+    await session.rollback()
+
+
+async def test_enhancement_first_successor_may_precede_root(session: AsyncSession):
+    """A first successor passes the ordering check even with an id below its root."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    early_id = uuid7()
+    root = await repo.add(_enhancement(reference))
+
+    first = await repo.add(
+        _enhancement(reference, id=early_id, supersedes=root.id, root_id=root.id)
+    )
+    await session.commit()
+
+    assert first.id < root.id
+
+
+async def test_enhancement_cannot_supersede_itself(session: AsyncSession):
+    """An enhancement cannot supersede itself within another root's chain."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    root = await repo.add(_enhancement(reference))
+    await session.commit()
+    self_id = uuid7()
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(
+            _enhancement(reference, id=self_id, supersedes=self_id, root_id=root.id)
+        )
+    assert "ck_enhancement_supersedes_order" in str(exc_info.value.__cause__)
+    await session.rollback()
+
+
+async def test_enhancement_successor_cannot_be_its_own_root(session: AsyncSession):
+    """A successor cannot name itself as the root of its chain."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    root = await repo.add(_enhancement(reference))
+    await session.commit()
+    successor = _enhancement(reference, supersedes=root.id)
+    successor.root_id = successor.id
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(successor)
+    assert "ck_enhancement_supersedes_root_id" in str(exc_info.value.__cause__)
+
+
+async def test_enhancement_chain_cannot_fork(session: AsyncSession):
+    """Two successors cannot supersede the same enhancement."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    root = await repo.add(_enhancement(reference))
+    await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+    await session.commit()
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+    assert "uq_enhancement_supersedes" in str(exc_info.value.__cause__)
+    await session.rollback()
+
+
+async def test_enhancement_non_root_must_supersede(session: AsyncSession):
+    """An enhancement whose root_id is not its own id must set supersedes."""
+    reference = await _add_reference(session)
+    repo = EnhancementSQLRepository(session)
+    root = await repo.add(_enhancement(reference))
+    await session.commit()
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(_enhancement(reference, root_id=root.id))
+    assert "ck_enhancement_supersedes_root_id" in str(exc_info.value.__cause__)
+    await session.rollback()
+
+
+async def test_get_supersession_chain_from_any_member(session: AsyncSession):
+    """Every member of a chain returns the whole chain, root first."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(session, reference, successors=2)
+    repo = EnhancementSQLRepository(session)
+
+    for member in chain:
+        found = await repo.get_supersession_chain(member.id)
+        head = await repo.get_supersession_chain_head(member.id)
+        assert [e.id for e in found] == [e.id for e in chain]
+        assert head.id == chain[-1].id
+
+
+async def test_get_supersession_chain_with_legacy_uuid4_root(session: AsyncSession):
+    """A legacy root without root_id that sorts above its successors comes first."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(
+        session,
+        reference,
+        successors=2,
+        root_kwargs={"id": UUID("ff" + uuid4().hex[2:])},
+        legacy_root=True,
+    )
+    repo = EnhancementSQLRepository(session)
+
+    assert chain[0].id > chain[-1].id
+    for member in chain:
+        found = await repo.get_supersession_chain(member.id)
+        head = await repo.get_supersession_chain_head(member.id)
+        assert [e.id for e in found] == [e.id for e in chain]
+        assert head.id == chain[-1].id
+    assert all(e.root_id == chain[0].id for e in found)
+
+
+@pytest.mark.parametrize("legacy_root", [False, True])
+async def test_get_supersession_chain_of_lone_root(
+    session: AsyncSession,
+    legacy_root: bool,  # noqa: FBT001
+):
+    """A root without successors is its own chain and its own head."""
+    reference = await _add_reference(session)
+    (root,) = await _add_chain(
+        session, reference, successors=0, legacy_root=legacy_root
+    )
+    repo = EnhancementSQLRepository(session)
+
+    found = await repo.get_supersession_chain(root.id)
+    head = await repo.get_supersession_chain_head(root.id)
+
+    assert [e.id for e in found] == [root.id]
+    assert head.id == root.id
+
+
+async def test_get_supersession_chain_not_found(session: AsyncSession):
+    """An unknown enhancement id raises SQLNotFoundError."""
+    repo = EnhancementSQLRepository(session)
+
+    with pytest.raises(SQLNotFoundError):
+        await repo.get_supersession_chain(uuid7())
+    with pytest.raises(SQLNotFoundError):
+        await repo.get_supersession_chain_head(uuid7())
 
 
 async def test_reference_get_with_duplicates(session: AsyncSession):

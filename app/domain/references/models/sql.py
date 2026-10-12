@@ -10,6 +10,7 @@ from sqlalchemy import (
 from sqlalchemy import (
     Boolean,
     CheckConstraint,
+    ColumnElement,
     DateTime,
     Float,
     ForeignKey,
@@ -17,13 +18,18 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
+    exists,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
 
-from app.core.exceptions import SQLPreloadError, UnstoredFullTextError
+from app.core.exceptions import (
+    SQLPreloadError,
+    SQLValueError,
+    UnstoredFullTextError,
+)
 from app.domain.references.models.models import (
     AnnotationFilter,
     AssessmentCandidateSummary,
@@ -318,6 +324,16 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     derived_from: Mapped[list[UUID] | None] = mapped_column(
         ARRAY(SQL_UUID), nullable=True
     )
+    supersedes: Mapped[UUID | None] = mapped_column(
+        SQL_UUID,
+        ForeignKey(
+            "enhancement.id",
+            name="fk_enhancement_supersedes",
+            postgresql_not_valid=True,
+        ),
+        nullable=True,
+    )
+    root_id: Mapped[UUID | None] = mapped_column(SQL_UUID, nullable=True)
     content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
@@ -327,7 +343,40 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     __table_args__ = (
         Index("ix_enhancement_reference_id", "reference_id"),
         Index("ix_enhancement_enhancement_type", "enhancement_type"),
+        Index(
+            "uq_enhancement_supersedes",
+            "supersedes",
+            unique=True,
+            postgresql_where=text("supersedes IS NOT NULL"),
+        ),
+        Index(
+            "ix_enhancement_successor_root_id_id",
+            "root_id",
+            "id",
+            postgresql_where=text("supersedes IS NOT NULL"),
+        ),
+        CheckConstraint(
+            "id > supersedes OR supersedes = root_id",
+            name="ck_enhancement_supersedes_order",
+            postgresql_not_valid=True,
+        ),
+        CheckConstraint(
+            "(supersedes IS NULL) = (root_id = id)",
+            name="ck_enhancement_supersedes_root_id",
+            postgresql_not_valid=True,
+        ),
+        CheckConstraint(
+            "root_id IS NOT NULL",
+            name="ck_enhancement_root_id_not_null",
+            postgresql_not_valid=True,
+        ),
     )
+
+    @classmethod
+    def is_head(cls) -> ColumnElement[bool]:
+        """Select enhancements that no other enhancement supersedes."""
+        successor = aliased(cls)
+        return ~exists().where(successor.supersedes == cls.id)
 
     @classmethod
     def from_domain(cls, domain_obj: DomainEnhancement) -> Self:
@@ -347,6 +396,9 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
                 "copied to repository storage, which is not allowed."
             )
             raise UnstoredFullTextError(msg)
+        if domain_obj.root_id is None:
+            msg = f"Attempted to persist enhancement {domain_obj.id} without a root_id."
+            raise SQLValueError(msg)
         return cls(
             id=domain_obj.id,
             reference_id=domain_obj.reference_id,
@@ -355,6 +407,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             visibility=domain_obj.visibility,
             robot_version=domain_obj.robot_version,
             derived_from=domain_obj.derived_from,
+            supersedes=domain_obj.supersedes,
+            root_id=domain_obj.root_id,
             content=domain_obj.content.model_dump(mode="json"),
         )
 
@@ -371,6 +425,8 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
             reference_id=self.reference_id,
             robot_version=self.robot_version,
             derived_from=self.derived_from,
+            supersedes=self.supersedes,
+            root_id=self.root_id or self.id,
             content=self.content,
             reference=self.reference.to_domain()
             if "reference" in (preload or [])
