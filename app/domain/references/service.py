@@ -21,7 +21,6 @@ from app.core.exceptions import (
     DuplicateEnhancementError,
     FullTextIngestionError,
     InvalidPayloadError,
-    SQLIntegrityError,
     SQLNotFoundError,
     VocabularyFetchError,
 )
@@ -1006,18 +1005,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         except (InvalidPayloadError, AuthError) as e:
             return (PendingEnhancementStatus.FAILED, e.detail)
-        except Exception as e:
-            if (
-                isinstance(e, SQLIntegrityError)
-                and enhancement.supersedes
-                and "supersedes" in e.collision
-                and "already exists" in e.collision
-            ):
-                return (
-                    PendingEnhancementStatus.FAILED,
-                    f"Enhancement {enhancement.supersedes} has already been "
-                    "superseded.",
-                )
+        except Exception:
             logger.exception(
                 "Failed to add enhancement to reference.",
                 reference_id=enhancement.reference_id,

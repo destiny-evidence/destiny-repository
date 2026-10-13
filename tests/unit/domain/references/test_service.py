@@ -18,7 +18,6 @@ from app.core.exceptions import (
     DuplicateEnhancementError,
     InvalidParentEnhancementError,
     InvalidSupersessionError,
-    SQLIntegrityError,
     SQLNotFoundError,
 )
 from app.domain.references.models.models import (
@@ -840,59 +839,6 @@ async def test_handle_enhancement_result_entry_reports_missing_entitlement(
 
     assert status == PendingEnhancementStatus.FAILED
     assert message == "Robot is not entitled to supersede enhancements."
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("collision", "expected_message"),
-    [
-        (
-            "Violation: Key (supersedes)=(abc) already exists.",
-            "has already been superseded.",
-        ),
-        (
-            "Violation: Key (id)=(abc) already exists.",
-            "Failed to add enhancement to reference.",
-        ),
-        (
-            'Violation: Key (supersedes)=(abc) is not present in table "enhancement".',
-            "Failed to add enhancement to reference.",
-        ),
-    ],
-)
-async def test_handle_enhancement_result_entry_reports_supersession_race(
-    fake_repository,
-    fake_uow,
-    fake_enhancement_data,
-    chained_enhancement_repo,
-    superseder_acl,
-    collision,
-    expected_message,
-):
-    reference = Reference(id=uuid7())
-    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
-    service, repo_refs = _supersession_service(
-        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
-    )
-    repo_refs.merge = AsyncMock(
-        side_effect=SQLIntegrityError(
-            detail="Unable to perform operation on Reference.",
-            lookup_model="Reference",
-            collision=collision,
-        )
-    )
-    successor = Enhancement(
-        reference_id=reference.id,
-        supersedes=root.id,
-        **{**fake_enhancement_data, "source": "newer_source"},
-    )
-
-    status, message = await service.handle_enhancement_result_entry(
-        successor, superseder_acl
-    )
-
-    assert status == PendingEnhancementStatus.FAILED
-    assert expected_message in message
 
 
 @pytest.mark.asyncio
