@@ -286,7 +286,8 @@ async def test_add_enhancement_happy_path(
 ):
     dummy_reference = Reference(id=uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
-    uow = fake_uow(references=repo_refs)
+    repo_enhs = fake_repository()
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
@@ -297,10 +298,7 @@ async def test_add_enhancement_happy_path(
 
     await service.add_enhancement(enhancement_to_add)
 
-    reference_enhancements = repo_refs.get_first_record().enhancements
-
-    assert len(reference_enhancements) == 1
-    assert reference_enhancements[0].id == enhancement_to_add.id
+    assert repo_enhs.get_first_record().id == enhancement_to_add.id
 
 
 @pytest.mark.asyncio
@@ -397,29 +395,27 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
         **fake_enhancement_data,
     )
 
-    reference = await service.add_enhancement(enhancement_to_add)
-    assert reference.enhancements[0].id == enhancement_to_add.id
+    await service.add_enhancement(enhancement_to_add)
+    assert enhancement_to_add.id in repo_enhs.repository
 
 
 @pytest.mark.asyncio
 async def test_add_enhancement_duplicate_enhancement(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid7())
+    reference_id = uuid7()
+    existing_enhancement = Enhancement(
+        reference_id=reference_id, **fake_enhancement_data
+    )
+    dummy_reference = Reference(id=reference_id, enhancements=[existing_enhancement])
     repo_refs = fake_repository(init_entries=[dummy_reference])
-    uow = fake_uow(references=repo_refs)
+    uow = fake_uow(references=repo_refs, enhancements=fake_repository())
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    enhancement_to_add = Enhancement(
-        reference_id=dummy_reference.id, **fake_enhancement_data
-    )
+    enhancement_to_add = Enhancement(reference_id=reference_id, **fake_enhancement_data)
 
-    # First addition should succeed
-    await service.add_enhancement(enhancement_to_add)
-
-    # Second addition with the same data should raise DuplicateEnhancementError
     with pytest.raises(DuplicateEnhancementError):
         await service.add_enhancement(enhancement_to_add)
 
