@@ -421,11 +421,14 @@ async def test_add_enhancement_builds_supersession_chain(session: AsyncSession):
     with pytest.raises(InvalidSupersessionError, match=str(third.id)):
         await service.add_enhancement(_enhancement(reference, supersedes=root.id), acl)
 
+    revert = root.model_copy(update={"id": uuid7(), "supersedes": third.id})
+    await service.add_enhancement(revert, acl)
+
     repo = EnhancementSQLRepository(session)
     chain = await repo.get_supersession_chain(root.id)
-    assert [e.id for e in chain] == [root.id, second.id, third.id]
+    assert [e.id for e in chain] == [root.id, second.id, third.id, revert.id]
     assert all(e.root_id == root.id for e in chain)
-    assert (await repo.get_supersession_chain_head(root.id)).id == third.id
+    assert (await repo.get_supersession_chain_head(root.id)).id == revert.id
 
 
 async def test_supersession_race_collides_on_supersedes(session: AsyncSession):

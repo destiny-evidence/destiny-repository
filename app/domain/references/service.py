@@ -9,7 +9,6 @@ from collections import defaultdict
 from collections.abc import Collection, Iterable, Sequence
 from uuid import UUID
 
-from fastapi import status
 from opentelemetry.trace import get_tracer
 
 from app.core.config import (
@@ -21,9 +20,7 @@ from app.core.exceptions import (
     AuthError,
     DuplicateEnhancementError,
     FullTextIngestionError,
-    InvalidParentEnhancementError,
     InvalidPayloadError,
-    InvalidSupersessionError,
     SQLIntegrityError,
     SQLNotFoundError,
     VocabularyFetchError,
@@ -110,8 +107,6 @@ from app.utils.time_and_date import apply_positive_timedelta
 logger = get_logger(__name__)
 settings = get_settings()
 tracer = get_tracer(__name__)
-
-LEGACY_UUID_VERSION = 4
 
 
 def _peak_resident_bytes() -> int:
@@ -457,66 +452,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Persist a reference."""
         return await self._merge_reference(reference)
 
-    async def _resolve_supersession(
-        self,
-        enhancement: Enhancement,
-        superseded_id: UUID,
-        access_control_service: ReferenceAccessControlService,
-    ) -> None:
-        """Check the enhancement may supersede the one it names and join its chain."""
-        if not access_control_service.may_supersede_enhancements:
-            raise AuthError(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Robot is not entitled to supersede enhancements.",
-            )
-
-        try:
-            superseded = await self.sql_uow.enhancements.get_by_pk(superseded_id)
-        except SQLNotFoundError as e:
-            detail = f"Superseded enhancement {superseded_id} does not exist."
-            raise InvalidSupersessionError(detail) from e
-
-        if superseded.reference_id != enhancement.reference_id:
-            detail = (
-                f"Enhancement {superseded.id} belongs to reference "
-                f"{superseded.reference_id}, not {enhancement.reference_id}. "
-                "An enhancement can only supersede one on the same reference."
-            )
-            raise InvalidSupersessionError(detail)
-
-        if superseded.content.enhancement_type != enhancement.content.enhancement_type:
-            detail = (
-                f"Enhancement {superseded.id} is of type "
-                f"{superseded.content.enhancement_type}, not "
-                f"{enhancement.content.enhancement_type}. "
-                "An enhancement can only supersede one of the same type."
-            )
-            raise InvalidSupersessionError(detail)
-
-        head = await self.sql_uow.enhancements.get_supersession_chain_head(
-            superseded.id
-        )
-        if head.id != superseded.id:
-            detail = (
-                f"Enhancement {superseded.id} has already been superseded. "
-                f"The head of its chain is {head.id}."
-            )
-            raise InvalidSupersessionError(detail)
-
-        # Legacy UUID4 roots sort arbitrarily against UUID7 successors, so only
-        # time-ordered ids are required to be monotonic.
-        if (
-            superseded.id.version != LEGACY_UUID_VERSION
-            and enhancement.id <= superseded.id
-        ):
-            detail = (
-                f"Enhancement {enhancement.id} does not sort after {superseded.id} "
-                "and so cannot supersede it."
-            )
-            raise InvalidSupersessionError(detail)
-
-        enhancement.root_id = superseded.root_id
-
     async def _add_enhancement(
         self,
         enhancement: Enhancement,
@@ -534,40 +469,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             enhancement.reference_id,
             preload=["enhancements", "identifiers", "duplicate_references"],
         )
-
-        incoming_enhancement_hash = enhancement.hash_data()
-        for existing_enhancement in reference.enhancements or []:
-            if existing_enhancement.hash_data() == incoming_enhancement_hash:
-                detail = (
-                    "An exact duplicate enhancement already exists on this reference."
-                )
-                raise DuplicateEnhancementError(detail)
-
-        if enhancement.supersedes is not None:
-            await self._resolve_supersession(
-                enhancement, enhancement.supersedes, access_control_service
-            )
-
-        if enhancement.derived_from:
-            valid_derived_reference_ids = {
-                ref.id for ref in reference.duplicate_references or []
-            } | {reference.id}
-            try:
-                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement.derived_from
-                )
-                if not all(
-                    e.reference_id in valid_derived_reference_ids
-                    for e in parent_enhancements
-                ):
-                    detail = (
-                        "All parent enhancements must belong to the same reference "
-                        "tree as the child enhancement."
-                    )
-                    raise InvalidParentEnhancementError(detail)
-            except SQLNotFoundError as e:
-                detail = f"Enhancements with ids {e.lookup_value} do not exist."
-                raise InvalidParentEnhancementError(detail) from e
+        await self._enhancement_service.validate_new_enhancement(
+            enhancement, reference, access_control_service
+        )
 
         # This uses SQLAlchemy to treat References as an aggregate of enhancements.
         # All considered this is a naive implementation, but it works for now.
@@ -1107,6 +1011,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 isinstance(e, SQLIntegrityError)
                 and enhancement.supersedes
                 and "supersedes" in e.collision
+                and "already exists" in e.collision
             ):
                 return (
                     PendingEnhancementStatus.FAILED,
