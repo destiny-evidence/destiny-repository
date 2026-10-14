@@ -470,6 +470,11 @@ async def test_reference_enhancements_are_chain_heads(
         e.id for e in duplicate_chain
     }
 
+    both = await load(["enhancements", "all_enhancements"])
+    assert {e.id for e in both.enhancements or []} == {
+        e.id for e in [*canonical_chain, lone_root]
+    }
+
 
 async def test_get_hydrated_loads_chain_heads_of_type(session: AsyncSession):
     """Filtering hydrated references by type keeps only the chain heads."""
@@ -514,6 +519,21 @@ async def test_reference_heads_load_does_not_join_reference(session: AsyncSessio
 
     (enhancement_load,) = [s for s in statements if "supersedes" in s]
     assert "FROM reference" not in enhancement_load
+
+
+async def test_merge_heads_only_reference_keeps_superseded(session: AsyncSession):
+    """Merging a reference loaded with only chain heads fails rather than deleting."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(session, reference, successors=2)
+    repo = ReferenceSQLRepository(session)
+    heads_only = await repo.get_by_pk(reference.id, preload=["enhancements"])
+
+    with pytest.raises(SQLIntegrityError):
+        await repo.merge(heads_only)
+    await session.rollback()
+
+    found = await EnhancementSQLRepository(session).get_supersession_chain(chain[0].id)
+    assert [e.id for e in found] == [e.id for e in chain]
 
 
 async def test_add_enhancement_restating_superseded_content(session: AsyncSession):
