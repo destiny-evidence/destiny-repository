@@ -56,6 +56,29 @@ class TestEnhancementFromSdk:
 
         assert domain_enhancement.created_at is None
 
+    def test_supersedes_is_kept(self, service, sdk_enhancement):
+        superseded_id = uuid7()
+        sdk_enhancement.supersedes = superseded_id
+
+        domain_enhancement = service.enhancement_from_sdk(sdk_enhancement)
+
+        assert domain_enhancement.supersedes == superseded_id
+
+
+class TestEnhancementToSdk:
+    """Tests for enhancement_to_sdk translation."""
+
+    async def test_supersedes_is_carried(self):
+        service = ReferenceAntiCorruptionService(sign_url=AsyncMock())
+        enhancement = EnhancementFactory.build(
+            content=AbstractContentEnhancementFactory.build(),
+            supersedes=uuid7(),
+        )
+
+        sdk_enhancement = await service.enhancement_to_sdk(enhancement)
+
+        assert sdk_enhancement.supersedes == enhancement.supersedes
+
 
 class TestFullTextEnhancementToSdk:
     """Tests for the domain to SDK signing path on full-text enhancements."""

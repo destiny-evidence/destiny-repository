@@ -472,3 +472,20 @@ def test_pagination_nbsp_normalized():
     assert pagination.issue == "7"
     assert pagination.first_page is None
     assert pagination.last_page == "100"
+
+
+def test_enhancement_supersedes_round_trips_through_jsonl():
+    enhancement = destiny_sdk.enhancements.Enhancement(
+        reference_id=uuid7(),
+        source="test-source",
+        visibility="public",
+        content=destiny_sdk.enhancements.AbstractContentEnhancement(
+            process=destiny_sdk.enhancements.AbstractProcessType.OTHER,
+            abstract="An abstract.",
+        ),
+        supersedes=uuid7(),
+    )
+
+    parsed = destiny_sdk.enhancements.Enhancement.from_jsonl(enhancement.to_jsonl())
+
+    assert parsed.supersedes == enhancement.supersedes
