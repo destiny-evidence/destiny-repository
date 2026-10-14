@@ -7,7 +7,7 @@ from uuid import UUID, uuid4, uuid7
 import pytest
 from destiny_sdk.imports import ImportRecordStatus
 from destiny_sdk.visibility import Visibility
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -487,6 +487,33 @@ async def test_get_hydrated_loads_chain_heads_of_type(session: AsyncSession):
     )
 
     assert [e.id for e in hydrated.enhancements or []] == [chain[-1].id]
+
+
+async def test_reference_heads_load_does_not_join_reference(session: AsyncSession):
+    """
+    Batch-loading heads queries enhancements directly, like loading every enhancement.
+
+    Joining back to reference stops Postgres reading enhancements with a bitmap scan,
+    which made bulk loads markedly slower.
+    """
+    reference = await _add_reference(session)
+    await _add_chain(session, reference, successors=1)
+    statements: list[str] = []
+
+    def capture(*args: object) -> None:
+        statements.append(str(args[2]))
+
+    engine = session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        await ReferenceSQLRepository(session).get_by_pks(
+            [reference.id], preload=["enhancements"]
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    (enhancement_load,) = [s for s in statements if "supersedes" in s]
+    assert "FROM reference" not in enhancement_load
 
 
 async def test_add_enhancement_restating_superseded_content(session: AsyncSession):

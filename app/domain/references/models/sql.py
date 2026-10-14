@@ -1,6 +1,7 @@
 """Objects used to interface with SQL implementations."""
 
 import datetime
+from functools import cache
 from typing import Any, Self
 from uuid import UUID
 
@@ -18,13 +19,19 @@ from sqlalchemy import (
     Integer,
     String,
     UniqueConstraint,
-    and_,
     exists,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
-from sqlalchemy.orm import Mapped, aliased, foreign, mapped_column, relationship
+from sqlalchemy.orm import (
+    Mapped,
+    aliased,
+    foreign,
+    mapped_column,
+    relationship,
+)
 
 from app.core.exceptions import (
     SQLPreloadError,
@@ -118,17 +125,27 @@ class Reference(GenericSQLPersistence[DomainReference]):
         back_populates="reference",
         cascade="all, delete, delete-orphan",
     )
+
+    @staticmethod
+    @cache
+    def _head_enhancement() -> type["Enhancement"]:
+        """Build the heads subquery targeted by enhancements."""
+        return aliased(
+            Enhancement,
+            select(Enhancement)
+            .where(Enhancement.is_head())
+            .subquery("head_enhancement"),
+        )
+
+    # The default view of a reference: the head of each supersession chain
+    enhancements: Mapped[list["Enhancement"]] = relationship(
+        lambda: Reference._head_enhancement(),
+        primaryjoin=lambda: Reference.id
+        == foreign(Reference._head_enhancement().reference_id),
+        viewonly=True,
+    )
     all_enhancements: Mapped[list["Enhancement"]] = relationship(
         "Enhancement", back_populates="reference", cascade="all, delete"
-    )
-    # The default view of a reference: the head of each supersession chain.
-    enhancements: Mapped[list["Enhancement"]] = relationship(
-        "Enhancement",
-        primaryjoin=lambda: and_(
-            Reference.id == foreign(Enhancement.reference_id),
-            Enhancement.is_head(),
-        ),
-        viewonly=True,
     )
     duplicate_decision: Mapped["ReferenceDuplicateDecision"] = relationship(
         "ReferenceDuplicateDecision",
