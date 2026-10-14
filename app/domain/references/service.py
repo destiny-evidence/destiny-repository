@@ -458,12 +458,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         reference = await self.sql_uow.references.get_by_pk(
             enhancement.reference_id,
-            preload=[
-                # A successor only checks the head so it can restate superseded
-                # enhancements.
-                "enhancements" if enhancement.supersedes else "all_enhancements",
-                "duplicate_references",
-            ],
+            preload=["all_enhancements", "duplicate_references"],
         )
 
         incoming_enhancement_hash = enhancement.hash_data()

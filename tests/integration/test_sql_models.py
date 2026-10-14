@@ -536,8 +536,10 @@ async def test_merge_heads_only_reference_keeps_superseded(session: AsyncSession
     assert [e.id for e in found] == [e.id for e in chain]
 
 
-async def test_add_enhancement_restating_superseded_content(session: AsyncSession):
-    """Only a successor may restate superseded content, and nothing is deleted."""
+async def test_add_enhancement_new_chain_cannot_restate_superseded_content(
+    session: AsyncSession,
+):
+    """A new chain can't restate superseded content, and adding deletes nothing."""
     reference = await _add_reference(session)
     root, successor = await _add_chain(session, reference, successors=1)
     service = ReferenceService(
@@ -545,26 +547,21 @@ async def test_add_enhancement_restating_superseded_content(session: AsyncSessio
         AsyncSqlUnitOfWork(session),
         AsyncESUnitOfWork(AsyncMock()),
     )
-    restated = root.model_dump(
-        include={"source", "visibility", "robot_version", "content"}
-    )
 
     with pytest.raises(DuplicateEnhancementError):
         await service.add_enhancement(
-            Enhancement(reference_id=reference.id, **restated)
+            Enhancement(
+                reference_id=reference.id,
+                **root.model_dump(
+                    include={"source", "visibility", "robot_version", "content"}
+                ),
+            )
         )
 
-    revert = await service.add_enhancement(
-        Enhancement(
-            reference_id=reference.id,
-            supersedes=successor.id,
-            root_id=root.id,
-            **restated,
-        )
-    )
+    await service.add_enhancement(_enhancement(reference))
 
     chain = await EnhancementSQLRepository(session).get_supersession_chain(root.id)
-    assert [e.id for e in chain] == [root.id, successor.id, revert.id]
+    assert [e.id for e in chain] == [root.id, successor.id]
 
 
 async def test_find_exact_duplicate_counts_superseded_enhancements(
