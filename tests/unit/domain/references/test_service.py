@@ -292,7 +292,8 @@ async def test_add_enhancement_happy_path(
 ):
     dummy_reference = Reference(id=uuid7())
     repo_refs = fake_repository(init_entries=[dummy_reference])
-    uow = fake_uow(references=repo_refs)
+    repo_enhs = fake_repository()
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
@@ -303,10 +304,7 @@ async def test_add_enhancement_happy_path(
 
     await service.add_enhancement(enhancement_to_add, ReferenceAccessControlService())
 
-    reference_enhancements = repo_refs.get_first_record().enhancements
-
-    assert len(reference_enhancements) == 1
-    assert reference_enhancements[0].id == enhancement_to_add.id
+    assert repo_enhs.get_first_record().id == enhancement_to_add.id
 
 
 @pytest.mark.asyncio
@@ -409,31 +407,27 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
         **fake_enhancement_data,
     )
 
-    reference = await service.add_enhancement(
-        enhancement_to_add, ReferenceAccessControlService()
-    )
-    assert reference.enhancements[0].id == enhancement_to_add.id
+    await service.add_enhancement(enhancement_to_add, ReferenceAccessControlService())
+    assert enhancement_to_add.id in repo_enhs.repository
 
 
 @pytest.mark.asyncio
 async def test_add_enhancement_duplicate_enhancement(
     fake_repository, fake_uow, fake_enhancement_data
 ):
-    dummy_reference = Reference(id=uuid7())
+    reference_id = uuid7()
+    existing_enhancement = Enhancement(
+        reference_id=reference_id, **fake_enhancement_data
+    )
+    dummy_reference = Reference(id=reference_id, enhancements=[existing_enhancement])
     repo_refs = fake_repository(init_entries=[dummy_reference])
-    uow = fake_uow(references=repo_refs)
+    uow = fake_uow(references=repo_refs, enhancements=fake_repository())
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
 
-    enhancement_to_add = Enhancement(
-        reference_id=dummy_reference.id, **fake_enhancement_data
-    )
+    enhancement_to_add = Enhancement(reference_id=reference_id, **fake_enhancement_data)
 
-    # First addition should succeed
-    await service.add_enhancement(enhancement_to_add, ReferenceAccessControlService())
-
-    # Second addition with the same data should raise DuplicateEnhancementError
     with pytest.raises(DuplicateEnhancementError):
         await service.add_enhancement(
             enhancement_to_add, ReferenceAccessControlService()
@@ -468,7 +462,7 @@ def _supersession_service(fake_repository, fake_uow, reference, repo_enhs):
     service = ReferenceService(
         ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
     )
-    return service, repo_refs
+    return service, repo_enhs
 
 
 @pytest.mark.asyncio
@@ -481,7 +475,7 @@ async def test_add_enhancement_supersedes_chain_root(
 ):
     reference = Reference(id=uuid7())
     root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
-    service, repo_refs = _supersession_service(
+    service, repo_enhs = _supersession_service(
         fake_repository, fake_uow, reference, chained_enhancement_repo([root])
     )
     successor = Enhancement(
@@ -492,7 +486,7 @@ async def test_add_enhancement_supersedes_chain_root(
 
     await service.add_enhancement(successor, superseder_acl)
 
-    (persisted,) = repo_refs.get_first_record().enhancements
+    persisted = repo_enhs.repository[successor.id]
     assert persisted.id == successor.id
     assert persisted.supersedes == root.id
     assert persisted.root_id == root.id
@@ -514,7 +508,7 @@ async def test_add_enhancement_supersedes_chain_head(
         root_id=root.id,
         **{**fake_enhancement_data, "source": "second_source"},
     )
-    service, repo_refs = _supersession_service(
+    service, repo_enhs = _supersession_service(
         fake_repository,
         fake_uow,
         reference,
@@ -528,7 +522,7 @@ async def test_add_enhancement_supersedes_chain_head(
 
     await service.add_enhancement(successor, superseder_acl)
 
-    (persisted,) = repo_refs.get_first_record().enhancements
+    persisted = repo_enhs.repository[successor.id]
     assert persisted.root_id == root.id
 
 
@@ -538,7 +532,7 @@ async def test_add_enhancement_supersedes_requires_entitlement(
 ):
     reference = Reference(id=uuid7())
     root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
-    service, repo_refs = _supersession_service(
+    service, repo_enhs = _supersession_service(
         fake_repository, fake_uow, reference, chained_enhancement_repo([root])
     )
     successor = Enhancement(
@@ -556,7 +550,7 @@ async def test_add_enhancement_supersedes_requires_entitlement(
         )
 
     assert exc_info.value.status_code == 403
-    assert not repo_refs.get_first_record().enhancements
+    assert successor.id not in repo_enhs.repository
 
 
 @pytest.mark.asyncio
@@ -611,7 +605,7 @@ async def test_add_enhancement_cannot_supersede_enhancement_on_duplicate_referen
     duplicate = Reference(id=uuid7())
     reference = Reference(id=uuid7(), duplicate_references=[duplicate])
     root = Enhancement(reference_id=duplicate.id, **fake_enhancement_data)
-    service, repo_refs = _supersession_service(
+    service, repo_enhs = _supersession_service(
         fake_repository, fake_uow, reference, chained_enhancement_repo([root])
     )
     successor = Enhancement(
@@ -622,7 +616,7 @@ async def test_add_enhancement_cannot_supersede_enhancement_on_duplicate_referen
 
     with pytest.raises(InvalidSupersessionError, match="same reference"):
         await service.add_enhancement(successor, superseder_acl)
-    assert not repo_refs.get_first_record().enhancements
+    assert successor.id not in repo_enhs.repository
 
 
 @pytest.mark.asyncio
@@ -662,8 +656,7 @@ async def test_add_enhancement_supersedes_head_reverting_to_earlier_content(
         root_id=root.id,
         **{**fake_enhancement_data, "source": "second_source"},
     )
-    reference.enhancements = [root, head]
-    service, repo_refs = _supersession_service(
+    service, repo_enhs = _supersession_service(
         fake_repository,
         fake_uow,
         reference,
@@ -675,9 +668,7 @@ async def test_add_enhancement_supersedes_head_reverting_to_earlier_content(
 
     await service.add_enhancement(revert, superseder_acl)
 
-    persisted = repo_refs.get_first_record().enhancements
-    assert [e.id for e in persisted] == [root.id, head.id, revert.id]
-    assert persisted[-1].root_id == root.id
+    assert repo_enhs.repository[revert.id].root_id == root.id
 
 
 @pytest.mark.asyncio
@@ -800,7 +791,7 @@ async def test_add_enhancement_supersedes_legacy_uuid4_root(
         reference_id=reference.id,
         **fake_enhancement_data,
     )
-    service, repo_refs = _supersession_service(
+    service, repo_enhs = _supersession_service(
         fake_repository, fake_uow, reference, chained_enhancement_repo([root])
     )
     successor = Enhancement(
@@ -812,7 +803,7 @@ async def test_add_enhancement_supersedes_legacy_uuid4_root(
 
     await service.add_enhancement(successor, superseder_acl)
 
-    (persisted,) = repo_refs.get_first_record().enhancements
+    persisted = repo_enhs.repository[successor.id]
     assert persisted.root_id == root.id
 
 

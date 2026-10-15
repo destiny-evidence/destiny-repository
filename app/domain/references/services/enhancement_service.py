@@ -106,7 +106,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         """
         reference = await self.sql_uow.references.get_by_pk(
             enhancement.reference_id,
-            preload=["enhancements", "duplicate_references"],
+            preload=["all_enhancements", "duplicate_references"],
         )
 
         # A superseding enhancement is only a duplicate if it matches the head it

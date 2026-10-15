@@ -455,7 +455,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         enhancement: Enhancement,
         access_control_service: ReferenceAccessControlService,
-    ) -> Reference:
+    ) -> Enhancement:
         """
         Add an enhancement to a reference.
 
@@ -467,22 +467,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         await self._enhancement_service.validate_new_enhancement(
             enhancement, access_control_service
         )
-        reference = await self.sql_uow.references.get_by_pk(
-            enhancement.reference_id,
-            preload=["enhancements", "identifiers", "duplicate_references"],
-        )
-
-        # This uses SQLAlchemy to treat References as an aggregate of enhancements.
-        # All considered this is a naive implementation, but it works for now.
-        reference.enhancements = [*(reference.enhancements or []), *[enhancement]]
-        return await self.sql_uow.references.merge(reference)
+        return await self.sql_uow.enhancements.add(enhancement)
 
     @sql_unit_of_work
     async def add_enhancement(
         self,
         enhancement: Enhancement,
         access_control_service: ReferenceAccessControlService,
-    ) -> Reference:
+    ) -> Enhancement:
         """Add an enhancement to a reference."""
         return await self._add_enhancement(enhancement, access_control_service)
 
