@@ -695,9 +695,9 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         default=None,
         description=(
             "The ID of the enhancement this one replaces. The superseded enhancement "
-            "must be the latest in its chain, on the same reference or one of its "
-            "duplicates, and of the same enhancement type. Only robots with the "
-            "``enhancement_supersession_writer`` entitlement may set this."
+            "must be the latest in its chain, on the same reference, and of the same "
+            "enhancement type. Only robots with the ``enhancement_supersession_writer``"
+            " entitlement may set this."
         ),
     )
     content: Annotated[
