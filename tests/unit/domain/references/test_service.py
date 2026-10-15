@@ -575,7 +575,7 @@ async def test_add_enhancement_supersedes_missing_enhancement(
         reference_id=reference.id, supersedes=uuid7(), **fake_enhancement_data
     )
 
-    with pytest.raises(InvalidSupersessionError, match="does not exist"):
+    with pytest.raises(InvalidSupersessionError, match="non-existent"):
         await service.add_enhancement(successor, superseder_acl)
 
 
@@ -596,12 +596,12 @@ async def test_add_enhancement_supersedes_enhancement_on_other_reference(
         reference_id=reference.id, supersedes=root.id, **fake_enhancement_data
     )
 
-    with pytest.raises(InvalidSupersessionError, match="same reference tree"):
+    with pytest.raises(InvalidSupersessionError, match="same reference"):
         await service.add_enhancement(successor, superseder_acl)
 
 
 @pytest.mark.asyncio
-async def test_add_enhancement_supersedes_enhancement_on_duplicate_reference(
+async def test_add_enhancement_cannot_supersede_enhancement_on_duplicate_reference(
     fake_repository,
     fake_uow,
     fake_enhancement_data,
@@ -620,10 +620,9 @@ async def test_add_enhancement_supersedes_enhancement_on_duplicate_reference(
         **{**fake_enhancement_data, "source": "newer_source"},
     )
 
-    await service.add_enhancement(successor, superseder_acl)
-
-    (persisted,) = repo_refs.get_first_record().enhancements
-    assert persisted.root_id == root.id
+    with pytest.raises(InvalidSupersessionError, match="same reference"):
+        await service.add_enhancement(successor, superseder_acl)
+    assert not repo_refs.get_first_record().enhancements
 
 
 @pytest.mark.asyncio
@@ -759,7 +758,31 @@ async def test_add_enhancement_supersedes_newer_uuid7(
         **{**fake_enhancement_data, "source": "newer_source"},
     )
 
-    with pytest.raises(InvalidSupersessionError, match="does not sort after"):
+    with pytest.raises(InvalidSupersessionError, match="created before"):
+        await service.add_enhancement(successor, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_with_uuid4_id(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    successor = Enhancement(
+        id=uuid4(),
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "source": "newer_source"},
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="UUIDv7"):
         await service.add_enhancement(successor, superseder_acl)
 
 

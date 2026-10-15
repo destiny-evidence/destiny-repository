@@ -464,12 +464,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         :param access_control_service: The entitlements of the principal adding it
         :type access_control_service: ReferenceAccessControlService
         """
+        await self._enhancement_service.validate_new_enhancement(
+            enhancement, access_control_service
+        )
         reference = await self.sql_uow.references.get_by_pk(
             enhancement.reference_id,
             preload=["enhancements", "identifiers", "duplicate_references"],
-        )
-        await self._enhancement_service.validate_new_enhancement(
-            enhancement, reference, access_control_service
         )
 
         # This uses SQLAlchemy to treat References as an aggregate of enhancements.

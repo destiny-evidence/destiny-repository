@@ -35,7 +35,6 @@ from app.domain.references.models.models import (
     EnhancementType,
     PendingEnhancement,
     PendingEnhancementStatus,
-    Reference,
     RobotEnhancementBatch,
     RobotResultValidationEntry,
 )
@@ -70,6 +69,7 @@ tracer = trace.get_tracer(__name__)
 settings = get_settings()
 
 LEGACY_UUID_VERSION = 4
+TIME_ORDERED_UUID_VERSION = 7
 
 
 class ProcessedResults(NamedTuple):
@@ -97,30 +97,26 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
     async def validate_new_enhancement(
         self,
         enhancement: Enhancement,
-        reference: Reference,
         access_control_service: ReferenceAccessControlService,
     ) -> None:
         """
-        Check an enhancement may be added to a reference.
+        Check an enhancement may be added to its reference.
 
-        ``reference`` must have its enhancements and duplicate references
-        preloaded. A superseding enhancement has its ``root_id`` resolved here.
+        A superseding enhancement has its ``root_id`` resolved here.
         """
-        reference_tree_ids = {
-            ref.id for ref in reference.duplicate_references or []
-        } | {reference.id}
+        reference = await self.sql_uow.references.get_by_pk(
+            enhancement.reference_id,
+            preload=["enhancements", "duplicate_references"],
+        )
 
         # A superseding enhancement is only a duplicate if it matches the head it
         # replaces. Matching an older link in the chain means the robot is
         # reverting to that content, which must go through.
         if enhancement.supersedes is not None:
-            superseded = await self._resolve_supersession(
-                enhancement,
-                enhancement.supersedes,
-                reference_tree_ids,
-                access_control_service,
+            head = await self._resolve_supersession(
+                enhancement, enhancement.supersedes, access_control_service
             )
-            existing_enhancements = [superseded]
+            existing_enhancements = [head]
         else:
             existing_enhancements = reference.enhancements or []
 
@@ -133,12 +129,16 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 raise DuplicateEnhancementError(detail)
 
         if enhancement.derived_from:
+            reference_tree_ids = {
+                ref.id for ref in reference.duplicate_references or []
+            } | {reference.id}
             try:
                 parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
                     enhancement.derived_from
                 )
                 if not all(
-                    e.reference_id in reference_tree_ids for e in parent_enhancements
+                    parent.reference_id in reference_tree_ids
+                    for parent in parent_enhancements
                 ):
                     detail = (
                         "All parent enhancements must belong to the same reference "
@@ -146,20 +146,22 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                     )
                     raise InvalidParentEnhancementError(detail)
             except SQLNotFoundError as e:
-                detail = f"Enhancements with ids {e.lookup_value} do not exist."
+                detail = (
+                    "Enhancement was submitted as derived from enhancements that "
+                    f"do not exist: {e.lookup_value}."
+                )
                 raise InvalidParentEnhancementError(detail) from e
 
     async def _resolve_supersession(
         self,
         enhancement: Enhancement,
         superseded_id: UUID,
-        reference_tree_ids: set[UUID],
         access_control_service: ReferenceAccessControlService,
     ) -> Enhancement:
         """
         Check the enhancement may supersede the one it names and join its chain.
 
-        Returns the superseded enhancement.
+        Returns the superseded enhancement, which is the head of its chain.
         """
         if not access_control_service.may_supersede_enhancements:
             raise AuthError(
@@ -167,54 +169,60 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 detail="Robot is not entitled to supersede enhancements.",
             )
 
+        if enhancement.id.version != TIME_ORDERED_UUID_VERSION:
+            detail = (
+                f"Enhancement {enhancement.id} must have a time-ordered (UUIDv7) id "
+                "to supersede another enhancement."
+            )
+            raise InvalidSupersessionError(detail)
+
         try:
-            superseded = await self.sql_uow.enhancements.get_by_pk(superseded_id)
+            head = await self.sql_uow.enhancements.get_supersession_chain_head(
+                superseded_id
+            )
         except SQLNotFoundError as e:
-            detail = f"Superseded enhancement {superseded_id} does not exist."
+            detail = (
+                f"Attempted to supersede non-existent enhancement {superseded_id} "
+                f"on reference {enhancement.reference_id}."
+            )
             raise InvalidSupersessionError(detail) from e
 
-        if superseded.reference_id not in reference_tree_ids:
+        if head.id != superseded_id:
             detail = (
-                f"Enhancement {superseded.id} belongs to reference "
-                f"{superseded.reference_id}, which is not {enhancement.reference_id} "
-                "or one of its duplicates. An enhancement can only supersede one "
-                "on the same reference tree."
+                f"Attempted to supersede enhancement {superseded_id}, which has "
+                f"already been superseded. The head of its chain is {head.id}."
             )
             raise InvalidSupersessionError(detail)
 
-        if superseded.content.enhancement_type != enhancement.content.enhancement_type:
+        # Chains stay within one reference so a deduplication decision can be
+        # reversed without splitting them.
+        if head.reference_id != enhancement.reference_id:
             detail = (
-                f"Enhancement {superseded.id} is of type "
-                f"{superseded.content.enhancement_type}, not "
-                f"{enhancement.content.enhancement_type}. "
-                "An enhancement can only supersede one of the same type."
+                f"Attempted to supersede enhancement {head.id} on reference "
+                f"{head.reference_id} from reference {enhancement.reference_id}. "
+                "An enhancement can only supersede one on the same reference."
             )
             raise InvalidSupersessionError(detail)
 
-        head = await self.sql_uow.enhancements.get_supersession_chain_head(
-            superseded.id
-        )
-        if head.id != superseded.id:
+        if head.content.enhancement_type != enhancement.content.enhancement_type:
             detail = (
-                f"Enhancement {superseded.id} has already been superseded. "
-                f"The head of its chain is {head.id}."
+                f"Attempted to supersede {head.content.enhancement_type} enhancement "
+                f"{head.id} with a {enhancement.content.enhancement_type} "
+                "enhancement. An enhancement can only supersede one of the same type."
             )
             raise InvalidSupersessionError(detail)
 
         # Legacy UUID4 roots sort arbitrarily against UUID7 successors, so only
         # time-ordered ids are required to be monotonic.
-        if (
-            superseded.id.version != LEGACY_UUID_VERSION
-            and enhancement.id <= superseded.id
-        ):
+        if head.id.version != LEGACY_UUID_VERSION and enhancement.id <= head.id:
             detail = (
-                f"Enhancement {enhancement.id} does not sort after {superseded.id} "
-                "and so cannot supersede it."
+                f"Enhancement {enhancement.id} was created before the enhancement "
+                f"it supersedes, {head.id}."
             )
             raise InvalidSupersessionError(detail)
 
-        enhancement.root_id = superseded.root_id
-        return superseded
+        enhancement.root_id = head.root_id
+        return head
 
     async def store_full_text(
         self,
