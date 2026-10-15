@@ -374,7 +374,9 @@ async def test_add_enhancement_derived_from_enhancement_for_different_reference(
         **fake_enhancement_data,
     )
 
-    with pytest.raises(InvalidParentEnhancementError, match="same reference tree"):
+    with pytest.raises(
+        InvalidParentEnhancementError, match="not exist on its reference tree"
+    ):
         await service.add_enhancement(
             enhancement_to_add, ReferenceAccessControlService()
         )
@@ -385,15 +387,17 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
     fake_repository, fake_uow, fake_enhancement_data
 ):
     dup_ref_id = uuid7()
-    dummy_reference = Reference(
-        id=uuid7(), duplicate_references=[Reference(id=dup_ref_id)]
-    )
-    repo_refs = fake_repository(init_entries=[dummy_reference])
-
     dummy_parent_enhancement = Enhancement(
         reference_id=dup_ref_id,  # Derived from an enhancement from a duplicate ref
         **fake_enhancement_data,
     )
+    dummy_reference = Reference(
+        id=uuid7(),
+        duplicate_references=[
+            Reference(id=dup_ref_id, enhancements=[dummy_parent_enhancement])
+        ],
+    )
+    repo_refs = fake_repository(init_entries=[dummy_reference])
 
     repo_enhs = fake_repository(init_entries=[dummy_parent_enhancement])
     uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
@@ -403,6 +407,34 @@ async def test_add_enhancement_derived_from_enhancement_for_duplicate_reference(
 
     enhancement_to_add = Enhancement(
         reference_id=dummy_reference.id,  # different reference id
+        derived_from=[dummy_parent_enhancement.id],
+        **fake_enhancement_data,
+    )
+
+    await service.add_enhancement(enhancement_to_add, ReferenceAccessControlService())
+    assert enhancement_to_add.id in repo_enhs.repository
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_derived_from_enhancement_for_same_reference(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    reference_id = uuid7()
+    dummy_parent_enhancement = Enhancement(
+        reference_id=reference_id, **fake_enhancement_data
+    )
+    dummy_reference = Reference(
+        id=reference_id, enhancements=[dummy_parent_enhancement]
+    )
+    repo_refs = fake_repository(init_entries=[dummy_reference])
+    repo_enhs = fake_repository(init_entries=[dummy_parent_enhancement])
+    uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()), uow, fake_uow()
+    )
+
+    enhancement_to_add = Enhancement(
+        reference_id=reference_id,
         derived_from=[dummy_parent_enhancement.id],
         **fake_enhancement_data,
     )

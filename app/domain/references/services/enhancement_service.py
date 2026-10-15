@@ -129,28 +129,20 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
                 raise DuplicateEnhancementError(detail)
 
         if enhancement.derived_from:
-            reference_tree_ids = {
-                ref.id for ref in reference.duplicate_references or []
-            } | {reference.id}
-            try:
-                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement.derived_from
-                )
-                if not all(
-                    parent.reference_id in reference_tree_ids
-                    for parent in parent_enhancements
-                ):
-                    detail = (
-                        "All parent enhancements must belong to the same reference "
-                        "tree as the child enhancement."
-                    )
-                    raise InvalidParentEnhancementError(detail)
-            except SQLNotFoundError as e:
+            tree_enhancement_ids = {
+                tree_enhancement.id
+                for tree_reference in [
+                    reference,
+                    *(reference.duplicate_references or []),
+                ]
+                for tree_enhancement in tree_reference.enhancements or []
+            }
+            if missing := set(enhancement.derived_from) - tree_enhancement_ids:
                 detail = (
-                    "Enhancement was submitted as derived from enhancements that "
-                    f"do not exist: {e.lookup_value}."
+                    "Enhancement was submitted as derived from enhancements that do "
+                    f"not exist on its reference tree: {missing}."
                 )
-                raise InvalidParentEnhancementError(detail) from e
+                raise InvalidParentEnhancementError(detail)
 
     async def _resolve_supersession(
         self,
