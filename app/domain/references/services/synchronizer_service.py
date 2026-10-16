@@ -11,6 +11,7 @@ from app.core.config import ESIndexingOperation, get_settings
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
+    LinkedDataProjection,
     Reference,
     ReferenceSearchProjection,
     RobotAutomation,
@@ -57,11 +58,13 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
         search_fields = ReferenceSearchFieldsProjection.get_from_reference(deduped)
 
         linked_data_projection = None
-        if search_fields.linked_data_content is not None:
-            linked_data_projection = await (
-                _get_linked_data_projection_service().project(
-                    search_fields.linked_data_content
-                )
+        if search_fields.linked_data_contents:
+            service = _get_linked_data_projection_service()
+            linked_data_projection = LinkedDataProjection.union(
+                [
+                    await service.project(content)
+                    for content in search_fields.linked_data_contents
+                ]
             )
 
         return ReferenceSearchProjection(
