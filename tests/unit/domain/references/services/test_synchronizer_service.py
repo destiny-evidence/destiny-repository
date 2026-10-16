@@ -2,17 +2,25 @@
 
 from collections.abc import AsyncGenerator
 from typing import cast
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import UUID, uuid7
 
 import pytest
 
+from app.core.exceptions import VocabularyFetchError
 from app.domain.references.models.models import (
     DuplicateDetermination,
+    LinkedDataProjection,
     Reference,
     ReferenceDuplicateDecision,
 )
 from app.domain.references.services.synchronizer_service import ReferenceSynchronizer
+from tests.factories import (
+    BibliographicMetadataEnhancementFactory,
+    EnhancementFactory,
+    LinkedDataEnhancementFactory,
+    ReferenceFactory,
+)
 
 
 def _canonical(reference_id: UUID | None = None) -> Reference:
@@ -116,3 +124,143 @@ async def test_multiple_duplicates_reindex_canonical_once(
     await synchronizer.bulk_sql_to_es([d.id for d in duplicates])
 
     assert indexed == [canonical.id]
+
+
+class TestToIndexable:
+    """Linked data projection in ReferenceSynchronizer._to_indexable."""
+
+    @pytest.fixture
+    def projection_service(self) -> AsyncMock:
+        service = AsyncMock()
+        service.project.side_effect = [
+            LinkedDataProjection(concepts={"c1"}, labels={"Label 1"}, countries={"GB"}),
+            LinkedDataProjection(
+                concepts={"c1", "c2"}, labels={"Label 2"}, countries={"KE"}
+            ),
+        ]
+        return service
+
+    async def test_unions_every_linked_data_enhancement(
+        self, projection_service: AsyncMock
+    ):
+        reference_id = uuid7()
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[
+                EnhancementFactory.build(
+                    reference_id=reference_id,
+                    content=LinkedDataEnhancementFactory.build(),
+                ),
+                EnhancementFactory.build(
+                    reference_id=reference_id,
+                    content=LinkedDataEnhancementFactory.build(),
+                ),
+            ],
+            duplicate_references=[],
+        )
+
+        with patch(
+            "app.domain.references.services.synchronizer_service."
+            "_get_linked_data_projection_service",
+            return_value=projection_service,
+        ):
+            result = await ReferenceSynchronizer._to_indexable(reference)  # noqa: SLF001
+
+        assert projection_service.project.await_count == 2
+        assert result.linked_data_projection == LinkedDataProjection(
+            concepts={"c1", "c2"},
+            labels={"Label 1", "Label 2"},
+            countries={"GB", "KE"},
+        )
+
+    @pytest.fixture
+    def two_linked_data_reference(self) -> Reference:
+        reference_id = uuid7()
+        return ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[
+                EnhancementFactory.build(
+                    reference_id=reference_id,
+                    content=LinkedDataEnhancementFactory.build(),
+                ),
+                EnhancementFactory.build(
+                    reference_id=reference_id,
+                    content=LinkedDataEnhancementFactory.build(),
+                ),
+            ],
+            duplicate_references=[],
+        )
+
+    @pytest.mark.parametrize(
+        "error",
+        [
+            VocabularyFetchError("https://vocab.example/v1", "404"),
+            ValueError("Enhancement data is missing @context"),
+        ],
+    )
+    async def test_unprojectable_linked_data_is_skipped(
+        self, two_linked_data_reference: Reference, error: Exception
+    ):
+        projection_service = AsyncMock()
+        projection_service.project.side_effect = [
+            LinkedDataProjection(concepts={"c1"}),
+            error,
+        ]
+
+        with patch(
+            "app.domain.references.services.synchronizer_service."
+            "_get_linked_data_projection_service",
+            return_value=projection_service,
+        ):
+            result = await ReferenceSynchronizer._to_indexable(  # noqa: SLF001
+                two_linked_data_reference
+            )
+
+        assert projection_service.project.await_count == 2
+        assert result.linked_data_projection == LinkedDataProjection(concepts={"c1"})
+
+    async def test_unexpected_projection_error_propagates(
+        self, two_linked_data_reference: Reference
+    ):
+        projection_service = AsyncMock()
+        projection_service.project.side_effect = [
+            LinkedDataProjection(concepts={"c1"}),
+            RuntimeError("boom"),
+        ]
+
+        with (
+            patch(
+                "app.domain.references.services.synchronizer_service."
+                "_get_linked_data_projection_service",
+                return_value=projection_service,
+            ),
+            pytest.raises(RuntimeError),
+        ):
+            await ReferenceSynchronizer._to_indexable(  # noqa: SLF001
+                two_linked_data_reference
+            )
+
+    async def test_no_linked_data_leaves_projection_empty(
+        self, projection_service: AsyncMock
+    ):
+        reference_id = uuid7()
+        reference = ReferenceFactory.build(
+            id=reference_id,
+            enhancements=[
+                EnhancementFactory.build(
+                    reference_id=reference_id,
+                    content=BibliographicMetadataEnhancementFactory.build(),
+                ),
+            ],
+            duplicate_references=[],
+        )
+
+        with patch(
+            "app.domain.references.services.synchronizer_service."
+            "_get_linked_data_projection_service",
+            return_value=projection_service,
+        ):
+            result = await ReferenceSynchronizer._to_indexable(reference)  # noqa: SLF001
+
+        projection_service.project.assert_not_awaited()
+        assert result.linked_data_projection is None
