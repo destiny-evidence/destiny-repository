@@ -10,8 +10,10 @@ from destiny_sdk.visibility import Visibility
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.entitlements import Entitlement
 from app.core.exceptions import (
     DuplicateEnhancementError,
+    InvalidSupersessionError,
     SQLIntegrityError,
     SQLNotFoundError,
 )
@@ -62,6 +64,9 @@ from app.domain.references.repository import (
     ReferenceSQLRepository,
 )
 from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -406,6 +411,50 @@ async def test_get_supersession_chain_of_lone_root(
     assert head.id == root.id
 
 
+async def test_add_enhancement_builds_supersession_chain(session: AsyncSession):
+    """Successors added through the service join the chain behind its head."""
+    reference = await _add_reference(session)
+    (root,) = await _add_chain(session, reference, successors=0)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+    acl = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+
+    second = _enhancement(reference, supersedes=root.id)
+    await service.add_enhancement(second, acl)
+    third = _enhancement(reference, supersedes=second.id)
+    await service.add_enhancement(third, acl)
+
+    with pytest.raises(InvalidSupersessionError, match=str(third.id)):
+        await service.add_enhancement(_enhancement(reference, supersedes=root.id), acl)
+
+    revert = root.model_copy(update={"id": uuid7(), "supersedes": third.id})
+    await service.add_enhancement(revert, acl)
+
+    repo = EnhancementSQLRepository(session)
+    chain = await repo.get_supersession_chain(root.id)
+    assert [e.id for e in chain] == [root.id, second.id, third.id, revert.id]
+    assert all(e.root_id == root.id for e in chain)
+    assert (await repo.get_supersession_chain_head(root.id)).id == revert.id
+
+
+async def test_supersession_race_collides_on_supersedes(session: AsyncSession):
+    """A second successor of one head fails on the unique supersedes index."""
+    reference = await _add_reference(session)
+    root, _ = await _add_chain(session, reference, successors=1)
+    repo = EnhancementSQLRepository(session)
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+
+    assert "supersedes" in exc_info.value.collision
+    await session.rollback()
+
+
 async def test_get_supersession_chain_not_found(session: AsyncSession):
     """An unknown enhancement id raises SQLNotFoundError."""
     repo = EnhancementSQLRepository(session)
@@ -536,32 +585,36 @@ async def test_merge_heads_only_reference_keeps_superseded(session: AsyncSession
     assert [e.id for e in found] == [e.id for e in chain]
 
 
-async def test_add_enhancement_new_chain_cannot_restate_superseded_content(
+async def test_add_enhancement_new_chain_may_restate_superseded_content(
     session: AsyncSession,
 ):
-    """A new chain can't restate superseded content, and adding deletes nothing."""
+    """A new chain may restate superseded content but not a head's, deleting nothing."""
     reference = await _add_reference(session)
-    root, successor = await _add_chain(session, reference, successors=1)
+    root, head = await _add_chain(session, reference, successors=1)
     service = ReferenceService(
         ReferenceAntiCorruptionService(sign_url=AsyncMock()),
         AsyncSqlUnitOfWork(session),
         AsyncESUnitOfWork(AsyncMock()),
     )
 
-    with pytest.raises(DuplicateEnhancementError):
-        await service.add_enhancement(
-            Enhancement(
-                reference_id=reference.id,
-                **root.model_dump(
-                    include={"source", "visibility", "robot_version", "content"}
-                ),
-            )
+    def restated(enhancement: Enhancement) -> Enhancement:
+        return Enhancement(
+            reference_id=reference.id,
+            **enhancement.model_dump(
+                include={"source", "visibility", "robot_version", "content"}
+            ),
         )
 
-    await service.add_enhancement(_enhancement(reference))
+    with pytest.raises(DuplicateEnhancementError):
+        await service.add_enhancement(restated(head), ReferenceAccessControlService())
 
-    chain = await EnhancementSQLRepository(session).get_supersession_chain(root.id)
-    assert [e.id for e in chain] == [root.id, successor.id]
+    new_root = restated(root)
+    await service.add_enhancement(new_root, ReferenceAccessControlService())
+
+    repo = EnhancementSQLRepository(session)
+    chain = await repo.get_supersession_chain(root.id)
+    assert [e.id for e in chain] == [root.id, head.id]
+    assert (await repo.get_by_pk(new_root.id)).root_id == new_root.id
 
 
 async def test_find_exact_duplicate_counts_superseded_enhancements(
