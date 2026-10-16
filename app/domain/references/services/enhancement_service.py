@@ -109,16 +109,20 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             preload=["all_enhancements", "duplicate_references"],
         )
 
-        # A superseding enhancement is only a duplicate if it matches the head it
-        # replaces. Matching an older link in the chain means the robot is
-        # reverting to that content, which must go through.
+        # Superseded links are history, so only heads count as duplicates: a new
+        # root may repeat content that was since superseded, and a superseding
+        # enhancement may revert its chain to an older link.
+        all_enhancements = reference.enhancements or []
         if enhancement.supersedes is not None:
             head = await self._resolve_supersession(
                 enhancement, enhancement.supersedes, access_control_service
             )
             existing_enhancements = [head]
         else:
-            existing_enhancements = reference.enhancements or []
+            superseded_ids = {e.supersedes for e in all_enhancements if e.supersedes}
+            existing_enhancements = [
+                e for e in all_enhancements if e.id not in superseded_ids
+            ]
 
         incoming_enhancement_hash = enhancement.hash_data()
         for existing_enhancement in existing_enhancements:
@@ -131,11 +135,14 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
         if enhancement.derived_from:
             tree_enhancement_ids = {
                 tree_enhancement.id
-                for tree_reference in [
-                    reference,
-                    *(reference.duplicate_references or []),
+                for tree_enhancement in [
+                    *all_enhancements,
+                    *(
+                        duplicate_enhancement
+                        for duplicate in reference.duplicate_references or []
+                        for duplicate_enhancement in duplicate.enhancements or []
+                    ),
                 ]
-                for tree_enhancement in tree_reference.enhancements or []
             }
             if missing := set(enhancement.derived_from) - tree_enhancement_ids:
                 detail = (

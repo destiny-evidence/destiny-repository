@@ -704,6 +704,53 @@ async def test_add_enhancement_supersedes_head_reverting_to_earlier_content(
 
 
 @pytest.mark.asyncio
+async def test_add_enhancement_new_root_repeating_superseded_content(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    reference_id = uuid7()
+    root = Enhancement(reference_id=reference_id, **fake_enhancement_data)
+    head = Enhancement(
+        reference_id=reference_id,
+        supersedes=root.id,
+        root_id=root.id,
+        **{**fake_enhancement_data, "source": "second_source"},
+    )
+    reference = Reference(id=reference_id, enhancements=[root, head])
+    repo_enhs = fake_repository(init_entries=[root, head])
+    service, _ = _supersession_service(fake_repository, fake_uow, reference, repo_enhs)
+    new_root = Enhancement(reference_id=reference_id, **fake_enhancement_data)
+
+    await service.add_enhancement(new_root, ReferenceAccessControlService())
+
+    assert repo_enhs.repository[new_root.id].root_id == new_root.id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_new_root_duplicating_chain_head(
+    fake_repository, fake_uow, fake_enhancement_data
+):
+    reference_id = uuid7()
+    root = Enhancement(
+        reference_id=reference_id,
+        **{**fake_enhancement_data, "source": "first_source"},
+    )
+    head = Enhancement(
+        reference_id=reference_id,
+        supersedes=root.id,
+        root_id=root.id,
+        **fake_enhancement_data,
+    )
+    reference = Reference(id=reference_id, enhancements=[root, head])
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, fake_repository(init_entries=[root, head])
+    )
+    new_root = Enhancement(reference_id=reference_id, **fake_enhancement_data)
+
+    with pytest.raises(DuplicateEnhancementError):
+        await service.add_enhancement(new_root, ReferenceAccessControlService())
+
+
+@pytest.mark.asyncio
 async def test_add_enhancement_supersedes_enhancement_of_other_type(
     fake_repository,
     fake_uow,
