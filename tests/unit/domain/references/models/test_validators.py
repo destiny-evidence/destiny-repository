@@ -1,3 +1,4 @@
+import json
 from uuid import uuid7
 
 import destiny_sdk
@@ -116,6 +117,40 @@ def test_exported_reference_imports_without_rewriting():
     assert result.reference.enhancements[0].source == "test-source"
     # ReferenceFileInput carries no id, so the exported one cannot be adopted.
     assert "id" not in result.reference.model_dump()
+
+
+def test_tombstone_enhancement_is_rejected_but_reference_imports():
+    """A tombstone is refused, as an import cannot name an enhancement to supersede."""
+    entry = json.dumps(
+        {
+            "visibility": "public",
+            "identifiers": [{"identifier_type": "doi", "identifier": "10.1000/xyz"}],
+            "enhancements": [
+                {
+                    "source": "test-source",
+                    "visibility": "public",
+                    "content": {
+                        "enhancement_type": "abstract",
+                        "process": "closed_api",
+                        "abstract": "hello",
+                    },
+                },
+                {
+                    "source": "test-source",
+                    "visibility": "public",
+                    "content": {"enhancement_type": "tombstone"},
+                },
+            ],
+        }
+    )
+
+    result = ReferenceCreateResult.from_raw(entry, 1)
+
+    assert result.reference is not None
+    assert [e.content.enhancement_type for e in result.reference.enhancements] == [
+        "abstract"
+    ]
+    assert "Tombstone enhancements cannot be imported" in result.error_str
 
 
 def test_unknown_top_level_field_is_still_rejected():

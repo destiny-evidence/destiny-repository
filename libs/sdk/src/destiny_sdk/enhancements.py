@@ -42,6 +42,8 @@ class EnhancementType(StrEnum):
     """A free form enhancement for arbitrary/unstructured data."""
     FULL_TEXT = auto()
     """The full text of the reference."""
+    TOMBSTONE = auto()
+    """Marks a supersession chain as withdrawn."""
 
 
 class AuthorPosition(StrEnum):
@@ -649,6 +651,16 @@ class RawEnhancement(BaseModel):
         )
 
 
+class TombstoneEnhancement(BaseModel):
+    """An enhancement which withdraws the supersession chain it heads."""
+
+    enhancement_type: Literal[EnhancementType.TOMBSTONE] = EnhancementType.TOMBSTONE
+    reason: str | None = Field(
+        default=None,
+        description="Why the chain was withdrawn.",
+    )
+
+
 #: Union type for all enhancement content types.
 EnhancementContent = Annotated[
     BibliographicMetadataEnhancement
@@ -658,7 +670,8 @@ EnhancementContent = Annotated[
     | ReferenceAssociationEnhancement
     | LinkedDataEnhancement
     | FullTextEnhancement
-    | RawEnhancement,
+    | RawEnhancement
+    | TombstoneEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 

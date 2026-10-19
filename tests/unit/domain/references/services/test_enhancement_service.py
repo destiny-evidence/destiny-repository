@@ -531,6 +531,67 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
 
 
 @pytest.mark.asyncio
+async def test_process_robot_enhancement_batch_result_tombstone_enhancement(
+    fake_uow,
+):
+    """A tombstone line gets an error for its reference instead of failing the batch."""
+    tombstone_reference_id = uuid7()
+    other_reference_id = uuid7()
+    tombstone_pending = create_pending_enhancement(tombstone_reference_id)
+    other_pending = create_pending_enhancement(other_reference_id)
+    result_file = create_result_file()
+
+    uow = fake_uow()
+    mock_blob_repo = MagicMock()
+    mock_blob_repo.stream_file_from_blob_storage = create_fake_stream(
+        [
+            json.dumps(
+                {
+                    "reference_id": str(tombstone_reference_id),
+                    "content": {"enhancement_type": "tombstone"},
+                    "source": "test_source",
+                    "visibility": "public",
+                }
+            ),
+            make_enhancement_result_entry(other_reference_id, as_error=False),
+        ]
+    )
+    service = EnhancementService(
+        ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
+    )
+
+    added_reference_ids = []
+
+    async def fake_add_enhancement(enhancement):
+        added_reference_ids.append(enhancement.reference_id)
+        return (PendingEnhancementStatus.COMPLETED, "")
+
+    results = create_processed_results()
+
+    messages = [
+        RobotResultValidationEntry.model_validate_json(msg)
+        async for msg in service.process_robot_enhancement_batch_result(
+            tombstone_pending.robot_enhancement_batch_id,
+            mock_blob_repo,
+            result_file,
+            [tombstone_pending, other_pending],
+            fake_add_enhancement,
+            results,
+            ReferenceAccessControlService(),
+        )
+    ]
+
+    assert len(messages) == 2
+    assert messages[0].reference_id == tombstone_reference_id
+    assert "tombstone enhancement is not supported" in messages[0].error
+    assert messages[1].reference_id == other_reference_id
+    assert messages[1].error is None
+    assert added_reference_ids == [other_reference_id]
+    assert results.failed_pending_enhancement_ids == {tombstone_pending.id}
+    assert results.successful_pending_enhancement_ids == {other_pending.id}
+
+
+@pytest.mark.asyncio
 async def test_process_robot_enhancement_batch_result_entitled_raw_enhancement(
     fake_uow,
 ):
