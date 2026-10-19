@@ -2,6 +2,7 @@
 
 import contextlib
 import datetime
+import functools
 import resource
 import sys
 from collections import defaultdict
@@ -16,9 +17,10 @@ from app.core.config import (
     get_settings,
 )
 from app.core.exceptions import (
+    AuthError,
     DuplicateEnhancementError,
     FullTextIngestionError,
-    InvalidParentEnhancementError,
+    InvalidPayloadError,
     SQLIntegrityError,
     SQLNotFoundError,
     VocabularyFetchError,
@@ -450,53 +452,32 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """Persist a reference."""
         return await self._merge_reference(reference)
 
-    async def _add_enhancement(self, enhancement: Enhancement) -> Enhancement:
+    async def _add_enhancement(
+        self,
+        enhancement: Enhancement,
+        access_control_service: ReferenceAccessControlService,
+    ) -> Enhancement:
         """
         Add an enhancement to a reference.
 
         :param enhancement: The enhancement to add
         :type enhancement: Enhancement
+        :param access_control_service: The entitlements of the principal adding it
+        :type access_control_service: ReferenceAccessControlService
         """
-        reference = await self.sql_uow.references.get_by_pk(
-            enhancement.reference_id,
-            preload=["all_enhancements", "duplicate_references"],
+        await self._enhancement_service.validate_new_enhancement(
+            enhancement, access_control_service
         )
-
-        incoming_enhancement_hash = enhancement.hash_data()
-        for existing_enhancement in reference.enhancements or []:
-            if existing_enhancement.hash_data() == incoming_enhancement_hash:
-                detail = (
-                    "An exact duplicate enhancement already exists on this reference."
-                )
-                raise DuplicateEnhancementError(detail)
-
-        if enhancement.derived_from:
-            valid_derived_reference_ids = {
-                ref.id for ref in reference.duplicate_references or []
-            } | {reference.id}
-            try:
-                parent_enhancements = await self.sql_uow.enhancements.get_by_pks(
-                    enhancement.derived_from
-                )
-                if not all(
-                    e.reference_id in valid_derived_reference_ids
-                    for e in parent_enhancements
-                ):
-                    detail = (
-                        "All parent enhancements must belong to the same reference "
-                        "tree as the child enhancement."
-                    )
-                    raise InvalidParentEnhancementError(detail)
-            except SQLNotFoundError as e:
-                detail = f"Enhancements with ids {e.lookup_value} do not exist."
-                raise InvalidParentEnhancementError(detail) from e
-
         return await self.sql_uow.enhancements.add(enhancement)
 
     @sql_unit_of_work
-    async def add_enhancement(self, enhancement: Enhancement) -> Enhancement:
+    async def add_enhancement(
+        self,
+        enhancement: Enhancement,
+        access_control_service: ReferenceAccessControlService,
+    ) -> Enhancement:
         """Add an enhancement to a reference."""
-        return await self._add_enhancement(enhancement)
+        return await self._add_enhancement(enhancement, access_control_service)
 
     @sql_unit_of_work
     async def get_all_reference_ids(
@@ -1000,12 +981,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def handle_enhancement_result_entry(
         self,
         enhancement: Enhancement,
+        access_control_service: ReferenceAccessControlService,
     ) -> tuple[PendingEnhancementStatus, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
             # Isolate each entry so one failure doesn't abort the rest of the batch.
             async with self.sql_uow.savepoint():
-                await self._add_enhancement(enhancement)
+                await self._add_enhancement(enhancement, access_control_service)
         except SQLNotFoundError:
             return (
                 PendingEnhancementStatus.FAILED,
@@ -1016,6 +998,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 PendingEnhancementStatus.DISCARDED,
                 "Exact duplicate enhancement already exists on reference.",
             )
+        except (InvalidPayloadError, AuthError) as e:
+            return (PendingEnhancementStatus.FAILED, e.detail)
         except Exception as e:
             if isinstance(e, SQLIntegrityError) and "uq_enhancement_supersedes" in str(
                 e.__cause__
@@ -1084,7 +1068,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     blob_repository=blob_repository,
                     result_file=robot_enhancement_batch.result_file,
                     pending_enhancements=pending_enhancements,
-                    add_enhancement=self.handle_enhancement_result_entry,
+                    add_enhancement=functools.partial(
+                        self.handle_enhancement_result_entry,
+                        access_control_service=access_control_service,
+                    ),
                     results=results,
                     access_control_service=access_control_service,
                 )

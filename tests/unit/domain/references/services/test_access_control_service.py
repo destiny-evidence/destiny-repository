@@ -67,3 +67,15 @@ def test_redact_returns_empty_list_when_only_full_text_present():
     redacted = acl.redact_reference(reference)
 
     assert redacted.enhancements == []
+
+
+def test_may_supersede_enhancements_follows_entitlement():
+    entitled = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+    unentitled = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.RAW_ENHANCEMENT_WRITER})
+    )
+
+    assert entitled.may_supersede_enhancements
+    assert not unentitled.may_supersede_enhancements
