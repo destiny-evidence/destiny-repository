@@ -11,6 +11,7 @@ from app.domain.references.models.models import (
     AnnotationFilter,
     CrossFacetAxis,
     CrossFacetResult,
+    FacetCounting,
     FacetType,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
@@ -278,6 +279,7 @@ SIBLINGS_FIXTURE: dict[str, frozenset[str]] = {
 def vocab_client_with_siblings() -> MagicMock:
     client = MagicMock(spec=VocabularyArtifactClient)
     client.get_concept_scheme_members = AsyncMock(return_value=SIBLINGS_FIXTURE)
+    client.get_concepts = AsyncMock(return_value=_TOPICS | _REGIONS)
     return client
 
 
@@ -338,7 +340,7 @@ async def test_resolve_concept_sibling_groups_rejects_overlapping_filters(
 async def test_aggregate_facets_naive_when_concepts_not_requested(
     vocab_client_with_siblings: MagicMock,
 ):
-    """No concepts facet → repo called with empty mapping; vocab untouched."""
+    """No concepts facet → no groups, no include; vocab untouched."""
     service = _service(vocab_client_with_siblings)
     service.es_uow.references = MagicMock()  # type: ignore[union-attr]
     service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
@@ -349,30 +351,41 @@ async def test_aggregate_facets_naive_when_concepts_not_requested(
                 LinkedDataConceptFilter(concept_uris=[BOTANY])
             ],
         ),
-        facets=(),
-        vocabulary_uri=None,
+        facets=(FacetType.COUNTRIES,),
+        vocabulary_uri=VOCAB_URI,
     )
+    vocab_client_with_siblings.get_concepts.assert_not_called()
     vocab_client_with_siblings.get_concept_scheme_members.assert_not_called()
-    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
-    assert kwargs["sibling_groups_by_facet"] == {}
+    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert counting == {FacetType.COUNTRIES: FacetCounting()}
 
 
-async def test_aggregate_facets_raises_when_vocab_missing_but_required(
+@pytest.mark.parametrize(
+    "concept_filters",
+    [
+        pytest.param([], id="plain"),
+        pytest.param(
+            [LinkedDataConceptFilter(concept_uris=[BOTANY])], id="sibling-aware"
+        ),
+    ],
+)
+async def test_aggregate_facets_scopes_concepts_to_vocabulary(
     vocab_client_with_siblings: MagicMock,
+    concept_filters: list[LinkedDataConceptFilter],
 ):
-    """Concepts facet + concept filter + no vocab → SiblingGroupingError."""
+    """The concepts facet only counts the vocabulary's concepts."""
     service = _service(vocab_client_with_siblings)
-    with pytest.raises(SiblingGroupingError, match="`vocabulary=` is required"):
-        await service.aggregate_facets(
-            SearchQuery(
-                query_string="*",
-                linked_data_concept_filters=[
-                    LinkedDataConceptFilter(concept_uris=[BOTANY])
-                ],
-            ),
-            facets=(FacetType.CONCEPTS,),
-            vocabulary_uri=None,
-        )
+    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
+    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    await service.aggregate_facets(
+        SearchQuery(query_string="*", linked_data_concept_filters=concept_filters),
+        facets=(FacetType.CONCEPTS, FacetType.COUNTRIES),
+        vocabulary_uri=VOCAB_URI,
+    )
+    vocab_client_with_siblings.get_concepts.assert_awaited_once_with(VOCAB_URI)
+    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert counting[FacetType.CONCEPTS].include == _TOPICS | _REGIONS
+    assert counting[FacetType.COUNTRIES] == FacetCounting()
 
 
 def test_validate_groups_against_max_buckets():
@@ -425,10 +438,10 @@ async def test_aggregate_facets_builds_universal_groups_for_countries(
             ],
         ),
         facets=(FacetType.COUNTRIES,),
-        vocabulary_uri=None,
+        vocabulary_uri=VOCAB_URI,
     )
-    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
-    groups = kwargs["sibling_groups_by_facet"][FacetType.COUNTRIES]
+    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    groups = counting[FacetType.COUNTRIES].sibling_groups
     assert len(groups) == 1
     assert groups[0].selected == ("US", "GB")
     assert groups[0].siblings_including_selected is None
@@ -449,10 +462,10 @@ async def test_aggregate_facets_skips_country_groups_when_facet_not_requested(
             ],
         ),
         facets=(),
-        vocabulary_uri=None,
+        vocabulary_uri=VOCAB_URI,
     )
-    _, kwargs = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
-    assert kwargs["sibling_groups_by_facet"] == {}
+    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    assert counting == {}
 
 
 async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
@@ -472,7 +485,7 @@ async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
                 ],
             ),
             facets=(FacetType.COUNTRIES,),
-            vocabulary_uri=None,
+            vocabulary_uri=VOCAB_URI,
         )
 
 

@@ -686,10 +686,8 @@ async def search_reference_ids(
         "both — the references that map can plot. The scope applies to every "
         "requested facet and to the sibling-aware counts above, so an individual "
         "count can still exceed that map's `totals.mapped`, because counting "
-        "relaxes the facet's own selection. Omit `axes` for search-scoped counts. "
-        "A concept-scheme axis needs `?vocabulary=` whether or not a `?concept=` "
-        "filter is set.\n\n"
-        "For `concepts`, supply `?vocabulary=`. A concept's siblings are every "
+        "relaxes the facet's own selection. Omit `axes` for search-scoped counts.\n\n"
+        "A concept's siblings are every "
         "member of its scheme, regardless of hierarchical depth, so each `?concept=` "
         "parameter is one scheme's selection; the server enforces (400 on "
         "violation):\n\n"
@@ -719,21 +717,21 @@ async def count_facets_for_search(
         AfterValidator(_validate_vocab_host),
         Query(
             description=(
-                "Vocabulary URI for sibling-aware facet counting. Required when "
-                "filtering on concepts and requesting the `concepts` facet. "
+                "Vocabulary URI scoping `concepts` counts, sibling groups and "
+                "concept-scheme axes. "
                 f"Host must be a subdomain of `{settings.vocabulary_host}`."
             ),
             examples=[
                 "https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl"
             ],
         ),
-    ] = None,
+    ],
     axes: Annotated[
         tuple[str, str] | None,
         Query(
             description=(
                 "Optional. Evidence map axes, matching `/cross-facets/`, to scope "
-                "facet counts. Pass `?vocabulary=` for concept-scheme axes."
+                "facet counts."
             ),
         ),
     ] = None,
@@ -742,7 +740,7 @@ async def count_facets_for_search(
     buckets_by_facet = await reference_service.aggregate_facets(
         query,
         anti_corruption_service.facet_types_from_sdk(facet),
-        vocabulary_uri=str(vocabulary) if vocabulary else None,
+        vocabulary_uri=str(vocabulary),
         axes=axes,
     )
     return anti_corruption_service.facets_to_sdk(buckets_by_facet)

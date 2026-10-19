@@ -324,6 +324,33 @@ class TestSkosDerivedLookups:
         assert schemes[_concept("English")] == _concept("Languages")
 
     @pytest.mark.asyncio
+    async def test_concepts_are_every_skos_concept(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        concepts = await skos_client.get_concepts(VOCAB_URI)
+
+        # Concept schemes are excluded.
+        assert concepts == frozenset(
+            _concept(name)
+            for name in (
+                "Biology",
+                "Chemistry",
+                "Botany",
+                "Zoology",
+                "Microbiology",
+                "Africa",
+                "Asia",
+                "Apple",
+                "Pear",
+                "English",
+                "Spanish",
+                "Physics",
+                "Mathematics",
+                "Quantum",
+            )
+        )
+
+    @pytest.mark.asyncio
     async def test_concept_scheme_members_span_the_whole_scheme(
         self, skos_client: VocabularyArtifactClient
     ):

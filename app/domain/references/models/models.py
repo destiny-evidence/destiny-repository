@@ -1902,6 +1902,24 @@ class SiblingGroup(BaseModel):
     )
 
 
+class FacetCounting(BaseModel):
+    """How to count one facet."""
+
+    model_config = ConfigDict(frozen=True)
+
+    include: frozenset[str] | None = Field(
+        default=None,
+        description=(
+            "The only terms counted (used as the terms ``include`` set), so other "
+            "terms take up none of the bucket limit. ``None`` counts every term."
+        ),
+    )
+    sibling_groups: tuple[SiblingGroup, ...] = Field(
+        default=(),
+        description="Selections to count sibling-aware. Empty counts plainly.",
+    )
+
+
 class CrossFacetAxis(BaseModel):
     """One resolved axis of a cross-facet aggregation."""
 

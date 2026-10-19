@@ -125,6 +125,16 @@ class VocabularyArtifactClient:
         }
 
     @alru_cache(maxsize=128)
+    async def get_concepts(self, uri: str) -> frozenset[str]:
+        """Every concept URI (``skos:Concept``) in the vocabulary."""
+        return frozenset(
+            str(concept)
+            for concept in (await self.get_vocabulary(uri)).subjects(
+                RDF.type, SKOS.Concept
+            )
+        )
+
+    @alru_cache(maxsize=128)
     async def get_concept_labels(self, uri: str) -> dict[str, str]:
         """Concept URI -> skos:prefLabel for the vocabulary."""
         return _build_concept_labels(await self.get_vocabulary(uri))
