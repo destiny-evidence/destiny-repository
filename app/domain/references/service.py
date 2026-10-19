@@ -21,6 +21,7 @@ from app.core.exceptions import (
     DuplicateEnhancementError,
     FullTextIngestionError,
     InvalidPayloadError,
+    SQLIntegrityError,
     SQLNotFoundError,
     VocabularyFetchError,
 )
@@ -984,7 +985,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> tuple[PendingEnhancementStatus, str]:
         """Handle the import of a single batch enhancement result entry."""
         try:
-            await self._add_enhancement(enhancement, access_control_service)
+            # Isolate each entry so one failure doesn't abort the rest of the batch.
+            async with self.sql_uow.savepoint():
+                await self._add_enhancement(enhancement, access_control_service)
         except SQLNotFoundError:
             return (
                 PendingEnhancementStatus.FAILED,
@@ -997,7 +1000,15 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             )
         except (InvalidPayloadError, AuthError) as e:
             return (PendingEnhancementStatus.FAILED, e.detail)
-        except Exception:
+        except Exception as e:
+            if isinstance(e, SQLIntegrityError) and "uq_enhancement_supersedes" in str(
+                e.__cause__
+            ):
+                return (
+                    PendingEnhancementStatus.FAILED,
+                    f"Enhancement {enhancement.supersedes} has already been "
+                    "superseded.",
+                )
             logger.exception(
                 "Failed to add enhancement to reference.",
                 reference_id=enhancement.reference_id,

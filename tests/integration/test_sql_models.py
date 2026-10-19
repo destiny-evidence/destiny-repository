@@ -617,6 +617,53 @@ async def test_add_enhancement_new_chain_may_restate_superseded_content(
     assert (await repo.get_by_pk(new_root.id)).root_id == new_root.id
 
 
+async def test_enhancement_result_entry_fork_does_not_abort_batch(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """A batch entry forking a chain fails alone; the rest of the batch commits."""
+    reference = await _add_reference(session)
+    root = await EnhancementSQLRepository(session).add(_enhancement(reference))
+    await session.commit()
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+    acl = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+    winner = _enhancement(reference, supersedes=root.id)
+    fork = _enhancement(reference, supersedes=root.id)
+    unrelated = _enhancement(reference)
+
+    # Both entries saw the root as the chain head, as two racing workers would,
+    # so the fork gets past validation and collides on the unique index.
+    async def stale_head(self: EnhancementSQLRepository, _: UUID) -> Enhancement:
+        return await self.get_by_pk(root.id)
+
+    monkeypatch.setattr(
+        EnhancementSQLRepository, "get_supersession_chain_head", stale_head
+    )
+
+    async with service.sql_uow:
+        results = [
+            await service.handle_enhancement_result_entry(e, acl)
+            for e in (winner, fork, unrelated)
+        ]
+        await service.sql_uow.commit()
+
+    assert results == [
+        (PendingEnhancementStatus.COMPLETED, "Enhancement added."),
+        (
+            PendingEnhancementStatus.FAILED,
+            f"Enhancement {root.id} has already been superseded.",
+        ),
+        (PendingEnhancementStatus.COMPLETED, "Enhancement added."),
+    ]
+    persisted = await EnhancementSQLRepository(session).find(reference_id=reference.id)
+    assert {e.id for e in persisted} == {root.id, winner.id, unrelated.id}
+
+
 async def test_find_exact_duplicate_counts_superseded_enhancements(
     session: AsyncSession,
 ):
