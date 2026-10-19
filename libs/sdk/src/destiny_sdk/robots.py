@@ -415,6 +415,9 @@ class RobotEntitlement(StrEnum):
     RAW_ENHANCEMENT_WRITER = auto()
     """The robot is entitled to return raw enhancements."""
 
+    ENHANCEMENT_SUPERSESSION_WRITER = auto()
+    """The robot is entitled to supersede existing enhancements."""
+
 
 class _RobotBase(BaseModel):
     """

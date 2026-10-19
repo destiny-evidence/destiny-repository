@@ -14,6 +14,7 @@ from app.domain.references.models.models import (
     Enhancement,
     EnhancementType,
     ExternalIdentifierType,
+    LinkedDataProjection,
     LinkedExternalIdentifier,
     Reference,
     Visibility,
@@ -849,8 +850,7 @@ class TestLinkedDataProjection:
 
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
 
-        assert result.linked_data_content is not None
-        assert result.linked_data_content == linked_data_enhancement.content
+        assert result.linked_data_contents == [linked_data_enhancement.content]
 
     def test_reference_without_linked_data(self):
         reference = ReferenceFactory.build(
@@ -864,9 +864,9 @@ class TestLinkedDataProjection:
 
         result = ReferenceSearchFieldsProjection.get_from_reference(reference)
 
-        assert result.linked_data_content is None
+        assert result.linked_data_contents == []
 
-    def test_highest_priority_linked_data_wins(self):
+    def test_all_linked_data_enhancements_collected(self):
         reference_id = uuid7()
 
         older = EnhancementFactory.build(
@@ -911,15 +911,80 @@ class TestLinkedDataProjection:
             ),
         )
 
+        from_duplicate = EnhancementFactory.build(
+            reference_id=uuid7(),
+            content=LinkedDataEnhancementFactory.build(
+                data={
+                    "@context": "https://vocab.esea.education/context/v1.jsonld",
+                    "@type": "Investigation",
+                    "documentType": {
+                        "@type": "DocumentTypeCodingAnnotation",
+                        "codedValue": {"@id": "esea:C00009"},
+                        "status": "evrepo:coded",
+                    },
+                },
+            ),
+        )
+
         reference = ReferenceFactory.build(
             id=reference_id,
             enhancements=[older, newer],
+            duplicate_references=[
+                ReferenceFactory.build(
+                    id=from_duplicate.reference_id,
+                    enhancements=[from_duplicate],
+                    duplicate_references=[],
+                )
+            ],
         )
 
-        result = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        result = ReferenceSearchFieldsProjection.get_from_reference(
+            DeduplicatedReferenceProjection.get_from_reference(reference)
+        )
 
-        # Newer wins — should have the newer enhancement's content
-        assert result.linked_data_content == newer.content
+        assert len(result.linked_data_contents) == 3
+        for content in (older.content, newer.content, from_duplicate.content):
+            assert content in result.linked_data_contents
+
+
+class TestLinkedDataProjectionUnion:
+    """Test LinkedDataProjection.union."""
+
+    def test_union_merges_and_deduplicates_each_field(self):
+        first = LinkedDataProjection(
+            concepts={"c1", "c2"},
+            labels={"Label 1", "Label 2"},
+            evaluated_properties={"p1"},
+            countries={"GB"},
+            country_wb_regions={"ECS"},
+        )
+        second = LinkedDataProjection(
+            concepts={"c2", "c3"},
+            labels={"Label 2", "Label 3"},
+            evaluated_properties={"p2"},
+            countries={"GB", "KE"},
+            country_wb_regions={"ECS", "SSF"},
+        )
+
+        result = LinkedDataProjection.union([first, second])
+
+        assert result.concepts == {"c1", "c2", "c3"}
+        assert result.labels == {"Label 1", "Label 2", "Label 3"}
+        assert result.evaluated_properties == {"p1", "p2"}
+        assert result.countries == {"GB", "KE"}
+        assert result.country_wb_regions == {"ECS", "SSF"}
+
+    def test_union_of_nothing_is_empty(self):
+        assert LinkedDataProjection.union([]) == LinkedDataProjection()
+
+    def test_union_does_not_mutate_inputs(self):
+        first = LinkedDataProjection(concepts={"c1"})
+        second = LinkedDataProjection(concepts={"c2"})
+
+        LinkedDataProjection.union([first, second])
+
+        assert first.concepts == {"c1"}
+        assert second.concepts == {"c2"}
 
 
 class TestDeduplicatedReferenceProjection:

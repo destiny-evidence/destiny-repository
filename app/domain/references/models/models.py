@@ -2,6 +2,7 @@
 
 import datetime
 import json
+from collections.abc import Iterable
 from enum import StrEnum, auto
 from typing import Annotated, Any, Literal, Self
 from uuid import UUID
@@ -880,13 +881,12 @@ class ReferenceSearchFields(ProjectedBaseModel):
         ),
     )
 
-    linked_data_content: destiny_sdk.enhancements.LinkedDataEnhancement | None = Field(
-        default=None,
+    linked_data_contents: list[destiny_sdk.enhancements.LinkedDataEnhancement] = Field(
+        default_factory=list,
         exclude=True,
         description=(
-            "The content of the highest-priority LINKED_DATA enhancement, if any. "
-            "This is the raw enhancement content before projection into searchable "
-            "concepts and labels."
+            "The content of every LINKED_DATA enhancement on the reference, before "
+            "projection into searchable concepts and labels."
         ),
     )
 
@@ -1417,6 +1417,18 @@ class LinkedDataProjection(ProjectedBaseModel):
     evaluated_properties: set[str] = Field(default_factory=set)
     countries: set[str] = Field(default_factory=set)
     country_wb_regions: set[str] = Field(default_factory=set)
+
+    @classmethod
+    def union(cls, projections: Iterable[Self]) -> Self:
+        """Combine projections by taking the union of each field."""
+        merged = cls()
+        for projection in projections:
+            merged.concepts |= projection.concepts
+            merged.labels |= projection.labels
+            merged.evaluated_properties |= projection.evaluated_properties
+            merged.countries |= projection.countries
+            merged.country_wb_regions |= projection.country_wb_regions
+        return merged
 
 
 class ReferenceSearchProjection(SQLAttributeMixin):

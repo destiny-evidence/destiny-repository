@@ -31,6 +31,11 @@ class ReferenceAccessControlService(GenericAccessControlService):
         """Whether the principal may contribute raw enhancements to a reference."""
         return Entitlement.RAW_ENHANCEMENT_WRITER in self._entitlements
 
+    @property
+    def may_supersede_enhancements(self) -> bool:
+        """Whether the principal may supersede existing enhancements."""
+        return Entitlement.ENHANCEMENT_SUPERSESSION_WRITER in self._entitlements
+
     def _redact_full_text(self, enhancements: list[Enhancement]) -> list[Enhancement]:
         """Drop full-text enhancements unless the principal is entitled to them."""
         if Entitlement.FULL_TEXT in self._entitlements:

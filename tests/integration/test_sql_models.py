@@ -1,15 +1,22 @@
 """Integration tests for SQL interface."""
 
 import datetime
+from unittest.mock import AsyncMock
 from uuid import UUID, uuid4, uuid7
 
 import pytest
 from destiny_sdk.imports import ImportRecordStatus
 from destiny_sdk.visibility import Visibility
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.entitlements import Entitlement
+from app.core.exceptions import (
+    DuplicateEnhancementError,
+    InvalidSupersessionError,
+    SQLIntegrityError,
+    SQLNotFoundError,
+)
 from app.domain.imports.models.models import (
     ImportBatchStatus,
     ImportResultStatus,
@@ -30,6 +37,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
+    EnhancementType,
     PendingEnhancement,
     PendingEnhancementStatus,
     Reference,
@@ -55,9 +63,27 @@ from app.domain.references.repository import (
     ReferenceDuplicateDecisionSQLRepository,
     ReferenceSQLRepository,
 )
+from app.domain.references.service import ReferenceService
+from app.domain.references.services.access_control_service import (
+    ReferenceAccessControlService,
+)
+from app.domain.references.services.anti_corruption_service import (
+    ReferenceAntiCorruptionService,
+)
+from app.domain.references.services.deduplication_service import (
+    DeduplicationService,
+)
 from app.domain.robots.models.models import Robot
 from app.domain.robots.models.sql import Robot as SQLRobot
-from tests.factories import AbstractContentEnhancementFactory, EnhancementFactory
+from app.persistence.es.uow import AsyncESUnitOfWork
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
+from tests.factories import (
+    AbstractContentEnhancementFactory,
+    AnnotationEnhancementFactory,
+    DOIIdentifierFactory,
+    EnhancementFactory,
+    LinkedExternalIdentifierFactory,
+)
 
 
 async def test_enhancement_interface(
@@ -385,6 +411,50 @@ async def test_get_supersession_chain_of_lone_root(
     assert head.id == root.id
 
 
+async def test_add_enhancement_builds_supersession_chain(session: AsyncSession):
+    """Successors added through the service join the chain behind its head."""
+    reference = await _add_reference(session)
+    (root,) = await _add_chain(session, reference, successors=0)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+    acl = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+
+    second = _enhancement(reference, supersedes=root.id)
+    await service.add_enhancement(second, acl)
+    third = _enhancement(reference, supersedes=second.id)
+    await service.add_enhancement(third, acl)
+
+    with pytest.raises(InvalidSupersessionError, match=str(third.id)):
+        await service.add_enhancement(_enhancement(reference, supersedes=root.id), acl)
+
+    revert = root.model_copy(update={"id": uuid7(), "supersedes": third.id})
+    await service.add_enhancement(revert, acl)
+
+    repo = EnhancementSQLRepository(session)
+    chain = await repo.get_supersession_chain(root.id)
+    assert [e.id for e in chain] == [root.id, second.id, third.id, revert.id]
+    assert all(e.root_id == root.id for e in chain)
+    assert (await repo.get_supersession_chain_head(root.id)).id == revert.id
+
+
+async def test_supersession_race_collides_on_supersedes(session: AsyncSession):
+    """A second successor of one head fails on the unique supersedes index."""
+    reference = await _add_reference(session)
+    root, _ = await _add_chain(session, reference, successors=1)
+    repo = EnhancementSQLRepository(session)
+
+    with pytest.raises(SQLIntegrityError) as exc_info:
+        await repo.add(_enhancement(reference, supersedes=root.id, root_id=root.id))
+
+    assert "supersedes" in exc_info.value.collision
+    await session.rollback()
+
+
 async def test_get_supersession_chain_not_found(session: AsyncSession):
     """An unknown enhancement id raises SQLNotFoundError."""
     repo = EnhancementSQLRepository(session)
@@ -393,6 +463,252 @@ async def test_get_supersession_chain_not_found(session: AsyncSession):
         await repo.get_supersession_chain(uuid7())
     with pytest.raises(SQLNotFoundError):
         await repo.get_supersession_chain_head(uuid7())
+
+
+@pytest.mark.parametrize("many", [False, True])
+async def test_reference_enhancements_are_chain_heads(
+    session: AsyncSession,
+    many: bool,  # noqa: FBT001
+):
+    """References load chain heads by default, for themselves and their duplicates."""
+    canonical = await _add_reference(session)
+    duplicate = await _add_reference(session)
+    decisions = ReferenceDuplicateDecisionSQLRepository(session)
+    await decisions.add(
+        ReferenceDuplicateDecision(
+            reference_id=canonical.id,
+            duplicate_determination=DuplicateDetermination.CANONICAL,
+            active_decision=True,
+        )
+    )
+    await decisions.add(
+        ReferenceDuplicateDecision(
+            reference_id=duplicate.id,
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            active_decision=True,
+            canonical_reference_id=canonical.id,
+        )
+    )
+    canonical_chain = await _add_chain(session, canonical, successors=2)
+    (lone_root,) = await _add_chain(session, canonical, successors=0)
+    duplicate_chain = await _add_chain(session, duplicate, successors=1)
+    repo = ReferenceSQLRepository(session)
+
+    async def load(preload: list) -> Reference:
+        session.expire_all()
+        if many:
+            (reference,) = await repo.get_by_pks([canonical.id], preload=preload)
+            return reference
+        return await repo.get_by_pk(canonical.id, preload=preload)
+
+    heads = await load(["enhancements", "duplicate_references"])
+    assert heads.enhancements is not None
+    assert heads.duplicate_references
+    assert {e.id for e in heads.enhancements} == {canonical_chain[-1].id, lone_root.id}
+    assert [e.id for e in heads.duplicate_references[0].enhancements or []] == [
+        duplicate_chain[-1].id
+    ]
+
+    everything = await load(["all_enhancements", "duplicate_references"])
+    assert everything.enhancements is not None
+    assert everything.duplicate_references
+    assert {e.id for e in everything.enhancements} == {
+        e.id for e in [*canonical_chain, lone_root]
+    }
+    assert {e.id for e in everything.duplicate_references[0].enhancements or []} == {
+        e.id for e in duplicate_chain
+    }
+
+    both = await load(["enhancements", "all_enhancements"])
+    assert {e.id for e in both.enhancements or []} == {
+        e.id for e in [*canonical_chain, lone_root]
+    }
+
+
+async def test_get_hydrated_loads_chain_heads_of_type(session: AsyncSession):
+    """Filtering hydrated references by type keeps only the chain heads."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(session, reference, successors=1)
+    await EnhancementSQLRepository(session).add(
+        EnhancementFactory.build(
+            reference_id=reference.id, content=AnnotationEnhancementFactory.build()
+        )
+    )
+    await session.commit()
+
+    (hydrated,) = await ReferenceSQLRepository(session).get_hydrated(
+        [reference.id], enhancement_types=[EnhancementType.ABSTRACT]
+    )
+
+    assert [e.id for e in hydrated.enhancements or []] == [chain[-1].id]
+
+
+async def test_reference_heads_load_does_not_join_reference(session: AsyncSession):
+    """
+    Batch-loading heads queries enhancements directly, like loading every enhancement.
+
+    Joining back to reference stops Postgres reading enhancements with a bitmap scan,
+    which made bulk loads markedly slower.
+    """
+    reference = await _add_reference(session)
+    await _add_chain(session, reference, successors=1)
+    statements: list[str] = []
+
+    def capture(*args: object) -> None:
+        statements.append(str(args[2]))
+
+    engine = session.bind.sync_engine
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        await ReferenceSQLRepository(session).get_by_pks(
+            [reference.id], preload=["enhancements"]
+        )
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+
+    (enhancement_load,) = [s for s in statements if "supersedes" in s]
+    assert "FROM reference" not in enhancement_load
+
+
+async def test_merge_heads_only_reference_keeps_superseded(session: AsyncSession):
+    """Merging a reference loaded with only chain heads fails rather than deleting."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(session, reference, successors=2)
+    repo = ReferenceSQLRepository(session)
+    heads_only = await repo.get_by_pk(reference.id, preload=["enhancements"])
+
+    with pytest.raises(SQLIntegrityError):
+        await repo.merge(heads_only)
+    await session.rollback()
+
+    found = await EnhancementSQLRepository(session).get_supersession_chain(chain[0].id)
+    assert [e.id for e in found] == [e.id for e in chain]
+
+
+async def test_add_enhancement_new_chain_may_restate_superseded_content(
+    session: AsyncSession,
+):
+    """A new chain may restate superseded content but not a head's, deleting nothing."""
+    reference = await _add_reference(session)
+    root, head = await _add_chain(session, reference, successors=1)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+
+    def restated(enhancement: Enhancement) -> Enhancement:
+        return Enhancement(
+            reference_id=reference.id,
+            **enhancement.model_dump(
+                include={"source", "visibility", "robot_version", "content"}
+            ),
+        )
+
+    with pytest.raises(DuplicateEnhancementError):
+        await service.add_enhancement(restated(head), ReferenceAccessControlService())
+
+    new_root = restated(root)
+    await service.add_enhancement(new_root, ReferenceAccessControlService())
+
+    repo = EnhancementSQLRepository(session)
+    chain = await repo.get_supersession_chain(root.id)
+    assert [e.id for e in chain] == [root.id, head.id]
+    assert (await repo.get_by_pk(new_root.id)).root_id == new_root.id
+
+
+async def test_enhancement_result_entry_fork_does_not_abort_batch(
+    session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+):
+    """A batch entry forking a chain fails alone; the rest of the batch commits."""
+    reference = await _add_reference(session)
+    root = await EnhancementSQLRepository(session).add(_enhancement(reference))
+    await session.commit()
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+    acl = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+    winner = _enhancement(reference, supersedes=root.id)
+    fork = _enhancement(reference, supersedes=root.id)
+    unrelated = _enhancement(reference)
+
+    # Both entries saw the root as the chain head, as two racing workers would,
+    # so the fork gets past validation and collides on the unique index.
+    async def stale_head(self: EnhancementSQLRepository, _: UUID) -> Enhancement:
+        return await self.get_by_pk(root.id)
+
+    monkeypatch.setattr(
+        EnhancementSQLRepository, "get_supersession_chain_head", stale_head
+    )
+
+    async with service.sql_uow:
+        results = [
+            await service.handle_enhancement_result_entry(e, acl)
+            for e in (winner, fork, unrelated)
+        ]
+        await service.sql_uow.commit()
+
+    assert results == [
+        (PendingEnhancementStatus.COMPLETED, "Enhancement added."),
+        (
+            PendingEnhancementStatus.FAILED,
+            f"Enhancement {root.id} has already been superseded.",
+        ),
+        (PendingEnhancementStatus.COMPLETED, "Enhancement added."),
+    ]
+    persisted = await EnhancementSQLRepository(session).find(reference_id=reference.id)
+    assert {e.id for e in persisted} == {root.id, winner.id, unrelated.id}
+
+
+async def test_find_exact_duplicate_counts_superseded_enhancements(
+    session: AsyncSession,
+):
+    """An import restating superseded content is an exact duplicate."""
+    doi = DOIIdentifierFactory.build()
+    existing_id, incoming_id = uuid7(), uuid7()
+    existing = await ReferenceSQLRepository(session).add(
+        Reference(
+            id=existing_id,
+            identifiers=[
+                LinkedExternalIdentifierFactory.build(
+                    reference_id=existing_id, identifier=doi
+                )
+            ],
+        )
+    )
+    root, _ = await _add_chain(session, existing, successors=1)
+    incoming = Reference(
+        id=incoming_id,
+        identifiers=[
+            LinkedExternalIdentifierFactory.build(
+                reference_id=incoming_id, identifier=doi
+            )
+        ],
+        enhancements=[
+            Enhancement(
+                reference_id=incoming_id,
+                **root.model_dump(
+                    include={"source", "visibility", "robot_version", "content"}
+                ),
+            )
+        ],
+    )
+    sql_uow = AsyncSqlUnitOfWork(session)
+    service = DeduplicationService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        sql_uow,
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+
+    async with sql_uow:
+        duplicate = await service.find_exact_duplicate(incoming)
+
+    assert duplicate is not None
+    assert duplicate.id == existing_id
 
 
 async def test_reference_get_with_duplicates(session: AsyncSession):
