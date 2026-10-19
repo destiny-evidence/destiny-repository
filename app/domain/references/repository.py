@@ -158,6 +158,7 @@ class ReferenceRepositoryBase(
 _reference_sql_preloadable = Literal[
     "identifiers",
     "enhancements",
+    "all_enhancements",
     "duplicate_references",
     "canonical_reference",
     "duplicate_decision",

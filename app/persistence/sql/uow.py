@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, ParamSpec, Self, TypeVar, cast
 
 from opentelemetry import trace
 from sqlalchemy.exc import PendingRollbackError
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, AsyncSessionTransaction
 
 from app.core.telemetry.attributes import Attributes
 from app.core.telemetry.logger import get_logger
@@ -119,6 +119,10 @@ class AsyncSqlUnitOfWork(AsyncUnitOfWorkBase):
             logger.warning(
                 "Session commit failed; this session has already been rolled back."
             )
+
+    def savepoint(self) -> AsyncSessionTransaction:
+        """Open a savepoint, so a failure within it does not abort the session."""
+        return self.session.begin_nested()
 
 
 T = TypeVar("T")
