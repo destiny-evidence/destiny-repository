@@ -1,6 +1,7 @@
 """Objects used to interface with SQL implementations."""
 
 import datetime
+from functools import cache
 from typing import Any, Self
 from uuid import UUID
 
@@ -19,11 +20,18 @@ from sqlalchemy import (
     String,
     UniqueConstraint,
     exists,
+    select,
     text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.exc import MissingGreenlet
-from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
+from sqlalchemy.orm import (
+    Mapped,
+    aliased,
+    foreign,
+    mapped_column,
+    relationship,
+)
 
 from app.core.exceptions import (
     SQLPreloadError,
@@ -117,8 +125,27 @@ class Reference(GenericSQLPersistence[DomainReference]):
         back_populates="reference",
         cascade="all, delete, delete-orphan",
     )
+
+    @staticmethod
+    @cache
+    def _head_enhancement() -> type["Enhancement"]:
+        """Build the heads subquery targeted by enhancements."""
+        return aliased(
+            Enhancement,
+            select(Enhancement)
+            .where(Enhancement.is_head())
+            .subquery("head_enhancement"),
+        )
+
+    # The default view of a reference: the head of each supersession chain
     enhancements: Mapped[list["Enhancement"]] = relationship(
-        "Enhancement", back_populates="reference", cascade="all, delete, delete-orphan"
+        lambda: Reference._head_enhancement(),
+        primaryjoin=lambda: Reference.id
+        == foreign(Reference._head_enhancement().reference_id),
+        viewonly=True,
+    )
+    all_enhancements: Mapped[list["Enhancement"]] = relationship(
+        "Enhancement", back_populates="reference", cascade="all, delete"
     )
     duplicate_decision: Mapped["ReferenceDuplicateDecision"] = relationship(
         "ReferenceDuplicateDecision",
@@ -170,7 +197,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
                 ExternalIdentifier.from_domain(identifier)
                 for identifier in domain_obj.identifiers or []
             ],
-            enhancements=[
+            all_enhancements=[
                 Enhancement.from_domain(enhancement)
                 for enhancement in domain_obj.enhancements or []
             ],
@@ -181,16 +208,21 @@ class Reference(GenericSQLPersistence[DomainReference]):
     ) -> DomainReference:
         """Convert the persistence model into a Domain Reference object."""
         try:
+            enhancements = (
+                self.all_enhancements
+                if "all_enhancements" in (preload or [])
+                else self.enhancements
+                if "enhancements" in (preload or [])
+                else None
+            )
             return DomainReference(
                 id=self.id,
                 visibility=self.visibility,
                 identifiers=[identifier.to_domain() for identifier in self.identifiers]
                 if "identifiers" in (preload or [])
                 else None,
-                enhancements=[
-                    enhancement.to_domain() for enhancement in self.enhancements
-                ]
-                if "enhancements" in (preload or [])
+                enhancements=[enhancement.to_domain() for enhancement in enhancements]
+                if enhancements is not None
                 else None,
                 # Strip the opposite side of the self-join to avoid accessing
                 # relationships the SQL layer didn't eagerly load.
@@ -337,7 +369,7 @@ class Enhancement(GenericSQLPersistence[DomainEnhancement]):
     content: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     reference: Mapped["Reference"] = relationship(
-        "Reference", back_populates="enhancements"
+        "Reference", back_populates="all_enhancements"
     )
 
     __table_args__ = (

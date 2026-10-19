@@ -501,7 +501,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 for identifier in reference.identifiers
                 if identifier.identifier.identifier_type != ExternalIdentifierType.OTHER
             ],
-            preload=["identifiers", "enhancements", "duplicate_decision"],
+            preload=["identifiers", "all_enhancements", "duplicate_decision"],
         )
 
         # Now, find if any candidates are perfect supersets of the new reference.
