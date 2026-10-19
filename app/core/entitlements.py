@@ -9,3 +9,4 @@ class Entitlement(StrEnum):
     FULL_TEXT = auto()
     RAW_ENHANCEMENT_WRITER = auto()
     ROBOT_ENTITLEMENT_WRITER = auto()
+    ENHANCEMENT_SUPERSESSION_WRITER = auto()
