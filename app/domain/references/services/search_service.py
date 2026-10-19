@@ -121,8 +121,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         Count facet terms with optional axis scoping and sibling-aware selections.
 
         Concept counts are limited to ``vocabulary_uri``'s concepts, so it is
-        required for the concepts facet. Country and region values carry no
-        vocabulary, so their counts are never limited.
+        required for the concepts facet.
         """
         max_buckets = settings.es_aggregation_max_buckets
         counting = dict.fromkeys(facets, FacetCounting())
