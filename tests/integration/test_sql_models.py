@@ -564,6 +564,41 @@ async def test_add_enhancement_new_chain_cannot_restate_superseded_content(
     assert [e.id for e in chain] == [root.id, successor.id]
 
 
+async def test_enhancement_result_entry_fork_does_not_abort_batch(
+    session: AsyncSession,
+):
+    """A batch entry forking a chain fails alone; the rest of the batch commits."""
+    reference = await _add_reference(session)
+    root = await EnhancementSQLRepository(session).add(_enhancement(reference))
+    await session.commit()
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+    winner = _enhancement(reference, supersedes=root.id, root_id=root.id)
+    fork = _enhancement(reference, supersedes=root.id, root_id=root.id)
+    unrelated = _enhancement(reference)
+
+    async with service.sql_uow:
+        results = [
+            await service.handle_enhancement_result_entry(e)
+            for e in (winner, fork, unrelated)
+        ]
+        await service.sql_uow.commit()
+
+    assert results == [
+        (PendingEnhancementStatus.COMPLETED, "Enhancement added."),
+        (
+            PendingEnhancementStatus.FAILED,
+            f"Enhancement {root.id} has already been superseded.",
+        ),
+        (PendingEnhancementStatus.COMPLETED, "Enhancement added."),
+    ]
+    persisted = await EnhancementSQLRepository(session).find(reference_id=reference.id)
+    assert {e.id for e in persisted} == {root.id, winner.id, unrelated.id}
+
+
 async def test_find_exact_duplicate_counts_superseded_enhancements(
     session: AsyncSession,
 ):
