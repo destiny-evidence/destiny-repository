@@ -221,14 +221,12 @@ API Facet Counts
 
 The `facets endpoint <https://api.evidence-repository.org/redoc#tag/search/operation/count_facets_for_search_v1_references_search_facets__get>`_ at `/v1/references/search/facets/` returns per-facet term counts across the references matching the search.
 
-Accepts the same filter parameters as `/v1/references/search/` plus one or more ``facet`` values and a required ``vocabulary``. Only the requested facet types appear in the response.
-
-``concepts`` counts only the concepts in ``vocabulary``. A reference can carry coding under several vocabularies, and concepts from the others are not counted. Countries and World Bank regions are not vocabulary-specific, so their counts include every value.
+Accepts the same filter parameters as `/v1/references/search/` plus one or more ``facet`` values. Only the requested facet types appear in the response. ``facet=concepts`` also requires a ``vocabulary`` URI, and counts only that vocabulary's concepts.
 
 .. code-block::
 
     # Count the vocabulary's concepts across all references matching a query:
-    ?q=climate&facet=concepts&vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
+    ?q=climate&facet=concepts&vocabulary=https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl
 
 Sibling-aware facet counts
 __________________________
@@ -251,7 +249,7 @@ For example, ``concept=Botany,Zoology`` AND ``concept=Africa`` with ``facet=conc
     ?q=*&concept=https://vocab.evidence-repository.org/Botany,https://vocab.evidence-repository.org/Zoology
         &concept=https://vocab.evidence-repository.org/Africa
         &facet=concepts
-        &vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
+        &vocabulary=https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl
 
 Restrictions (400 on violation):
 
@@ -263,7 +261,7 @@ Restrictions (400 on violation):
 
 .. code-block::
 
-    ?q=*&country=KE&facet=countries&vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
+    ?q=*&country=KE&facet=countries
 
 Restrictions (400 on violation):
 
@@ -277,7 +275,7 @@ Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.Refe
 Limitations
 """"""""""""
 
-Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). Concepts from other vocabularies don't count towards this limit, so ``concepts`` can only be truncated if the requested vocabulary itself has more concepts than the limit. If a sibling group's vocabulary set exceeds the limit, the request is refused rather than silently truncated.
+Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). If the requested vocabulary's concept set exceeds the limit, the request is refused rather than silently truncated.
 
 .. _cross-facets-procedure:
 

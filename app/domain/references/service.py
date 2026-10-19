@@ -1576,7 +1576,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query: SearchQuery,
         facets: Sequence[FacetType],
-        vocabulary_uri: str,
+        vocabulary_uri: str | None = None,
         axes: tuple[str, str] | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """Count occurrences per facet across references matching the query."""

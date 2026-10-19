@@ -114,18 +114,22 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         self,
         query: SearchQuery,
         facets: Sequence[FacetType],
-        vocabulary_uri: str,
+        vocabulary_uri: str | None,
         axes: tuple[str, str] | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """
         Count facet terms with optional axis scoping and sibling-aware selections.
 
-        Concept counts are limited to ``vocabulary_uri``'s concepts. Country and
-        region values carry no vocabulary, so their counts are never limited.
+        Concept counts are limited to ``vocabulary_uri``'s concepts, so it is
+        required for the concepts facet. Country and region values carry no
+        vocabulary, so their counts are never limited.
         """
         max_buckets = settings.es_aggregation_max_buckets
         counting = dict.fromkeys(facets, FacetCounting())
         if FacetType.CONCEPTS in counting:
+            if not vocabulary_uri:
+                msg = "`vocabulary=` is required when requesting the `concepts` facet."
+                raise ParseError(msg)
             groups: tuple[SiblingGroup, ...] = ()
             if query.linked_data_concept_filters:
                 groups = await self._resolve_concept_sibling_groups(

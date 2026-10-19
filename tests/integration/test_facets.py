@@ -252,7 +252,7 @@ async def test_country_facet_counts_unrestricted(
     """Country buckets are keyed by ISO-2 code with descending counts."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "*", "facet": "countries", "vocabulary": VOCAB_URI},
+        params={"q": "*", "facet": "countries"},
     )
     assert response.status_code == status.HTTP_200_OK
     buckets = response.json()["countries"]
@@ -271,7 +271,7 @@ async def test_region_facet_counts_unrestricted(
     """World Bank region buckets are keyed by region ID with descending counts."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "*", "facet": "country_wb_regions", "vocabulary": VOCAB_URI},
+        params={"q": "*", "facet": "country_wb_regions"},
     )
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["country_wb_regions"] == [
@@ -328,12 +328,7 @@ async def test_country_filter_with_facet_returns_sibling_aware_counts(
     """Filtering on a country must not bias the country facet's counts."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params=[
-            ("q", "*"),
-            ("country", COUNTRY_KE),
-            ("facet", "countries"),
-            ("vocabulary", VOCAB_URI),
-        ],
+        params=[("q", "*"), ("country", COUNTRY_KE), ("facet", "countries")],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     # Without sibling-aware counting we'd see only KE=2 + co-occurring UG=1 and
@@ -357,7 +352,6 @@ async def test_region_filter_with_facet_returns_sibling_aware_counts(
             ("q", "*"),
             ("country_wb_region", REGION_SSF),
             ("facet", "country_wb_regions"),
-            ("vocabulary", VOCAB_URI),
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
@@ -382,7 +376,6 @@ async def test_multiple_country_filters_with_country_facet_rejected(
             ("country", COUNTRY_KE),
             ("country", COUNTRY_UG),
             ("facet", "countries"),
-            ("vocabulary", VOCAB_URI),
         ],
     )
     assert response.status_code == status.HTTP_400_BAD_REQUEST
@@ -592,11 +585,11 @@ async def test_concept_counts_scoped_to_axes_drop_unmappable_references(
     assert _counts_by_concept(response.json()) == {BOTANY: 1, ZOOLOGY: 1}
 
 
-async def test_literal_only_axes_scope_counts(
+async def test_literal_only_axes_scope_without_a_vocabulary(
     client: AsyncClient,
     partly_mappable_references: None,  # noqa: ARG001
 ) -> None:
-    """Two literal axes scope counts without needing any concept scheme."""
+    """Two literal axes resolve with no `vocabulary=`, as the route documents."""
     response = await client.get(
         "/v1/references/search/facets/",
         params=[
@@ -604,12 +597,39 @@ async def test_literal_only_axes_scope_counts(
             ("facet", "countries"),
             ("axes", "countries"),
             ("axes", "country_wb_regions"),
-            ("vocabulary", VOCAB_URI),
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     # KE is on three references; only the two carrying a region can be plotted.
     assert response.json()["countries"] == [{"country": COUNTRY_KE, "count": 2}]
+
+
+async def test_concept_counts_require_a_vocabulary(
+    client: AsyncClient,
+) -> None:
+    """Concepts are only counted within a vocabulary, so one must be supplied."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "*", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.text
+    assert "vocabulary" in response.text
+
+
+async def test_scoped_facets_reject_scheme_axis_without_vocabulary(
+    client: AsyncClient,
+) -> None:
+    """A scheme axis on `/facets/` needs `vocabulary=`, just like cross-facets."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "concepts"),
+            *MAP_AXIS_PARAMS,
+        ],
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.text
+    assert "vocabulary" in response.text
 
 
 async def test_concept_counts_without_axes_are_unscoped(

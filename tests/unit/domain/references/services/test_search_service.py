@@ -352,7 +352,7 @@ async def test_aggregate_facets_naive_when_concepts_not_requested(
             ],
         ),
         facets=(FacetType.COUNTRIES,),
-        vocabulary_uri=VOCAB_URI,
+        vocabulary_uri=None,
     )
     vocab_client_with_siblings.get_concepts.assert_not_called()
     vocab_client_with_siblings.get_concept_scheme_members.assert_not_called()
@@ -438,7 +438,7 @@ async def test_aggregate_facets_builds_universal_groups_for_countries(
             ],
         ),
         facets=(FacetType.COUNTRIES,),
-        vocabulary_uri=VOCAB_URI,
+        vocabulary_uri=None,
     )
     (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
     groups = counting[FacetType.COUNTRIES].sibling_groups
@@ -462,7 +462,7 @@ async def test_aggregate_facets_skips_country_groups_when_facet_not_requested(
             ],
         ),
         facets=(),
-        vocabulary_uri=VOCAB_URI,
+        vocabulary_uri=None,
     )
     (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
     assert counting == {}
@@ -485,7 +485,7 @@ async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
                 ],
             ),
             facets=(FacetType.COUNTRIES,),
-            vocabulary_uri=VOCAB_URI,
+            vocabulary_uri=None,
         )
 
 
