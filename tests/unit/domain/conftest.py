@@ -1,4 +1,4 @@
-import contextlib
+from contextlib import nullcontext
 from uuid import UUID, uuid7
 
 import pytest
@@ -344,9 +344,8 @@ class FakeUnitOfWork:
     async def rollback(self):
         pass
 
-    @contextlib.asynccontextmanager
-    async def savepoint(self):
-        yield
+    def savepoint(self):
+        return nullcontext()
 
 
 def __fake_import_record(id: UUID) -> ImportRecord:
