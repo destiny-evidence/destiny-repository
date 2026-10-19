@@ -5,11 +5,9 @@ from functools import cache
 from typing import ClassVar
 from uuid import UUID
 
-import destiny_sdk
 from opentelemetry.trace import get_tracer
 
 from app.core.config import ESIndexingOperation, get_settings
-from app.core.exceptions import VocabularyFetchError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -61,10 +59,12 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
 
         linked_data_projection = None
         if search_fields.linked_data_contents:
+            service = _get_linked_data_projection_service()
             linked_data_projection = LinkedDataProjection.union(
-                await ReferenceSynchronizer._project_linked_data(
-                    deduped.id, search_fields.linked_data_contents
-                )
+                [
+                    await service.project(content)
+                    for content in search_fields.linked_data_contents
+                ]
             )
 
         return ReferenceSearchProjection(
@@ -78,31 +78,6 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
             search_fields=search_fields,
             linked_data_projection=linked_data_projection,
         )
-
-    @staticmethod
-    async def _project_linked_data(
-        reference_id: UUID,
-        contents: list[destiny_sdk.enhancements.LinkedDataEnhancement],
-    ) -> list[LinkedDataProjection]:
-        """
-        Project each linked data enhancement, skipping any that cannot be projected.
-
-        A single unprojectable enhancement (e.g. a vocabulary that no longer
-        resolves) should not drop the whole reference from search.
-        """
-        service = _get_linked_data_projection_service()
-        projections = []
-        for content in contents:
-            try:
-                projections.append(await service.project(content))
-            except (VocabularyFetchError, ValueError) as exc:
-                logger.warning(
-                    "Skipping linked data enhancement that could not be projected.",
-                    reference_id=str(reference_id),
-                    vocabulary_uri=str(content.vocabulary_uri),
-                    exc=repr(exc),
-                )
-        return projections
 
     @tracer.start_as_current_span("Sync Reference SQL->ES")
     async def sql_to_es(self, reference_id: UUID) -> ReferenceSearchProjection:

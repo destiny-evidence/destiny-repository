@@ -885,9 +885,8 @@ class ReferenceSearchFields(ProjectedBaseModel):
         default_factory=list,
         exclude=True,
         description=(
-            "The content of every LINKED_DATA enhancement on the reference. "
-            "This is the raw enhancement content before projection into searchable "
-            "concepts and labels."
+            "The content of every LINKED_DATA enhancement on the reference, before "
+            "projection into searchable concepts and labels."
         ),
     )
 
