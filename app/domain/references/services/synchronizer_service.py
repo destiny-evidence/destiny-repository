@@ -8,6 +8,7 @@ from uuid import UUID
 from opentelemetry.trace import get_tracer
 
 from app.core.config import ESIndexingOperation, get_settings
+from app.core.exceptions import ProjectionError
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
@@ -60,12 +61,16 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
         linked_data_projection = None
         if search_fields.linked_data_contents:
             service = _get_linked_data_projection_service()
-            linked_data_projection = LinkedDataProjection.union(
-                [
-                    await service.project(content)
-                    for content in search_fields.linked_data_contents
-                ]
-            )
+            try:
+                linked_data_projection = LinkedDataProjection.union(
+                    [
+                        await service.project(content)
+                        for content in search_fields.linked_data_contents
+                    ]
+                )
+            except Exception as exc:
+                msg = "Failed to project linked data for Reference"
+                raise ProjectionError(msg) from exc
 
         return ReferenceSearchProjection(
             id=deduped.id,
@@ -115,6 +120,27 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
             chunk_size=chunk_size,
         )
 
+        failed_ids: list[UUID] = []
+
+        async def project_or_record_failure(
+            reference: Reference,
+        ) -> ReferenceSearchProjection | None:
+            """
+            Project a reference, recording a failure instead of raising.
+
+            One unprojectable reference should not stop the rest of the bulk from
+            indexing. Its existing document is left as it was.
+            """
+            try:
+                return await self._to_indexable(reference)
+            except ProjectionError:
+                logger.exception(
+                    "Failed to project reference for indexing",
+                    reference_id=str(reference.id),
+                )
+                failed_ids.append(reference.id)
+                return None
+
         async def reference_generator() -> (
             AsyncGenerator[ReferenceSearchProjection, None]
         ):
@@ -128,7 +154,8 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
                 )
                 for reference in references:
                     if reference.is_canonical_like:
-                        yield await self._to_indexable(reference)
+                        if indexable := await project_or_record_failure(reference):
+                            yield indexable
                     elif reference.duplicate_decision and (
                         canonical_id := (
                             reference.duplicate_decision.canonical_reference_id
@@ -143,10 +170,21 @@ class ReferenceSynchronizer(GenericSynchronizer[Reference]):
                     preload=self._required_preloads,
                 )
                 for canonical in canonicals:
-                    if canonical.is_canonical_like:
-                        yield await self._to_indexable(canonical)
+                    if canonical.is_canonical_like and (
+                        indexable := await project_or_record_failure(canonical)
+                    ):
+                        yield indexable
 
-        return await self.es_uow.references.add_bulk(reference_generator())
+        added = await self.es_uow.references.add_bulk(reference_generator())
+
+        if failed_ids:
+            msg = (
+                f"Failed to project {len(failed_ids)} of {len(ids)} references for "
+                f"indexing: {', '.join(str(id_) for id_ in failed_ids)}"
+            )
+            raise ProjectionError(msg)
+
+        return added
 
 
 class RobotAutomationSynchronizer(GenericSynchronizer[RobotAutomation]):
