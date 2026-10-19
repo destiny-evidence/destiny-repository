@@ -130,15 +130,21 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             if not vocabulary_uri:
                 msg = "`vocabulary=` is required when requesting the `concepts` facet."
                 raise ParseError(msg)
+            concepts = await self._vocab_client.get_concepts(vocabulary_uri)
+            if len(concepts) > max_buckets:
+                msg = (
+                    f"Vocabulary {vocabulary_uri!r} has {len(concepts)} concepts, "
+                    f"exceeding max_buckets={max_buckets}. Counts would be silently "
+                    "truncated; refusing."
+                )
+                raise ParseError(msg)
             groups: tuple[SiblingGroup, ...] = ()
             if query.linked_data_concept_filters:
                 groups = await self._resolve_concept_sibling_groups(
                     vocabulary_uri, query.linked_data_concept_filters
                 )
-                self._validate_groups_against_max_buckets(groups, max_buckets)
             counting[FacetType.CONCEPTS] = FacetCounting(
-                include=await self._vocab_client.get_concepts(vocabulary_uri),
-                sibling_groups=groups,
+                include=concepts, sibling_groups=groups
             )
         if query.linked_data_country_filters and FacetType.COUNTRIES in counting:
             counting[FacetType.COUNTRIES] = FacetCounting(
@@ -264,23 +270,6 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                 "fewer members."
             )
             raise ParseError(msg)
-
-    @staticmethod
-    def _validate_groups_against_max_buckets(
-        groups: Sequence[SiblingGroup], max_buckets: int
-    ) -> None:
-        """Refuse if any enumerated group would exceed ``max_buckets``."""
-        for i, group in enumerate(groups):
-            siblings = group.siblings_including_selected
-            if siblings is None:
-                continue
-            if len(siblings) > max_buckets:
-                msg = (
-                    f"Sibling group {i} has {len(siblings)} values (selected "
-                    f"+ siblings), exceeding max_buckets={max_buckets}. Counts "
-                    "would be silently truncated; refusing."
-                )
-                raise SiblingGroupingError(msg)
 
     @staticmethod
     def _universal_sibling_groups(

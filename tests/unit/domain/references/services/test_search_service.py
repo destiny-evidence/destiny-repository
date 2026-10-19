@@ -17,13 +17,13 @@ from app.domain.references.models.models import (
     LinkedDataCountryFilter,
     PublicationYearRange,
     SearchQuery,
-    SiblingGroup,
 )
 from app.domain.references.repository import ReferenceESRepository
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.search_service import SearchService
+from app.domain.references.services.search_service import settings as search_settings
 from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
@@ -388,23 +388,19 @@ async def test_aggregate_facets_scopes_concepts_to_vocabulary(
     assert counting[FacetType.COUNTRIES] == FacetCounting()
 
 
-def test_validate_groups_against_max_buckets():
-    """Groups within the limit pass; over the limit raises SiblingGroupingError."""
-    groups = (
-        SiblingGroup(
-            selected=(BOTANY, ZOOLOGY),
-            siblings_including_selected=frozenset({BOTANY, ZOOLOGY, MICROBIOLOGY}),
-        ),
-    )
-    SearchService._validate_groups_against_max_buckets(groups, max_buckets=3)  # noqa: SLF001
-    with pytest.raises(SiblingGroupingError, match="exceeding max_buckets"):
-        SearchService._validate_groups_against_max_buckets(groups, max_buckets=2)  # noqa: SLF001
-
-
-def test_validate_groups_against_max_buckets_skips_universal_groups():
-    """Universal-mode groups have no enumerated cardinality; validator skips them."""
-    groups = (SiblingGroup(selected=("US", "GB"), siblings_including_selected=None),)
-    SearchService._validate_groups_against_max_buckets(groups, max_buckets=1)  # noqa: SLF001
+async def test_aggregate_facets_refuses_vocabulary_over_max_buckets(
+    vocab_client_with_siblings: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """More vocabulary concepts than buckets would truncate; refuse instead."""
+    max_buckets = len(_TOPICS | _REGIONS) - 1
+    monkeypatch.setattr(search_settings, "es_aggregation_max_buckets", max_buckets)
+    with pytest.raises(ParseError, match="exceeding max_buckets"):
+        await _service(vocab_client_with_siblings).aggregate_facets(
+            SearchQuery(query_string="*"),
+            facets=(FacetType.CONCEPTS,),
+            vocabulary_uri=VOCAB_URI,
+        )
 
 
 def test_universal_sibling_groups_happy_path():
