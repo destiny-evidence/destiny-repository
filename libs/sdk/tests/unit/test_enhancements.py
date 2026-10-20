@@ -455,6 +455,10 @@ def test_tombstone_enhancement_reason_is_optional():
         tombstone.enhancement_type == destiny_sdk.enhancements.EnhancementType.TOMBSTONE
     )
     assert tombstone.reason is None
+    explicit_null = destiny_sdk.enhancements.TombstoneEnhancement.model_validate(
+        {"reason": None}
+    )
+    assert explicit_null.reason is None
 
 
 def test_tombstone_enhancement_discriminator_resolution():

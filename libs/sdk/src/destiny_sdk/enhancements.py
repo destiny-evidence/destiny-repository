@@ -652,7 +652,12 @@ class RawEnhancement(BaseModel):
 
 
 class TombstoneEnhancement(BaseModel):
-    """An enhancement which withdraws the supersession chain it heads."""
+    """
+    An enhancement which withdraws the supersession chain it heads.
+
+    The repository refuses tombstones in robot results until it supports withdrawal,
+    and import files cannot carry one.
+    """
 
     enhancement_type: Literal[EnhancementType.TOMBSTONE] = EnhancementType.TOMBSTONE
     reason: str | None = Field(

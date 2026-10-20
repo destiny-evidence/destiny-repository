@@ -531,8 +531,14 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "entitlements",
+    [frozenset(), frozenset({Entitlement.RAW_ENHANCEMENT_WRITER})],
+    ids=["unentitled", "raw-entitled"],
+)
 async def test_process_robot_enhancement_batch_result_tombstone_enhancement(
     fake_uow,
+    entitlements,
 ):
     """A tombstone line gets an error for its reference instead of failing the batch."""
     tombstone_reference_id = uuid7()
@@ -577,7 +583,7 @@ async def test_process_robot_enhancement_batch_result_tombstone_enhancement(
             [tombstone_pending, other_pending],
             fake_add_enhancement,
             results,
-            ReferenceAccessControlService(),
+            ReferenceAccessControlService(entitlements),
         )
     ]
 
