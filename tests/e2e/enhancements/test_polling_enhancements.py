@@ -367,47 +367,61 @@ async def test_robot_withdraws_and_resurrects_chain(
     assert response.json()["entitlements"] == ["enhancement_supersession_writer"]
     robot = Robot(**response.json())
 
-    reference_id = uuid7()
+    reference_id, other_reference_id = uuid7(), uuid7()
     root = EnhancementFactory.build(
         reference_id=reference_id, content=AnnotationEnhancementFactory.build()
     )
-    pg_session.add(
-        SQLReference.from_domain(
-            ReferenceFactory.build(id=reference_id, enhancements=[root])
-        )
+    other_root = EnhancementFactory.build(
+        reference_id=other_reference_id,
+        content=AbstractContentEnhancementFactory.build(),
     )
+    for enhancement in (root, other_root):
+        pg_session.add(
+            SQLReference.from_domain(
+                ReferenceFactory.build(
+                    id=enhancement.reference_id, enhancements=[enhancement]
+                )
+            )
+        )
     await pg_session.commit()
 
     async def supersede(
         supersedes: UUID,
         content: EnhancementContent,
         expected_status: EnhancementRequestStatus,
+        other_content: EnhancementContent | None = None,
     ) -> None:
+        results = [
+            EnhancementFactory.build(
+                reference_id=reference_id, supersedes=supersedes, content=content
+            )
+        ]
+        if other_content:
+            results.append(
+                EnhancementFactory.build(
+                    reference_id=other_reference_id, content=other_content
+                )
+            )
         request_id = await _create_enhancement_request(
-            destiny_client_v1, str(robot.id), [str(reference_id)]
+            destiny_client_v1, str(robot.id), [str(r.reference_id) for r in results]
         )
         batch = _create_client(repo_url).poll_robot_enhancement_batch(
-            robot_id=robot.id, limit=1
+            robot_id=robot.id, limit=len(results)
         )
         assert batch is not None
-        result = Enhancement(
-            **EnhancementFactory.build(
-                reference_id=reference_id, supersedes=supersedes, content=content
-            ).model_dump()
-        )
         await _upload_robot_result(
             signed_url_client,
             batch.result_storage_url,
             str(batch.id),
-            result.to_jsonl(),
+            "\n".join(Enhancement(**r.model_dump()).to_jsonl() for r in results),
             repo_url,
         )
         await _wait_for_enhancement_request_status(
             destiny_client_v1, request_id, expected_status
         )
 
-    async def shown_enhancements() -> list[dict]:
-        response = await destiny_client_v1.get(f"/references/{reference_id}/")
+    async def shown_enhancements(ref_id: UUID = reference_id) -> list[dict]:
+        response = await destiny_client_v1.get(f"/references/{ref_id}/")
         assert response.status_code == 200
         return response.json()["enhancements"]
 
@@ -427,9 +441,14 @@ async def test_robot_withdraws_and_resurrects_chain(
     await supersede(
         tombstone_id,
         AbstractContentEnhancementFactory.build(),
-        EnhancementRequestStatus.FAILED,
+        EnhancementRequestStatus.PARTIAL_FAILED,
+        other_content=LocationEnhancementFactory.build(),
     )
     assert await shown_enhancements() == []
+    assert sorted(
+        e["content"]["enhancement_type"]
+        for e in await shown_enhancements(other_reference_id)
+    ) == ["abstract", "location"]
 
     await supersede(tombstone_id, root.content, EnhancementRequestStatus.COMPLETED)
     (resurrected,) = await shown_enhancements()
