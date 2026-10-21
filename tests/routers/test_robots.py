@@ -13,6 +13,7 @@ from app.api.exception_handlers import (
     integrity_exception_handler,
     not_found_exception_handler,
 )
+from app.core.entitlements import Entitlement
 from app.core.exceptions import IntegrityError, NotFoundError
 from app.domain.robots import routes as robots
 from app.domain.robots.models.sql import Robot as SQLRobot
@@ -133,6 +134,44 @@ async def test_update_robot_happy_path(
 
     await session.refresh(existing_robot)
     assert existing_robot.description == new_description
+
+
+@pytest.mark.parametrize(
+    ("existing", "submitted"),
+    [
+        pytest.param(set(), {Entitlement.ENHANCEMENT_SUPERSESSION_WRITER}, id="grant"),
+        pytest.param(
+            {Entitlement.FULL_TEXT, Entitlement.ENHANCEMENT_SUPERSESSION_WRITER},
+            {Entitlement.FULL_TEXT},
+            id="revoke",
+        ),
+        pytest.param({Entitlement.FULL_TEXT}, set(), id="clear"),
+    ],
+)
+async def test_update_robot_stores_entitlements(
+    session: AsyncSession,
+    client: AsyncClient,
+    robot_t_1000: dict[str, str],
+    existing: set[Entitlement],
+    submitted: set[Entitlement],
+) -> None:
+    """Test that an update from an entitlement writer stores the entitlements."""
+    robot = SQLRobot(
+        client_secret="secret-secret", entitlements=existing, **robot_t_1000
+    )
+    session.add(robot)
+    await session.commit()
+
+    response = await client.put(
+        f"/v1/robots/{robot.id}/",
+        json={**robot_t_1000, "entitlements": sorted(submitted)},
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert set(response.json()["entitlements"]) == submitted
+
+    await session.refresh(robot)
+    assert set(robot.entitlements) == submitted
+    assert robot.client_secret == "secret-secret"
 
 
 async def test_update_robot_fails_if_name_is_the_same_as_other_robots(
