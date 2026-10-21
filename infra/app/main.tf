@@ -222,7 +222,7 @@ data "azurerm_container_app" "ui" {
 
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.9.0"
+  version                         = "2.0.1"
   app_name                        = var.app_name
   cpu                             = var.container_app_cpu
   environment                     = var.environment
@@ -273,7 +273,7 @@ module "container_app" {
 
 module "container_app_tasks" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.9.0"
+  version                         = "2.0.1"
   app_name                        = "${var.app_name}-task"
   cpu                             = var.container_app_tasks_cpu
   environment                     = var.environment
@@ -338,7 +338,7 @@ module "container_app_tasks" {
 
 module "container_app_ui" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "1.9.0"
+  version                         = "2.0.1"
   app_name                        = "${var.app_name}-ui"
   environment                     = var.environment
   container_registry_id           = data.azurerm_container_registry.this.id

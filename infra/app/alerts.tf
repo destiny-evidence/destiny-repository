@@ -1,8 +1,3 @@
-data "azurerm_log_analytics_workspace" "container_apps" {
-  name                = module.container_app.container_app_env_name
-  resource_group_name = azurerm_resource_group.this.name
-}
-
 resource "azurerm_logic_app_workflow" "slack_alerts" {
   count = local.env.alerts_enabled && var.alert_slack_webhook_url != "" ? 1 : 0
 
@@ -515,7 +510,7 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "job_error_logs" {
   name                = "${local.name}-job-error-logs"
   resource_group_name = azurerm_resource_group.this.name
   location            = azurerm_resource_group.this.location
-  scopes              = [data.azurerm_log_analytics_workspace.container_apps.id]
+  scopes              = [module.container_app.log_analytics_workspace_id]
   description         = "A container app job in ${var.environment} has logged an error."
   severity            = 1 # error
 
