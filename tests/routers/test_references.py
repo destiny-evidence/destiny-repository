@@ -1699,6 +1699,9 @@ async def test_make_duplicate_decisions_resolve_duplicate_to_different_canonical
     assert results[0]["canonical_reference_id"] == str(canonical_b.id)
 
 
+FACET_VOCAB_URI = "https://vocab.evidence-repository.org/vocabulary/v1"
+
+
 async def test_search_facets_concepts_happy_path(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -1715,7 +1718,7 @@ async def test_search_facets_concepts_happy_path(
 
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "climate", "facet": "concepts"},
+        params={"q": "climate", "facet": "concepts", "vocabulary": FACET_VOCAB_URI},
     )
 
     assert response.status_code == status.HTTP_200_OK
@@ -1758,6 +1761,7 @@ async def test_search_facets_concepts_and_countries(
             ("q", "climate"),
             ("facet", "concepts"),
             ("facet", "countries"),
+            ("vocabulary", FACET_VOCAB_URI),
         ],
     )
 
@@ -1786,7 +1790,7 @@ async def test_search_facets_unrequested_keys_omitted(
 
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "climate", "facet": "concepts"},
+        params={"q": "climate", "facet": "concepts", "vocabulary": FACET_VOCAB_URI},
     )
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"concepts": []}
