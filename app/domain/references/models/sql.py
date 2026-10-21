@@ -133,11 +133,15 @@ class Reference(GenericSQLPersistence[DomainReference]):
         return aliased(
             Enhancement,
             select(Enhancement)
-            .where(Enhancement.is_head())
+            .where(
+                Enhancement.is_head(),
+                Enhancement.enhancement_type != EnhancementType.TOMBSTONE,
+            )
             .subquery("head_enhancement"),
         )
 
-    # The default view of a reference: the head of each supersession chain
+    # The default view of a reference: the head of each supersession chain, except
+    # chains a tombstone has withdrawn
     enhancements: Mapped[list["Enhancement"]] = relationship(
         lambda: Reference._head_enhancement(),
         primaryjoin=lambda: Reference.id
