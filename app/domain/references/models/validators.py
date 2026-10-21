@@ -123,6 +123,13 @@ class EnhancementParseResult(BaseModel):
             enhancement = destiny_sdk.enhancements.EnhancementFileInput.model_validate(
                 raw_enhancement
             )
+            if enhancement.content.enhancement_type == EnhancementType.TOMBSTONE:
+                return cls(
+                    error=f"""
+Enhancement {entry_ref}:
+Tombstone enhancements cannot be imported, as an import cannot supersede an enhancement.
+"""
+                )
             return cls(enhancement=enhancement)
         except (TypeError, ValueError) as error:
             return cls(
@@ -266,7 +273,7 @@ class EnhancementResultValidator(BaseModel):
     )
 
     @classmethod
-    def from_raw(
+    def from_raw(  # noqa: PLR0911
         cls,
         entry: str,
         entry_ref: int,
@@ -316,6 +323,19 @@ class EnhancementResultValidator(BaseModel):
                     robot_error=destiny_sdk.robots.LinkedRobotError(
                         reference_id=file_entry.reference_id,
                         message="Robot is not entitled to return raw enhancements.",
+                    )
+                )
+
+            # Refused until write-time supersession checks cover tombstones: what
+            # a tombstone may supersede, and what may supersede a tombstone.
+            if file_entry.content.enhancement_type == EnhancementType.TOMBSTONE:
+                return cls(
+                    robot_error=destiny_sdk.robots.LinkedRobotError(
+                        reference_id=file_entry.reference_id,
+                        message=(
+                            "Withdrawing a chain with a tombstone enhancement is not "
+                            "supported."
+                        ),
                     )
                 )
 

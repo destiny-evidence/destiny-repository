@@ -449,6 +449,25 @@ def test_full_text_enhancement_discriminator_resolution():
     assert str(restored.content.file_url) == "https://example.com/full.pdf"
 
 
+def test_tombstone_enhancement_discriminator_resolution():
+    """Enhancement.content resolves to TombstoneEnhancement via discriminator."""
+    enhancement = destiny_sdk.enhancements.Enhancement(
+        id=uuid7(),
+        source="test_source",
+        visibility="public",
+        content=destiny_sdk.enhancements.TombstoneEnhancement(
+            reason="Retracted by the publisher."
+        ),
+        reference_id=uuid7(),
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+    )
+
+    dumped = enhancement.to_jsonl()
+    restored = destiny_sdk.enhancements.Enhancement.model_validate_json(dumped)
+    assert isinstance(restored.content, destiny_sdk.enhancements.TombstoneEnhancement)
+    assert restored.content.reason == "Retracted by the publisher."
+
+
 def test_pagination_empty_string_to_none():
     """Test that empty pagination strings are converted to None."""
     pagination = destiny_sdk.enhancements.Pagination(
