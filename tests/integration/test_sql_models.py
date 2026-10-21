@@ -570,6 +570,23 @@ async def test_reference_enhancements_exclude_withdrawn_chains(
     }
 
 
+async def test_tombstone_heads_its_chain_until_superseded(session: AsyncSession):
+    """A tombstone still heads its chain, and content superseding it is shown again."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(session, reference, successors=0)
+    tombstone = await _withdraw(session, chain)
+    repo = EnhancementSQLRepository(session)
+    assert (await repo.get_supersession_chain_head(chain[0].id)).id == tombstone.id
+
+    resurrected = await repo.add(
+        _enhancement(reference, supersedes=tombstone.id, root_id=chain[0].id)
+    )
+    await session.commit()
+
+    heads = await _load(session, reference.id, ["enhancements"], many=False)
+    assert [e.id for e in heads.enhancements or []] == [resurrected.id]
+
+
 async def test_search_projection_excludes_withdrawn_chains(session: AsyncSession):
     """Withdrawing a chain removes its content from the search projection."""
     reference = await _add_reference(session)
