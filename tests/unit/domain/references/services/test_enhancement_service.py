@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, Mock
 from uuid import UUID, uuid7
 
 import pytest
+from destiny_sdk.enhancements import TombstoneEnhancement
 
 from app.core.entitlements import Entitlement
 from app.core.exceptions import (
@@ -531,12 +532,11 @@ async def test_process_robot_enhancement_batch_result_raw_enhancement(fake_uow):
 
 
 @pytest.mark.asyncio
-async def test_process_robot_enhancement_batch_result_tombstone_enhancement(fake_uow):
-    """A tombstone line gets an error for its reference instead of failing the batch."""
-    tombstone_reference_id = uuid7()
-    other_reference_id = uuid7()
-    tombstone_pending = create_pending_enhancement(tombstone_reference_id)
-    other_pending = create_pending_enhancement(other_reference_id)
+async def test_process_robot_enhancement_batch_result_converts_tombstone(fake_uow):
+    """A tombstone line reaches the entry handler with its content and supersedes."""
+    reference_id = uuid7()
+    superseded_id = uuid7()
+    pending_enhancement = create_pending_enhancement(reference_id)
     result_file = create_result_file()
 
     uow = fake_uow()
@@ -545,23 +545,23 @@ async def test_process_robot_enhancement_batch_result_tombstone_enhancement(fake
         [
             json.dumps(
                 {
-                    "reference_id": str(tombstone_reference_id),
-                    "content": {"enhancement_type": "tombstone"},
+                    "reference_id": str(reference_id),
+                    "content": {"enhancement_type": "tombstone", "reason": "Wrong."},
+                    "supersedes": str(superseded_id),
                     "source": "test_source",
                     "visibility": "public",
                 }
             ),
-            make_enhancement_result_entry(other_reference_id, as_error=False),
         ]
     )
     service = EnhancementService(
         ReferenceAntiCorruptionService(mock_blob_repo), uow, MagicMock()
     )
 
-    added_reference_ids = []
+    added_enhancements = []
 
     async def fake_add_enhancement(enhancement):
-        added_reference_ids.append(enhancement.reference_id)
+        added_enhancements.append(enhancement)
         return (PendingEnhancementStatus.COMPLETED, "")
 
     results = create_processed_results()
@@ -569,24 +569,20 @@ async def test_process_robot_enhancement_batch_result_tombstone_enhancement(fake
     messages = [
         RobotResultValidationEntry.model_validate_json(msg)
         async for msg in service.process_robot_enhancement_batch_result(
-            tombstone_pending.robot_enhancement_batch_id,
+            pending_enhancement.robot_enhancement_batch_id,
             mock_blob_repo,
             result_file,
-            [tombstone_pending, other_pending],
+            [pending_enhancement],
             fake_add_enhancement,
             results,
             ReferenceAccessControlService(),
         )
     ]
 
-    assert len(messages) == 2
-    assert messages[0].reference_id == tombstone_reference_id
-    assert "tombstone enhancement is not supported" in messages[0].error
-    assert messages[1].reference_id == other_reference_id
-    assert messages[1].error is None
-    assert added_reference_ids == [other_reference_id]
-    assert results.failed_pending_enhancement_ids == {tombstone_pending.id}
-    assert results.successful_pending_enhancement_ids == {other_pending.id}
+    assert [message.error for message in messages] == [None]
+    (added,) = added_enhancements
+    assert added.content == TombstoneEnhancement(reason="Wrong.")
+    assert added.supersedes == superseded_id
 
 
 @pytest.mark.asyncio
