@@ -129,7 +129,7 @@ class Reference(GenericSQLPersistence[DomainReference]):
     @staticmethod
     @cache
     def _head_enhancement() -> type["Enhancement"]:
-        """Build the heads subquery targeted by enhancements."""
+        """Build the heads subquery targeted by enhancements, without tombstones."""
         return aliased(
             Enhancement,
             select(Enhancement)
