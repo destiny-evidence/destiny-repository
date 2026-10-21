@@ -8,7 +8,10 @@ from unittest.mock import AsyncMock, Mock, call, patch
 from uuid import UUID, uuid4, uuid7
 
 import pytest
-from destiny_sdk.enhancements import BibliographicMetadataEnhancement
+from destiny_sdk.enhancements import (
+    BibliographicMetadataEnhancement,
+    TombstoneEnhancement,
+)
 from destiny_sdk.identifiers import DOIIdentifier
 from destiny_sdk.references import ReferenceFileInput
 
@@ -488,6 +491,24 @@ def superseder_acl():
     )
 
 
+@pytest.fixture
+def withdrawn_chain(fake_enhancement_data, chained_enhancement_repo):
+    """An annotation root superseded by a tombstone."""
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    tombstone = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        root_id=root.id,
+        **{**fake_enhancement_data, "content": TombstoneEnhancement()},
+    )
+    return (
+        reference,
+        tombstone,
+        chained_enhancement_repo([root, tombstone], heads={root.id: tombstone.id}),
+    )
+
+
 def _supersession_service(fake_repository, fake_uow, reference, repo_enhs):
     repo_refs = fake_repository(init_entries=[reference])
     uow = fake_uow(references=repo_refs, enhancements=repo_enhs)
@@ -884,6 +905,131 @@ async def test_add_enhancement_supersedes_legacy_uuid4_root(
 
     persisted = repo_enhs.repository[successor.id]
     assert persisted.root_id == root.id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_tombstone_withdraws_chain(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    root = Enhancement(reference_id=reference.id, **fake_enhancement_data)
+    service, repo_enhs = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([root])
+    )
+    tombstone = Enhancement(
+        reference_id=reference.id,
+        supersedes=root.id,
+        **{**fake_enhancement_data, "content": TombstoneEnhancement()},
+    )
+
+    await service.add_enhancement(tombstone, superseder_acl)
+
+    assert repo_enhs.repository[tombstone.id].root_id == root.id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_tombstone_must_supersede(
+    fake_repository, fake_uow, fake_enhancement_data, superseder_acl
+):
+    reference = Reference(id=uuid7())
+    service, repo_enhs = _supersession_service(
+        fake_repository, fake_uow, reference, fake_repository()
+    )
+    tombstone = Enhancement(
+        reference_id=reference.id,
+        **{**fake_enhancement_data, "content": TombstoneEnhancement()},
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="must supersede"):
+        await service.add_enhancement(tombstone, superseder_acl)
+    assert tombstone.id not in repo_enhs.repository
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_tombstone_cannot_supersede_tombstone(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    withdrawn_chain,
+    superseder_acl,
+):
+    reference, tombstone, repo_enhs = withdrawn_chain
+    service, _ = _supersession_service(fake_repository, fake_uow, reference, repo_enhs)
+    second_tombstone = Enhancement(
+        reference_id=reference.id,
+        supersedes=tombstone.id,
+        **{**fake_enhancement_data, "content": TombstoneEnhancement(reason="Again.")},
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="another tombstone"):
+        await service.add_enhancement(second_tombstone, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_resurrects_withdrawn_chain(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    withdrawn_chain,
+    superseder_acl,
+):
+    reference, tombstone, repo_enhs = withdrawn_chain
+    service, _ = _supersession_service(fake_repository, fake_uow, reference, repo_enhs)
+    resurrection = Enhancement(
+        reference_id=reference.id, supersedes=tombstone.id, **fake_enhancement_data
+    )
+
+    await service.add_enhancement(resurrection, superseder_acl)
+
+    assert repo_enhs.repository[resurrection.id].root_id == tombstone.root_id
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_resurrects_withdrawn_chain_as_other_type(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    withdrawn_chain,
+    superseder_acl,
+):
+    reference, tombstone, repo_enhs = withdrawn_chain
+    service, _ = _supersession_service(fake_repository, fake_uow, reference, repo_enhs)
+    resurrection = Enhancement(
+        reference_id=reference.id,
+        supersedes=tombstone.id,
+        **{**fake_enhancement_data, "content": AbstractContentEnhancementFactory()},
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="annotation.*abstract"):
+        await service.add_enhancement(resurrection, superseder_acl)
+
+
+@pytest.mark.asyncio
+async def test_add_enhancement_supersedes_tombstone_that_withdrew_nothing(
+    fake_repository,
+    fake_uow,
+    fake_enhancement_data,
+    chained_enhancement_repo,
+    superseder_acl,
+):
+    reference = Reference(id=uuid7())
+    tombstone = Enhancement(
+        reference_id=reference.id,
+        **{**fake_enhancement_data, "content": TombstoneEnhancement()},
+    )
+    service, _ = _supersession_service(
+        fake_repository, fake_uow, reference, chained_enhancement_repo([tombstone])
+    )
+    successor = Enhancement(
+        reference_id=reference.id, supersedes=tombstone.id, **fake_enhancement_data
+    )
+
+    with pytest.raises(InvalidSupersessionError, match="withdrew nothing"):
+        await service.add_enhancement(successor, superseder_acl)
 
 
 @pytest.mark.asyncio

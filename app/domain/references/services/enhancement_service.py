@@ -104,6 +104,13 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
         A superseding enhancement has its ``root_id`` resolved here.
         """
+        if (
+            enhancement.content.enhancement_type == EnhancementType.TOMBSTONE
+            and enhancement.supersedes is None
+        ):
+            detail = "A tombstone must supersede the enhancement it withdraws."
+            raise InvalidSupersessionError(detail)
+
         reference = await self.sql_uow.references.get_by_pk(
             enhancement.reference_id,
             preload=["all_enhancements", "duplicate_references"],
@@ -203,11 +210,31 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             )
             raise InvalidSupersessionError(detail)
 
-        if head.content.enhancement_type != enhancement.content.enhancement_type:
+        incoming_type = enhancement.content.enhancement_type
+        chain_type = head.content.enhancement_type
+        if chain_type == EnhancementType.TOMBSTONE:
+            if incoming_type == EnhancementType.TOMBSTONE:
+                detail = (
+                    f"Attempted to supersede tombstone {head.id} with another "
+                    "tombstone. Its chain is already withdrawn."
+                )
+                raise InvalidSupersessionError(detail)
+            # Only validated writes refuse a root tombstone, so one may still exist.
+            if head.supersedes is None:
+                detail = (
+                    f"Attempted to supersede tombstone {head.id}, which withdrew "
+                    "nothing, so there is no chain to resurrect."
+                )
+                raise InvalidSupersessionError(detail)
+            withdrawn = await self.sql_uow.enhancements.get_by_pk(head.supersedes)
+            chain_type = withdrawn.content.enhancement_type
+
+        if incoming_type not in (chain_type, EnhancementType.TOMBSTONE):
             detail = (
-                f"Attempted to supersede {head.content.enhancement_type} enhancement "
-                f"{head.id} with a {enhancement.content.enhancement_type} "
-                "enhancement. An enhancement can only supersede one of the same type."
+                f"Attempted to supersede enhancement {head.id}, in a chain of "
+                f"{chain_type} enhancements, with {incoming_type} enhancement "
+                f"{enhancement.id}. A chain can only be continued by an enhancement "
+                "of the same type, or withdrawn by a tombstone."
             )
             raise InvalidSupersessionError(detail)
 
