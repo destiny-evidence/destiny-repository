@@ -240,17 +240,6 @@ async def _withdraw(session: AsyncSession, chain: list[Enhancement]) -> Enhancem
     return tombstone
 
 
-async def _load(
-    session: AsyncSession, reference_id: UUID, preload: list, *, many: bool
-) -> Reference:
-    session.expire_all()
-    repo = ReferenceSQLRepository(session)
-    if many:
-        (reference,) = await repo.get_by_pks([reference_id], preload=preload)
-        return reference
-    return await repo.get_by_pk(reference_id, preload=preload)
-
-
 async def test_enhancement_supersession_chain_head(session: AsyncSession):
     """The head of a chain is its newest successor, or the root without one."""
     reference = await _add_reference(session)
@@ -520,9 +509,14 @@ async def test_reference_enhancements_are_chain_heads(
     canonical_chain = await _add_chain(session, canonical, successors=2)
     (lone_root,) = await _add_chain(session, canonical, successors=0)
     duplicate_chain = await _add_chain(session, duplicate, successors=1)
+    repo = ReferenceSQLRepository(session)
 
     async def load(preload: list) -> Reference:
-        return await _load(session, canonical.id, preload, many=many)
+        session.expire_all()
+        if many:
+            (reference,) = await repo.get_by_pks([canonical.id], preload=preload)
+            return reference
+        return await repo.get_by_pk(canonical.id, preload=preload)
 
     heads = await load(["enhancements", "duplicate_references"])
     assert heads.enhancements is not None
@@ -548,26 +542,36 @@ async def test_reference_enhancements_are_chain_heads(
     }
 
 
-@pytest.mark.parametrize("many", [False, True])
-async def test_reference_enhancements_exclude_withdrawn_chains(
-    session: AsyncSession,
-    many: bool,  # noqa: FBT001
-):
+async def test_reference_excludes_withdrawn_chains(session: AsyncSession):
     """A chain headed by a tombstone leaves the default view but stays in history."""
     reference = await _add_reference(session)
     withdrawn = await _add_chain(session, reference, successors=1)
     tombstone = await _withdraw(session, withdrawn)
     (living,) = await _add_chain(session, reference, successors=0)
+    repo = ReferenceSQLRepository(session)
 
-    heads = await _load(session, reference.id, ["enhancements"], many=many)
+    heads = await repo.get_by_pk(reference.id, preload=["enhancements"])
     assert [e.id for e in heads.enhancements or []] == [living.id]
 
-    history = await _load(session, reference.id, ["all_enhancements"], many=many)
+    history = await repo.get_by_pk(reference.id, preload=["all_enhancements"])
     assert {e.id for e in history.enhancements or []} == {
         *(e.id for e in withdrawn),
         tombstone.id,
         living.id,
     }
+
+
+async def test_references_exclude_withdrawn_chains(session: AsyncSession):
+    """Loading references in bulk also leaves out chains a tombstone has withdrawn."""
+    reference = await _add_reference(session)
+    withdrawn = await _add_chain(session, reference, successors=1)
+    await _withdraw(session, withdrawn)
+    (living,) = await _add_chain(session, reference, successors=0)
+
+    (heads,) = await ReferenceSQLRepository(session).get_by_pks(
+        [reference.id], preload=["enhancements"]
+    )
+    assert [e.id for e in heads.enhancements or []] == [living.id]
 
 
 async def test_tombstone_heads_its_chain_until_superseded(session: AsyncSession):
@@ -583,7 +587,9 @@ async def test_tombstone_heads_its_chain_until_superseded(session: AsyncSession)
     )
     await session.commit()
 
-    heads = await _load(session, reference.id, ["enhancements"], many=False)
+    heads = await ReferenceSQLRepository(session).get_by_pk(
+        reference.id, preload=["enhancements"]
+    )
     assert [e.id for e in heads.enhancements or []] == [resurrected.id]
 
 
