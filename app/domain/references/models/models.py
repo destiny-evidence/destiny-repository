@@ -512,7 +512,8 @@ EnhancementContent = Annotated[
     | destiny_sdk.enhancements.LinkedDataEnhancement
     # Domain defines its own FullTextEnhancement
     | FullTextEnhancement
-    | destiny_sdk.enhancements.RawEnhancement,
+    | destiny_sdk.enhancements.RawEnhancement
+    | destiny_sdk.enhancements.TombstoneEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 
