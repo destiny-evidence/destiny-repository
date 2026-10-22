@@ -11,6 +11,7 @@ from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     CrossFacetAxis,
     CrossFacetResult,
+    FacetCounting,
     FacetType,
     LinkedDataConceptFilter,
     SearchQuery,
@@ -116,41 +117,53 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         vocabulary_uri: str | None,
         axes: tuple[str, str] | None = None,
     ) -> dict[FacetType, list[ESFacetBucket]]:
-        """Count facet terms with optional axis scoping and sibling-aware selections."""
+        """
+        Count facet terms with optional axis scoping and sibling-aware selections.
+
+        Concept counts are limited to ``vocabulary_uri``'s concepts, so it is
+        required for the concepts facet.
+        """
         max_buckets = settings.es_aggregation_max_buckets
-        sibling_groups_by_facet: dict[FacetType, tuple[SiblingGroup, ...]] = {}
-        if query.linked_data_concept_filters and FacetType.CONCEPTS in facets:
+        counting = dict.fromkeys(facets, FacetCounting())
+        if FacetType.CONCEPTS in counting:
             if not vocabulary_uri:
+                msg = "`vocabulary=` is required when requesting the `concepts` facet."
+                raise ParseError(msg)
+            concepts = await self._vocab_client.get_concepts(vocabulary_uri)
+            if len(concepts) > max_buckets:
                 msg = (
-                    "`vocabulary=` is required when filtering on concepts and "
-                    "requesting the `concepts` facet."
+                    f"Vocabulary {vocabulary_uri!r} has {len(concepts)} concepts, "
+                    f"exceeding max_buckets={max_buckets}. Counts would be silently "
+                    "truncated; refusing."
                 )
-                raise SiblingGroupingError(msg)
-            groups = await self._resolve_concept_sibling_groups(
-                vocabulary_uri, query.linked_data_concept_filters
+                raise ParseError(msg)
+            groups: tuple[SiblingGroup, ...] = ()
+            if query.linked_data_concept_filters:
+                groups = await self._resolve_concept_sibling_groups(
+                    vocabulary_uri, query.linked_data_concept_filters
+                )
+            counting[FacetType.CONCEPTS] = FacetCounting(
+                include=concepts, sibling_groups=groups
             )
-            self._validate_groups_against_max_buckets(groups, max_buckets)
-            sibling_groups_by_facet[FacetType.CONCEPTS] = groups
-        if query.linked_data_country_filters and FacetType.COUNTRIES in facets:
-            sibling_groups_by_facet[FacetType.COUNTRIES] = (
-                self._universal_sibling_groups(
+        if query.linked_data_country_filters and FacetType.COUNTRIES in counting:
+            counting[FacetType.COUNTRIES] = FacetCounting(
+                sibling_groups=self._universal_sibling_groups(
                     tuple(f.country_codes) for f in query.linked_data_country_filters
                 )
             )
         if (
             query.linked_data_country_wb_region_filters
-            and FacetType.COUNTRY_WB_REGIONS in facets
+            and FacetType.COUNTRY_WB_REGIONS in counting
         ):
-            sibling_groups_by_facet[FacetType.COUNTRY_WB_REGIONS] = (
-                self._universal_sibling_groups(
+            counting[FacetType.COUNTRY_WB_REGIONS] = FacetCounting(
+                sibling_groups=self._universal_sibling_groups(
                     tuple(f.region_ids)
                     for f in query.linked_data_country_wb_region_filters
                 )
             )
         return await self.es_uow.references.aggregate_facets(
             query,
-            facets,
-            sibling_groups_by_facet=sibling_groups_by_facet,
+            counting,
             map_axes=await self._resolve_axes(axes, vocabulary_uri) if axes else None,
             max_buckets=max_buckets,
         )
@@ -256,23 +269,6 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                 "fewer members."
             )
             raise ParseError(msg)
-
-    @staticmethod
-    def _validate_groups_against_max_buckets(
-        groups: Sequence[SiblingGroup], max_buckets: int
-    ) -> None:
-        """Refuse if any enumerated group would exceed ``max_buckets``."""
-        for i, group in enumerate(groups):
-            siblings = group.siblings_including_selected
-            if siblings is None:
-                continue
-            if len(siblings) > max_buckets:
-                msg = (
-                    f"Sibling group {i} has {len(siblings)} values (selected "
-                    f"+ siblings), exceeding max_buckets={max_buckets}. Counts "
-                    "would be silently truncated; refusing."
-                )
-                raise SiblingGroupingError(msg)
 
     @staticmethod
     def _universal_sibling_groups(

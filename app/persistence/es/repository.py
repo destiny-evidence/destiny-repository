@@ -2,7 +2,7 @@
 
 import json
 from abc import ABC
-from collections.abc import AsyncGenerator, Sequence
+from collections.abc import AsyncGenerator, Collection, Mapping, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Generic, Never
 from uuid import UUID
@@ -458,13 +458,14 @@ class GenericAsyncESRepository(
         return keys
 
     @trace_repository_method(tracer)
-    async def aggregate_terms(
+    async def aggregate_terms(  # noqa: PLR0913
         self,
         query: str,
         aggregate_on: Sequence[str],
         *,
         query_fields: Sequence[str] | None = None,
         filter_clauses: Sequence[Query] | None = None,
+        include_by_field: Mapping[str, Collection[str]] | None = None,
         max_buckets: int,
     ) -> dict[str, list[ESFacetBucket]]:
         """
@@ -483,14 +484,21 @@ class GenericAsyncESRepository(
         :param filter_clauses: Structured DSL clauses ANDed with the query string under
             ``bool.filter``. ``None`` or empty issues the bare query.
         :type filter_clauses: Sequence[Query] | None
+        :param include_by_field: Per-field term allowlists. Fields absent from the
+            mapping count every term.
+        :type include_by_field: Mapping[str, Collection[str]] | None
         :param max_buckets: Maximum buckets to return per aggregation.
         :type max_buckets: int
         :return: A mapping from each requested field name to its term buckets.
         :rtype: dict[str, list[ESFacetBucket]]
         """
         search = self._build_aggregation_search(query, query_fields, filter_clauses)
+        include_by_field = include_by_field or {}
         for field in aggregate_on:
-            search.aggs.bucket(field, "terms", field=field, size=max_buckets)
+            params: dict[str, object] = {"field": field, "size": max_buckets}
+            if field in include_by_field:
+                params["include"] = sorted(include_by_field[field])
+            search.aggs.bucket(field, "terms", **params)
         response = await self._execute_search(search)
         return {
             field: [

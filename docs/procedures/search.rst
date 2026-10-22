@@ -221,12 +221,12 @@ API Facet Counts
 
 The `facets endpoint <https://api.evidence-repository.org/redoc#tag/search/operation/count_facets_for_search_v1_references_search_facets__get>`_ at `/v1/references/search/facets/` returns per-facet term counts across the references matching the search.
 
-Accepts the same filter parameters as `/v1/references/search/` plus one or more ``facet`` values. Only the requested facet types appear in the response.
+Accepts the same filter parameters as `/v1/references/search/` plus one or more ``facet`` values. Only the requested facet types appear in the response. ``facet=concepts`` also requires a ``vocabulary`` URI, and counts only that vocabulary's concepts.
 
 .. code-block::
 
-    # Count concepts across all references matching a query:
-    ?q=climate&facet=concepts
+    # Count the vocabulary's concepts across all references matching a query:
+    ?q=climate&facet=concepts&vocabulary=https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl
 
 Sibling-aware facet counts
 __________________________
@@ -235,13 +235,13 @@ When you filter on a field *and* request that field's facet, the bucket counts s
 
 There are two flavours, distinguished by how siblings are defined:
 
-**Concepts.** A concept's siblings are every member of its scheme in the SKOS vocabulary, so ``concept=`` must be supplied alongside ``vocabulary=`` when requesting ``facet=concepts``. Each ``concept=`` parameter is one scheme's selection.
+**Concepts.** A concept's siblings are every member of its scheme in the SKOS vocabulary. Each ``concept=`` parameter is one scheme's selection.
 
 For example, ``concept=Botany,Zoology`` AND ``concept=Africa`` with ``facet=concepts``:
 
 - The Botany/Zoology group's counts show every concept in the Topics scheme (Biology, Chemistry, Botany, Zoology, Microbiology, …) as if you swapped the selection, with the Africa filter still applied.
 - The Africa group's counts show every concept in the Region scheme (Africa, Asia, Europe, …), with the (Botany OR Zoology) filter still applied.
-- An "unselected" bucket surfaces any other concepts present on the matching references.
+- An "unselected" bucket surfaces any other of the vocabulary's concepts present on the matching references.
 
 .. code-block::
 
@@ -249,7 +249,7 @@ For example, ``concept=Botany,Zoology`` AND ``concept=Africa`` with ``facet=conc
     ?q=*&concept=https://vocab.evidence-repository.org/Botany,https://vocab.evidence-repository.org/Zoology
         &concept=https://vocab.evidence-repository.org/Africa
         &facet=concepts
-        &vocabulary=https://vocab.evidence-repository.org/vocabulary/v1
+        &vocabulary=https://vocab.evidence-repository.org/published/01935f56-2c8e-7000-8000-000000000001/vocabulary.ttl
 
 Restrictions (400 on violation):
 
@@ -275,7 +275,7 @@ Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.Refe
 Limitations
 """"""""""""
 
-Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). For concept facets, if a sibling group's vocabulary set exceeds this the request is refused rather than silently truncated.
+Each facet returns at most ``ES_AGGREGATION_MAX_BUCKETS`` buckets (default 1000). If the requested vocabulary's concept set exceeds the limit, the request is refused rather than silently truncated.
 
 .. _cross-facets-procedure:
 
