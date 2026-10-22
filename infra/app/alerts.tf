@@ -519,11 +519,15 @@ resource "azurerm_logic_app_action_custom" "post_job_alert_to_slack" {
                 },
                 {
                   "type": "section",
-                  "text": { "type": "mrkdwn", "text": "<https://portal.azure.com/#resource@{first(triggerBody()?['data']?['essentials']?['alertTargetIDs'])}/executionHistory|🔍 View execution history>" }
+                  "text": { "type": "mrkdwn", "text": "*Logs* (<https://portal.azure.com/#resource${module.container_app.log_analytics_workspace_id}/logs|open Log Analytics>)" }
                 },
                 {
                   "type": "section",
-                  "text": { "type": "mrkdwn", "text": "*Execution logs* (<https://portal.azure.com/#resource${module.container_app.log_analytics_workspace_id}/logs|open Log Analytics>):\n```ContainerAppConsoleLogs\n| where ContainerGroupName startswith \"@{first(body('${azurerm_logic_app_action_custom.filter_execution_name[0].name}'))?['value']}\"\n| project TimeGenerated, Log\n| order by TimeGenerated asc```" }
+                  "text": { "type": "mrkdwn", "text": "Console:\n```ContainerAppConsoleLogs\n| where ContainerGroupName startswith \"@{first(body('${azurerm_logic_app_action_custom.filter_execution_name[0].name}'))?['value']}\"\n| project TimeGenerated, Log\n| order by TimeGenerated asc```" }
+                },
+                {
+                  "type": "section",
+                  "text": { "type": "mrkdwn", "text": "System:\n```ContainerAppSystemLogs\n| where ReplicaName startswith \"@{first(body('${azurerm_logic_app_action_custom.filter_execution_name[0].name}'))?['value']}\"\n| project TimeGenerated, Reason, Log\n| order by TimeGenerated asc```" }
                 },
                 {
                   "type": "context",
