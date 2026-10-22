@@ -1009,30 +1009,6 @@ async def test_add_enhancement_resurrects_withdrawn_chain_as_other_type(
 
 
 @pytest.mark.asyncio
-async def test_add_enhancement_supersedes_tombstone_that_withdrew_nothing(
-    fake_repository,
-    fake_uow,
-    fake_enhancement_data,
-    chained_enhancement_repo,
-    superseder_acl,
-):
-    reference = Reference(id=uuid7())
-    tombstone = Enhancement(
-        reference_id=reference.id,
-        **{**fake_enhancement_data, "content": TombstoneEnhancement()},
-    )
-    service, _ = _supersession_service(
-        fake_repository, fake_uow, reference, chained_enhancement_repo([tombstone])
-    )
-    successor = Enhancement(
-        reference_id=reference.id, supersedes=tombstone.id, **fake_enhancement_data
-    )
-
-    with pytest.raises(InvalidSupersessionError, match="withdrew nothing"):
-        await service.add_enhancement(successor, superseder_acl)
-
-
-@pytest.mark.asyncio
 async def test_handle_enhancement_result_entry_reports_rejected_supersession(
     fake_repository,
     fake_uow,

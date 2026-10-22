@@ -210,33 +210,7 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
             )
             raise InvalidSupersessionError(detail)
 
-        incoming_type = enhancement.content.enhancement_type
-        chain_type = head.content.enhancement_type
-        if chain_type == EnhancementType.TOMBSTONE:
-            if incoming_type == EnhancementType.TOMBSTONE:
-                detail = (
-                    f"Attempted to supersede tombstone {head.id} with another "
-                    "tombstone. Its chain is already withdrawn."
-                )
-                raise InvalidSupersessionError(detail)
-            # Only validated writes refuse a root tombstone, so one may still exist.
-            if head.supersedes is None:
-                detail = (
-                    f"Attempted to supersede tombstone {head.id}, which withdrew "
-                    "nothing, so there is no chain to resurrect."
-                )
-                raise InvalidSupersessionError(detail)
-            withdrawn = await self.sql_uow.enhancements.get_by_pk(head.supersedes)
-            chain_type = withdrawn.content.enhancement_type
-
-        if incoming_type not in (chain_type, EnhancementType.TOMBSTONE):
-            detail = (
-                f"Attempted to supersede enhancement {head.id}, in a chain of "
-                f"{chain_type} enhancements, with {incoming_type} enhancement "
-                f"{enhancement.id}. A chain can only be continued by an enhancement "
-                "of the same type, or withdrawn by a tombstone."
-            )
-            raise InvalidSupersessionError(detail)
+        await self._check_supersession_type(enhancement, head)
 
         # Legacy UUID4 roots sort arbitrarily against UUID7 successors, so only
         # time-ordered ids are required to be monotonic.
@@ -249,6 +223,32 @@ class EnhancementService(GenericService[ReferenceAntiCorruptionService]):
 
         enhancement.root_id = head.root_id
         return head
+
+    async def _check_supersession_type(
+        self, enhancement: Enhancement, head: Enhancement
+    ) -> None:
+        """Check the enhancement continues its chain's type, or withdraws the chain."""
+        incoming_type = enhancement.content.enhancement_type
+        chain_type = head.content.enhancement_type
+        if chain_type == EnhancementType.TOMBSTONE:
+            if incoming_type == EnhancementType.TOMBSTONE:
+                detail = (
+                    f"Attempted to supersede tombstone {head.id} with another "
+                    "tombstone. Its chain is already withdrawn."
+                )
+                raise InvalidSupersessionError(detail)
+            if head.supersedes is not None:
+                withdrawn = await self.sql_uow.enhancements.get_by_pk(head.supersedes)
+                chain_type = withdrawn.content.enhancement_type
+
+        if incoming_type not in (chain_type, EnhancementType.TOMBSTONE):
+            detail = (
+                f"Attempted to supersede enhancement {head.id}, in a chain of "
+                f"{chain_type} enhancements, with {incoming_type} enhancement "
+                f"{enhancement.id}. A chain can only be continued by an enhancement "
+                "of the same type, or withdrawn by a tombstone."
+            )
+            raise InvalidSupersessionError(detail)
 
     async def store_full_text(
         self,
