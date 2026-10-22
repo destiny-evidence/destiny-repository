@@ -26,8 +26,12 @@ Tag those same references, reusing a robot::
             "scheme": "domain-inclusion", "label": "your-project", "value": true}]}}' \
         --robot-id 019ec8b0-9173-76f0-9d09-b7bdf4e31047
 
+Enhancements in an --enhancement-file may set `supersedes` to replace an existing
+enhancement.
+
 The caller must have robot.writer and enhancement_request.writer permissions. It also
-may require robot.entitlement.writer if creating a robot to write raw enhancements.
+may require robot.entitlement.writer if creating a robot to write raw or superseding
+enhancements.
 """
 
 # ruff: noqa: T201
@@ -120,11 +124,13 @@ def load_enhancements(
 
 def required_entitlements(enhancements: Iterable[Enhancement]) -> set[RobotEntitlement]:
     """Return the entitlements a robot needs in order to write these enhancements."""
-    return {
-        RobotEntitlement.RAW_ENHANCEMENT_WRITER
-        for enhancement in enhancements
-        if enhancement.content.enhancement_type == EnhancementType.RAW
-    }
+    entitlements: set[RobotEntitlement] = set()
+    for enhancement in enhancements:
+        if enhancement.content.enhancement_type == EnhancementType.RAW:
+            entitlements.add(RobotEntitlement.RAW_ENHANCEMENT_WRITER)
+        if enhancement.supersedes:
+            entitlements.add(RobotEntitlement.ENHANCEMENT_SUPERSESSION_WRITER)
+    return entitlements
 
 
 def claim_robot(

@@ -124,6 +124,16 @@ def test_only_raw_enhancements_require_an_entitlement() -> None:
     }
 
 
+def test_superseding_enhancements_require_an_entitlement() -> None:
+    """Setting `supersedes` needs the supersession entitlement."""
+    annotation = _enhancement(uuid7(), ANNOTATION)
+    superseding = annotation.model_copy(update={"supersedes": uuid7()})
+
+    assert required_entitlements([annotation, superseding]) == {
+        RobotEntitlement.ENHANCEMENT_SUPERSESSION_WRITER
+    }
+
+
 def test_malformed_enhancement_json_fails_at_parse_time() -> None:
     """An unparseable ``--enhancement`` reports pydantic's complaint, not a trace."""
     with pytest.raises(argparse.ArgumentTypeError, match="visibility"):
