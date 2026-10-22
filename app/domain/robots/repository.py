@@ -84,6 +84,7 @@ class RobotSQLRepository(
         persistence.description = robot.description
         persistence.name = robot.name
         persistence.owner = robot.owner
+        persistence.entitlements = set(robot.entitlements)
 
         try:
             await self._session.flush()
