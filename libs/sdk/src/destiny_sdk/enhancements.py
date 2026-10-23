@@ -655,8 +655,8 @@ class TombstoneEnhancement(BaseModel):
     """
     An enhancement which withdraws the supersession chain it heads.
 
-    The repository refuses tombstones in robot results until it supports withdrawal,
-    and import files cannot carry one.
+    It must supersede a chain head that is not a tombstone, and only an enhancement of
+    the withdrawn type may supersede it. Import files cannot carry one.
     """
 
     enhancement_type: Literal[EnhancementType.TOMBSTONE] = EnhancementType.TOMBSTONE
@@ -714,7 +714,9 @@ class Enhancement(_JsonlFileInputMixIn, BaseModel):
         description=(
             "The ID of the enhancement this one replaces. The superseded enhancement "
             "must be the latest in its chain, on the same reference, and of the same "
-            "enhancement type. Only robots with the ``enhancement_supersession_writer``"
+            "enhancement type unless a tombstone is involved (see "
+            "``TombstoneEnhancement``). Only robots with the "
+            "``enhancement_supersession_writer``"
             " entitlement may set this."
         ),
     )

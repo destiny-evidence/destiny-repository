@@ -9,7 +9,11 @@ from uuid import UUID, uuid7
 import httpx
 import pytest
 from destiny_sdk.client import RobotClient
-from destiny_sdk.enhancements import Enhancement
+from destiny_sdk.enhancements import (
+    Enhancement,
+    EnhancementContent,
+    TombstoneEnhancement,
+)
 from destiny_sdk.references import Reference
 from destiny_sdk.robots import (
     EnhancementRequestIn,
@@ -18,9 +22,12 @@ from destiny_sdk.robots import (
     RobotEnhancementBatchResult,
 )
 from pydantic import HttpUrl
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import Retrying, stop_after_attempt, wait_fixed
 from testcontainers.core.container import DockerContainer
 
+from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.robots.models.models import Robot
 from tests.factories import (
     AbstractContentEnhancementFactory,
@@ -28,6 +35,8 @@ from tests.factories import (
     BibliographicMetadataEnhancementFactory,
     EnhancementFactory,
     LocationEnhancementFactory,
+    ReferenceFactory,
+    RobotFactory,
 )
 
 if TYPE_CHECKING:
@@ -106,6 +115,31 @@ async def _poll_robot_batches(  # noqa: PLR0913
     return robot_enhancement_batch_ids, batch_references, robot_requests
 
 
+async def _upload_robot_result(
+    signed_url_client: httpx.AsyncClient,
+    result_storage_url: HttpUrl,
+    batch_id: str,
+    result_content: str,
+    repo_url: HttpUrl,
+) -> None:
+    """Upload a robot result file and tell the repository it is ready."""
+    upload_response = await signed_url_client.put(
+        str(result_storage_url),
+        content=result_content.encode("utf-8"),
+        headers={
+            "Content-Type": "application/octet-stream",
+            "x-ms-blob-type": "BlockBlob",
+        },
+    )
+    assert upload_response.status_code == 201
+
+    robot_result = RobotEnhancementBatchResult(request_id=batch_id, error=None)
+
+    client = _create_client(repo_url)
+    result = client.send_robot_enhancement_batch_result(robot_result)
+    assert result is not None
+
+
 async def _submit_robot_results(
     signed_url_client: httpx.AsyncClient,
     robot_enhancement_batch_ids: list[str],
@@ -137,23 +171,13 @@ async def _submit_robot_results(
             )
             result_entries.append(enhancement.to_jsonl())
 
-        # Upload result file to the provided result storage URL
-        result_content = "\n".join(result_entries)
-        upload_response = await signed_url_client.put(
-            str(robot_request.result_storage_url),
-            content=result_content.encode("utf-8"),
-            headers={
-                "Content-Type": "application/octet-stream",
-                "x-ms-blob-type": "BlockBlob",
-            },
+        await _upload_robot_result(
+            signed_url_client,
+            robot_request.result_storage_url,
+            batch_id,
+            "\n".join(result_entries),
+            repo_url,
         )
-        assert upload_response.status_code == 201
-
-        robot_result = RobotEnhancementBatchResult(request_id=batch_id, error=None)
-
-        client = _create_client(repo_url)
-        result = client.send_robot_enhancement_batch_result(robot_result)
-        assert result is not None
 
 
 async def _wait_for_enhancement_request_status(
@@ -320,3 +344,113 @@ async def test_can_submit_results_after_renewing_lease(
     await _wait_for_enhancement_request_status(
         destiny_client_v1, request_id, EnhancementRequestStatus.COMPLETED
     )
+
+
+async def test_robot_withdraws_and_resurrects_chain(
+    destiny_client_v1: httpx.AsyncClient,
+    signed_url_client: httpx.AsyncClient,
+    pg_session: AsyncSession,
+):
+    """A robot withdraws a chain with a tombstone and resurrects it as its own type."""
+    repo_url = HttpUrl(str(destiny_client_v1.base_url))
+    robot_in = RobotFactory.build()
+    response = await destiny_client_v1.post(
+        "/robots/",
+        json={
+            "name": robot_in.name,
+            "description": robot_in.description,
+            "owner": robot_in.owner,
+            "entitlements": ["enhancement_supersession_writer"],
+        },
+    )
+    assert response.status_code == 201
+    assert response.json()["entitlements"] == ["enhancement_supersession_writer"]
+    robot = Robot(**response.json())
+
+    reference_id, other_reference_id = uuid7(), uuid7()
+    root = EnhancementFactory.build(
+        reference_id=reference_id, content=AnnotationEnhancementFactory.build()
+    )
+    other_root = EnhancementFactory.build(
+        reference_id=other_reference_id,
+        content=AbstractContentEnhancementFactory.build(),
+    )
+    for enhancement in (root, other_root):
+        pg_session.add(
+            SQLReference.from_domain(
+                ReferenceFactory.build(
+                    id=enhancement.reference_id, enhancements=[enhancement]
+                )
+            )
+        )
+    await pg_session.commit()
+
+    async def supersede(
+        supersedes: UUID,
+        content: EnhancementContent,
+        expected_status: EnhancementRequestStatus,
+        other_content: EnhancementContent | None = None,
+    ) -> None:
+        results = [
+            EnhancementFactory.build(
+                reference_id=reference_id, supersedes=supersedes, content=content
+            )
+        ]
+        if other_content:
+            results.append(
+                EnhancementFactory.build(
+                    reference_id=other_reference_id, content=other_content
+                )
+            )
+        request_id = await _create_enhancement_request(
+            destiny_client_v1, str(robot.id), [str(r.reference_id) for r in results]
+        )
+        batch = _create_client(repo_url).poll_robot_enhancement_batch(
+            robot_id=robot.id, limit=len(results)
+        )
+        assert batch is not None
+        await _upload_robot_result(
+            signed_url_client,
+            batch.result_storage_url,
+            str(batch.id),
+            "\n".join(Enhancement(**r.model_dump()).to_jsonl() for r in results),
+            repo_url,
+        )
+        await _wait_for_enhancement_request_status(
+            destiny_client_v1, request_id, expected_status
+        )
+
+    async def shown_enhancements(ref_id: UUID = reference_id) -> list[dict]:
+        response = await destiny_client_v1.get(f"/references/{ref_id}/")
+        assert response.status_code == 200
+        return response.json()["enhancements"]
+
+    await supersede(
+        root.id,
+        TombstoneEnhancement(reason="Withdrawn in e2e."),
+        EnhancementRequestStatus.COMPLETED,
+    )
+    assert await shown_enhancements() == []
+
+    # No supported route tells a robot a tombstone's id yet, so read it directly.
+    tombstone_id = await pg_session.scalar(
+        text("SELECT id FROM enhancement WHERE supersedes = :id"), {"id": root.id}
+    )
+    assert tombstone_id is not None
+
+    await supersede(
+        tombstone_id,
+        AbstractContentEnhancementFactory.build(),
+        EnhancementRequestStatus.PARTIAL_FAILED,
+        other_content=LocationEnhancementFactory.build(),
+    )
+    assert await shown_enhancements() == []
+    assert sorted(
+        e["content"]["enhancement_type"]
+        for e in await shown_enhancements(other_reference_id)
+    ) == ["abstract", "location"]
+
+    await supersede(tombstone_id, root.content, EnhancementRequestStatus.COMPLETED)
+    (resurrected,) = await shown_enhancements()
+    assert resurrected["supersedes"] == str(tombstone_id)
+    assert resurrected["content"]["enhancement_type"] == "annotation"

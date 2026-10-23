@@ -273,7 +273,7 @@ class EnhancementResultValidator(BaseModel):
     )
 
     @classmethod
-    def from_raw(  # noqa: PLR0911
+    def from_raw(
         cls,
         entry: str,
         entry_ref: int,
@@ -323,19 +323,6 @@ class EnhancementResultValidator(BaseModel):
                     robot_error=destiny_sdk.robots.LinkedRobotError(
                         reference_id=file_entry.reference_id,
                         message="Robot is not entitled to return raw enhancements.",
-                    )
-                )
-
-            # Refused until write-time supersession checks cover tombstones: what
-            # a tombstone may supersede, and what may supersede a tombstone.
-            if file_entry.content.enhancement_type == EnhancementType.TOMBSTONE:
-                return cls(
-                    robot_error=destiny_sdk.robots.LinkedRobotError(
-                        reference_id=file_entry.reference_id,
-                        message=(
-                            "Withdrawing a chain with a tombstone enhancement is not "
-                            "supported."
-                        ),
                     )
                 )
 

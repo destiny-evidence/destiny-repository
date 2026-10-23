@@ -459,6 +459,39 @@ async def test_add_enhancement_builds_supersession_chain(session: AsyncSession):
     assert (await repo.get_supersession_chain_head(root.id)).id == revert.id
 
 
+async def test_add_enhancement_withdraws_and_resurrects_chain(session: AsyncSession):
+    """A tombstone heads the chain it withdraws until content of its type follows."""
+    reference = await _add_reference(session)
+    (root,) = await _add_chain(session, reference, successors=0)
+    service = ReferenceService(
+        ReferenceAntiCorruptionService(sign_url=AsyncMock()),
+        AsyncSqlUnitOfWork(session),
+        AsyncESUnitOfWork(AsyncMock()),
+    )
+    acl = ReferenceAccessControlService(
+        entitlements=frozenset({Entitlement.ENHANCEMENT_SUPERSESSION_WRITER})
+    )
+
+    tombstone = EnhancementFactory.build(
+        reference_id=reference.id,
+        content=TombstoneEnhancement(reason="Withdrawn by its source."),
+        supersedes=root.id,
+    )
+    await service.add_enhancement(tombstone, acl)
+    session.expire_all()
+    repo = EnhancementSQLRepository(session)
+    assert (await repo.get_supersession_chain_head(root.id)).content == (
+        tombstone.content
+    )
+
+    resurrection = root.model_copy(update={"id": uuid7(), "supersedes": tombstone.id})
+    await service.add_enhancement(resurrection, acl)
+
+    chain = await repo.get_supersession_chain(root.id)
+    assert [e.id for e in chain] == [root.id, tombstone.id, resurrection.id]
+    assert all(e.root_id == root.id for e in chain)
+
+
 async def test_supersession_race_collides_on_supersedes(session: AsyncSession):
     """A second successor of one head fails on the unique supersedes index."""
     reference = await _add_reference(session)
