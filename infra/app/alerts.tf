@@ -595,7 +595,7 @@ resource "azurerm_monitor_metric_alert" "job_execution_failed" {
     dimension {
       name     = "state"
       operator = "Include"
-      values   = ["Failed"]
+      values   = ["Failed", "Degraded", "Unknown"]
     }
 
     # Splitting on the execution name gives each failed execution its own alert
