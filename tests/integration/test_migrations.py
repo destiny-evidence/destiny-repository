@@ -618,3 +618,123 @@ async def test_enhancement_supersession_index_migration(
 
     assert remaining == []
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["068f01d7c1f8"])
+async def test_lowercase_community_imported_dois_migration(
+    db_at_migration: str,
+) -> None:
+    """Only DOIs on references from non-bulk imports are lowercased."""
+    engine = create_async_engine(db_at_migration, future=True)
+    now = datetime.datetime.now(datetime.UTC)
+    community_doi, openalex_doi, unimported_doi, community_eric = (
+        str(uuid7()) for _ in range(4)
+    )
+
+    async with engine.begin() as conn:
+
+        async def insert_reference(batch_id: str | None) -> str:
+            reference_id = str(uuid7())
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO reference (id, visibility, created_at, updated_at) "
+                    "VALUES (:id, 'public', :now, :now)"
+                ),
+                {"id": reference_id, "now": now},
+            )
+            if batch_id:
+                await conn.execute(
+                    sa.text(
+                        "INSERT INTO import_result "
+                        "(id, import_batch_id, status, reference_id, created_at, "
+                        "updated_at) "
+                        "VALUES (:id, :batch_id, 'imported', :reference_id, "
+                        ":now, :now)"
+                    ),
+                    {
+                        "id": str(uuid7()),
+                        "batch_id": batch_id,
+                        "reference_id": reference_id,
+                        "now": now,
+                    },
+                )
+            return reference_id
+
+        batch_ids = {}
+        for source_name in ("community-export", "openalex"):
+            record_id, batch_ids[source_name] = str(uuid7()), str(uuid7())
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO import_record "
+                    "(id, searched_at, processor_name, processor_version, "
+                    "expected_reference_count, source_name, status, created_at, "
+                    "updated_at) VALUES "
+                    "(:id, :now, 'test', '1', 1, :source, 'completed', :now, :now)"
+                ),
+                {"id": record_id, "source": source_name, "now": now},
+            )
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO import_batch "
+                    "(id, import_record_id, storage_url, created_at, updated_at) "
+                    "VALUES (:id, :record_id, :url, :now, :now)"
+                ),
+                {
+                    "id": batch_ids[source_name],
+                    "record_id": record_id,
+                    "url": f"https://example.com/{batch_ids[source_name]}",
+                    "now": now,
+                },
+            )
+
+        community_reference_id = await insert_reference(batch_ids["community-export"])
+        # (identifier id, reference, type, identifier)
+        identifiers = (
+            (community_doi, community_reference_id, "doi", "10.1234/COMMUNITY-DOI"),
+            (community_eric, community_reference_id, "eric", "ED123456"),
+            (
+                openalex_doi,
+                await insert_reference(batch_ids["openalex"]),
+                "doi",
+                "10.1234/OPENALEX-DOI",
+            ),
+            (
+                unimported_doi,
+                await insert_reference(None),
+                "doi",
+                "10.1234/UNIMPORTED-DOI",
+            ),
+        )
+        for identifier_id, reference_id, identifier_type, identifier in identifiers:
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO external_identifier (id, reference_id, "
+                    "identifier_type, identifier, created_at, updated_at) "
+                    "VALUES (:id, :reference_id, :identifier_type, :identifier, "
+                    ":now, :now)"
+                ),
+                {
+                    "id": identifier_id,
+                    "reference_id": reference_id,
+                    "identifier_type": identifier_type,
+                    "identifier": identifier,
+                    "now": now,
+                },
+            )
+
+    await run_migration(db_at_migration, "73cd641bc9e9")
+
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            sa.text("SELECT id, identifier FROM external_identifier")
+        )
+        stored = {str(row.id): row.identifier for row in result}
+
+    assert stored == {
+        community_doi: "10.1234/community-doi",
+        community_eric: "ED123456",
+        openalex_doi: "10.1234/OPENALEX-DOI",
+        unimported_doi: "10.1234/UNIMPORTED-DOI",
+    }
+    await engine.dispose()
