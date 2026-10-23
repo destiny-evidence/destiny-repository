@@ -605,8 +605,6 @@ resource "azurerm_monitor_metric_alert" "job_execution_failed" {
       operator = "Include"
       values   = ["*"]
     }
-
-    skip_metric_validation = true
   }
 
   action {
