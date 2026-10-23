@@ -1,0 +1,18 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.references.ConceptFacetCount
+
+The count of matching references for a single concept.
+" alt="" coords="670,5,833,89"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.references.CountryFacetCount
+
+The count of matching references for a single country.
+" alt="" coords="669,137,833,221"/>
+<area shape="rect" id="node3" title="libs.sdk.src.destiny_sdk.references.CountryWBRegionFacetCount
+
+The count of matching references for a single World Bank region.
+" alt="" coords="627,269,876,353"/>
+<area shape="rect" id="node4" title="libs.sdk.src.destiny_sdk.references.ReferenceFacetResult
+
+Facet counts for a reference search.
+" alt="" coords="5,81,483,193"/>
+</map>

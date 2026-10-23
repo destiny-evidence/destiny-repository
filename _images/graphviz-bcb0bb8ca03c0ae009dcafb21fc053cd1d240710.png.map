@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.enhancements.Pagination
+
+Pagination information for journal articles.
+
+Maps to OpenAlex&#39;s work.biblio object. All fields are strings to match
+OpenAlex&#39;s format, which may include non&#45;numeric values like &quot;Spring&quot; or &quot;A1&quot;.
+" alt="" coords="5,5,167,145"/>
+</map>

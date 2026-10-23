@@ -1,0 +1,10 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.robots.RobotAutomationIn
+
+Automation model for a robot.
+
+This is used as a source of truth for an Elasticsearch index that percolates
+references or enhancements against the queries. If a query matches, a request
+is sent to the specified robot to perform the enhancement.
+" alt="" coords="5,5,188,89"/>
+</map>
