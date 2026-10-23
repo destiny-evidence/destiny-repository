@@ -5,6 +5,7 @@ from unittest.mock import AsyncMock
 from uuid import UUID, uuid4, uuid7
 
 import pytest
+from destiny_sdk.enhancements import TombstoneEnhancement
 from destiny_sdk.imports import ImportRecordStatus
 from destiny_sdk.visibility import Visibility
 from sqlalchemy import event, text
@@ -42,6 +43,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceSearchProjection,
     SearchQuery,
 )
 from app.domain.references.models.sql import (
@@ -73,6 +75,7 @@ from app.domain.references.services.anti_corruption_service import (
 from app.domain.references.services.deduplication_service import (
     DeduplicationService,
 )
+from app.domain.references.services.synchronizer_service import ReferenceSynchronizer
 from app.domain.robots.models.models import Robot
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.es.uow import AsyncESUnitOfWork
@@ -221,6 +224,20 @@ async def _add_chain(
     await session.commit()
     session.expire_all()
     return chain
+
+
+async def _withdraw(session: AsyncSession, chain: list[Enhancement]) -> Enhancement:
+    tombstone = await EnhancementSQLRepository(session).add(
+        EnhancementFactory.build(
+            reference_id=chain[-1].reference_id,
+            content=TombstoneEnhancement(reason="Withdrawn by its source."),
+            supersedes=chain[-1].id,
+            root_id=chain[0].id,
+        )
+    )
+    await session.commit()
+    session.expire_all()
+    return tombstone
 
 
 async def test_enhancement_supersession_chain_head(session: AsyncSession):
@@ -523,6 +540,75 @@ async def test_reference_enhancements_are_chain_heads(
     assert {e.id for e in both.enhancements or []} == {
         e.id for e in [*canonical_chain, lone_root]
     }
+
+
+async def test_reference_excludes_withdrawn_chains(session: AsyncSession):
+    """A chain headed by a tombstone leaves the default view but stays in history."""
+    reference = await _add_reference(session)
+    withdrawn = await _add_chain(session, reference, successors=1)
+    tombstone = await _withdraw(session, withdrawn)
+    (living,) = await _add_chain(session, reference, successors=0)
+    repo = ReferenceSQLRepository(session)
+
+    heads = await repo.get_by_pk(reference.id, preload=["enhancements"])
+    assert [e.id for e in heads.enhancements or []] == [living.id]
+
+    history = await repo.get_by_pk(reference.id, preload=["all_enhancements"])
+    assert {e.id for e in history.enhancements or []} == {
+        *(e.id for e in withdrawn),
+        tombstone.id,
+        living.id,
+    }
+
+
+async def test_references_exclude_withdrawn_chains(session: AsyncSession):
+    """Loading references in bulk also leaves out chains a tombstone has withdrawn."""
+    reference = await _add_reference(session)
+    withdrawn = await _add_chain(session, reference, successors=1)
+    await _withdraw(session, withdrawn)
+    (living,) = await _add_chain(session, reference, successors=0)
+
+    (heads,) = await ReferenceSQLRepository(session).get_by_pks(
+        [reference.id], preload=["enhancements"]
+    )
+    assert [e.id for e in heads.enhancements or []] == [living.id]
+
+
+async def test_tombstone_heads_its_chain_until_superseded(session: AsyncSession):
+    """A tombstone still heads its chain, and content superseding it is shown again."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(session, reference, successors=0)
+    tombstone = await _withdraw(session, chain)
+    repo = EnhancementSQLRepository(session)
+    assert (await repo.get_supersession_chain_head(chain[0].id)).id == tombstone.id
+
+    resurrected = await repo.add(
+        _enhancement(reference, supersedes=tombstone.id, root_id=chain[0].id)
+    )
+    await session.commit()
+
+    heads = await ReferenceSQLRepository(session).get_by_pk(
+        reference.id, preload=["enhancements"]
+    )
+    assert [e.id for e in heads.enhancements or []] == [resurrected.id]
+
+
+async def test_search_projection_excludes_withdrawn_chains(session: AsyncSession):
+    """Withdrawing a chain removes its content from the search projection."""
+    reference = await _add_reference(session)
+    chain = await _add_chain(session, reference, successors=0)
+    es_uow = AsyncMock()
+    es_uow.references.add.side_effect = lambda projection: projection
+
+    async def project() -> ReferenceSearchProjection:
+        async with AsyncSqlUnitOfWork(session) as sql_uow:
+            return await ReferenceSynchronizer(sql_uow, es_uow).sql_to_es(reference.id)
+
+    assert (await project()).search_fields.abstract is not None
+
+    await _withdraw(session, chain)
+
+    assert (await project()).search_fields.abstract is None
 
 
 async def test_get_hydrated_loads_chain_heads_of_type(session: AsyncSession):

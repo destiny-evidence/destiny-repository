@@ -57,6 +57,7 @@ from app.domain.references.models.models import (
     CrossFacetResult,
     DuplicateDetermination,
     EnhancementRequestSearchStatus,
+    FacetCounting,
     FacetType,
     GenericExternalIdentifier,
     LinkedDataConceptFilter,
@@ -503,21 +504,22 @@ class ReferenceESRepository(
     async def aggregate_facets(
         self,
         query: SearchQuery,
-        facets: Sequence[FacetType],
+        facets: Mapping[FacetType, FacetCounting],
         *,
-        sibling_groups_by_facet: Mapping[FacetType, Sequence[SiblingGroup]]
-        | None = None,
         map_axes: Sequence[CrossFacetAxis] | None = None,
         max_buckets: int,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """Count facet terms matching ``query`` and optional ``map_axes`` presence."""
         # A separate query per facet type, for simplicity. Collapsing them into one
         # is where to look for performance gains later, but it won't be easy.
-        sibling_groups_by_facet = sibling_groups_by_facet or {}
         axis_clauses = [self._axis_presence_clause(axis) for axis in map_axes or ()]
         results: dict[FacetType, list[ESFacetBucket]] = {}
 
-        ungrouped_facets = [f for f in facets if not sibling_groups_by_facet.get(f)]
+        ungrouped_facets = {
+            facet: counting
+            for facet, counting in facets.items()
+            if not counting.sibling_groups
+        }
         if ungrouped_facets:
             # Simple aggregation for facets without sibling groups
             facet_to_field = {f: self._FACET_FIELDS[f] for f in ungrouped_facets}
@@ -526,20 +528,24 @@ class ReferenceESRepository(
                 aggregate_on=list(facet_to_field.values()),
                 query_fields=self.default_search_fields,
                 filter_clauses=[*self._build_filter_clauses(query), *axis_clauses],
+                include_by_field={
+                    facet_to_field[facet]: counting.include
+                    for facet, counting in ungrouped_facets.items()
+                    if counting.include is not None
+                },
                 max_buckets=max_buckets,
             )
             results.update(
                 {f: buckets_by_field[field] for f, field in facet_to_field.items()}
             )
 
-        for facet in facets:
-            groups = sibling_groups_by_facet.get(facet)
-            if not groups:
+        for facet, counting in facets.items():
+            if not counting.sibling_groups:
                 continue
             results[facet] = await self._aggregate_facet_sibling_aware(
                 query,
                 facet,
-                groups,
+                counting,
                 axis_clauses=axis_clauses,
                 max_buckets=max_buckets,
             )
@@ -550,7 +556,7 @@ class ReferenceESRepository(
         self,
         query: SearchQuery,
         facet: FacetType,
-        groups: Sequence[SiblingGroup],
+        counting: FacetCounting,
         *,
         axis_clauses: Sequence[Query] = (),
         max_buckets: int,
@@ -563,6 +569,7 @@ class ReferenceESRepository(
         a group (multi-URI Terms); AND between groups.
         """
         field = self._FACET_FIELDS[facet]
+        groups = counting.sibling_groups
         group_clauses = [Terms(**{field: list(g.selected)}) for g in groups]
 
         # Build search query excluding the facet's own filter so its agg
@@ -585,7 +592,7 @@ class ReferenceESRepository(
         if all(g.siblings_including_selected is not None for g in groups):
             agg_names.append(
                 self._attach_unselected_agg(
-                    search, field, groups, group_clauses, max_buckets=max_buckets
+                    search, field, counting, group_clauses, max_buckets=max_buckets
                 )
             )
 
@@ -637,14 +644,14 @@ class ReferenceESRepository(
     def _attach_unselected_agg(
         search: AsyncSearch,
         field: str,
-        groups: Sequence[SiblingGroup],
+        counting: FacetCounting,
         group_clauses: Sequence[Query],
         *,
         max_buckets: int,
     ) -> str:
-        """Attach the ``unselected`` agg: field values outside any group's siblings."""
+        """Attach the ``unselected`` agg: counted values outside every sibling set."""
         sibling_sets: list[frozenset[str]] = []
-        for g in groups:
+        for g in counting.sibling_groups:
             if g.siblings_including_selected is None:
                 msg = "_attach_unselected_agg requires enumerated sibling groups."
                 raise ValueError(msg)
@@ -653,14 +660,15 @@ class ReferenceESRepository(
         outer = search.aggs.bucket(
             "unselected", "filter", filter=Bool(filter=list(group_clauses))
         )
-        outer.bucket(
-            "inner",
-            "terms",
-            field=field,
-            exclude=sorted(all_grouped_uris),
-            min_doc_count=1,
-            size=max_buckets,
-        )
+        params: dict[str, object] = {
+            "field": field,
+            "exclude": sorted(all_grouped_uris),
+            "min_doc_count": 1,
+            "size": max_buckets,
+        }
+        if counting.include is not None:
+            params["include"] = sorted(counting.include)
+        outer.bucket("inner", "terms", **params)
         return "unselected"
 
     @staticmethod

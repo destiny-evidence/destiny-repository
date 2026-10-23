@@ -62,6 +62,11 @@ ex:Asia   a skos:Concept ; skos:inScheme ex:Region ;
           skos:topConceptOf ex:Region ; skos:prefLabel "Asia" .
 ex:Europe a skos:Concept ; skos:inScheme ex:Region ;
           skos:topConceptOf ex:Region ; skos:prefLabel "Europe" .
+
+ex:Letters a skos:ConceptScheme .
+<https://vocab.example.org/A> a skos:Concept ; skos:inScheme ex:Letters .
+<https://vocab.example.org/B> a skos:Concept ; skos:inScheme ex:Letters .
+<https://vocab.example.org/C> a skos:Concept ; skos:inScheme ex:Letters .
 """
 
 BOTANY = "https://vocab.example.org/test/Botany"
@@ -72,7 +77,7 @@ ASIA = "https://vocab.example.org/test/Asia"
 EUROPE = "https://vocab.example.org/test/Europe"
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def primed_vocab() -> Iterator[str]:
     """Pre-populate the vocab client's graph cache with a SKOS sibling fixture."""
     graph = Graph()
@@ -83,6 +88,7 @@ def primed_vocab() -> Iterator[str]:
         yield VOCAB_URI
     finally:
         client._vocabulary_cache.pop(VOCAB_URI, None)  # noqa: SLF001
+        client.get_concepts.cache_clear()
         client.get_concept_labels.cache_clear()
         client.get_concept_schemes.cache_clear()
         client.get_scheme_members.cache_clear()
@@ -192,7 +198,7 @@ async def test_concept_facet_counts_unrestricted(
     """Concept buckets are returned with descending counts across all matching docs."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "*", "facet": "concepts"},
+        params={"q": "*", "facet": "concepts", "vocabulary": VOCAB_URI},
     )
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
@@ -212,7 +218,7 @@ async def test_concept_facet_counts_respect_query_filter(
     """A restrictive `q` narrows the set the aggregation runs over."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "climate", "facet": "concepts"},
+        params={"q": "climate", "facet": "concepts", "vocabulary": VOCAB_URI},
     )
     assert response.status_code == status.HTTP_200_OK
     buckets = response.json()["concepts"]
@@ -229,7 +235,11 @@ async def test_concept_facet_no_matches(
     """A `q` matching nothing returns an empty bucket list, not an error."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "title:nonexistent_term_xyz", "facet": "concepts"},
+        params={
+            "q": "title:nonexistent_term_xyz",
+            "facet": "concepts",
+            "vocabulary": VOCAB_URI,
+        },
     )
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {"concepts": []}
@@ -277,7 +287,12 @@ async def test_multiple_facets_returned_together(
     """Requesting several facets returns each requested type and omits the rest."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params=[("q", "*"), ("facet", "concepts"), ("facet", "countries")],
+        params=[
+            ("q", "*"),
+            ("facet", "concepts"),
+            ("facet", "countries"),
+            ("vocabulary", VOCAB_URI),
+        ],
     )
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
@@ -298,6 +313,7 @@ async def test_country_filter_applies_structurally_to_other_facets(
             ("q", "*"),
             ("country", f"{COUNTRY_KE},{COUNTRY_UG}"),
             ("facet", "concepts"),
+            ("vocabulary", VOCAB_URI),
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
@@ -588,6 +604,18 @@ async def test_literal_only_axes_scope_without_a_vocabulary(
     assert response.json()["countries"] == [{"country": COUNTRY_KE, "count": 2}]
 
 
+async def test_concept_counts_require_a_vocabulary(
+    client: AsyncClient,
+) -> None:
+    """Concepts are only counted within a vocabulary, so one must be supplied."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params={"q": "*", "facet": "concepts"},
+    )
+    assert response.status_code == status.HTTP_400_BAD_REQUEST, response.text
+    assert "vocabulary" in response.text
+
+
 async def test_scoped_facets_reject_scheme_axis_without_vocabulary(
     client: AsyncClient,
 ) -> None:
@@ -611,7 +639,7 @@ async def test_concept_counts_without_axes_are_unscoped(
     """Omitting `axes=` leaves the existing whole-corpus counts untouched."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params={"q": "*", "facet": "concepts"},
+        params={"q": "*", "facet": "concepts", "vocabulary": VOCAB_URI},
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     assert _counts_by_concept(response.json()) == {BOTANY: 2, ZOOLOGY: 1}
@@ -656,3 +684,55 @@ async def test_sibling_aware_counts_are_also_scoped_to_axes(
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     assert _counts_by_concept(response.json()) == {BOTANY: 1, ZOOLOGY: 1}
+
+
+# ---- Concept counts scoped to the requested vocabulary ----------------------------
+
+OTHER_VOCAB_CONCEPT = "https://vocab.example.org/other/Elsewhere"
+
+
+@pytest.fixture
+async def multi_vocab_references(es_client: AsyncElasticsearch) -> None:
+    """Index references carrying concepts from the primed vocabulary and another."""
+    await _save_references(
+        es_client,
+        [
+            ReferenceDocument(
+                meta={"id": uuid7()},
+                id=uuid7(),
+                visibility=Visibility.PUBLIC,
+                title=title,
+                linked_data_concepts=concepts,
+            )
+            for title, concepts in [
+                ("Coded under both", [BOTANY, AFRICA, OTHER_VOCAB_CONCEPT]),
+                ("Coded under the other only", [OTHER_VOCAB_CONCEPT]),
+            ]
+        ],
+    )
+
+
+@pytest.mark.parametrize(
+    "concept_filter",
+    [
+        pytest.param([], id="plain"),
+        pytest.param([("concept", BOTANY)], id="sibling-aware"),
+    ],
+)
+async def test_concept_counts_exclude_other_vocabularies(
+    client: AsyncClient,
+    multi_vocab_references: None,  # noqa: ARG001
+    concept_filter: list[tuple[str, str]],
+) -> None:
+    """Concepts outside `vocabulary=` are not counted on either aggregation path."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            *concept_filter,
+            ("facet", "concepts"),
+            ("vocabulary", VOCAB_URI),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    assert _counts_by_concept(response.json()) == {BOTANY: 1, AFRICA: 1}

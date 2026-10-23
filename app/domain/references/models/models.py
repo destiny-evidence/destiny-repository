@@ -512,7 +512,8 @@ EnhancementContent = Annotated[
     | destiny_sdk.enhancements.LinkedDataEnhancement
     # Domain defines its own FullTextEnhancement
     | FullTextEnhancement
-    | destiny_sdk.enhancements.RawEnhancement,
+    | destiny_sdk.enhancements.RawEnhancement
+    | destiny_sdk.enhancements.TombstoneEnhancement,
     Field(discriminator="enhancement_type"),
 ]
 
@@ -1911,6 +1912,24 @@ class SiblingGroup(BaseModel):
             "universal mode: every value of the field is treated as a sibling, so "
             "the agg uses no ``include`` filter."
         ),
+    )
+
+
+class FacetCounting(BaseModel):
+    """How to count one facet."""
+
+    model_config = ConfigDict(frozen=True)
+
+    include: frozenset[str] | None = Field(
+        default=None,
+        description=(
+            "The only terms counted (used as the terms ``include`` set), so other "
+            "terms take up none of the bucket limit. ``None`` counts every term."
+        ),
+    )
+    sibling_groups: tuple[SiblingGroup, ...] = Field(
+        default=(),
+        description="Selections to count sibling-aware. Empty counts plainly.",
     )
 
 

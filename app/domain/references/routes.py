@@ -689,7 +689,8 @@ async def search_reference_ids(
         "relaxes the facet's own selection. Omit `axes` for search-scoped counts. "
         "A concept-scheme axis needs `?vocabulary=` whether or not a `?concept=` "
         "filter is set.\n\n"
-        "For `concepts`, supply `?vocabulary=`. A concept's siblings are every "
+        "For `concepts`, supply `?vocabulary=`. Only that vocabulary's concepts "
+        "are counted. A concept's siblings are every "
         "member of its scheme, regardless of hierarchical depth, so each `?concept=` "
         "parameter is one scheme's selection; the server enforces (400 on "
         "violation):\n\n"
@@ -719,8 +720,8 @@ async def count_facets_for_search(
         AfterValidator(_validate_vocab_host),
         Query(
             description=(
-                "Vocabulary URI for sibling-aware facet counting. Required when "
-                "filtering on concepts and requesting the `concepts` facet. "
+                "Vocabulary URI scoping `concepts` counts and sibling groups. "
+                "Required when requesting the `concepts` facet. "
                 f"Host must be a subdomain of `{settings.vocabulary_host}`."
             ),
             examples=[

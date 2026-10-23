@@ -324,6 +324,55 @@ class TestSkosDerivedLookups:
         assert schemes[_concept("English")] == _concept("Languages")
 
     @pytest.mark.asyncio
+    async def test_concepts_are_every_skos_concept(
+        self, skos_client: VocabularyArtifactClient
+    ):
+        concepts = await skos_client.get_concepts(VOCAB_URI)
+
+        # Concept schemes are excluded.
+        assert concepts == frozenset(
+            _concept(name)
+            for name in (
+                "Biology",
+                "Chemistry",
+                "Botany",
+                "Zoology",
+                "Microbiology",
+                "Africa",
+                "Asia",
+                "Apple",
+                "Pear",
+                "English",
+                "Spanish",
+                "Physics",
+                "Mathematics",
+                "Quantum",
+            )
+        )
+
+    @pytest.mark.asyncio
+    async def test_concepts_include_untyped_scheme_members(
+        self, client: VocabularyArtifactClient
+    ):
+        # Sibling groups come from scheme membership, so concepts must cover it too.
+        graph = Graph()
+        graph.parse(
+            data="""\
+@prefix ex:   <http://example.org/> .
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+ex:Topics  a skos:ConceptScheme .
+ex:Bio     a skos:Concept ; skos:inScheme ex:Topics .
+ex:Untyped skos:inScheme ex:Topics .
+""",
+            format="turtle",
+        )
+        client._vocabulary_cache[VOCAB_URI] = graph  # noqa: SLF001
+
+        assert await client.get_concepts(VOCAB_URI) == frozenset(
+            {_concept("Bio"), _concept("Untyped")}
+        )
+
+    @pytest.mark.asyncio
     async def test_concept_scheme_members_span_the_whole_scheme(
         self, skos_client: VocabularyArtifactClient
     ):
