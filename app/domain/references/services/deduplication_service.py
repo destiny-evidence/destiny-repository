@@ -1,6 +1,6 @@
 """Service for managing reference duplicate detection."""
 
-import string
+import unicodedata
 from typing import assert_never
 from uuid import UUID
 
@@ -72,7 +72,45 @@ _ENGLISH_STOPWORDS = frozenset(
     "a an and are as at be but by for if in into is it no not of on or such that "
     "the their then there these they this to was will with".split()
 )
-_WORD_EDGE_PUNCTUATION = string.punctuation + "\u2018\u2019\u201c\u201d"
+# Characters the standard tokenizer keeps inside a word when they sit between word
+# characters (Unicode word-break MidLetter, MidNum and MidNumLet).
+_WORD_JOINERS = frozenset("'\u2019.:,;")
+
+
+def _is_word_char(char: str) -> bool:
+    return char == "_" or unicodedata.category(char)[0] in "LMN"
+
+
+def _title_words(title: str) -> list[str]:
+    """
+    Split a title roughly where the standard analyzer does.
+
+    Hyphens, slashes, brackets and whitespace end a word; apostrophes, periods,
+    colons and commas only do when they are not between word characters, so
+    "in-vitro" is two words and "U.S.A" or "Kermit's" one. Where this differs
+    from the analyzer it keeps characters together, which is safe because
+    Elasticsearch re-splits a joined word exactly as it split the original.
+    """
+    words: list[str] = []
+    current: list[str] = []
+    for i, char in enumerate(title):
+        if _is_word_char(char):
+            current.append(char)
+            continue
+        joins = (
+            char in _WORD_JOINERS
+            and current
+            and i + 1 < len(title)
+            and _is_word_char(title[i + 1])
+        )
+        if joins:
+            current.append(char)
+        elif current:
+            words.append("".join(current))
+            current = []
+    if current:
+        words.append("".join(current))
+    return words
 
 
 def _candidate_title_query(title: str, *, policy: RetrievalPolicy) -> str:
@@ -84,11 +122,12 @@ def _candidate_title_query(title: str, *, policy: RetrievalPolicy) -> str:
     a separate clause, so a title repeating "de" and "la" would otherwise match any
     document containing both. The original title is kept if nothing would remain.
     """
-    words = title.split()
+    if not (policy.strip_title_stopwords or policy.dedupe_title_words):
+        return title
     seen: set[str] = set()
     kept: list[str] = []
-    for word in words:
-        key = word.lower().strip(_WORD_EDGE_PUNCTUATION)
+    for word in _title_words(title):
+        key = word.lower()
         if policy.strip_title_stopwords and key in _ENGLISH_STOPWORDS:
             continue
         if policy.dedupe_title_words:

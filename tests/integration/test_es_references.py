@@ -818,3 +818,127 @@ async def test_soft_year_decay_returns_and_reranks_year_drifted_candidate(
     assert soft.total.value == no_filter.total.value
     # Proximity bonus: the near-year duplicate outranks the far-year one.
     assert soft_ranks[near_target.id] < soft_ranks[far_target.id]
+
+
+def _reference_with_title(reference: Reference, title: str) -> Reference:
+    """Copy the fixture reference with a fresh id, a set title and a fixed author."""
+    ref_id = uuid7()
+    return reference.model_copy(
+        update={
+            "id": ref_id,
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid7(),
+                        "reference_id": ref_id,
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": title,
+                                    "authorship": [
+                                        Authorship(
+                                            display_name="Jane Smith",
+                                            position=AuthorPosition.FIRST,
+                                        )
+                                    ],
+                                    "publication_year": 2000,
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("query_title", "matching", "not_matching"),
+    [
+        pytest.param(
+            "Alpha Beta",
+            ["Alpha Beta Omega"],
+            ["Alpha Omega"],
+            id="two words need both",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma",
+            ["Alpha Beta Omega"],
+            ["Alpha Omega Psi"],
+            id="three words need two",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma Delta",
+            ["Alpha Beta Gamma Omega"],
+            ["Alpha Beta Omega Psi"],
+            id="four words need three",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma Delta Epsilon",
+            ["Alpha Beta Gamma Omega"],
+            ["Alpha Beta Omega Psi"],
+            id="five words need three",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma Delta Epsilon Zeta",
+            ["Alpha Beta Gamma Omega"],
+            ["Alpha Beta Omega Psi"],
+            id="six words need half",
+        ),
+        pytest.param(
+            "March of Dimes",
+            ["March of Dimes"],
+            ["History of Medicine"],
+            id="a stopword cannot satisfy the threshold",
+        ),
+        pytest.param(
+            "in-vitro and in-vivo",
+            ["Vitro vivo comparison"],
+            ["An in vitro study"],
+            id="a hyphenated stopword cannot satisfy the threshold",
+        ),
+        pytest.param(
+            "Mujeres y niños de la plazuela de la Cruz",
+            ["Mujeres de la plazuela"],
+            ["Historia de la casa"],
+            id="a repeated word counts once",
+        ),
+    ],
+)
+async def test_candidate_selection_v2_title_threshold(
+    es_reference_repository: ReferenceESRepository,
+    reference: Reference,
+    query_title: str,
+    matching: list[str],
+    not_matching: list[str],
+):
+    """The tiered threshold and query normalisation hold against a real index."""
+    stored = {
+        title: _reference_with_title(reference, title)
+        for title in [*matching, *not_matching]
+    }
+    for stored_reference in stored.values():
+        await es_reference_repository.add(to_indexable(stored_reference))
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    query_reference = _reference_with_title(reference, query_title)
+    query = build_candidate_canonical_search_query(
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+            query_reference
+        ),
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2),
+        reference_id=query_reference.id,
+    )
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        query, k=100
+    )
+
+    returned = {hit.id for hit in results.hits}
+    assert returned == {stored[title].id for title in matching}

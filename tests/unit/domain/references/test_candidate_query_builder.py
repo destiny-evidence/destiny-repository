@@ -298,14 +298,27 @@ def test_candidate_selection_v2_applies_tiered_minimum_should_match():
             "The Significance of the Transfiguration for Hesychasm",
             "Significance Transfiguration Hesychasm",
         ),
-        # Punctuation attached to a stopword does not protect it.
-        ("Levels of Altruism: The Report", "Levels Altruism: Report"),
+        ("Levels of Altruism: The Report", "Levels Altruism Report"),
+        # Hyphens and slashes split words, as in the index, so a stopword or a
+        # repeat inside a compound is still caught.
+        ("in-vitro and in-vivo", "vitro vivo"),
+        ("State-of-the-art methods", "State art methods"),
+        (
+            "Cross-sectional and cross-cultural/cross-national",
+            "Cross sectional cultural national",
+        ),
         # Repeated words count once, whatever their case.
         (
             "Mujeres y niños de la plazuela de la Cruz",
             "Mujeres y niños de la plazuela Cruz",
         ),
-        ("Water, Water, Everywhere", "Water, Everywhere"),
+        ("Water, Water, Everywhere", "Water Everywhere"),
+        # Characters the analyzer keeps inside a word stay joined.
+        ("Kermit's Soliloquy", "Kermit's Soliloquy"),
+        ("U.S.A. trade at 1,000 ports", "U.S.A trade 1,000 ports"),
+        ("Nanostructured N-doped TiO2", "Nanostructured N doped TiO2"),
+        # Combining marks belong to their word.
+        ("प्रकाश और प्रकाश", "प्रकाश और"),
         # Nothing to remove.
         ("Shared Title", "Shared Title"),
     ],
