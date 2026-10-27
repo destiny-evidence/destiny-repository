@@ -35,6 +35,7 @@ from app.domain.references.services.deduplication_service import (
     build_candidate_canonical_search_query,
 )
 from app.utils.time_and_date import utc_now
+from app.utils.title_terms import title_words
 from tests.factories import to_indexable
 
 
@@ -942,3 +943,39 @@ async def test_candidate_selection_v2_title_threshold(
 
     returned = {hit.id for hit in results.hits}
     assert returned == {stored[title].id for title in matching}
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        'צה"ל ומשרד הביטחון',
+        "Col·lagen i elastina",
+        "Inter\u00adnational Trade",
+        "Kermit\u2018s Song and Kermit's Song",
+        "U.S.A. trade at 1,000 ports",
+        'say "hi" now',
+        "a,b c;d 1,2 x·y 3·4",
+        "Zero\u200bwidth Zero\u200dJoiner d_e",
+        "Cross-sectional and cross-cultural/cross-national (2020) [preprint]",
+        "Nanostructured N-doped TiO<sub>2</sub> marigold flowers",
+        "त्याग और प्रकाश",
+    ],
+)
+async def test_title_words_never_split_finer_than_the_standard_tokenizer(
+    es_client: AsyncElasticsearch, title: str
+):
+    """
+    Every token the index holds must sit inside one query word.
+
+    Joining more than the tokenizer is safe, since Elasticsearch re-splits a
+    joined word as it split the original; splitting finer would leave the query
+    with pieces the index does not contain.
+    """
+    analysed = await es_client.indices.analyze(tokenizer="standard", text=title)
+    tokens = [token["token"] for token in analysed["tokens"]]
+    words = title_words(title)
+
+    for token in tokens:
+        assert any(token in word for word in words), (token, words)
+    # And the common case is an exact agreement.
+    assert len(words) <= len(tokens)

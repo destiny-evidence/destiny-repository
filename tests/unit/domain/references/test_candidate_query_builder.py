@@ -319,6 +319,9 @@ def test_candidate_selection_v2_applies_tiered_minimum_should_match():
         ("Col\u00b7lagen i elastina", "Col\u00b7lagen i elastina"),
         # Invisible format characters (a soft hyphen here) never end a word.
         ("Inter\u00adnational Trade", "Inter\u00adnational Trade"),
+        # A double quote joins Hebrew letters (an acronym) and nothing else.
+        ('צה"ל ומשרד הביטחון', 'צה"ל ומשרד הביטחון'),
+        ('say "hi" now', "say hi now"),
         ("U.S.A. trade at 1,000 ports", "U.S.A trade 1,000 ports"),
         ("Nanostructured N-doped TiO2", "Nanostructured N doped TiO2"),
         # Combining marks belong to their word.

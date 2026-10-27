@@ -46,8 +46,18 @@ _JOINERS = _MID_LETTER | _MID_NUM | _MID_NUM_LET
 _EXTEND_NUM_LET = frozenset(map(chr, [0x202F, 0xFF3F]))
 
 
+def _is_hebrew_letter(char: str) -> bool:
+    return unicodedata.category(char) == "Lo" and "HEBREW" in unicodedata.name(char, "")
+
+
 def _is_word_char(char: str) -> bool:
-    """Letters, marks, digits, connectors and invisible format characters."""
+    """
+    Letters, marks, digits, connectors and invisible format characters.
+
+    Format characters (soft hyphens, zero-width joiners) are kept so they never
+    end a word: the index holds such a word whole, and a split half would not
+    match it.
+    """
     category = unicodedata.category(char)
     return category[0] in "LMN" or category in {"Pc", "Cf"} or char in _EXTEND_NUM_LET
 
@@ -59,10 +69,11 @@ def title_words(title: str) -> list[str]:
     Hyphens, slashes, brackets and whitespace end a word. A joiner such as an
     apostrophe, period, colon or middle dot only does when it is not between
     word characters, so "in-vitro" is two words and "U.S.A", "Kermit's" and
-    "Col·lagen" are one. A format character such as a soft hyphen never ends a
-    word. Where this differs from the analyzer it keeps characters together,
-    which is safe because Elasticsearch re-splits a joined word exactly as it
-    split the original; splitting finer than the analyzer would not be.
+    "Col·lagen" are one, as is a Hebrew acronym such as צה"ל. A format character
+    such as a soft hyphen never ends a word. Where this differs from the
+    analyzer it keeps characters together, which is safe because Elasticsearch
+    re-splits a joined word exactly as it split the original; splitting finer
+    than the analyzer would not be.
     """
     words: list[str] = []
     current: list[str] = []
@@ -70,11 +81,15 @@ def title_words(title: str) -> list[str]:
         if _is_word_char(char):
             current.append(char)
             continue
-        joins = (
-            char in _JOINERS
-            and current
-            and i + 1 < len(title)
-            and _is_word_char(title[i + 1])
+        following = title[i + 1] if i + 1 < len(title) else ""
+        joins = bool(current) and (
+            (char in _JOINERS and bool(following) and _is_word_char(following))
+            # Hebrew writes acronyms with a double quote between letters.
+            or (
+                char == '"'
+                and _is_hebrew_letter(current[-1])
+                and _is_hebrew_letter(following)
+            )
         )
         if joins:
             current.append(char)
