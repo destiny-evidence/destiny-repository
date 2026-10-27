@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
 import pytest
+from opentelemetry.trace import StatusCode
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.core.exceptions import (
@@ -36,6 +37,7 @@ from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.deduplication_assessment_service import (
+    ASSESSMENT_SPAN,
     UNPROJECTABLE_CANDIDATE_REASON,
     DeduplicationAssessmentService,
     ReferenceReader,
@@ -205,7 +207,7 @@ class ScoredPair(NamedTuple):
 class FakePairScorer:
     def __init__(
         self,
-        probabilities: Sequence[float | None],
+        probabilities: Sequence[float | DeduplicationPairResult | None],
         *,
         threshold: float = 0.85,
     ) -> None:
@@ -226,6 +228,8 @@ class FakePairScorer:
         self.calls.append(ScoredPair(incoming, candidate))
         # A paper carries no reference id, so scores are consumed in candidate order.
         probability = self.probabilities[len(self.calls) - 1]
+        if isinstance(probability, DeduplicationPairResult):
+            return probability
         if probability is None:
             return DeduplicationPairResult(
                 unscorable_reason="stand-in could not score this pair"
@@ -270,7 +274,7 @@ def _forbid_async_methods(target, method_names: tuple[str, ...]):
 def _build_service(
     selection: CandidateSelectionResult,
     references: list[Reference],
-    probabilities: dict[UUID, float | None],
+    probabilities: dict[UUID, float | DeduplicationPairResult | None],
 ):
     by_id = {reference.id: reference for reference in references}
 
@@ -855,3 +859,213 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
         method.assert_not_awaited()
     sql_uow.commit.assert_not_awaited()
     es_uow.commit.assert_not_awaited()
+
+
+SAMPLED = ("otel.span.sampling_result", "RECORD_AND_SAMPLE")
+
+
+def _without_openalex(reference: Reference) -> Reference:
+    """Drop the factory's random W-ID, which would otherwise read as a collision."""
+    return reference.model_copy(update={"identifiers": []})
+
+
+def _identifier_route(*types: ExternalIdentifierType) -> CandidateIdentifierRoute:
+    values = {
+        ExternalIdentifierType.DOI: "10.1234/abc",
+        ExternalIdentifierType.OPEN_ALEX: "W1",
+    }
+    return CandidateIdentifierRoute(
+        matched_identifiers=[
+            CandidateIdentifier(identifier=values[type_], identifier_type=type_)
+            for type_ in types
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_assessment_span_reports_scorer_scores_and_early_stops(span_attributes):
+    incoming = _without_openalex(_reference())
+    candidates = [_without_openalex(_reference()) for _ in range(4)]
+    early_stopped = DeduplicationPairResult(
+        probability=0.1, early_stop_reason="partial_ratio_too_low"
+    )
+    service, *_ = _build_service(
+        _selection(
+            *(
+                Candidate(reference_id=candidate.id, rank=rank, routes=[])
+                for rank, candidate in enumerate(candidates, start=1)
+            )
+        ),
+        [incoming, *candidates],
+        {
+            candidates[0].id: 0.9,
+            candidates[1].id: 0.4,
+            candidates[2].id: early_stopped,
+            candidates[3].id: early_stopped,
+        },
+    )
+
+    await service.evaluate(incoming.id)
+
+    assert span_attributes(ASSESSMENT_SPAN) == {
+        "app.deduplication_assessment.deduper_version": "fake-1",
+        "app.deduplication_assessment.deduper_configuration_hash": "test-config",
+        "app.deduplication_assessment.threshold": 0.85,
+        "app.deduplication_assessment.outcome": "propose_duplicate",
+        "app.deduplication_assessment.scored_count": 4,
+        "app.deduplication_assessment.clearing_count": 1,
+        "app.deduplication_assessment.unscorable_count": 0,
+        "app.deduplication_assessment.best_probability": 0.9,
+        "app.deduplication_assessment.best_non_winning_probability": 0.4,
+        "app.deduplication_assessment.early_stop.partial_ratio_too_low": 2,
+        "app.deduplication_assessment.identifier_outcome": "none",
+        "app.deduplication_assessment.openalex_relation": "absent",
+    }
+
+
+@pytest.mark.parametrize(
+    (
+        "identifier_score",
+        "elasticsearch_score",
+        "outcome",
+        "clears",
+        "sampled",
+    ),
+    [
+        (0.9, 0.5, "top", True, False),
+        (0.7, 0.7, "top", False, False),
+        (0.6, 0.8, "beaten", False, True),
+        (None, 0.5, "unscored", None, False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_assessment_span_reports_how_the_identifier_candidate_fared(
+    span_attributes,
+    identifier_score,
+    elasticsearch_score,
+    outcome,
+    clears,
+    sampled,
+):
+    incoming = _without_openalex(_reference())
+    by_identifier = _without_openalex(_reference())
+    by_elasticsearch = _without_openalex(_reference())
+    service, *_ = _build_service(
+        _selection(
+            Candidate(
+                reference_id=by_identifier.id,
+                rank=1,
+                routes=[
+                    _identifier_route(
+                        ExternalIdentifierType.OPEN_ALEX, ExternalIdentifierType.DOI
+                    )
+                ],
+            ),
+            Candidate(reference_id=by_elasticsearch.id, rank=2, routes=[]),
+        ),
+        [incoming, by_identifier, by_elasticsearch],
+        {by_identifier.id: identifier_score, by_elasticsearch.id: elasticsearch_score},
+    )
+
+    await service.evaluate(incoming.id)
+
+    attributes = span_attributes(ASSESSMENT_SPAN)
+    assert attributes["app.deduplication_assessment.identifier_outcome"] == outcome
+    assert (
+        attributes["app.deduplication_assessment.identifier_types"] == "doi,open_alex"
+    )
+    assert (
+        attributes.get("app.deduplication_assessment.identifier_probability")
+        == identifier_score
+    )
+    assert (
+        attributes.get("app.deduplication_assessment.identifier_clears_threshold")
+        is clears
+    )
+    assert (SAMPLED in attributes.items()) is sampled
+
+
+@pytest.mark.parametrize(
+    ("candidate_openalex", "probability", "relation", "sampled"),
+    [
+        ("same", 0.9, "same", False),
+        ("other", 0.9, "different", True),
+        # Below the threshold it is an unrelated record, which is the common case.
+        ("other", 0.5, "different", False),
+        (None, 0.9, "absent", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_assessment_span_relates_the_top_candidates_openalex_id(
+    span_attributes, candidate_openalex, probability, relation, sampled
+):
+    incoming = _reference()
+    candidate = _reference()
+    if candidate_openalex == "same":
+        candidate.identifiers = [
+            identifier.model_copy(update={"reference_id": candidate.id})
+            for identifier in incoming.identifiers or []
+        ]
+    elif candidate_openalex is None:
+        candidate = _without_openalex(candidate)
+    service, *_ = _build_service(
+        _selection(Candidate(reference_id=candidate.id, rank=1, routes=[])),
+        [incoming, candidate],
+        {candidate.id: probability},
+    )
+
+    await service.evaluate(incoming.id)
+
+    attributes = span_attributes(ASSESSMENT_SPAN)
+    assert attributes["app.deduplication_assessment.openalex_relation"] == relation
+    assert (SAMPLED in attributes.items()) is sampled
+
+
+@pytest.mark.asyncio
+async def test_assessment_span_samples_conflicting_threshold_matches(span_attributes):
+    incoming = _without_openalex(_reference())
+    candidates = [_without_openalex(_reference()) for _ in range(2)]
+    service, *_ = _build_service(
+        _selection(
+            *(
+                Candidate(reference_id=candidate.id, rank=rank, routes=[])
+                for rank, candidate in enumerate(candidates, start=1)
+            )
+        ),
+        [incoming, *candidates],
+        {candidates[0].id: 0.9, candidates[1].id: 0.95},
+    )
+
+    await service.evaluate(incoming.id)
+
+    attributes = span_attributes(ASSESSMENT_SPAN)
+    assert attributes["app.deduplication_assessment.clearing_count"] == 2
+    assert SAMPLED in attributes.items()
+
+
+@pytest.mark.parametrize("entrypoint", ["stored_unhydratable", "supplied_retrieval"])
+@pytest.mark.asyncio
+async def test_failed_assessment_span_errors_and_keeps_the_scorer(
+    _span_exporter,  # noqa: PT019
+    entrypoint,
+):
+    _span_exporter.clear()
+    service, selector, _, _ = _build_service(_selection(), [], {})
+    if entrypoint == "stored_unhydratable":
+        # Fails before candidate retrieval starts.
+        assessing = service.evaluate(uuid7())
+    else:
+        selector.side_effect = ESError("candidate search unavailable (503)")
+        incoming = _supplied_reference()
+        assessing = service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+    with pytest.raises(DeduplicationError):
+        await assessing
+
+    (span,) = [
+        span
+        for span in _span_exporter.get_finished_spans()
+        if span.name == ASSESSMENT_SPAN
+    ]
+    assert span.status.status_code == StatusCode.ERROR
+    assert span.attributes["app.deduplication_assessment.deduper_version"] == "fake-1"

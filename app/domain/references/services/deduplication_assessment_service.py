@@ -1,9 +1,11 @@
 """Read-only orchestration for deep-deduplication assessments."""
 
+from collections import Counter
 from collections.abc import Awaitable, Callable
 from typing import Protocol
 from uuid import UUID
 
+from opentelemetry import trace
 from pydantic import ValidationError
 from sqlalchemy.exc import InterfaceError, OperationalError
 
@@ -14,6 +16,7 @@ from app.core.exceptions import (
     ESError,
     ProjectionError,
 )
+from app.core.telemetry.attributes import Attributes, sample_trace, trace_attribute
 from app.domain.references.models.models import (
     SCORED_ENHANCEMENT_TYPES,
     CandidateSelectionInput,
@@ -24,6 +27,8 @@ from app.domain.references.models.models import (
     DeduplicationAssessmentOutcome,
     DeduplicationPairResult,
     DeduplicationPaper,
+    IdentifierCandidateOutcome,
+    OpenAlexRelation,
     Reference,
     RetrievalPolicyName,
     ScoredDeduplicationCandidate,
@@ -32,6 +37,9 @@ from app.domain.references.models.projections import (
     CandidateReferenceProjection,
     DeduplicationPaperProjection,
 )
+
+tracer = trace.get_tracer(__name__)
+ASSESSMENT_SPAN = "Assess deduplication candidates"
 
 CandidateSelector = Callable[
     [CandidateSelectionRequest], Awaitable[CandidateSelectionResult]
@@ -44,6 +52,146 @@ INFRASTRUCTURE_ERRORS = (ESError, OperationalError, InterfaceError)
 # Stored on the pair result, so it stays flat: the candidate id already travels
 # beside it on the scored candidate and in the unscorable id list.
 UNPROJECTABLE_CANDIDATE_REASON = "Candidate could not be projected for scoring."
+
+
+def _identifier_surfaced(scored: ScoredDeduplicationCandidate) -> bool:
+    return any(route.type == "identifier" for route in scored.candidate.routes)
+
+
+def _identifier_types(identifier_candidates: list[ScoredDeduplicationCandidate]) -> str:
+    return ",".join(
+        sorted(
+            {
+                identifier.identifier_type.value
+                for scored in identifier_candidates
+                for route in scored.candidate.routes
+                if route.type == "identifier"
+                for identifier in route.matched_identifiers
+            }
+        )
+    )
+
+
+def _identifier_outcome(
+    identifier_candidates: list[ScoredDeduplicationCandidate],
+    identifier_probability: float | None,
+    best_probability: float | None,
+) -> IdentifierCandidateOutcome:
+    """Judge the best identifier-surfaced score against the best score overall."""
+    if not identifier_candidates:
+        return IdentifierCandidateOutcome.NONE
+    if identifier_probability is None:
+        return IdentifierCandidateOutcome.UNSCORED
+    # Identifier candidates are a subset, so equality means top, ties included.
+    if identifier_probability == best_probability:
+        return IdentifierCandidateOutcome.TOP
+    return IdentifierCandidateOutcome.BEATEN
+
+
+def _openalex_relation(
+    incoming: DeduplicationPaper, top: DeduplicationPaper
+) -> OpenAlexRelation:
+    if incoming.openalex_id is None or top.openalex_id is None:
+        return OpenAlexRelation.ABSENT
+    if incoming.openalex_id.identifier == top.openalex_id.identifier:
+        return OpenAlexRelation.SAME
+    return OpenAlexRelation.DIFFERENT
+
+
+def _trace_assessment(
+    assessment: DeduplicationAssessment,
+    incoming: DeduplicationPaper,
+    candidate_papers: dict[UUID, DeduplicationPaper],
+) -> None:
+    """
+    Record the scoring summary as bounded span attributes.
+
+    Rare outcomes are kept past throughput sampling: policy is set from them.
+    """
+    clearing_count = len(assessment.threshold_clearing_candidate_ids)
+    unscorable_count = len(assessment.unscorable_candidate_ids)
+    best, best_non_winning = assessment.best_scores()
+    identifier_candidates = [
+        scored
+        for scored in assessment.scored_candidates
+        if _identifier_surfaced(scored)
+    ]
+    identifier_probability = max(
+        (
+            scored.pair_result.probability
+            for scored in identifier_candidates
+            if scored.pair_result.probability is not None
+        ),
+        default=None,
+    )
+    identifier_outcome = _identifier_outcome(
+        identifier_candidates, identifier_probability, best
+    )
+    top_paper = next(
+        (
+            candidate_papers[scored.candidate.reference_id]
+            for scored in assessment.scored_candidates
+            if best is not None and scored.pair_result.probability == best
+        ),
+        None,
+    )
+    openalex_relation = _openalex_relation(incoming, top_paper) if top_paper else None
+
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_OUTCOME, assessment.outcome.value
+    )
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_SCORED_COUNT,
+        len(assessment.scored_candidates) - unscorable_count,
+    )
+    trace_attribute(Attributes.DEDUPLICATION_ASSESSMENT_CLEARING_COUNT, clearing_count)
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_UNSCORABLE_COUNT, unscorable_count
+    )
+    trace_attribute(Attributes.DEDUPLICATION_ASSESSMENT_BEST_PROBABILITY, best)
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_BEST_NON_WINNING_PROBABILITY,
+        best_non_winning,
+    )
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_IDENTIFIER_OUTCOME, identifier_outcome.value
+    )
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_IDENTIFIER_TYPES,
+        _identifier_types(identifier_candidates) or None,
+    )
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_IDENTIFIER_PROBABILITY,
+        identifier_probability,
+    )
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_IDENTIFIER_CLEARS_THRESHOLD,
+        None
+        if identifier_probability is None
+        else identifier_probability >= assessment.deduper.threshold,
+    )
+    trace_attribute(
+        Attributes.DEDUPLICATION_ASSESSMENT_OPENALEX_RELATION,
+        openalex_relation.value if openalex_relation else None,
+    )
+    early_stops = Counter(
+        scored.pair_result.early_stop_reason
+        for scored in assessment.scored_candidates
+        if scored.pair_result.early_stop_reason is not None
+    )
+    for reason, count in early_stops.items():
+        # Rules are the Deduper's own bounded codes, so the names stay bounded.
+        trace.get_current_span().set_attribute(
+            f"{Attributes.DEDUPLICATION_ASSESSMENT_EARLY_STOP}.{reason}", count
+        )
+
+    if (
+        clearing_count > 1
+        or identifier_outcome == IdentifierCandidateOutcome.BEATEN
+        # Below the threshold a different W-ID is just an unrelated OpenAlex record.
+        or (openalex_relation == OpenAlexRelation.DIFFERENT and clearing_count > 0)
+    ):
+        sample_trace()
 
 
 class ReferenceReader(Protocol):
@@ -91,6 +239,21 @@ class DeduplicationAssessmentService:
         self._reference_reader = reference_reader
         self._pair_scorer = pair_scorer
 
+    def _trace_scorer(self) -> None:
+        """Record the scorer first, so a failed assessment is still groupable by it."""
+        metadata = self._pair_scorer.metadata
+        trace_attribute(
+            Attributes.DEDUPLICATION_ASSESSMENT_DEDUPER_VERSION,
+            metadata.package_version,
+        )
+        trace_attribute(
+            Attributes.DEDUPLICATION_ASSESSMENT_DEDUPER_CONFIGURATION_HASH,
+            metadata.configuration_hash,
+        )
+        trace_attribute(
+            Attributes.DEDUPLICATION_ASSESSMENT_THRESHOLD, metadata.threshold
+        )
+
     @staticmethod
     def _to_scorer_paper(reference: Reference) -> DeduplicationPaper:
         """Project a reference into the record the scorer compares."""
@@ -112,6 +275,7 @@ class DeduplicationAssessmentService:
             raise DeduplicationNotFoundError(msg)
         return hydrated[0]
 
+    @tracer.start_as_current_span(ASSESSMENT_SPAN)
     async def evaluate(
         self,
         reference_id: UUID,
@@ -120,6 +284,7 @@ class DeduplicationAssessmentService:
         k: int | None = None,
     ) -> DeduplicationAssessment:
         """Assess a stored reference from one hydrated input snapshot."""
+        self._trace_scorer()
         reference = await self._hydrate_one(reference_id)
         candidate_reference = CandidateReferenceProjection.get_from_reference(reference)
         # A reference can project to nothing searchable, which the input model
@@ -142,6 +307,7 @@ class DeduplicationAssessmentService:
             k=k,
         )
 
+    @tracer.start_as_current_span(ASSESSMENT_SPAN)
     async def evaluate_supplied(
         self,
         incoming: Reference,
@@ -157,6 +323,7 @@ class DeduplicationAssessmentService:
         identifiers the record presents, and sets ``excluded_reference_id`` when the
         record is already held so it cannot be retrieved as its own candidate.
         """
+        self._trace_scorer()
         return await self._assess(
             incoming,
             selection_input,
@@ -224,6 +391,7 @@ class DeduplicationAssessmentService:
         scored_candidates = []
         threshold_clearing_ids = []
         unscorable_ids = []
+        candidate_papers: dict[UUID, DeduplicationPaper] = {}
         scorer_metadata = self._pair_scorer.metadata.model_copy(deep=True)
         threshold = scorer_metadata.threshold
         for candidate in candidate_selection.candidates:
@@ -238,6 +406,7 @@ class DeduplicationAssessmentService:
                     unscorable_reason=UNPROJECTABLE_CANDIDATE_REASON
                 )
             else:
+                candidate_papers[candidate.reference_id] = candidate_paper
                 pair_result = await self._pair_scorer.score_pair(
                     incoming=scored_incoming, candidate=candidate_paper
                 )
@@ -263,7 +432,7 @@ class DeduplicationAssessmentService:
             unscorable_ids,
             input_searchable=candidate_selection.input_searchability.searchable,
         )
-        return DeduplicationAssessment(
+        assessment = DeduplicationAssessment(
             incoming_reference_id=incoming.id,
             candidate_selection=candidate_selection,
             deduper=scorer_metadata,
@@ -273,6 +442,8 @@ class DeduplicationAssessmentService:
             threshold_clearing_candidate_ids=threshold_clearing_ids,
             unscorable_candidate_ids=unscorable_ids,
         )
+        _trace_assessment(assessment, scored_incoming, candidate_papers)
+        return assessment
 
     @staticmethod
     def _summarise(

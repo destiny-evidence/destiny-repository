@@ -131,6 +131,46 @@ class Attributes(StrEnum):
     DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS = "app.deep_deduplication.active_retrievals"
     DEEP_DEDUPLICATION_PEAK_RSS_BYTES = "app.deep_deduplication.peak_rss_bytes"
 
+    # Deduplication scoring
+    DEDUPLICATION_ASSESSMENT_DEDUPER_VERSION = (
+        "app.deduplication_assessment.deduper_version"
+    )
+    DEDUPLICATION_ASSESSMENT_DEDUPER_CONFIGURATION_HASH = (
+        "app.deduplication_assessment.deduper_configuration_hash"
+    )
+    DEDUPLICATION_ASSESSMENT_THRESHOLD = "app.deduplication_assessment.threshold"
+    DEDUPLICATION_ASSESSMENT_OUTCOME = "app.deduplication_assessment.outcome"
+    DEDUPLICATION_ASSESSMENT_SCORED_COUNT = "app.deduplication_assessment.scored_count"
+    DEDUPLICATION_ASSESSMENT_CLEARING_COUNT = (
+        "app.deduplication_assessment.clearing_count"
+    )
+    DEDUPLICATION_ASSESSMENT_UNSCORABLE_COUNT = (
+        "app.deduplication_assessment.unscorable_count"
+    )
+    DEDUPLICATION_ASSESSMENT_BEST_PROBABILITY = (
+        "app.deduplication_assessment.best_probability"
+    )
+    DEDUPLICATION_ASSESSMENT_BEST_NON_WINNING_PROBABILITY = (
+        "app.deduplication_assessment.best_non_winning_probability"
+    )
+    # A prefix: each early-stop rule is suffixed on and carries its pair count.
+    DEDUPLICATION_ASSESSMENT_EARLY_STOP = "app.deduplication_assessment.early_stop"
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_OUTCOME = (
+        "app.deduplication_assessment.identifier_outcome"
+    )
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_TYPES = (
+        "app.deduplication_assessment.identifier_types"
+    )
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_PROBABILITY = (
+        "app.deduplication_assessment.identifier_probability"
+    )
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_CLEARS_THRESHOLD = (
+        "app.deduplication_assessment.identifier_clears_threshold"
+    )
+    DEDUPLICATION_ASSESSMENT_OPENALEX_RELATION = (
+        "app.deduplication_assessment.openalex_relation"
+    )
+
     # Deduplication decisions
     DEDUPLICATION_ROUTE = "app.deduplication.route"
     DEDUPLICATION_DETERMINATION = "app.deduplication.determination"
@@ -152,9 +192,10 @@ class Attributes(StrEnum):
     FILE_LINE_NO = "app.file.line_number"
 
 
-def trace_attribute(attribute: Attributes, value: AttributeValue) -> None:
-    """Trace an attribute in the current span."""
-    trace.get_current_span().set_attribute(attribute.value, value)
+def trace_attribute(attribute: Attributes, value: AttributeValue | None) -> None:
+    """Trace an attribute in the current span, skipping an absent value."""
+    if value is not None:
+        trace.get_current_span().set_attribute(attribute.value, value)
 
 
 def sample_trace() -> None:
