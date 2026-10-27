@@ -411,7 +411,7 @@ class DedupCandidateScoringConfig(BaseModel):
         description="Per-request Elasticsearch budget for ingestion-driven retrieval.",
     )
     default_retrieval_policy: RetrievalPolicyName = Field(
-        default=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+        default=RetrievalPolicyName.CANDIDATE_SELECTION_V2,
         description="Candidate retrieval policy used when no override is supplied.",
     )
 

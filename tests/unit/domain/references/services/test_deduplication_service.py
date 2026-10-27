@@ -342,7 +342,7 @@ async def test_unsearchable_reference_returns_empty_selection_without_es_search(
     _mock_candidate_selection(service)
     result = await service.select_candidate_canonicals(reference.id)
 
-    assert result.retrieval_policy.value == "candidate_selection_v1"
+    assert result.retrieval_policy.value == "candidate_selection_v2"
     assert not result.input_searchability.searchable
     assert not result.candidates
     service.es_uow.references.search_for_candidate_canonicals.assert_not_awaited()
@@ -362,11 +362,11 @@ async def test_select_candidate_canonicals_returns_unhydrated_provenance(
     _mock_candidate_selection(service, candidate_id)
     result = await service.select_candidate_canonicals(searchable_reference.id)
 
-    assert result.retrieval_policy.value == "candidate_selection_v1"
+    assert result.retrieval_policy.value == "candidate_selection_v2"
     assert result.k_requested == 10
     assert [candidate.reference_id for candidate in result.candidates] == [candidate_id]
     assert result.candidates[0].routes[0].type == "elasticsearch"
-    assert result.candidates[0].routes[0].policy == "candidate_selection_v1"
+    assert result.candidates[0].routes[0].policy == "candidate_selection_v2"
     assert result.candidates[0].reference is None
     search_call = service.es_uow.references.search_for_candidate_canonicals.await_args
     assert search_call.kwargs["track_total_hits"] is True
@@ -1653,7 +1653,7 @@ class TestCandidateSelectionTelemetry:
 
         assert span_attributes(self.SPAN) == {
             "app.candidate_selection.deep_deduplication": False,
-            "app.candidate_selection.retrieval_policy": "candidate_selection_v1",
+            "app.candidate_selection.retrieval_policy": "candidate_selection_v2",
             "app.candidate_selection.k_requested": 10,
             "app.candidate_selection.searchable": True,
             "app.candidate_selection.title_present": True,

@@ -1,5 +1,6 @@
 """Service for managing reference duplicate detection."""
 
+import string
 from typing import assert_never
 from uuid import UUID
 
@@ -62,6 +63,40 @@ _UNIONABLE_IDENTIFIER_TYPES = frozenset(
         ExternalIdentifierType.OPEN_ALEX,
     }
 )
+
+
+# Lucene's default English stop set. The title field is indexed with the standard
+# analyzer, which keeps these, so a short title can satisfy minimum_should_match
+# with "of" alone and match a large share of the corpus.
+_ENGLISH_STOPWORDS = frozenset(
+    "a an and are as at be but by for if in into is it no not of on or such that "
+    "the their then there these they this to was will with".split()
+)
+_WORD_EDGE_PUNCTUATION = string.punctuation + "\u2018\u2019\u201c\u201d"
+
+
+def _candidate_title_query(title: str, *, policy: RetrievalPolicy) -> str:
+    """
+    Return the title text to match, with the policy's query-side normalisation.
+
+    Stopwords are removed and repeated words collapsed so that neither can count
+    towards minimum_should_match. Elasticsearch counts each occurrence of a word as
+    a separate clause, so a title repeating "de" and "la" would otherwise match any
+    document containing both. The original title is kept if nothing would remain.
+    """
+    words = title.split()
+    seen: set[str] = set()
+    kept: list[str] = []
+    for word in words:
+        key = word.lower().strip(_WORD_EDGE_PUNCTUATION)
+        if policy.strip_title_stopwords and key in _ENGLISH_STOPWORDS:
+            continue
+        if policy.dedupe_title_words:
+            if key in seen:
+                continue
+            seen.add(key)
+        kept.append(word)
+    return " ".join(kept) if kept else title
 
 
 def _candidate_author_terms(
@@ -135,11 +170,11 @@ def build_candidate_canonical_search_query(
             assert_never(policy.year_strategy)
 
     return CandidateCanonicalSearchQuery(
-        title=search_fields.title,
+        title=_candidate_title_query(search_fields.title, policy=policy),
         title_fuzziness=policy.title_fuzziness,
         title_boost=2.0,
         title_operator="or",
-        title_minimum_should_match="50%",
+        title_minimum_should_match=policy.title_minimum_should_match,
         author_terms=_candidate_author_terms(
             search_fields.authors, scoring_config=scoring_config
         ),

@@ -128,7 +128,7 @@ def test_candidate_selection_config_defaults_to_production_policy_and_k():
     """Candidate selection uses the deployed policy unless explicitly overridden."""
     config = DedupCandidateScoringConfig()
 
-    assert config.default_retrieval_policy is RetrievalPolicyName.CANDIDATE_SELECTION_V1
+    assert config.default_retrieval_policy is RetrievalPolicyName.CANDIDATE_SELECTION_V2
     assert config.candidate_k == 10
 
 

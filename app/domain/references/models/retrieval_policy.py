@@ -42,6 +42,9 @@ class RetrievalPolicy(BaseModel):
     requires_publication_year: bool = True
     year_decay: YearDecayConfig | None = None
     title_fuzziness: Literal["AUTO", "0"] = "AUTO"
+    title_minimum_should_match: str = "50%"
+    strip_title_stopwords: bool = False
+    dedupe_title_words: bool = False
 
     @model_validator(mode="after")
     def _validate_year_decay_matches_strategy(self) -> Self:
@@ -111,6 +114,18 @@ RETRIEVAL_POLICIES: Mapping[RetrievalPolicyName, RetrievalPolicy] = MappingProxy
                 year_strategy=YearStrategy.SOFT_DECAY,
                 year_decay=YearDecayConfig(),
                 title_fuzziness="0",
+            ),
+            RetrievalPolicy(
+                name=RetrievalPolicyName.CANDIDATE_SELECTION_V2,
+                union_identifiers=True,
+                year_strategy=YearStrategy.SOFT_DECAY,
+                year_decay=YearDecayConfig(),
+                title_fuzziness="0",
+                # Long titles keep 50% because stored titles often lack the
+                # incoming record's subtitle.
+                title_minimum_should_match="2<75% 5<50%",
+                strip_title_stopwords=True,
+                dedupe_title_words=True,
             ),
         )
     }

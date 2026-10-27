@@ -955,6 +955,11 @@ class RetrievalPolicyName(StrEnum):
     CANDIDATE_SELECTION_V1 = "candidate_selection_v1"
     """First production policy: soft year decay and non-fuzzy title matching;
     requires publication year and unions exact identifier candidates."""
+    CANDIDATE_SELECTION_V2 = "candidate_selection_v2"
+    """candidate_selection_v1 with a bounded title clause: every word must match
+    for titles of up to two words, 75% up to five, 50% beyond; English stopwords
+    and repeated words are dropped from the query text so they cannot satisfy the
+    threshold on their own."""
 
 
 class CandidateIdentifier(GenericExternalIdentifier):

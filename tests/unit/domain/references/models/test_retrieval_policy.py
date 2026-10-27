@@ -196,6 +196,33 @@ def test_candidate_selection_v1_matches_selected_probe_parameters():
     assert automatic.model_dump(exclude={"name"}) == probe.model_dump(exclude={"name"})
 
 
+def test_candidate_selection_v2_bounds_the_title_clause():
+    v1 = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V1)
+    v2 = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+
+    assert v2.title_minimum_should_match == "2<75% 5<50%"
+    assert v2.strip_title_stopwords is True
+    assert v2.dedupe_title_words is True
+    # Everything else is inherited from v1 unchanged.
+    title_clause = {
+        "name",
+        "title_minimum_should_match",
+        "strip_title_stopwords",
+        "dedupe_title_words",
+    }
+    assert v2.model_dump(exclude=title_clause) == v1.model_dump(exclude=title_clause)
+
+
+def test_earlier_policies_keep_the_unbounded_title_clause():
+    for name in RetrievalPolicyName:
+        if name is RetrievalPolicyName.CANDIDATE_SELECTION_V2:
+            continue
+        policy = resolve_retrieval_policy(name)
+        assert policy.title_minimum_should_match == "50%"
+        assert policy.strip_title_stopwords is False
+        assert policy.dedupe_title_words is False
+
+
 def test_fuzzy_policies_default_to_auto_fuzziness():
     for name in (
         RetrievalPolicyName.CURRENT_FUZZY_V1,

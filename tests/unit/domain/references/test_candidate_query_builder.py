@@ -274,3 +274,63 @@ def test_nonfuzzy_probe_disables_title_fuzziness():
     nonfuzzy = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1)
     assert fuzzy.title_fuzziness == "AUTO"
     assert nonfuzzy.title_fuzziness == "0"
+
+
+def test_candidate_selection_v2_applies_tiered_minimum_should_match():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+    assert query.title_minimum_should_match == "2<75% 5<50%"
+    assert query.title_fuzziness == "0"
+
+    translated = ReferenceESRepository._to_es_candidate_query(query).to_dict()
+    title_clause = translated["function_score"]["query"]["bool"]["must"][0]
+    assert title_clause["match"]["title"]["minimum_should_match"] == "2<75% 5<50%"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        # Stopwords cannot count towards the threshold.
+        ("March of Dimes", "March Dimes"),
+        (
+            "The Significance of the Transfiguration for Hesychasm",
+            "Significance Transfiguration Hesychasm",
+        ),
+        # Punctuation attached to a stopword does not protect it.
+        ("Levels of Altruism: The Report", "Levels Altruism: Report"),
+        # Repeated words count once, whatever their case.
+        (
+            "Mujeres y niños de la plazuela de la Cruz",
+            "Mujeres y niños de la plazuela Cruz",
+        ),
+        ("Water, Water, Everywhere", "Water, Everywhere"),
+        # Nothing to remove.
+        ("Shared Title", "Shared Title"),
+    ],
+)
+def test_candidate_selection_v2_normalises_the_title_query(title, expected):
+    fields = CandidateCanonicalSearchFields(
+        title=title, authors=["Smith"], publication_year=2000
+    )
+    assert _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2).title == expected
+
+
+def test_candidate_selection_v2_keeps_a_title_made_only_of_stopwords():
+    fields = CandidateCanonicalSearchFields(
+        title="To Be or Not", authors=["Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+    assert query.title == "To Be or Not"
+
+
+def test_candidate_selection_v1_title_query_is_unchanged():
+    fields = CandidateCanonicalSearchFields(
+        title="The March of the Dimes of March",
+        authors=["Smith"],
+        publication_year=2000,
+    )
+    query = _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V1)
+    assert query.title == "The March of the Dimes of March"
+    assert query.title_minimum_should_match == "50%"
