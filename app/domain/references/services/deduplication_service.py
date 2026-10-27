@@ -330,6 +330,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 k=k,
                 track_total_hits=request.track_total_hits,
                 request_timeout=request_timeout,
+                terminate_after=settings.dedup_scoring.retrieval_terminate_after,
+                search_timeout=settings.dedup_scoring.retrieval_search_timeout_seconds,
             )
 
         es_hits = es_result.hits if es_result else []

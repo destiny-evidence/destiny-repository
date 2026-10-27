@@ -153,6 +153,9 @@ class DeepDeduplicationOutcome(StrEnum):
     """Retrieval returned. The result is discarded while the arm measures only."""
     FAILED = auto()
     """Retrieval raised; the caller logs it and the decision proceeds regardless."""
+    TRUNCATED = auto()
+    """Elasticsearch stopped the search at the document cap or server-side
+    timeout, so no complete candidate set exists for this reference."""
 
 
 class DuplicateDetermination(StrEnum):

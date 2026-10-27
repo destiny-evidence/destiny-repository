@@ -414,6 +414,24 @@ class DedupCandidateScoringConfig(BaseModel):
         default=RetrievalPolicyName.CANDIDATE_SELECTION_V2,
         description="Candidate retrieval policy used when no override is supplied.",
     )
+    retrieval_terminate_after: int | None = Field(
+        default=50_000,
+        ge=1,
+        description=(
+            "Documents a single shard may collect for one candidate search before "
+            "Elasticsearch stops it. A stopped search is reported as truncated and "
+            "its hits are discarded. None disables the cap."
+        ),
+    )
+    retrieval_search_timeout_seconds: float | None = Field(
+        default=4.0,
+        gt=0,
+        description=(
+            "Server-side time limit for one candidate search. Unlike the client "
+            "budget, Elasticsearch stops working when it expires. A timed-out "
+            "search is reported as truncated. None disables the limit."
+        ),
+    )
 
 
 # Width of the evidence sampler's digest. A sample rate needing more bits than the

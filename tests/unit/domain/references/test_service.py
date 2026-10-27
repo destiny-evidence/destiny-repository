@@ -2470,6 +2470,25 @@ class TestDeepDeduplicationRetrievalTelemetry:
         assert attributes["app.deep_deduplication.outcome"] == "failed"
         assert "app.deep_deduplication.peak_rss_bytes" in attributes
 
+    @pytest.mark.asyncio
+    async def test_a_stopped_search_records_the_truncated_outcome(
+        self, duplicate_processing_service, span_attributes
+    ):
+        """Hitting the cap is counted apart from errors, so its rate is visible."""
+        from app.core.exceptions import CandidateSearchTruncatedError
+
+        service, decision = duplicate_processing_service
+        service._deduplication_service.select_candidate_canonicals = AsyncMock(  # noqa: SLF001
+            side_effect=CandidateSearchTruncatedError("stopped at the cap")
+        )
+
+        with pytest.raises(CandidateSearchTruncatedError):
+            await service.run_deep_deduplication_retrieval(decision.reference_id)
+
+        assert (
+            span_attributes(self.SPAN)["app.deep_deduplication.outcome"] == "truncated"
+        )
+
 
 class TestDeduplicationDecisionTelemetry:
     """Which route decided a reference, and what it decided, reaching the trace."""

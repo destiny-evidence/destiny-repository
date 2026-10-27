@@ -1,6 +1,7 @@
 """Tests for service-side candidate author-query construction."""
 
 import contextlib
+from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,7 +12,7 @@ from elasticsearch import ApiError
 from elasticsearch.dsl import AsyncSearch
 
 from app.core.config import DedupCandidateScoringConfig
-from app.core.exceptions import ESError
+from app.core.exceptions import CandidateSearchTruncatedError, ESError
 from app.domain.references.models.models import (
     CandidateCanonicalSearchQuery,
     DuplicateDetermination,
@@ -202,3 +203,82 @@ class TestCandidateRetrievalRequestBudget:
 
         client.options.assert_not_called()
         assert using is client
+
+
+class _Hits(list):
+    """A list of hits that also carries ``total`` like the DSL response does."""
+
+    total = SimpleNamespace(value=1, relation="eq")
+
+
+def _response(**flags) -> SimpleNamespace:
+    hit = SimpleNamespace(
+        meta=SimpleNamespace(id="019d0000-0000-7000-8000-000000000001", score=2.0)
+    )
+    return SimpleNamespace(hits=_Hits([hit]), took=7, **flags)
+
+
+class TestCandidateSearchBounds:
+    """A search that Elasticsearch stopped early is a failure, not a candidate set."""
+
+    async def _search(self, monkeypatch, response, **kwargs):
+        captured = {}
+
+        async def execute(self):
+            captured["body"] = self.to_dict()
+            return response
+
+        monkeypatch.setattr(AsyncSearch, "execute", execute)
+        repository = ReferenceESRepository(client=AsyncMock())
+        result = await repository.search_for_candidate_canonicals(
+            _candidate_query(), k=10, **kwargs
+        )
+        return result, captured["body"]
+
+    @pytest.mark.asyncio
+    async def test_bounds_reach_the_request(self, monkeypatch):
+        _, body = await self._search(
+            monkeypatch, _response(), terminate_after=50_000, search_timeout=4.0
+        )
+        assert body["terminate_after"] == 50_000
+        assert body["timeout"] == "4000ms"
+
+    @pytest.mark.asyncio
+    async def test_no_bounds_leave_the_request_unbounded(self, monkeypatch):
+        _, body = await self._search(monkeypatch, _response())
+        assert "terminate_after" not in body
+        assert "timeout" not in body
+
+    @pytest.mark.asyncio
+    async def test_a_complete_search_returns_its_hits(self, monkeypatch):
+        result, _ = await self._search(
+            monkeypatch,
+            _response(terminated_early=False, timed_out=False),
+            terminate_after=50_000,
+            search_timeout=4.0,
+        )
+        assert [hit.score for hit in result.hits] == [2.0]
+        assert result.took_ms == 7
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "flags",
+        [
+            pytest.param({"terminated_early": True}, id="document cap"),
+            pytest.param({"timed_out": True}, id="server timeout"),
+        ],
+    )
+    async def test_a_stopped_search_raises_instead_of_returning_hits(
+        self, monkeypatch, flags
+    ):
+        with pytest.raises(CandidateSearchTruncatedError):
+            await self._search(
+                monkeypatch,
+                _response(**flags),
+                terminate_after=50_000,
+                search_timeout=4.0,
+            )
+
+    @pytest.mark.asyncio
+    async def test_truncation_is_an_es_error_for_existing_handlers(self):
+        assert issubclass(CandidateSearchTruncatedError, ESError)

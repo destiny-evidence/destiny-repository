@@ -18,6 +18,7 @@ from app.core.config import (
 )
 from app.core.exceptions import (
     AuthError,
+    CandidateSearchTruncatedError,
     DuplicateEnhancementError,
     FullTextIngestionError,
     InvalidPayloadError,
@@ -579,6 +580,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     deep_deduplication=True,
                     request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
                 )
+            except CandidateSearchTruncatedError:
+                trace_attribute(
+                    Attributes.DEEP_DEDUPLICATION_OUTCOME,
+                    DeepDeduplicationOutcome.TRUNCATED.value,
+                )
+                raise
             except Exception:
                 trace_attribute(
                     Attributes.DEEP_DEDUPLICATION_OUTCOME,

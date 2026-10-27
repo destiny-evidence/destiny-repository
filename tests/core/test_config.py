@@ -130,6 +130,8 @@ def test_candidate_selection_config_defaults_to_production_policy_and_k():
 
     assert config.default_retrieval_policy is RetrievalPolicyName.CANDIDATE_SELECTION_V2
     assert config.candidate_k == 10
+    assert config.retrieval_terminate_after == 50_000
+    assert config.retrieval_search_timeout_seconds == 4.0
 
 
 def test_dedup_assessment_recording_defaults_to_full_evidence_sample():

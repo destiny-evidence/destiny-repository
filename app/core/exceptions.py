@@ -214,6 +214,16 @@ class ESError(DestinyRepositoryError):
         super().__init__(detail, *args)
 
 
+class CandidateSearchTruncatedError(ESError):
+    """
+    A candidate search stopped before examining every match.
+
+    Raised when Elasticsearch hit the per-shard document cap or the server-side
+    timeout. The hits it returned are whichever documents it reached first, not
+    the best-scoring ones, so they must not be used as a candidate set.
+    """
+
+
 class InvalidPayloadError(DestinyRepositoryError):
     """Exception for when a payload is invalid."""
 
