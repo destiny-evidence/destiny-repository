@@ -418,18 +418,18 @@ class DedupCandidateScoringConfig(BaseModel):
         default=50_000,
         ge=1,
         description=(
-            "Documents a single shard may collect for one candidate search before "
-            "Elasticsearch stops it. A stopped search is reported as truncated and "
-            "its hits are discarded. None disables the cap."
+            "Documents a single shard may collect for one deep deduplication "
+            "retrieval before Elasticsearch stops it. A stopped search is reported "
+            "as truncated and its hits are discarded. None disables the cap."
         ),
     )
     retrieval_search_timeout_seconds: float | None = Field(
         default=4.0,
         gt=0,
         description=(
-            "Server-side time limit for one candidate search. Unlike the client "
-            "budget, Elasticsearch stops working when it expires. A timed-out "
-            "search is reported as truncated. None disables the limit."
+            "Server-side time limit for one deep deduplication retrieval. Unlike "
+            "the client budget, Elasticsearch stops working when it expires. A "
+            "timed-out search is reported as truncated. None disables the limit."
         ),
     )
 

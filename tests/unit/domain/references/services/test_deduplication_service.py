@@ -1727,6 +1727,42 @@ class TestCandidateSelectionTelemetry:
         assert call.call_args.kwargs["request_timeout"] == expected
 
     @pytest.mark.asyncio
+    @pytest.mark.parametrize("deep_deduplication", [False, True])
+    async def test_only_the_shadow_retrieval_caps_the_search(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        deep_deduplication,
+    ):
+        """The decision path cannot handle a stopped search, so it is never capped."""
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        await service.select_candidate_canonicals(
+            searchable_reference.id, deep_deduplication=deep_deduplication
+        )
+
+        kwargs = (
+            service.es_uow.references.search_for_candidate_canonicals.call_args.kwargs
+        )
+        if deep_deduplication:
+            assert kwargs["terminate_after"] == (
+                settings.dedup_scoring.retrieval_terminate_after
+            )
+            assert kwargs["search_timeout"] == (
+                settings.dedup_scoring.retrieval_search_timeout_seconds
+            )
+        else:
+            assert kwargs["terminate_after"] is None
+            assert kwargs["search_timeout"] is None
+
+    @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(
         self,
         searchable_reference,

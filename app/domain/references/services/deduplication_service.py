@@ -318,6 +318,15 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
 
         searchable = policy.is_input_searchable(search_fields)
         es_result = None
+        # Only the shadow retrieval is bounded. The decision path does not handle a
+        # stopped search, and the evaluation endpoint needs complete results.
+        scoring = settings.dedup_scoring
+        terminate_after = (
+            scoring.retrieval_terminate_after if deep_deduplication else None
+        )
+        search_timeout = (
+            scoring.retrieval_search_timeout_seconds if deep_deduplication else None
+        )
         if searchable:
             query = build_candidate_canonical_search_query(
                 search_fields,
@@ -330,8 +339,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 k=k,
                 track_total_hits=request.track_total_hits,
                 request_timeout=request_timeout,
-                terminate_after=settings.dedup_scoring.retrieval_terminate_after,
-                search_timeout=settings.dedup_scoring.retrieval_search_timeout_seconds,
+                terminate_after=terminate_after,
+                search_timeout=search_timeout,
             )
 
         es_hits = es_result.hits if es_result else []
