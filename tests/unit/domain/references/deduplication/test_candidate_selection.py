@@ -35,6 +35,7 @@ from tests.factories import (
     LinkedExternalIdentifierFactory,
     ReferenceFactory,
     URLIdentifierFactory,
+    fake_analyze_title,
 )
 
 
@@ -89,6 +90,7 @@ def build_service(fake_uow, anti_corruption_service):
         reference: Reference | None = None,
     ) -> tuple[ReferenceService, MagicMock, MagicMock, MagicMock]:
         es_refs = MagicMock()
+        es_refs.analyze_title = AsyncMock(side_effect=fake_analyze_title)
         es_refs.search_for_candidate_canonicals = AsyncMock(
             return_value=es_result if es_result is not None else _es_result()
         )

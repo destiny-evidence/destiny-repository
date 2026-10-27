@@ -289,69 +289,21 @@ def test_candidate_selection_v2_applies_tiered_minimum_should_match():
     assert title_clause["match"]["title"]["minimum_should_match"] == "2<75% 5<50%"
 
 
-@pytest.mark.parametrize(
-    ("title", "expected"),
-    [
-        # Stopwords cannot count towards the threshold.
-        ("March of Dimes", "March Dimes"),
-        (
-            "The Significance of the Transfiguration for Hesychasm",
-            "Significance Transfiguration Hesychasm",
-        ),
-        ("Levels of Altruism: The Report", "Levels Altruism Report"),
-        # Hyphens and slashes split words, as in the index, so a stopword or a
-        # repeat inside a compound is still caught.
-        ("in-vitro and in-vivo", "vitro vivo"),
-        ("State-of-the-art methods", "State art methods"),
-        (
-            "Cross-sectional and cross-cultural/cross-national",
-            "Cross sectional cultural national",
-        ),
-        # Repeated words count once, whatever their case.
-        (
-            "Mujeres y niños de la plazuela de la Cruz",
-            "Mujeres y niños de la plazuela Cruz",
-        ),
-        ("Water, Water, Everywhere", "Water Everywhere"),
-        # Characters the analyzer keeps inside a word stay joined.
-        ("Kermit's Soliloquy", "Kermit's Soliloquy"),
-        ("Kermit\u2018s Song", "Kermit\u2018s Song"),
-        ("Col\u00b7lagen i elastina", "Col\u00b7lagen i elastina"),
-        # Invisible format characters (a soft hyphen here) never end a word.
-        ("Inter\u00adnational Trade", "Inter\u00adnational Trade"),
-        # A double quote joins Hebrew letters (an acronym) and nothing else.
-        ('צה"ל ומשרד הביטחון', 'צה"ל ומשרד הביטחון'),
-        ('say "hi" now', "say hi now"),
-        ("U.S.A. trade at 1,000 ports", "U.S.A trade 1,000 ports"),
-        ("Nanostructured N-doped TiO2", "Nanostructured N doped TiO2"),
-        # Combining marks belong to their word.
-        ("प्रकाश और प्रकाश", "प्रकाश और"),
-        # Nothing to remove.
-        ("Shared Title", "Shared Title"),
-    ],
-)
-def test_candidate_selection_v2_normalises_the_title_query(title, expected):
-    fields = CandidateCanonicalSearchFields(
-        title=title, authors=["Smith"], publication_year=2000
-    )
-    assert _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2).title == expected
-
-
-def test_candidate_selection_v2_rejects_a_title_made_only_of_stopwords():
-    """Such a title would match on stopwords alone; the gate keeps it from ES."""
-    fields = CandidateCanonicalSearchFields(
-        title="To Be or Not", authors=["Smith"], publication_year=2000
-    )
-    with pytest.raises(DeduplicationValueError):
-        _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2)
-
-
-def test_candidate_selection_v1_title_query_is_unchanged():
+def test_the_builder_sends_the_title_it_is_given():
+    """Normalisation happens in Elasticsearch before the builder, not inside it."""
     fields = CandidateCanonicalSearchFields(
         title="The March of the Dimes of March",
         authors=["Smith"],
         publication_year=2000,
     )
-    query = _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V1)
-    assert query.title == "The March of the Dimes of March"
-    assert query.title_minimum_should_match == "50%"
+    for name in (
+        RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+        RetrievalPolicyName.CANDIDATE_SELECTION_V2,
+    ):
+        assert _query(fields, name).title == "The March of the Dimes of March"
+    assert (
+        _query(
+            fields, RetrievalPolicyName.CANDIDATE_SELECTION_V1
+        ).title_minimum_should_match
+        == "50%"
+    )

@@ -35,7 +35,6 @@ from app.domain.references.services.deduplication_service import (
     build_candidate_canonical_search_query,
 )
 from app.utils.time_and_date import utc_now
-from app.utils.title_terms import title_words
 from tests.factories import to_indexable
 
 
@@ -929,12 +928,17 @@ async def test_candidate_selection_v2_title_threshold(
     )
 
     query_reference = _reference_with_title(reference, query_title)
+    policy = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+    fields = ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+        query_reference
+    )
+    terms = await es_reference_repository.analyze_title(
+        fields.title or "", filters=policy.title_query_filters
+    )
     query = build_candidate_canonical_search_query(
-        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
-            query_reference
-        ),
+        fields.model_copy(update={"title": " ".join(terms)}),
         scoring_config=DedupCandidateScoringConfig(),
-        policy=resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2),
+        policy=policy,
         reference_id=query_reference.id,
     )
     results = await es_reference_repository.search_for_candidate_canonicals(
@@ -945,37 +949,46 @@ async def test_candidate_selection_v2_title_threshold(
     assert returned == {stored[title].id for title in matching}
 
 
+V2_FILTERS = ("lowercase", "stop", "unique")
+
+
 @pytest.mark.parametrize(
-    "title",
+    ("title", "expected"),
     [
-        'צה"ל ומשרד הביטחון',
-        "Col·lagen i elastina",
-        "Inter\u00adnational Trade",
-        "Kermit\u2018s Song and Kermit's Song",
-        "U.S.A. trade at 1,000 ports",
-        'say "hi" now',
-        "a,b c;d 1,2 x·y 3·4",
-        "Zero\u200bwidth Zero\u200dJoiner d_e",
-        "Cross-sectional and cross-cultural/cross-national (2020) [preprint]",
-        "Nanostructured N-doped TiO<sub>2</sub> marigold flowers",
-        "त्याग और प्रकाश",
+        # Stopwords cannot count towards the threshold.
+        ("March of Dimes", ["march", "dimes"]),
+        (
+            "The Significance of the Transfiguration for Hesychasm",
+            ["significance", "transfiguration", "hesychasm"],
+        ),
+        # Hyphens split as in the index, so a stopword inside a compound goes too.
+        ("in-vitro and in-vivo", ["vitro", "vivo"]),
+        ("State-of-the-art methods", ["state", "art", "methods"]),
+        # Repeated words count once.
+        (
+            "Mujeres y niños de la plazuela de la Cruz",
+            ["mujeres", "y", "niños", "de", "la", "plazuela", "cruz"],
+        ),
+        ("Water, Water, Everywhere", ["water", "everywhere"]),
+        # What the tokenizer keeps whole stays whole.
+        ("Kermit's Song", ["kermit's", "song"]),
+        ('צה"ל ומשרד הביטחון', ['צה"ל', "ומשרד", "הביטחון"]),
+        ("Col·lagen i elastina", ["col·lagen", "i", "elastina"]),
+        ("Inter\u00adnational Trade", ["inter\u00adnational", "trade"]),
+        ("U.S.A. trade at 1,000 ports", ["u.s.a", "trade", "1,000", "ports"]),
+        ("Nanostructured N-doped TiO2", ["nanostructured", "n", "doped", "tio2"]),
+        # Nothing left means not searchable by title.
+        ("To Be or Not", []),
     ],
 )
-async def test_title_words_never_split_finer_than_the_standard_tokenizer(
-    es_client: AsyncElasticsearch, title: str
+async def test_v2_title_analysis_matches_the_index_and_is_stable(
+    es_reference_repository: ReferenceESRepository, title: str, expected: list[str]
 ):
-    """
-    Every token the index holds must sit inside one query word.
-
-    Joining more than the tokenizer is safe, since Elasticsearch re-splits a
-    joined word as it split the original; splitting finer would leave the query
-    with pieces the index does not contain.
-    """
-    analysed = await es_client.indices.analyze(tokenizer="standard", text=title)
-    tokens = [token["token"] for token in analysed["tokens"]]
-    words = title_words(title)
-
-    for token in tokens:
-        assert any(token in word for word in words), (token, words)
-    # And the common case is an exact agreement.
-    assert len(words) <= len(tokens)
+    """The cluster normalises the title; re-analysing the result changes nothing."""
+    terms = await es_reference_repository.analyze_title(title, filters=V2_FILTERS)
+    assert terms == expected
+    # The match query re-tokenises what we send, so the terms must survive it.
+    again = await es_reference_repository.analyze_title(
+        " ".join(terms), filters=V2_FILTERS
+    )
+    assert again == terms

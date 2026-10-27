@@ -18,7 +18,6 @@ from app.domain.references.models.models import (
     RetrievalPolicyName,
     YearDecayConfig,
 )
-from app.utils.title_terms import title_query_terms
 
 
 class YearStrategy(Enum):
@@ -44,8 +43,9 @@ class RetrievalPolicy(BaseModel):
     year_decay: YearDecayConfig | None = None
     title_fuzziness: Literal["AUTO", "0"] = "AUTO"
     title_minimum_should_match: str = "50%"
-    strip_title_stopwords: bool = False
-    dedupe_title_words: bool = False
+    title_query_filters: tuple[str, ...] = ()
+    """Elasticsearch token filters applied to the title before it is matched,
+    after the index's own standard tokenizer. Empty sends the title as given."""
 
     @model_validator(mode="after")
     def _validate_year_decay_matches_strategy(self) -> Self:
@@ -57,27 +57,11 @@ class RetrievalPolicy(BaseModel):
             raise ValueError(msg)
         return self
 
-    def title_query_terms(self, title: str | None) -> list[str]:
-        """Return the title words this policy sends to Elasticsearch."""
-        if not title:
-            return []
-        if not (self.strip_title_stopwords or self.dedupe_title_words):
-            return [title]
-        return title_query_terms(
-            title,
-            strip_stopwords=self.strip_title_stopwords,
-            dedupe=self.dedupe_title_words,
-        )
-
     def is_input_searchable(
         self, search_fields: CandidateCanonicalSearchFields
     ) -> bool:
         """Whether the input has the fields this policy needs for ES retrieval."""
-        # A title left with no words after normalisation (e.g. "To Be or Not")
-        # would match on stopwords alone, so it is not searchable either.
-        has_core = bool(
-            self.title_query_terms(search_fields.title) and search_fields.authors
-        )
+        has_core = bool(search_fields.title and search_fields.authors)
         # Falsy year (0/None) counts as absent, matching the baseline all(...) gate.
         has_year = bool(search_fields.publication_year)
         return has_core and (has_year or not self.requires_publication_year)
@@ -141,8 +125,8 @@ RETRIEVAL_POLICIES: Mapping[RetrievalPolicyName, RetrievalPolicy] = MappingProxy
                 # Long titles keep 50% because stored titles often lack the
                 # incoming record's subtitle.
                 title_minimum_should_match="2<75% 5<50%",
-                strip_title_stopwords=True,
-                dedupe_title_words=True,
+                # Stopwords and repeated words cannot then satisfy the threshold.
+                title_query_filters=("lowercase", "stop", "unique"),
             ),
         )
     }

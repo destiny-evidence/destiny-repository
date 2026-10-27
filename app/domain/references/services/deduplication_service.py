@@ -99,9 +99,8 @@ def build_candidate_canonical_search_query(
     reference_id: UUID | None,
 ) -> CandidateCanonicalSearchQuery:
     """Interpret a retrieval policy as a service-owned search specification."""
-    title_terms = policy.title_query_terms(search_fields.title)
-    if not title_terms:
-        msg = "Candidate retrieval requires a title with searchable words."
+    if not search_fields.title:
+        msg = "Candidate retrieval requires a title."
         raise DeduplicationValueError(msg)
 
     publication_year_decay: YearDecay | None = None
@@ -136,7 +135,7 @@ def build_candidate_canonical_search_query(
             assert_never(policy.year_strategy)
 
     return CandidateCanonicalSearchQuery(
-        title=" ".join(title_terms),
+        title=search_fields.title,
         title_fuzziness=policy.title_fuzziness,
         title_boost=2.0,
         title_operator="or",
@@ -155,16 +154,15 @@ def build_candidate_canonical_search_query(
 
 
 def _unsearchable_reason(
-    search_fields: CandidateCanonicalSearchFields, policy: RetrievalPolicy
+    search_fields: CandidateCanonicalSearchFields,
+    policy: RetrievalPolicy,
+    *,
+    title_query: str | None,
 ) -> str:
     """Explain which Elasticsearch search fields are absent, per policy."""
-    title_name = (
-        "title (stopwords only)"
-        if search_fields.title and not policy.title_query_terms(search_fields.title)
-        else "title"
-    )
+    title_name = "title (stopwords only)" if search_fields.title else "title"
     checks: list[tuple[str, object]] = [
-        (title_name, policy.title_query_terms(search_fields.title)),
+        (title_name, title_query),
         ("authors", search_fields.authors),
     ]
     if policy.requires_publication_year:
@@ -181,10 +179,11 @@ def _searchability_reason(
     policy: RetrievalPolicy,
     *,
     searchable: bool,
+    title_query: str | None,
 ) -> str:
     """Reason string separating year-absent-but-permitted from ordinary cases."""
     if not searchable:
-        return _unsearchable_reason(search_fields, policy)
+        return _unsearchable_reason(search_fields, policy, title_query=title_query)
     if search_fields.publication_year is None:
         return (
             f"searchable: publication_year absent, not required by "
@@ -288,6 +287,16 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         searchable = policy.is_input_searchable(search_fields)
+        title_query = search_fields.title if searchable else None
+        if searchable and policy.title_query_filters:
+            # The cluster tokenises the title as the index did and drops what the
+            # policy excludes. A title left empty (e.g. "To Be or Not") would
+            # match on stopwords alone, so it is not searchable by title.
+            terms = await self.es_uow.references.analyze_title(
+                search_fields.title or "", filters=policy.title_query_filters
+            )
+            title_query = " ".join(terms) or None
+            searchable = title_query is not None
         es_result = None
         # Only the shadow retrieval is bounded. The decision path does not handle a
         # stopped search, and the evaluation endpoint needs complete results.
@@ -300,7 +309,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         )
         if searchable:
             query = build_candidate_canonical_search_query(
-                search_fields,
+                search_fields.model_copy(update={"title": title_query}),
                 scoring_config=settings.dedup_scoring,
                 policy=policy,
                 reference_id=self_id,
@@ -369,7 +378,10 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             input_searchability=InputSearchability(
                 searchable=searchable,
                 reason=_searchability_reason(
-                    search_fields, policy, searchable=searchable
+                    search_fields,
+                    policy,
+                    searchable=searchable,
+                    title_query=title_query,
                 ),
             ),
             diagnostics=CandidateSelectionDiagnostics(

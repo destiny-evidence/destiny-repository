@@ -201,28 +201,10 @@ def test_candidate_selection_v2_bounds_the_title_clause():
     v2 = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
 
     assert v2.title_minimum_should_match == "2<75% 5<50%"
-    assert v2.strip_title_stopwords is True
-    assert v2.dedupe_title_words is True
+    assert v2.title_query_filters == ("lowercase", "stop", "unique")
     # Everything else is inherited from v1 unchanged.
-    title_clause = {
-        "name",
-        "title_minimum_should_match",
-        "strip_title_stopwords",
-        "dedupe_title_words",
-    }
+    title_clause = {"name", "title_minimum_should_match", "title_query_filters"}
     assert v2.model_dump(exclude=title_clause) == v1.model_dump(exclude=title_clause)
-
-
-def test_candidate_selection_v2_treats_a_stopword_only_title_as_unsearchable():
-    fields = CandidateCanonicalSearchFields(
-        title="To Be or Not", authors=["Smith"], publication_year=2000
-    )
-    v1 = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V1)
-    v2 = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
-    assert v1.is_input_searchable(fields) is True
-    assert v2.is_input_searchable(fields) is False
-    assert v2.title_query_terms("To Be or Not") == []
-    assert v2.title_query_terms("To Be or Not Alive") == ["Alive"]
 
 
 def test_earlier_policies_keep_the_unbounded_title_clause():
@@ -231,8 +213,7 @@ def test_earlier_policies_keep_the_unbounded_title_clause():
             continue
         policy = resolve_retrieval_policy(name)
         assert policy.title_minimum_should_match == "50%"
-        assert policy.strip_title_stopwords is False
-        assert policy.dedupe_title_words is False
+        assert policy.title_query_filters == ()
 
 
 def test_fuzzy_policies_default_to_auto_fuzziness():

@@ -12,6 +12,8 @@ from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     Candidate,
     CandidateSelectionDiagnostics,
+    CandidateSelectionInput,
+    CandidateSelectionRequest,
     CandidateSelectionResult,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
@@ -42,6 +44,7 @@ from tests.factories import (
     RawEnhancementFactory,
     ReferenceFactory,
     URLIdentifierFactory,
+    fake_analyze_title,
 )
 from tests.unit.domain.conftest import link_fake_repos
 
@@ -54,6 +57,7 @@ def _mock_candidate_selection(service: DeduplicationService, *candidate_ids) -> 
         return_value=[]
     )
     service.es_uow = MagicMock()
+    service.es_uow.references.analyze_title = AsyncMock(side_effect=fake_analyze_title)
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=CandidateCanonicalSearchResult(
             hits=[ESScoreResult(id=id_, score=1.0) for id_ in candidate_ids],
@@ -403,6 +407,41 @@ async def test_stopword_only_title_is_unsearchable_under_the_default_policy(
     assert result.input_searchability.searchable is False
     assert "title (stopwords only)" in result.input_searchability.reason
     service.es_uow.references.search_for_candidate_canonicals.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_analysed_title_is_what_the_search_receives(
+    searchable_reference, anti_corruption_service, fake_uow, fake_repository
+):
+    """v2 sends the cluster-normalised words; v1 sends the title untouched."""
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(references=fake_repository([searchable_reference])),
+        fake_uow(),
+    )
+    _mock_candidate_selection(service, uuid7())
+
+    await service.select_candidate_canonicals(searchable_reference.id)
+    analyze = service.es_uow.references.analyze_title
+    analyze.assert_awaited_once_with(
+        "Maybe a duplicate reference, maybe not",
+        filters=("lowercase", "stop", "unique"),
+    )
+    sent = service.es_uow.references.search_for_candidate_canonicals.call_args
+    assert sent.args[0].title == "maybe duplicate reference,"
+
+    analyze.reset_mock()
+    service.es_uow.references.search_for_candidate_canonicals.reset_mock()
+    await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(reference_id=searchable_reference.id),
+            retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+            hydrate=False,
+        )
+    )
+    analyze.assert_not_awaited()
+    sent = service.es_uow.references.search_for_candidate_canonicals.call_args
+    assert sent.args[0].title == "Maybe a duplicate reference, maybe not"
 
 
 @pytest.mark.asyncio

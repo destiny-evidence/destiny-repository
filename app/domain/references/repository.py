@@ -843,6 +843,24 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
+    async def analyze_title(self, title: str, *, filters: Sequence[str]) -> list[str]:
+        """
+        Tokenise a title the way the index does, then apply ``filters``.
+
+        Uses the standard tokenizer inline, so it needs no index settings and
+        stays in step with whatever Lucene version the cluster runs. The result
+        is stable under re-analysis, so it can be joined and sent to a match query.
+        """
+        try:
+            response = await self._client.indices.analyze(
+                tokenizer="standard", filter=list(filters), text=title
+            )
+        except elastic_transport.TransportError as exc:
+            msg = f"Title analysis could not reach Elasticsearch: {exc}"
+            raise ESError(msg) from exc
+        return [token["token"] for token in response["tokens"]]
+
+    @trace_repository_method(tracer)
     async def search_for_candidate_canonicals(  # noqa: PLR0913
         self,
         query: CandidateCanonicalSearchQuery,
