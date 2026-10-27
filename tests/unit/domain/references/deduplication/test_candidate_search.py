@@ -282,3 +282,36 @@ class TestCandidateSearchBounds:
     @pytest.mark.asyncio
     async def test_truncation_is_an_es_error_for_existing_handlers(self):
         assert issubclass(CandidateSearchTruncatedError, ESError)
+
+
+class TestAnalyzeTitle:
+    """Title analysis runs the inline chain against the reference index."""
+
+    @pytest.mark.asyncio
+    async def test_the_call_is_scoped_to_the_reference_index(self):
+        """An index-less analyze needs cluster `manage`, which the app key lacks."""
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(
+            return_value={"tokens": [{"token": "march"}, {"token": "dimes"}]}
+        )
+        repository = ReferenceESRepository(client=client)
+
+        terms = await repository.analyze_title(
+            "March of Dimes", filters=("lowercase", "stop", "unique")
+        )
+
+        assert terms == ["march", "dimes"]
+        kwargs = client.indices.analyze.call_args.kwargs
+        assert kwargs["index"] == "reference"
+        assert kwargs["tokenizer"] == "standard"
+        assert kwargs["filter"] == ["lowercase", "stop", "unique"]
+
+    @pytest.mark.asyncio
+    async def test_an_unreachable_cluster_becomes_an_es_error(self):
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(side_effect=ConnectionTimeout("timed out"))
+
+        with pytest.raises(ESError):
+            await ReferenceESRepository(client=client).analyze_title(
+                "March of Dimes", filters=("stop",)
+            )

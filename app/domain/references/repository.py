@@ -852,8 +852,13 @@ class ReferenceESRepository(
         is stable under re-analysis, so it can be joined and sent to a match query.
         """
         try:
+            # Scoped to the index: the app key's index-level `manage` privilege
+            # authorises this, while the index-less form needs cluster `manage`.
             response = await self._client.indices.analyze(
-                tokenizer="standard", filter=list(filters), text=title
+                index=self._persistence_cls.Index.name,
+                tokenizer="standard",
+                filter=list(filters),
+                text=title,
             )
         except elastic_transport.TransportError as exc:
             msg = f"Title analysis could not reach Elasticsearch: {exc}"
