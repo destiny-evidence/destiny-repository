@@ -157,12 +157,15 @@ def _unsearchable_reason(
     search_fields: CandidateCanonicalSearchFields,
     policy: RetrievalPolicy,
     *,
-    title_query: str | None,
+    title_stopwords_only: bool,
 ) -> str:
     """Explain which Elasticsearch search fields are absent, per policy."""
-    title_name = "title (stopwords only)" if search_fields.title else "title"
     checks: list[tuple[str, object]] = [
-        (title_name, title_query),
+        (
+            ("title (stopwords only)", None)
+            if title_stopwords_only
+            else ("title", search_fields.title)
+        ),
         ("authors", search_fields.authors),
     ]
     if policy.requires_publication_year:
@@ -179,11 +182,13 @@ def _searchability_reason(
     policy: RetrievalPolicy,
     *,
     searchable: bool,
-    title_query: str | None,
+    title_stopwords_only: bool,
 ) -> str:
     """Reason string separating year-absent-but-permitted from ordinary cases."""
     if not searchable:
-        return _unsearchable_reason(search_fields, policy, title_query=title_query)
+        return _unsearchable_reason(
+            search_fields, policy, title_stopwords_only=title_stopwords_only
+        )
     if search_fields.publication_year is None:
         return (
             f"searchable: publication_year absent, not required by "
@@ -287,16 +292,20 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         searchable = policy.is_input_searchable(search_fields)
-        title_query = search_fields.title if searchable else None
+        title_query = search_fields.title
+        title_stopwords_only = False
         if searchable and policy.title_query_filters:
             # The cluster tokenises the title as the index did and drops what the
             # policy excludes. A title left empty (e.g. "To Be or Not") would
             # match on stopwords alone, so it is not searchable by title.
             terms = await self.es_uow.references.analyze_title(
-                search_fields.title or "", filters=policy.title_query_filters
+                search_fields.title or "",
+                filters=policy.title_query_filters,
+                request_timeout=request_timeout,
             )
             title_query = " ".join(terms) or None
-            searchable = title_query is not None
+            title_stopwords_only = title_query is None
+            searchable = not title_stopwords_only
         es_result = None
         # Only the shadow retrieval is bounded. The decision path does not handle a
         # stopped search, and the evaluation endpoint needs complete results.
@@ -381,7 +390,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                     search_fields,
                     policy,
                     searchable=searchable,
-                    title_query=title_query,
+                    title_stopwords_only=title_stopwords_only,
                 ),
             ),
             diagnostics=CandidateSelectionDiagnostics(

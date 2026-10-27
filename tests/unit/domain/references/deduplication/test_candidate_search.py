@@ -315,3 +315,43 @@ class TestAnalyzeTitle:
             await ReferenceESRepository(client=client).analyze_title(
                 "March of Dimes", filters=("stop",)
             )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_bounds_the_call(self):
+        client, bounded = AsyncMock(), AsyncMock()
+        client.options = MagicMock(return_value=bounded)
+        bounded.indices.analyze = AsyncMock(return_value={"tokens": []})
+
+        await ReferenceESRepository(client=client).analyze_title(
+            "March of Dimes", filters=("stop",), request_timeout=5.0
+        )
+
+        client.options.assert_called_once_with(
+            request_timeout=5.0, max_retries=0, retry_on_timeout=False
+        )
+        bounded.indices.analyze.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [429, 503])
+    async def test_a_transient_status_becomes_an_es_error(self, status):
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(
+            side_effect=TestCandidateSearchFailureTranslation._api_error(status)  # noqa: SLF001
+        )
+        with pytest.raises(ESError):
+            await ReferenceESRepository(client=client).analyze_title(
+                "March of Dimes", filters=("stop",)
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 403])
+    async def test_a_client_error_stays_fatal(self, status):
+        """A missing privilege is a defect: it must not be retried per record."""
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(
+            side_effect=TestCandidateSearchFailureTranslation._api_error(status)  # noqa: SLF001
+        )
+        with pytest.raises(ApiError):
+            await ReferenceESRepository(client=client).analyze_title(
+                "March of Dimes", filters=("stop",)
+            )

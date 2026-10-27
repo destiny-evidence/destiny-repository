@@ -843,18 +843,28 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
-    async def analyze_title(self, title: str, *, filters: Sequence[str]) -> list[str]:
+    async def analyze_title(
+        self,
+        title: str,
+        *,
+        filters: Sequence[str],
+        request_timeout: float | None = None,
+    ) -> list[str]:
         """
         Tokenise a title the way the index does, then apply ``filters``.
 
         Uses the standard tokenizer inline, so it needs no index settings and
         stays in step with whatever Lucene version the cluster runs. The result
         is stable under re-analysis, so it can be joined and sent to a match query.
+        Failures are translated as for :meth:`search_for_candidate_canonicals`,
+        under the same ``request_timeout`` budget.
         """
         try:
             # Scoped to the index: the app key's index-level `manage` privilege
             # authorises this, while the index-less form needs cluster `manage`.
-            response = await self._client.indices.analyze(
+            response = await self._client_within_budget(
+                request_timeout
+            ).indices.analyze(
                 index=self._persistence_cls.Index.name,
                 tokenizer="standard",
                 filter=list(filters),
@@ -862,6 +872,12 @@ class ReferenceESRepository(
             )
         except elastic_transport.TransportError as exc:
             msg = f"Title analysis could not reach Elasticsearch: {exc}"
+            raise ESError(msg) from exc
+        except ApiError as exc:
+            # As for the search: a 4xx (including a missing privilege) is a defect.
+            if not _is_transient_es_status(exc.meta.status):
+                raise
+            msg = f"Title analysis unavailable ({exc.meta.status}): {exc}"
             raise ESError(msg) from exc
         return [token["token"] for token in response["tokens"]]
 

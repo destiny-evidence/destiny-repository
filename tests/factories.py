@@ -502,7 +502,12 @@ _ENGLISH_STOPWORDS = frozenset(
 )
 
 
-async def fake_analyze_title(title: str, *, filters: tuple[str, ...]) -> list[str]:
+async def fake_analyze_title(
+    title: str,
+    *,
+    filters: tuple[str, ...],
+    request_timeout: float | None = None,  # noqa: ARG001
+) -> list[str]:
     """
     Stand in for ReferenceESRepository.analyze_title in unit tests.
 
