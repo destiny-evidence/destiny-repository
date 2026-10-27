@@ -315,6 +315,10 @@ def test_candidate_selection_v2_applies_tiered_minimum_should_match():
         ("Water, Water, Everywhere", "Water Everywhere"),
         # Characters the analyzer keeps inside a word stay joined.
         ("Kermit's Soliloquy", "Kermit's Soliloquy"),
+        ("Kermit\u2018s Song", "Kermit\u2018s Song"),
+        ("Col\u00b7lagen i elastina", "Col\u00b7lagen i elastina"),
+        # Invisible format characters (a soft hyphen here) never end a word.
+        ("Inter\u00adnational Trade", "Inter\u00adnational Trade"),
         ("U.S.A. trade at 1,000 ports", "U.S.A trade 1,000 ports"),
         ("Nanostructured N-doped TiO2", "Nanostructured N doped TiO2"),
         # Combining marks belong to their word.
@@ -330,12 +334,13 @@ def test_candidate_selection_v2_normalises_the_title_query(title, expected):
     assert _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2).title == expected
 
 
-def test_candidate_selection_v2_keeps_a_title_made_only_of_stopwords():
+def test_candidate_selection_v2_rejects_a_title_made_only_of_stopwords():
+    """Such a title would match on stopwords alone; the gate keeps it from ES."""
     fields = CandidateCanonicalSearchFields(
         title="To Be or Not", authors=["Smith"], publication_year=2000
     )
-    query = _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2)
-    assert query.title == "To Be or Not"
+    with pytest.raises(DeduplicationValueError):
+        _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2)
 
 
 def test_candidate_selection_v1_title_query_is_unchanged():

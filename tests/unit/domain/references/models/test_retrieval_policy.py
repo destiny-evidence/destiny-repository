@@ -213,6 +213,18 @@ def test_candidate_selection_v2_bounds_the_title_clause():
     assert v2.model_dump(exclude=title_clause) == v1.model_dump(exclude=title_clause)
 
 
+def test_candidate_selection_v2_treats_a_stopword_only_title_as_unsearchable():
+    fields = CandidateCanonicalSearchFields(
+        title="To Be or Not", authors=["Smith"], publication_year=2000
+    )
+    v1 = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V1)
+    v2 = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+    assert v1.is_input_searchable(fields) is True
+    assert v2.is_input_searchable(fields) is False
+    assert v2.title_query_terms("To Be or Not") == []
+    assert v2.title_query_terms("To Be or Not Alive") == ["Alive"]
+
+
 def test_earlier_policies_keep_the_unbounded_title_clause():
     for name in RetrievalPolicyName:
         if name is RetrievalPolicyName.CANDIDATE_SELECTION_V2:

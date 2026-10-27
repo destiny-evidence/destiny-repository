@@ -1,6 +1,5 @@
 """Service for managing reference duplicate detection."""
 
-import unicodedata
 from typing import assert_never
 from uuid import UUID
 
@@ -65,79 +64,6 @@ _UNIONABLE_IDENTIFIER_TYPES = frozenset(
 )
 
 
-# Lucene's default English stop set. The title field is indexed with the standard
-# analyzer, which keeps these, so a short title can satisfy minimum_should_match
-# with "of" alone and match a large share of the corpus.
-_ENGLISH_STOPWORDS = frozenset(
-    "a an and are as at be but by for if in into is it no not of on or such that "
-    "the their then there these they this to was will with".split()
-)
-# Characters the standard tokenizer keeps inside a word when they sit between word
-# characters (Unicode word-break MidLetter, MidNum and MidNumLet).
-_WORD_JOINERS = frozenset("'\u2019.:,;")
-
-
-def _is_word_char(char: str) -> bool:
-    return char == "_" or unicodedata.category(char)[0] in "LMN"
-
-
-def _title_words(title: str) -> list[str]:
-    """
-    Split a title roughly where the standard analyzer does.
-
-    Hyphens, slashes, brackets and whitespace end a word; apostrophes, periods,
-    colons and commas only do when they are not between word characters, so
-    "in-vitro" is two words and "U.S.A" or "Kermit's" one. Where this differs
-    from the analyzer it keeps characters together, which is safe because
-    Elasticsearch re-splits a joined word exactly as it split the original.
-    """
-    words: list[str] = []
-    current: list[str] = []
-    for i, char in enumerate(title):
-        if _is_word_char(char):
-            current.append(char)
-            continue
-        joins = (
-            char in _WORD_JOINERS
-            and current
-            and i + 1 < len(title)
-            and _is_word_char(title[i + 1])
-        )
-        if joins:
-            current.append(char)
-        elif current:
-            words.append("".join(current))
-            current = []
-    if current:
-        words.append("".join(current))
-    return words
-
-
-def _candidate_title_query(title: str, *, policy: RetrievalPolicy) -> str:
-    """
-    Return the title text to match, with the policy's query-side normalisation.
-
-    Stopwords are removed and repeated words collapsed so that neither can count
-    towards minimum_should_match. Elasticsearch counts each occurrence of a word as
-    a separate clause, so a title repeating "de" and "la" would otherwise match any
-    document containing both. The original title is kept if nothing would remain.
-    """
-    if not (policy.strip_title_stopwords or policy.dedupe_title_words):
-        return title
-    seen: set[str] = set()
-    kept: list[str] = []
-    for word in _title_words(title):
-        key = word.lower()
-        if policy.strip_title_stopwords and key in _ENGLISH_STOPWORDS:
-            continue
-        if policy.dedupe_title_words:
-            if key in seen:
-                continue
-            seen.add(key)
-        kept.append(word)
-    return " ".join(kept) if kept else title
-
-
 def _candidate_author_terms(
     authors: list[str], *, scoring_config: DedupCandidateScoringConfig
 ) -> tuple[str, ...]:
@@ -173,8 +99,9 @@ def build_candidate_canonical_search_query(
     reference_id: UUID | None,
 ) -> CandidateCanonicalSearchQuery:
     """Interpret a retrieval policy as a service-owned search specification."""
-    if not search_fields.title:
-        msg = "Candidate retrieval requires a title."
+    title_terms = policy.title_query_terms(search_fields.title)
+    if not title_terms:
+        msg = "Candidate retrieval requires a title with searchable words."
         raise DeduplicationValueError(msg)
 
     publication_year_decay: YearDecay | None = None
@@ -209,7 +136,7 @@ def build_candidate_canonical_search_query(
             assert_never(policy.year_strategy)
 
     return CandidateCanonicalSearchQuery(
-        title=_candidate_title_query(search_fields.title, policy=policy),
+        title=" ".join(title_terms),
         title_fuzziness=policy.title_fuzziness,
         title_boost=2.0,
         title_operator="or",
@@ -231,8 +158,13 @@ def _unsearchable_reason(
     search_fields: CandidateCanonicalSearchFields, policy: RetrievalPolicy
 ) -> str:
     """Explain which Elasticsearch search fields are absent, per policy."""
+    title_name = (
+        "title (stopwords only)"
+        if search_fields.title and not policy.title_query_terms(search_fields.title)
+        else "title"
+    )
     checks: list[tuple[str, object]] = [
-        ("title", search_fields.title),
+        (title_name, policy.title_query_terms(search_fields.title)),
         ("authors", search_fields.authors),
     ]
     if policy.requires_publication_year:

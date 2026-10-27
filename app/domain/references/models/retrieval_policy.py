@@ -18,6 +18,7 @@ from app.domain.references.models.models import (
     RetrievalPolicyName,
     YearDecayConfig,
 )
+from app.utils.title_terms import title_query_terms
 
 
 class YearStrategy(Enum):
@@ -56,11 +57,27 @@ class RetrievalPolicy(BaseModel):
             raise ValueError(msg)
         return self
 
+    def title_query_terms(self, title: str | None) -> list[str]:
+        """Return the title words this policy sends to Elasticsearch."""
+        if not title:
+            return []
+        if not (self.strip_title_stopwords or self.dedupe_title_words):
+            return [title]
+        return title_query_terms(
+            title,
+            strip_stopwords=self.strip_title_stopwords,
+            dedupe=self.dedupe_title_words,
+        )
+
     def is_input_searchable(
         self, search_fields: CandidateCanonicalSearchFields
     ) -> bool:
         """Whether the input has the fields this policy needs for ES retrieval."""
-        has_core = bool(search_fields.title and search_fields.authors)
+        # A title left with no words after normalisation (e.g. "To Be or Not")
+        # would match on stopwords alone, so it is not searchable either.
+        has_core = bool(
+            self.title_query_terms(search_fields.title) and search_fields.authors
+        )
         # Falsy year (0/None) counts as absent, matching the baseline all(...) gate.
         has_year = bool(search_fields.publication_year)
         return has_core and (has_year or not self.requires_publication_year)
