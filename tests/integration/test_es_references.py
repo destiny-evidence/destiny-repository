@@ -14,7 +14,7 @@ from destiny_sdk.enhancements import (
 from elasticsearch import AsyncElasticsearch
 
 from app.core.config import DedupCandidateScoringConfig
-from app.core.exceptions import ESNotFoundError
+from app.core.exceptions import CandidateSearchTruncatedError, ESNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     Reference,
@@ -947,6 +947,46 @@ async def test_candidate_selection_v2_title_threshold(
 
     returned = {hit.id for hit in results.hits}
     assert returned == {stored[title].id for title in matching}
+
+
+async def test_the_document_cap_stops_a_search_on_a_real_index(
+    es_reference_repository: ReferenceESRepository, reference: Reference
+):
+    """
+    A capped search is refused rather than returned as a candidate set.
+
+    The server-side timeout is only checked between units of work, so a tiny index
+    finishes before it can fire; that bound is covered by the unit tests.
+    """
+    for i in range(5):
+        await es_reference_repository.add(
+            to_indexable(_reference_with_title(reference, f"Shared title {i}"))
+        )
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    query_reference = _reference_with_title(reference, "Shared title")
+    policy = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+    query = build_candidate_canonical_search_query(
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+            query_reference
+        ),
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=policy,
+        reference_id=query_reference.id,
+    )
+
+    with pytest.raises(CandidateSearchTruncatedError) as raised:
+        await es_reference_repository.search_for_candidate_canonicals(
+            query, k=10, terminate_after=1
+        )
+    assert raised.value.bound == "terminate_after"
+
+    complete = await es_reference_repository.search_for_candidate_canonicals(
+        query, k=10, terminate_after=1_000
+    )
+    assert len(complete.hits) == 5
 
 
 V2_FILTERS = ("lowercase", "stop", "unique")

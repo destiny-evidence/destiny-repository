@@ -569,8 +569,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         Retrieve candidates for measurement only, discarding the result.
 
-        Exceptions propagate so the caller logs the failure and the unit of work
-        marks its span errored.
+        A search stopped by its bound is an expected outcome, recorded on the span
+        and logged as a warning. Other exceptions propagate so the caller logs the
+        failure and the unit of work marks its span errored.
         """
         with _active_retrievals as active:
             trace_attribute(Attributes.DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS, active)
@@ -580,12 +581,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     deep_deduplication=True,
                     request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
                 )
-            except CandidateSearchTruncatedError:
+            except CandidateSearchTruncatedError as exc:
                 trace_attribute(
                     Attributes.DEEP_DEDUPLICATION_OUTCOME,
                     DeepDeduplicationOutcome.TRUNCATED.value,
                 )
-                raise
+                trace_attribute(Attributes.DEEP_DEDUPLICATION_STOPPED_BY, exc.bound)
+                trace_attribute(Attributes.CANDIDATE_SELECTION_ES_TOOK_MS, exc.took_ms)
+                logger.warning(
+                    "Deep deduplication retrieval was stopped by its bound.",
+                    reason=str(exc),
+                )
             except Exception:
                 trace_attribute(
                     Attributes.DEEP_DEDUPLICATION_OUTCOME,

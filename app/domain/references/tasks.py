@@ -9,7 +9,7 @@ from structlog.contextvars import bound_contextvars
 
 from app.core.config import Environment, get_settings
 from app.core.entitlements import Entitlement
-from app.core.exceptions import CandidateSearchTruncatedError, SQLIntegrityError
+from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.attributes import (
     Attributes,
     name_span,
@@ -441,11 +441,6 @@ async def process_reference_duplicate_decision(
                 try:
                     await reference_service.run_deep_deduplication_retrieval(
                         reference_duplicate_decision.reference_id
-                    )
-                except CandidateSearchTruncatedError as exc:
-                    logger.warning(
-                        "Deep deduplication retrieval was stopped by its bound.",
-                        reason=str(exc),
                     )
                 except Exception:
                     logger.exception("Deep deduplication retrieval failed.")

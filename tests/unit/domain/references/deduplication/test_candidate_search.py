@@ -262,22 +262,24 @@ class TestCandidateSearchBounds:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
-        "flags",
+        ("flags", "bound"),
         [
-            pytest.param({"terminated_early": True}, id="document cap"),
-            pytest.param({"timed_out": True}, id="server timeout"),
+            pytest.param({"terminated_early": True}, "terminate_after", id="cap"),
+            pytest.param({"timed_out": True}, "timeout", id="server timeout"),
         ],
     )
     async def test_a_stopped_search_raises_instead_of_returning_hits(
-        self, monkeypatch, flags
+        self, monkeypatch, flags, bound
     ):
-        with pytest.raises(CandidateSearchTruncatedError):
+        with pytest.raises(CandidateSearchTruncatedError) as raised:
             await self._search(
                 monkeypatch,
                 _response(**flags),
                 terminate_after=50_000,
                 search_timeout=4.0,
             )
+        assert raised.value.bound == bound
+        assert raised.value.took_ms == 7
 
 
 class TestAnalyzeTitle:

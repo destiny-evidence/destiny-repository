@@ -952,10 +952,14 @@ class ReferenceESRepository(
         # so its hits say nothing about the best candidates.
         if getattr(response, "terminated_early", False):
             msg = f"Candidate search stopped at the {terminate_after}-document cap"
-            raise CandidateSearchTruncatedError(msg)
+            raise CandidateSearchTruncatedError(
+                msg, bound="terminate_after", took_ms=response.took
+            )
         if getattr(response, "timed_out", False):
             msg = f"Candidate search stopped at the {search_timeout}s server timeout"
-            raise CandidateSearchTruncatedError(msg)
+            raise CandidateSearchTruncatedError(
+                msg, bound="timeout", took_ms=response.took
+            )
 
         hits = sorted(
             [

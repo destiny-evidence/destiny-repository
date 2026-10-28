@@ -1,6 +1,6 @@
 """Unit tests for the tasks module in the references domain."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import pytest
@@ -695,29 +695,4 @@ class TestDeepDeduplicationRetrieval:
 
         await process_reference_duplicate_decision(decision_id)
 
-        mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
-
-    @pytest.mark.usefixtures(
-        "mock_sql_uow_cm",
-        "mock_es_uow_cm",
-        "_task_dependencies",
-        "enable_deep_deduplication",
-    )
-    async def test_a_stopped_retrieval_is_logged_as_a_warning_not_a_failure(
-        self, decision_id, mock_reference_service, monkeypatch
-    ):
-        """Honeycomb records it as truncated; the logs should agree."""
-        from app.core.exceptions import CandidateSearchTruncatedError
-        from app.domain.references import tasks as tasks_module
-
-        logger = MagicMock()
-        monkeypatch.setattr(tasks_module, "logger", logger)
-        mock_reference_service.run_deep_deduplication_retrieval.side_effect = (
-            CandidateSearchTruncatedError("stopped at the cap")
-        )
-
-        await process_reference_duplicate_decision(decision_id)
-
-        logger.warning.assert_called_once()
-        logger.exception.assert_not_called()
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()

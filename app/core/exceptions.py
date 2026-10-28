@@ -223,6 +223,20 @@ class CandidateSearchTruncatedError(ESError):
     the best-scoring ones, so they must not be used as a candidate set.
     """
 
+    def __init__(self, detail: str, *, bound: str, took_ms: int) -> None:
+        """
+        Initialize the CandidateSearchTruncatedError exception.
+
+        Args:
+            detail (str): The detail message for the exception.
+            bound (str): The bound that stopped the search.
+            took_ms (int): Elasticsearch's reported time for the search.
+
+        """
+        super().__init__(detail)
+        self.bound = bound
+        self.took_ms = took_ms
+
 
 class InvalidPayloadError(DestinyRepositoryError):
     """Exception for when a payload is invalid."""

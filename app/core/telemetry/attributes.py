@@ -128,6 +128,7 @@ class Attributes(StrEnum):
 
     # Deep deduplication retrieval
     DEEP_DEDUPLICATION_OUTCOME = "app.deep_deduplication.outcome"
+    DEEP_DEDUPLICATION_STOPPED_BY = "app.deep_deduplication.stopped_by"
     DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS = "app.deep_deduplication.active_retrievals"
     DEEP_DEDUPLICATION_PEAK_RSS_BYTES = "app.deep_deduplication.peak_rss_bytes"
 

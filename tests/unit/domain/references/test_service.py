@@ -4,7 +4,7 @@ import asyncio
 import datetime
 import json
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, call, patch
+from unittest.mock import AsyncMock, MagicMock, Mock, call, patch
 from uuid import UUID, uuid4, uuid7
 
 import pytest
@@ -2471,23 +2471,30 @@ class TestDeepDeduplicationRetrievalTelemetry:
         assert "app.deep_deduplication.peak_rss_bytes" in attributes
 
     @pytest.mark.asyncio
-    async def test_a_stopped_search_records_the_truncated_outcome(
-        self, duplicate_processing_service, span_attributes
+    async def test_a_stopped_search_is_an_outcome_not_an_error(
+        self, duplicate_processing_service, span_attributes, monkeypatch
     ):
-        """Hitting the cap is counted apart from errors, so its rate is visible."""
+        """Hitting a bound is recorded for tuning and never reaches the unit of work."""
         from app.core.exceptions import CandidateSearchTruncatedError
+        from app.domain.references import service as reference_service_module
 
+        logger = MagicMock()
+        monkeypatch.setattr(reference_service_module, "logger", logger)
         service, decision = duplicate_processing_service
         service._deduplication_service.select_candidate_canonicals = AsyncMock(  # noqa: SLF001
-            side_effect=CandidateSearchTruncatedError("stopped at the cap")
+            side_effect=CandidateSearchTruncatedError(
+                "stopped at the cap", bound="terminate_after", took_ms=1234
+            )
         )
 
-        with pytest.raises(CandidateSearchTruncatedError):
-            await service.run_deep_deduplication_retrieval(decision.reference_id)
+        await service.run_deep_deduplication_retrieval(decision.reference_id)
 
-        assert (
-            span_attributes(self.SPAN)["app.deep_deduplication.outcome"] == "truncated"
-        )
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.deep_deduplication.outcome"] == "truncated"
+        assert attributes["app.deep_deduplication.stopped_by"] == "terminate_after"
+        assert attributes["app.candidate_selection.es_took_ms"] == 1234
+        logger.warning.assert_called_once()
+        logger.exception.assert_not_called()
 
 
 class TestDeduplicationDecisionTelemetry:
