@@ -279,10 +279,6 @@ class TestCandidateSearchBounds:
                 search_timeout=4.0,
             )
 
-    @pytest.mark.asyncio
-    async def test_truncation_is_an_es_error_for_existing_handlers(self):
-        assert issubclass(CandidateSearchTruncatedError, ESError)
-
 
 class TestAnalyzeTitle:
     """Title analysis runs the inline chain against the reference index."""

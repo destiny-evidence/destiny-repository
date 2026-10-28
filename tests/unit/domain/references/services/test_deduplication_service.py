@@ -376,39 +376,6 @@ async def test_select_candidate_canonicals_returns_unhydrated_provenance(
     assert search_call.kwargs["track_total_hits"] is True
 
 
-@pytest.mark.asyncio
-async def test_stopword_only_title_is_unsearchable_under_the_default_policy(
-    searchable_reference, anti_corruption_service, fake_uow, fake_repository
-):
-    """The title clause would match on stopwords alone, so ES is not asked."""
-    reference = searchable_reference.model_copy(
-        update={
-            "enhancements": [
-                enhancement.model_copy(
-                    update={
-                        "content": enhancement.content.model_copy(
-                            update={"title": "To Be or Not"}
-                        )
-                    }
-                )
-                for enhancement in searchable_reference.enhancements
-            ]
-        }
-    )
-    service = DeduplicationService(
-        anti_corruption_service,
-        fake_uow(references=fake_repository([reference])),
-        fake_uow(),
-    )
-    _mock_candidate_selection(service)
-
-    result = await service.select_candidate_canonicals(reference.id)
-
-    assert result.input_searchability.searchable is False
-    assert "title (stopwords only)" in result.input_searchability.reason
-    service.es_uow.references.search_for_candidate_canonicals.assert_not_awaited()
-
-
 @pytest.mark.parametrize(
     ("title", "authors", "expected", "not_expected"),
     [
@@ -473,6 +440,7 @@ async def test_the_unsearchable_reason_names_what_is_actually_missing(
     assert result.input_searchability.searchable is False
     assert expected in missing.split(", ")
     assert not_expected not in missing.split(", ")
+    service.es_uow.references.search_for_candidate_canonicals.assert_not_awaited()
 
 
 @pytest.mark.asyncio

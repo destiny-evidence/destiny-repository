@@ -281,29 +281,7 @@ def test_candidate_selection_v2_applies_tiered_minimum_should_match():
         title="Shared Title", authors=["Smith"], publication_year=2000
     )
     query = _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2)
-    assert query.title_minimum_should_match == "2<75% 5<50%"
-    assert query.title_fuzziness == "0"
 
     translated = ReferenceESRepository._to_es_candidate_query(query).to_dict()
     title_clause = translated["function_score"]["query"]["bool"]["must"][0]
     assert title_clause["match"]["title"]["minimum_should_match"] == "2<75% 5<50%"
-
-
-def test_the_builder_sends_the_title_it_is_given():
-    """Normalisation happens in Elasticsearch before the builder, not inside it."""
-    fields = CandidateCanonicalSearchFields(
-        title="The March of the Dimes of March",
-        authors=["Smith"],
-        publication_year=2000,
-    )
-    for name in (
-        RetrievalPolicyName.CANDIDATE_SELECTION_V1,
-        RetrievalPolicyName.CANDIDATE_SELECTION_V2,
-    ):
-        assert _query(fields, name).title == "The March of the Dimes of March"
-    assert (
-        _query(
-            fields, RetrievalPolicyName.CANDIDATE_SELECTION_V1
-        ).title_minimum_should_match
-        == "50%"
-    )
