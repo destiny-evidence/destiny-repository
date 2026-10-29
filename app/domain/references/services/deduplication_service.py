@@ -139,7 +139,7 @@ def build_candidate_canonical_search_query(
         title_fuzziness=policy.title_fuzziness,
         title_boost=2.0,
         title_operator="or",
-        title_minimum_should_match="50%",
+        title_minimum_should_match=policy.title_minimum_should_match,
         author_terms=_candidate_author_terms(
             search_fields.authors, scoring_config=scoring_config
         ),
@@ -154,11 +154,18 @@ def build_candidate_canonical_search_query(
 
 
 def _unsearchable_reason(
-    search_fields: CandidateCanonicalSearchFields, policy: RetrievalPolicy
+    search_fields: CandidateCanonicalSearchFields,
+    policy: RetrievalPolicy,
+    *,
+    title_stopwords_only: bool,
 ) -> str:
     """Explain which Elasticsearch search fields are absent, per policy."""
     checks: list[tuple[str, object]] = [
-        ("title", search_fields.title),
+        (
+            ("title (stopwords only)", None)
+            if title_stopwords_only
+            else ("title", search_fields.title)
+        ),
         ("authors", search_fields.authors),
     ]
     if policy.requires_publication_year:
@@ -175,10 +182,13 @@ def _searchability_reason(
     policy: RetrievalPolicy,
     *,
     searchable: bool,
+    title_stopwords_only: bool,
 ) -> str:
     """Reason string separating year-absent-but-permitted from ordinary cases."""
     if not searchable:
-        return _unsearchable_reason(search_fields, policy)
+        return _unsearchable_reason(
+            search_fields, policy, title_stopwords_only=title_stopwords_only
+        )
     if search_fields.publication_year is None:
         return (
             f"searchable: publication_year absent, not required by "
@@ -282,10 +292,33 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             )
 
         searchable = policy.is_input_searchable(search_fields)
+        title_query = search_fields.title
+        title_stopwords_only = False
+        if searchable and policy.title_query_filters:
+            # The cluster tokenises the title as the index did and drops what the
+            # policy excludes. A title left empty (e.g. "To Be or Not") would
+            # match on stopwords alone, so it is not searchable by title.
+            terms = await self.es_uow.references.analyze_title(
+                search_fields.title or "",
+                filters=policy.title_query_filters,
+                request_timeout=request_timeout,
+            )
+            title_query = " ".join(terms) or None
+            title_stopwords_only = title_query is None
+            searchable = not title_stopwords_only
         es_result = None
+        # Only the shadow retrieval is bounded. The decision path does not handle a
+        # stopped search, and the evaluation endpoint needs complete results.
+        scoring = settings.dedup_scoring
+        terminate_after = (
+            scoring.retrieval_terminate_after if deep_deduplication else None
+        )
+        search_timeout = (
+            scoring.retrieval_search_timeout_seconds if deep_deduplication else None
+        )
         if searchable:
             query = build_candidate_canonical_search_query(
-                search_fields,
+                search_fields.model_copy(update={"title": title_query}),
                 scoring_config=settings.dedup_scoring,
                 policy=policy,
                 reference_id=self_id,
@@ -295,6 +328,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 k=k,
                 track_total_hits=request.track_total_hits,
                 request_timeout=request_timeout,
+                terminate_after=terminate_after,
+                search_timeout=search_timeout,
             )
 
         es_hits = es_result.hits if es_result else []
@@ -352,7 +387,10 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             input_searchability=InputSearchability(
                 searchable=searchable,
                 reason=_searchability_reason(
-                    search_fields, policy, searchable=searchable
+                    search_fields,
+                    policy,
+                    searchable=searchable,
+                    title_stopwords_only=title_stopwords_only,
                 ),
             ),
             diagnostics=CandidateSelectionDiagnostics(

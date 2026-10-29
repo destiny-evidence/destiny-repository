@@ -12,6 +12,8 @@ from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     Candidate,
     CandidateSelectionDiagnostics,
+    CandidateSelectionInput,
+    CandidateSelectionRequest,
     CandidateSelectionResult,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
@@ -42,6 +44,7 @@ from tests.factories import (
     RawEnhancementFactory,
     ReferenceFactory,
     URLIdentifierFactory,
+    fake_analyze_title,
 )
 from tests.unit.domain.conftest import link_fake_repos
 
@@ -54,6 +57,7 @@ def _mock_candidate_selection(service: DeduplicationService, *candidate_ids) -> 
         return_value=[]
     )
     service.es_uow = MagicMock()
+    service.es_uow.references.analyze_title = AsyncMock(side_effect=fake_analyze_title)
     service.es_uow.references.search_for_candidate_canonicals = AsyncMock(
         return_value=CandidateCanonicalSearchResult(
             hits=[ESScoreResult(id=id_, score=1.0) for id_ in candidate_ids],
@@ -342,7 +346,7 @@ async def test_unsearchable_reference_returns_empty_selection_without_es_search(
     _mock_candidate_selection(service)
     result = await service.select_candidate_canonicals(reference.id)
 
-    assert result.retrieval_policy.value == "candidate_selection_v1"
+    assert result.retrieval_policy.value == "candidate_selection_v2"
     assert not result.input_searchability.searchable
     assert not result.candidates
     service.es_uow.references.search_for_candidate_canonicals.assert_not_awaited()
@@ -362,14 +366,136 @@ async def test_select_candidate_canonicals_returns_unhydrated_provenance(
     _mock_candidate_selection(service, candidate_id)
     result = await service.select_candidate_canonicals(searchable_reference.id)
 
-    assert result.retrieval_policy.value == "candidate_selection_v1"
+    assert result.retrieval_policy.value == "candidate_selection_v2"
     assert result.k_requested == 10
     assert [candidate.reference_id for candidate in result.candidates] == [candidate_id]
     assert result.candidates[0].routes[0].type == "elasticsearch"
-    assert result.candidates[0].routes[0].policy == "candidate_selection_v1"
+    assert result.candidates[0].routes[0].policy == "candidate_selection_v2"
     assert result.candidates[0].reference is None
     search_call = service.es_uow.references.search_for_candidate_canonicals.await_args
     assert search_call.kwargs["track_total_hits"] is True
+
+
+@pytest.mark.parametrize(
+    ("title", "authors", "expected", "not_expected"),
+    [
+        pytest.param(
+            "To Be or Not",
+            ["Smith"],
+            "title (stopwords only)",
+            "authors",
+            id="analysis emptied the title",
+        ),
+        pytest.param(
+            "Climate change",
+            [],
+            "authors",
+            "title",
+            id="authors missing, title fine",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_the_unsearchable_reason_names_what_is_actually_missing(
+    searchable_reference,
+    anti_corruption_service,
+    fake_uow,
+    fake_repository,
+    title,
+    authors,
+    expected,
+    not_expected,
+):
+    reference = searchable_reference.model_copy(
+        update={
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "content": enhancement.content.model_copy(
+                            update={
+                                "title": title,
+                                "authorship": [
+                                    Authorship(display_name=name, position="first")
+                                    for name in authors
+                                ],
+                            }
+                        )
+                    }
+                )
+                for enhancement in searchable_reference.enhancements
+            ]
+        }
+    )
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(references=fake_repository([reference])),
+        fake_uow(),
+    )
+    _mock_candidate_selection(service)
+
+    result = await service.select_candidate_canonicals(reference.id)
+
+    reason = result.input_searchability.reason
+    missing = reason.split("missing: ", 1)[1].rsplit("); exact identifier", 1)[0]
+    assert result.input_searchability.searchable is False
+    assert expected in missing.split(", ")
+    assert not_expected not in missing.split(", ")
+    service.es_uow.references.search_for_candidate_canonicals.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_shadow_budget_applies_to_title_analysis(
+    searchable_reference, anti_corruption_service, fake_uow, fake_repository
+):
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(references=fake_repository([searchable_reference])),
+        fake_uow(),
+    )
+    _mock_candidate_selection(service, uuid7())
+
+    await service.select_candidate_canonicals(
+        searchable_reference.id, deep_deduplication=True, request_timeout=5.0
+    )
+
+    kwargs = service.es_uow.references.analyze_title.call_args.kwargs
+    assert kwargs["request_timeout"] == 5.0
+
+
+@pytest.mark.asyncio
+async def test_the_analysed_title_is_what_the_search_receives(
+    searchable_reference, anti_corruption_service, fake_uow, fake_repository
+):
+    """v2 sends the cluster-normalised words; v1 sends the title untouched."""
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(references=fake_repository([searchable_reference])),
+        fake_uow(),
+    )
+    _mock_candidate_selection(service, uuid7())
+
+    await service.select_candidate_canonicals(searchable_reference.id)
+    analyze = service.es_uow.references.analyze_title
+    analyze.assert_awaited_once_with(
+        "Maybe a duplicate reference, maybe not",
+        filters=("lowercase", "stop", "unique"),
+        request_timeout=None,
+    )
+    sent = service.es_uow.references.search_for_candidate_canonicals.call_args
+    assert sent.args[0].title == "maybe duplicate reference,"
+
+    analyze.reset_mock()
+    service.es_uow.references.search_for_candidate_canonicals.reset_mock()
+    await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(reference_id=searchable_reference.id),
+            retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+            hydrate=False,
+        )
+    )
+    analyze.assert_not_awaited()
+    sent = service.es_uow.references.search_for_candidate_canonicals.call_args
+    assert sent.args[0].title == "Maybe a duplicate reference, maybe not"
 
 
 @pytest.mark.asyncio
@@ -1653,7 +1779,7 @@ class TestCandidateSelectionTelemetry:
 
         assert span_attributes(self.SPAN) == {
             "app.candidate_selection.deep_deduplication": False,
-            "app.candidate_selection.retrieval_policy": "candidate_selection_v1",
+            "app.candidate_selection.retrieval_policy": "candidate_selection_v2",
             "app.candidate_selection.k_requested": 10,
             "app.candidate_selection.searchable": True,
             "app.candidate_selection.title_present": True,
@@ -1725,6 +1851,42 @@ class TestCandidateSelectionTelemetry:
 
         call = service.es_uow.references.search_for_candidate_canonicals
         assert call.call_args.kwargs["request_timeout"] == expected
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("deep_deduplication", [False, True])
+    async def test_only_the_shadow_retrieval_caps_the_search(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        deep_deduplication,
+    ):
+        """The decision path cannot handle a stopped search, so it is never capped."""
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        await service.select_candidate_canonicals(
+            searchable_reference.id, deep_deduplication=deep_deduplication
+        )
+
+        kwargs = (
+            service.es_uow.references.search_for_candidate_canonicals.call_args.kwargs
+        )
+        if deep_deduplication:
+            assert kwargs["terminate_after"] == (
+                settings.dedup_scoring.retrieval_terminate_after
+            )
+            assert kwargs["search_timeout"] == (
+                settings.dedup_scoring.retrieval_search_timeout_seconds
+            )
+        else:
+            assert kwargs["terminate_after"] is None
+            assert kwargs["search_timeout"] is None
 
     @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(

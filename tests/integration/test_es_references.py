@@ -14,7 +14,7 @@ from destiny_sdk.enhancements import (
 from elasticsearch import AsyncElasticsearch
 
 from app.core.config import DedupCandidateScoringConfig
-from app.core.exceptions import ESNotFoundError
+from app.core.exceptions import CandidateSearchTruncatedError, ESNotFoundError
 from app.domain.references.models.models import (
     Enhancement,
     Reference,
@@ -818,3 +818,217 @@ async def test_soft_year_decay_returns_and_reranks_year_drifted_candidate(
     assert soft.total.value == no_filter.total.value
     # Proximity bonus: the near-year duplicate outranks the far-year one.
     assert soft_ranks[near_target.id] < soft_ranks[far_target.id]
+
+
+def _reference_with_title(reference: Reference, title: str) -> Reference:
+    """Copy the fixture reference with a fresh id, a set title and a fixed author."""
+    ref_id = uuid7()
+    return reference.model_copy(
+        update={
+            "id": ref_id,
+            "enhancements": [
+                enhancement.model_copy(
+                    update={
+                        "id": uuid7(),
+                        "reference_id": ref_id,
+                        "content": (
+                            enhancement.content.model_copy(
+                                update={
+                                    "title": title,
+                                    "authorship": [
+                                        Authorship(
+                                            display_name="Jane Smith",
+                                            position=AuthorPosition.FIRST,
+                                        )
+                                    ],
+                                    "publication_year": 2000,
+                                }
+                            )
+                            if enhancement.content.enhancement_type
+                            == EnhancementType.BIBLIOGRAPHIC
+                            else enhancement.content
+                        ),
+                    }
+                )
+                for enhancement in (reference.enhancements or [])
+            ],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("query_title", "matching", "not_matching"),
+    [
+        pytest.param(
+            "Alpha Beta",
+            ["Alpha Beta Omega"],
+            ["Alpha Omega"],
+            id="two words need both",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma",
+            ["Alpha Beta Omega"],
+            ["Alpha Omega Psi"],
+            id="three words need two",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma Delta",
+            ["Alpha Beta Gamma Omega"],
+            ["Alpha Beta Omega Psi"],
+            id="four words need three",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma Delta Epsilon",
+            ["Alpha Beta Gamma Omega"],
+            ["Alpha Beta Omega Psi"],
+            id="five words need three",
+        ),
+        pytest.param(
+            "Alpha Beta Gamma Delta Epsilon Zeta",
+            ["Alpha Beta Gamma Omega"],
+            ["Alpha Beta Omega Psi"],
+            id="six words need half",
+        ),
+        pytest.param(
+            "March of Dimes",
+            ["March of Dimes"],
+            ["History of Medicine"],
+            id="a stopword cannot satisfy the threshold",
+        ),
+        pytest.param(
+            "in-vitro and in-vivo",
+            ["Vitro vivo comparison"],
+            ["An in vitro study"],
+            id="a hyphenated stopword cannot satisfy the threshold",
+        ),
+        pytest.param(
+            "Mujeres y niños de la plazuela de la Cruz",
+            ["Mujeres de la plazuela"],
+            ["Historia de la casa"],
+            id="a repeated word counts once",
+        ),
+    ],
+)
+async def test_candidate_selection_v2_title_threshold(
+    es_reference_repository: ReferenceESRepository,
+    reference: Reference,
+    query_title: str,
+    matching: list[str],
+    not_matching: list[str],
+):
+    """The tiered threshold and query normalisation hold against a real index."""
+    stored = {
+        title: _reference_with_title(reference, title)
+        for title in [*matching, *not_matching]
+    }
+    for stored_reference in stored.values():
+        await es_reference_repository.add(to_indexable(stored_reference))
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    query_reference = _reference_with_title(reference, query_title)
+    policy = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+    fields = ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+        query_reference
+    )
+    terms = await es_reference_repository.analyze_title(
+        fields.title or "", filters=policy.title_query_filters
+    )
+    query = build_candidate_canonical_search_query(
+        fields.model_copy(update={"title": " ".join(terms)}),
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=policy,
+        reference_id=query_reference.id,
+    )
+    results = await es_reference_repository.search_for_candidate_canonicals(
+        query, k=100
+    )
+
+    returned = {hit.id for hit in results.hits}
+    assert returned == {stored[title].id for title in matching}
+
+
+async def test_the_document_cap_stops_a_search_on_a_real_index(
+    es_reference_repository: ReferenceESRepository, reference: Reference
+):
+    """
+    A capped search is refused rather than returned as a candidate set.
+
+    The server-side timeout is only checked between units of work, so a tiny index
+    finishes before it can fire; that bound is covered by the unit tests.
+    """
+    for i in range(5):
+        await es_reference_repository.add(
+            to_indexable(_reference_with_title(reference, f"Shared title {i}"))
+        )
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name  # noqa: SLF001
+    )
+
+    query_reference = _reference_with_title(reference, "Shared title")
+    policy = resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+    query = build_candidate_canonical_search_query(
+        ReferenceSearchFieldsProjection.get_canonical_candidate_search_fields(
+            query_reference
+        ),
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=policy,
+        reference_id=query_reference.id,
+    )
+
+    with pytest.raises(CandidateSearchTruncatedError) as raised:
+        await es_reference_repository.search_for_candidate_canonicals(
+            query, k=10, terminate_after=1
+        )
+    assert raised.value.bound == "terminate_after"
+
+    complete = await es_reference_repository.search_for_candidate_canonicals(
+        query, k=10, terminate_after=1_000
+    )
+    assert len(complete.hits) == 5
+
+
+V2_FILTERS = ("lowercase", "stop", "unique")
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        # Stopwords cannot count towards the threshold.
+        ("March of Dimes", ["march", "dimes"]),
+        (
+            "The Significance of the Transfiguration for Hesychasm",
+            ["significance", "transfiguration", "hesychasm"],
+        ),
+        # Hyphens split as in the index, so a stopword inside a compound goes too.
+        ("in-vitro and in-vivo", ["vitro", "vivo"]),
+        ("State-of-the-art methods", ["state", "art", "methods"]),
+        # Repeated words count once.
+        (
+            "Mujeres y niños de la plazuela de la Cruz",
+            ["mujeres", "y", "niños", "de", "la", "plazuela", "cruz"],
+        ),
+        ("Water, Water, Everywhere", ["water", "everywhere"]),
+        # What the tokenizer keeps whole stays whole.
+        ("Kermit's Song", ["kermit's", "song"]),
+        ('צה"ל ומשרד הביטחון', ['צה"ל', "ומשרד", "הביטחון"]),
+        ("Col·lagen i elastina", ["col·lagen", "i", "elastina"]),
+        ("Inter\u00adnational Trade", ["inter\u00adnational", "trade"]),
+        ("U.S.A. trade at 1,000 ports", ["u.s.a", "trade", "1,000", "ports"]),
+        ("Nanostructured N-doped TiO2", ["nanostructured", "n", "doped", "tio2"]),
+        # Nothing left means not searchable by title.
+        ("To Be or Not", []),
+    ],
+)
+async def test_v2_title_analysis_matches_the_index_and_is_stable(
+    es_reference_repository: ReferenceESRepository, title: str, expected: list[str]
+):
+    """The cluster normalises the title; re-analysing the result changes nothing."""
+    terms = await es_reference_repository.analyze_title(title, filters=V2_FILTERS)
+    assert terms == expected
+    # The match query re-tokenises what we send, so the terms must survive it.
+    again = await es_reference_repository.analyze_title(
+        " ".join(terms), filters=V2_FILTERS
+    )
+    assert again == terms

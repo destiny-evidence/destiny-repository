@@ -35,6 +35,7 @@ from tests.factories import (
     LinkedExternalIdentifierFactory,
     ReferenceFactory,
     URLIdentifierFactory,
+    fake_analyze_title,
 )
 
 
@@ -89,6 +90,7 @@ def build_service(fake_uow, anti_corruption_service):
         reference: Reference | None = None,
     ) -> tuple[ReferenceService, MagicMock, MagicMock, MagicMock]:
         es_refs = MagicMock()
+        es_refs.analyze_title = AsyncMock(side_effect=fake_analyze_title)
         es_refs.search_for_candidate_canonicals = AsyncMock(
             return_value=es_result if es_result is not None else _es_result()
         )
@@ -305,7 +307,7 @@ async def test_inline_input_returns_ranked_es_candidates(build_service):
         )
     )
 
-    assert result.retrieval_policy == RetrievalPolicyName.CANDIDATE_SELECTION_V1
+    assert result.retrieval_policy == RetrievalPolicyName.CANDIDATE_SELECTION_V2
     assert result.input_searchability.searchable is True
     assert [c.reference_id for c in result.candidates] == [id1, id2]
     assert [c.rank for c in result.candidates] == [1, 2]
@@ -426,7 +428,7 @@ async def test_failed_retrieval_still_records_what_it_was_running(
     assert attributes["app.candidate_selection.k_requested"] == 25
     assert (
         attributes["app.candidate_selection.retrieval_policy"]
-        == "candidate_selection_v1"
+        == "candidate_selection_v2"
     )
     # Everything the search would have produced is absent, so a failure is legible.
     assert "app.candidate_selection.es_total_hits" not in attributes

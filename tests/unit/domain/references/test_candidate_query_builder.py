@@ -274,3 +274,14 @@ def test_nonfuzzy_probe_disables_title_fuzziness():
     nonfuzzy = _query(fields, RetrievalPolicyName.SOFT_YEAR_DECAY_NONFUZZY_PROBE_V1)
     assert fuzzy.title_fuzziness == "AUTO"
     assert nonfuzzy.title_fuzziness == "0"
+
+
+def test_candidate_selection_v2_applies_tiered_minimum_should_match():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    query = _query(fields, RetrievalPolicyName.CANDIDATE_SELECTION_V2)
+
+    translated = ReferenceESRepository._to_es_candidate_query(query).to_dict()
+    title_clause = translated["function_score"]["query"]["bool"]["must"][0]
+    assert title_clause["match"]["title"]["minimum_should_match"] == "2<75% 5<50%"

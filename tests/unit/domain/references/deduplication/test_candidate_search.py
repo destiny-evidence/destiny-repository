@@ -1,6 +1,7 @@
 """Tests for service-side candidate author-query construction."""
 
 import contextlib
+from types import SimpleNamespace
 from typing import ClassVar
 from unittest.mock import AsyncMock, MagicMock
 
@@ -11,7 +12,7 @@ from elasticsearch import ApiError
 from elasticsearch.dsl import AsyncSearch
 
 from app.core.config import DedupCandidateScoringConfig
-from app.core.exceptions import ESError
+from app.core.exceptions import CandidateSearchTruncatedError, ESError
 from app.domain.references.models.models import (
     CandidateCanonicalSearchQuery,
     DuplicateDetermination,
@@ -202,3 +203,153 @@ class TestCandidateRetrievalRequestBudget:
 
         client.options.assert_not_called()
         assert using is client
+
+
+class _Hits(list):
+    """A list of hits that also carries ``total`` like the DSL response does."""
+
+    total = SimpleNamespace(value=1, relation="eq")
+
+
+def _response(**flags) -> SimpleNamespace:
+    hit = SimpleNamespace(
+        meta=SimpleNamespace(id="019d0000-0000-7000-8000-000000000001", score=2.0)
+    )
+    return SimpleNamespace(hits=_Hits([hit]), took=7, **flags)
+
+
+class TestCandidateSearchBounds:
+    """A search that Elasticsearch stopped early is a failure, not a candidate set."""
+
+    async def _search(self, monkeypatch, response, **kwargs):
+        captured = {}
+
+        async def execute(self):
+            captured["body"] = self.to_dict()
+            return response
+
+        monkeypatch.setattr(AsyncSearch, "execute", execute)
+        repository = ReferenceESRepository(client=AsyncMock())
+        result = await repository.search_for_candidate_canonicals(
+            _candidate_query(), k=10, **kwargs
+        )
+        return result, captured["body"]
+
+    @pytest.mark.asyncio
+    async def test_bounds_reach_the_request(self, monkeypatch):
+        _, body = await self._search(
+            monkeypatch, _response(), terminate_after=50_000, search_timeout=4.0
+        )
+        assert body["terminate_after"] == 50_000
+        assert body["timeout"] == "4000ms"
+
+    @pytest.mark.asyncio
+    async def test_no_bounds_leave_the_request_unbounded(self, monkeypatch):
+        _, body = await self._search(monkeypatch, _response())
+        assert "terminate_after" not in body
+        assert "timeout" not in body
+
+    @pytest.mark.asyncio
+    async def test_a_complete_search_returns_its_hits(self, monkeypatch):
+        result, _ = await self._search(
+            monkeypatch,
+            _response(terminated_early=False, timed_out=False),
+            terminate_after=50_000,
+            search_timeout=4.0,
+        )
+        assert [hit.score for hit in result.hits] == [2.0]
+        assert result.took_ms == 7
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("flags", "bound"),
+        [
+            pytest.param({"terminated_early": True}, "terminate_after", id="cap"),
+            pytest.param({"timed_out": True}, "timeout", id="server timeout"),
+        ],
+    )
+    async def test_a_stopped_search_raises_instead_of_returning_hits(
+        self, monkeypatch, flags, bound
+    ):
+        with pytest.raises(CandidateSearchTruncatedError) as raised:
+            await self._search(
+                monkeypatch,
+                _response(**flags),
+                terminate_after=50_000,
+                search_timeout=4.0,
+            )
+        assert raised.value.bound == bound
+        assert raised.value.took_ms == 7
+
+
+class TestAnalyzeTitle:
+    """Title analysis runs the inline chain against the reference index."""
+
+    @pytest.mark.asyncio
+    async def test_the_call_is_scoped_to_the_reference_index(self):
+        """An index-less analyze needs cluster `manage`, which the app key lacks."""
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(
+            return_value={"tokens": [{"token": "march"}, {"token": "dimes"}]}
+        )
+        repository = ReferenceESRepository(client=client)
+
+        terms = await repository.analyze_title(
+            "March of Dimes", filters=("lowercase", "stop", "unique")
+        )
+
+        assert terms == ["march", "dimes"]
+        kwargs = client.indices.analyze.call_args.kwargs
+        assert kwargs["index"] == "reference"
+        assert kwargs["tokenizer"] == "standard"
+        assert kwargs["filter"] == ["lowercase", "stop", "unique"]
+
+    @pytest.mark.asyncio
+    async def test_an_unreachable_cluster_becomes_an_es_error(self):
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(side_effect=ConnectionTimeout("timed out"))
+
+        with pytest.raises(ESError):
+            await ReferenceESRepository(client=client).analyze_title(
+                "March of Dimes", filters=("stop",)
+            )
+
+    @pytest.mark.asyncio
+    async def test_a_budget_bounds_the_call(self):
+        client, bounded = AsyncMock(), AsyncMock()
+        client.options = MagicMock(return_value=bounded)
+        bounded.indices.analyze = AsyncMock(return_value={"tokens": []})
+
+        await ReferenceESRepository(client=client).analyze_title(
+            "March of Dimes", filters=("stop",), request_timeout=5.0
+        )
+
+        client.options.assert_called_once_with(
+            request_timeout=5.0, max_retries=0, retry_on_timeout=False
+        )
+        bounded.indices.analyze.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [429, 503])
+    async def test_a_transient_status_becomes_an_es_error(self, status):
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(
+            side_effect=TestCandidateSearchFailureTranslation._api_error(status)  # noqa: SLF001
+        )
+        with pytest.raises(ESError):
+            await ReferenceESRepository(client=client).analyze_title(
+                "March of Dimes", filters=("stop",)
+            )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("status", [400, 403])
+    async def test_a_client_error_stays_fatal(self, status):
+        """A missing privilege is a defect: it must not be retried per record."""
+        client = AsyncMock()
+        client.indices.analyze = AsyncMock(
+            side_effect=TestCandidateSearchFailureTranslation._api_error(status)  # noqa: SLF001
+        )
+        with pytest.raises(ApiError):
+            await ReferenceESRepository(client=client).analyze_title(
+                "March of Dimes", filters=("stop",)
+            )

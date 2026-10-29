@@ -494,3 +494,32 @@ class SearchEnhancementRequestFactory(factory.Factory):
     robot_id = uuid7_factory
     search = factory.LazyFunction(lambda: SearchQuery(query_string="title:climate"))
     search_status = EnhancementRequestSearchStatus.PENDING
+
+
+_ENGLISH_STOPWORDS = frozenset(
+    "a an and are as at be but by for if in into is it no not of on or such that "
+    "the their then there these they this to was will with".split()
+)
+
+
+async def fake_analyze_title(
+    title: str,
+    *,
+    filters: tuple[str, ...],
+    request_timeout: float | None = None,  # noqa: ARG001
+) -> list[str]:
+    """
+    Stand in for ReferenceESRepository.analyze_title in unit tests.
+
+    Splits on whitespace, then applies the named filters the way the cluster
+    would: lowercase, drop English stopwords, collapse repeated words.
+    """
+    terms: list[str] = []
+    for word in title.split():
+        key = word.lower() if "lowercase" in filters else word
+        if "stop" in filters and key.lower() in _ENGLISH_STOPWORDS:
+            continue
+        if "unique" in filters and key in terms:
+            continue
+        terms.append(key)
+    return terms

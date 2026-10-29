@@ -411,8 +411,26 @@ class DedupCandidateScoringConfig(BaseModel):
         description="Per-request Elasticsearch budget for ingestion-driven retrieval.",
     )
     default_retrieval_policy: RetrievalPolicyName = Field(
-        default=RetrievalPolicyName.CANDIDATE_SELECTION_V1,
+        default=RetrievalPolicyName.CANDIDATE_SELECTION_V2,
         description="Candidate retrieval policy used when no override is supplied.",
+    )
+    retrieval_terminate_after: int | None = Field(
+        default=50_000,
+        ge=1,
+        description=(
+            "Documents a single shard may collect for one deep deduplication "
+            "retrieval before Elasticsearch stops it. A stopped search is reported "
+            "as truncated and its hits are discarded. None disables the cap."
+        ),
+    )
+    retrieval_search_timeout_seconds: float | None = Field(
+        default=4.0,
+        gt=0,
+        description=(
+            "Server-side time limit for one deep deduplication retrieval. Unlike "
+            "the client budget, Elasticsearch stops working when it expires. A "
+            "timed-out search is reported as truncated. None disables the limit."
+        ),
     )
 
 

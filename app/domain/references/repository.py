@@ -38,7 +38,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import get_settings
-from app.core.exceptions import ESError, SQLIntegrityError, SQLNotFoundError
+from app.core.exceptions import (
+    CandidateSearchTruncatedError,
+    ESError,
+    SQLIntegrityError,
+    SQLNotFoundError,
+)
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.repository import (
@@ -838,13 +843,54 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
-    async def search_for_candidate_canonicals(
+    async def analyze_title(
+        self,
+        title: str,
+        *,
+        filters: Sequence[str],
+        request_timeout: float | None = None,
+    ) -> list[str]:
+        """
+        Tokenise a title the way the index does, then apply ``filters``.
+
+        Uses the standard tokenizer inline, so it needs no index settings and
+        stays in step with whatever Lucene version the cluster runs. The result
+        is stable under re-analysis, so it can be joined and sent to a match query.
+        Failures are translated as for :meth:`search_for_candidate_canonicals`,
+        under the same ``request_timeout`` budget.
+        """
+        try:
+            # Scoped to the index: the app key's index-level `manage` privilege
+            # authorises this, while the index-less form needs cluster `manage`.
+            response = await self._client_within_budget(
+                request_timeout
+            ).indices.analyze(
+                index=self._persistence_cls.Index.name,
+                tokenizer="standard",
+                filter=list(filters),
+                text=title,
+            )
+        except elastic_transport.TransportError as exc:
+            msg = f"Title analysis could not reach Elasticsearch: {exc}"
+            raise ESError(msg) from exc
+        except ApiError as exc:
+            # As for the search: a 4xx (including a missing privilege) is a defect.
+            if not _is_transient_es_status(exc.meta.status):
+                raise
+            msg = f"Title analysis unavailable ({exc.meta.status}): {exc}"
+            raise ESError(msg) from exc
+        return [token["token"] for token in response["tokens"]]
+
+    @trace_repository_method(tracer)
+    async def search_for_candidate_canonicals(  # noqa: PLR0913
         self,
         query: CandidateCanonicalSearchQuery,
         *,
         k: int,
         track_total_hits: bool = False,
         request_timeout: float | None = None,
+        terminate_after: int | None = None,
+        search_timeout: float | None = None,
     ) -> CandidateCanonicalSearchResult:
         """
         Execute a candidate-canonical search specification in Elasticsearch.
@@ -861,6 +907,14 @@ class ReferenceESRepository(
             Elasticsearch default (capped at 10k). Off by default so the nomination
             path, which ignores the total, does not pay for a full count.
         :type track_total_hits: bool
+        :param terminate_after: Stop once any shard has collected this many
+            matching documents. The search then raises
+            :class:`CandidateSearchTruncatedError` rather than returning an
+            arbitrary subset.
+        :type terminate_after: int | None
+        :param search_timeout: Server-side time limit in seconds; on expiry the
+            search raises :class:`CandidateSearchTruncatedError`.
+        :type search_timeout: float | None
         :return: Ranked candidate ids with scores and retrieval diagnostics.
         :rtype: CandidateCanonicalSearchResult
         """
@@ -877,6 +931,10 @@ class ReferenceESRepository(
         # (accurate up to 10k, then a lower bound) rather than disabling totals.
         if track_total_hits:
             search = search.extra(track_total_hits=True)
+        if terminate_after is not None:
+            search = search.extra(terminate_after=terminate_after)
+        if search_timeout is not None:
+            search = search.extra(timeout=f"{round(search_timeout * 1000)}ms")
 
         try:
             response = await search.execute()
@@ -889,6 +947,19 @@ class ReferenceESRepository(
                 raise
             msg = f"Candidate search unavailable ({exc.meta.status}): {exc}"
             raise ESError(msg) from exc
+
+        # A stopped search returns whichever documents the shards reached first,
+        # so its hits say nothing about the best candidates.
+        if getattr(response, "terminated_early", False):
+            msg = f"Candidate search stopped at the {terminate_after}-document cap"
+            raise CandidateSearchTruncatedError(
+                msg, bound="terminate_after", took_ms=response.took
+            )
+        if getattr(response, "timed_out", False):
+            msg = f"Candidate search stopped at the {search_timeout}s server timeout"
+            raise CandidateSearchTruncatedError(
+                msg, bound="timeout", took_ms=response.took
+            )
 
         hits = sorted(
             [

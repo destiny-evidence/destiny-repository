@@ -55,6 +55,7 @@ from tests.factories import (
     LinkedExternalIdentifierFactory,
     OpenAlexIdentifierFactory,
     ReferenceFactory,
+    fake_analyze_title,
 )
 
 
@@ -815,6 +816,7 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
     )
     es_uow = MagicMock()
     es_references = MagicMock()
+    es_references.analyze_title = AsyncMock(side_effect=fake_analyze_title)
     es_references.search_for_candidate_canonicals = AsyncMock(
         return_value=CandidateCanonicalSearchResult(
             hits=[],
