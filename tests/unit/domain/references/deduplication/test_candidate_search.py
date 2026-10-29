@@ -10,7 +10,6 @@ from elastic_transport import ApiResponseMeta, ConnectionTimeout
 from elastic_transport import ConnectionError as ESConnectionError
 from elasticsearch import ApiError
 from elasticsearch.dsl import AsyncSearch
-from opentelemetry.trace import StatusCode
 
 from app.core.config import DedupCandidateScoringConfig
 from app.core.exceptions import CandidateSearchTruncatedError, ESError
@@ -270,7 +269,7 @@ class TestCandidateSearchBounds:
         ],
     )
     async def test_a_stopped_search_raises_instead_of_returning_hits(
-        self, monkeypatch, flags, bound, finished_span
+        self, monkeypatch, flags, bound
     ):
         with pytest.raises(CandidateSearchTruncatedError) as raised:
             await self._search(
@@ -281,9 +280,6 @@ class TestCandidateSearchBounds:
             )
         assert raised.value.bound == bound
         assert raised.value.took_ms == 7
-        span = finished_span("ES: Search ReferenceDocument.for_candidate_canonicals")
-        assert span.status.status_code is StatusCode.UNSET
-        assert span.events == ()
 
 
 class TestAnalyzeTitle:

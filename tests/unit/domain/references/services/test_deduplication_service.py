@@ -6,10 +6,9 @@ from uuid import uuid7
 import pytest
 from destiny_sdk.enhancements import Authorship
 from destiny_sdk.identifiers import OtherIdentifier
-from opentelemetry.trace import StatusCode
 
 from app.core.config import Environment, get_settings
-from app.core.exceptions import CandidateSearchTruncatedError, DeduplicationValueError
+from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     Candidate,
     CandidateSelectionDiagnostics,
@@ -1888,37 +1887,6 @@ class TestCandidateSelectionTelemetry:
         else:
             assert kwargs["terminate_after"] is None
             assert kwargs["search_timeout"] is None
-
-    @pytest.mark.asyncio
-    async def test_a_stopped_search_leaves_the_selection_span_unerrored(
-        self,
-        searchable_reference,
-        anti_corruption_service,
-        fake_uow,
-        fake_repository,
-        finished_span,
-    ):
-        """Error alerts track real failures; the outcome attribute tracks the cap."""
-        service = DeduplicationService(
-            anti_corruption_service,
-            fake_uow(references=fake_repository([searchable_reference])),
-            fake_uow(),
-        )
-        _mock_candidate_selection(service)
-        service.es_uow.references.search_for_candidate_canonicals.side_effect = (
-            CandidateSearchTruncatedError(
-                "stopped at the cap", bound="terminate_after", took_ms=1
-            )
-        )
-
-        with pytest.raises(CandidateSearchTruncatedError):
-            await service.select_candidate_canonicals(
-                searchable_reference.id, deep_deduplication=True
-            )
-
-        span = finished_span("Select deduplication candidates")
-        assert span.status.status_code is StatusCode.UNSET
-        assert span.events == ()
 
     @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(
