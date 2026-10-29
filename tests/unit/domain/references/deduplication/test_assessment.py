@@ -873,6 +873,7 @@ def _identifier_route(*types: ExternalIdentifierType) -> CandidateIdentifierRout
     values = {
         ExternalIdentifierType.DOI: "10.1234/abc",
         ExternalIdentifierType.OPEN_ALEX: "W1",
+        ExternalIdentifierType.PM_ID: "12345",
     }
     return CandidateIdentifierRoute(
         matched_identifiers=[
@@ -982,7 +983,44 @@ async def test_assessment_span_reports_how_the_identifier_candidate_fared(
         attributes.get("app.deduplication_assessment.identifier_clears_threshold")
         is clears
     )
+    unscorable = int(identifier_score is None)
+    assert attributes["app.deduplication_assessment.unscorable_count"] == unscorable
+    assert attributes["app.deduplication_assessment.scored_count"] == 2 - unscorable
     assert (SAMPLED in attributes.items()) is sampled
+
+
+@pytest.mark.asyncio
+async def test_assessment_span_reports_the_types_of_the_scored_identifier_candidate(
+    span_attributes,
+):
+    incoming = _without_openalex(_reference())
+    by_doi, by_pubmed, by_elasticsearch = (
+        _without_openalex(_reference()) for _ in range(3)
+    )
+    service, *_ = _build_service(
+        _selection(
+            Candidate(
+                reference_id=by_doi.id,
+                rank=1,
+                routes=[_identifier_route(ExternalIdentifierType.DOI)],
+            ),
+            Candidate(
+                reference_id=by_pubmed.id,
+                rank=2,
+                routes=[_identifier_route(ExternalIdentifierType.PM_ID)],
+            ),
+            Candidate(reference_id=by_elasticsearch.id, rank=3, routes=[]),
+        ),
+        [incoming, by_doi, by_pubmed, by_elasticsearch],
+        {by_doi.id: 0.2, by_pubmed.id: 0.8, by_elasticsearch.id: 0.9},
+    )
+
+    await service.evaluate(incoming.id)
+
+    attributes = span_attributes(ASSESSMENT_SPAN)
+    assert attributes["app.deduplication_assessment.identifier_outcome"] == "beaten"
+    assert attributes["app.deduplication_assessment.identifier_types"] == "pm_id"
+    assert attributes["app.deduplication_assessment.identifier_probability"] == 0.8
 
 
 @pytest.mark.parametrize(

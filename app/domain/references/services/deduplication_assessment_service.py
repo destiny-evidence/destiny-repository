@@ -127,6 +127,13 @@ def _trace_assessment(
     identifier_outcome = _identifier_outcome(
         identifier_candidates, identifier_probability, best
     )
+    # Types come from the candidates the reported probability belongs to. With none
+    # scored, the probability is None and so matches every identifier candidate.
+    reported_identifier_candidates = [
+        scored
+        for scored in identifier_candidates
+        if scored.pair_result.probability == identifier_probability
+    ]
     top_paper = next(
         (
             candidate_papers[scored.candidate.reference_id]
@@ -158,7 +165,7 @@ def _trace_assessment(
     )
     trace_attribute(
         Attributes.DEDUPLICATION_ASSESSMENT_IDENTIFIER_TYPES,
-        _identifier_types(identifier_candidates) or None,
+        _identifier_types(reported_identifier_candidates) or None,
     )
     trace_attribute(
         Attributes.DEDUPLICATION_ASSESSMENT_IDENTIFIER_PROBABILITY,

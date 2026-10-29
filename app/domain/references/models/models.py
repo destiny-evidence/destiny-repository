@@ -175,7 +175,7 @@ class OpenAlexRelation(StrEnum):
     """One side, or both, has no OpenAlex ID."""
     SAME = auto()
     DIFFERENT = auto()
-    """Two W-IDs for what scored as one publication, which OpenAlex does not know."""
+    """The top-scoring candidate has a different OpenAlex ID."""
 
 
 class DuplicateDetermination(StrEnum):
