@@ -8,9 +8,11 @@ from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
 from opentelemetry import trace
 from opentelemetry.trace import Span
 
-from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.attributes import Attributes, start_span_passing
 
 if TYPE_CHECKING:
+    from opentelemetry.util.types import AttributeValue
+
     from app.persistence.repository import GenericAsyncRepository
 
 T = TypeVar("T")
@@ -22,6 +24,7 @@ def _span_context(
     tracer: trace.Tracer,
     func: Callable[..., object],
     args: tuple[object, ...],
+    passing: tuple[type[Exception], ...] = (),
 ) -> AbstractContextManager[Span]:
     """Build the span for a repository method from its name and its repository."""
     repository = cast("GenericAsyncRepository", args[0])
@@ -31,26 +34,34 @@ def _span_context(
     span_name = f"{repository.system}: {verb.capitalize()} {repository_implementation}"
     if len(method_parts) > 1:
         span_name = f"{span_name}.{'_'.join(method_parts[1:])}"
-    return tracer.start_as_current_span(
-        span_name,
-        attributes={
-            Attributes.CODE_FUNCTION_NAME: func.__qualname__,
-            Attributes.DB_COLLECTION_NAME: repository_implementation,
-            Attributes.DB_OPERATION_NAME: verb,
-            Attributes.DB_SYSTEM_NAME: repository.system,
-        },
-    )
+    attributes: dict[str, AttributeValue] = {
+        Attributes.CODE_FUNCTION_NAME: func.__qualname__,
+        Attributes.DB_COLLECTION_NAME: repository_implementation,
+        Attributes.DB_OPERATION_NAME: verb,
+        Attributes.DB_SYSTEM_NAME: repository.system,
+    }
+    if passing:
+        return start_span_passing(
+            tracer, span_name, passing=passing, attributes=attributes
+        )
+    return tracer.start_as_current_span(span_name, attributes=attributes)
 
 
 def trace_repository_method(
     tracer: trace.Tracer,
+    *,
+    passing: tuple[type[Exception], ...] = (),
 ) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
-    """Decorate an async repository method with a given tracer."""
+    """
+    Decorate an async repository method with a given tracer.
+
+    Exceptions in ``passing`` propagate without marking the span errored.
+    """
 
     def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            with _span_context(tracer, func, args):
+            with _span_context(tracer, func, args, passing):
                 return await func(*args, **kwargs)
 
         return wrapper

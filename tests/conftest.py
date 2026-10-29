@@ -12,7 +12,7 @@ from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
 from jose import jwt
 from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace import ReadableSpan, TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
@@ -68,6 +68,25 @@ def span_attributes(
         return dict(spans[-1].attributes or {})
 
     yield _attributes_of
+    _span_exporter.clear()
+
+
+@pytest.fixture
+def finished_span(
+    _span_exporter: InMemorySpanExporter,
+) -> Generator[Callable[[str], ReadableSpan]]:
+    """Read the most recent finished span with a given name, for status and events."""
+    _span_exporter.clear()
+
+    def _span_named(name: str) -> ReadableSpan:
+        spans = [s for s in _span_exporter.get_finished_spans() if s.name == name]
+        if not spans:
+            seen = sorted({s.name for s in _span_exporter.get_finished_spans()})
+            msg = f"No span named {name!r}. Recorded spans: {seen}"
+            raise AssertionError(msg)
+        return spans[-1]
+
+    yield _span_named
     _span_exporter.clear()
 
 

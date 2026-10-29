@@ -881,7 +881,7 @@ class ReferenceESRepository(
             raise ESError(msg) from exc
         return [token["token"] for token in response["tokens"]]
 
-    @trace_repository_method(tracer)
+    @trace_repository_method(tracer, passing=(CandidateSearchTruncatedError,))
     async def search_for_candidate_canonicals(  # noqa: PLR0913
         self,
         query: CandidateCanonicalSearchQuery,

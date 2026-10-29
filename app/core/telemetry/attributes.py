@@ -1,5 +1,7 @@
 """Mixes OpenTelemetry semantic conventions with application-specific attributes."""
 
+import contextlib
+from collections.abc import Iterator, Mapping
 from enum import StrEnum
 
 from opentelemetry import trace
@@ -184,3 +186,34 @@ def set_span_status(
     trace.get_current_span().set_status(trace.Status(status, detail))
     if exception:
         trace.get_current_span().record_exception(exception)
+
+
+@contextlib.contextmanager
+def start_span_passing(
+    tracer: trace.Tracer,
+    name: str,
+    *,
+    passing: tuple[type[Exception], ...],
+    attributes: Mapping[str, AttributeValue] | None = None,
+) -> Iterator[trace.Span]:
+    """
+    Start a span that lets the given exceptions through without marking it errored.
+
+    Any other exception is recorded and errors the span, as it would by default.
+    """
+    with tracer.start_as_current_span(
+        name,
+        attributes=attributes,
+        record_exception=False,
+        set_status_on_exception=False,
+    ) as span:
+        try:
+            yield span
+        except passing:
+            raise
+        except Exception as exc:
+            span.record_exception(exc)
+            span.set_status(
+                trace.Status(trace.StatusCode.ERROR, f"{type(exc).__name__}: {exc}")
+            )
+            raise

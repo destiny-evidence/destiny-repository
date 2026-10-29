@@ -6,8 +6,16 @@ from uuid import UUID
 from opentelemetry import trace
 
 from app.core.config import DedupCandidateScoringConfig, Environment, get_settings
-from app.core.exceptions import DeduplicationError, DeduplicationValueError
-from app.core.telemetry.attributes import Attributes, trace_attribute
+from app.core.exceptions import (
+    CandidateSearchTruncatedError,
+    DeduplicationError,
+    DeduplicationValueError,
+)
+from app.core.telemetry.attributes import (
+    Attributes,
+    start_span_passing,
+    trace_attribute,
+)
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     Candidate,
@@ -254,7 +262,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
-    @tracer.start_as_current_span("Select deduplication candidates")
     async def get_deduplication_candidates(
         self,
         request: CandidateSelectionRequest,
@@ -263,6 +270,24 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         request_timeout: float | None = None,
     ) -> CandidateSelectionResult:
         """Return ranked candidates with provenance, without persisting state."""
+        with start_span_passing(
+            tracer,
+            "Select deduplication candidates",
+            passing=(CandidateSearchTruncatedError,),
+        ):
+            return await self._get_deduplication_candidates(
+                request,
+                deep_deduplication=deep_deduplication,
+                request_timeout=request_timeout,
+            )
+
+    async def _get_deduplication_candidates(
+        self,
+        request: CandidateSelectionRequest,
+        *,
+        deep_deduplication: bool,
+        request_timeout: float | None,
+    ) -> CandidateSelectionResult:
         trace_attribute(
             Attributes.CANDIDATE_SELECTION_DEEP_DEDUPLICATION, deep_deduplication
         )
