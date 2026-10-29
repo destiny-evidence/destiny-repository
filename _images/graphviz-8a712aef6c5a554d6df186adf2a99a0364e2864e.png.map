@@ -1,0 +1,8 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.LinkedDataCountryFilter
+
+A set of ISO 3166&#45;1 alpha&#45;2 codes to match on ``linked_data_countries``.
+
+OR within a filter; AND between filters.
+" alt="" coords="5,5,215,61"/>
+</map>

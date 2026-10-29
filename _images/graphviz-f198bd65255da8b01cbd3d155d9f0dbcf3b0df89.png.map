@@ -1,0 +1,13 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.FullTextEnhancement
+
+An enhancement for storing a link to the full text and its metadata.
+
+We separate this from the SDK model as it contains a file pointer, not
+the URL to the file itself.
+" alt="" coords="5,5,460,341"/>
+<area shape="rect" id="node2" title="app.persistence.blob.models.BlobStorageFile
+
+Model to represent Blob Storage files.
+" alt="" coords="604,61,843,201"/>
+</map>
