@@ -8,7 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
 from app.core.entitlements import Entitlement
-from app.core.exceptions import SQLIntegrityError
+from app.core.exceptions import (
+    DeduplicationError,
+    DeduplicationValueError,
+    SQLIntegrityError,
+)
 from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequest,
@@ -696,3 +700,120 @@ class TestDeepDeduplicationRetrieval:
         await process_reference_duplicate_decision(decision_id)
 
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
+
+    @pytest.mark.usefixtures(
+        "mock_sql_uow_cm",
+        "mock_es_uow_cm",
+        "_task_dependencies",
+        "enable_deep_deduplication",
+    )
+    async def test_retrieval_is_skipped_when_automatic_decisions_search(
+        self, decision_id, mock_reference_service, monkeypatch
+    ):
+        from app.domain.references import tasks as tasks_module
+
+        monkeypatch.setattr(
+            tasks_module.settings.feature_flags,
+            "enable_automatic_deduplication_decisions",
+            True,
+        )
+
+        await process_reference_duplicate_decision(decision_id)
+
+        mock_reference_service.run_deep_deduplication_retrieval.assert_not_awaited()
+        mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
+
+
+class TestAutomaticDecisionRetries:
+    """Bounded retries for automatic duplicate decisions."""
+
+    @pytest.fixture
+    def reference_service(self, monkeypatch, mock_decision_pending):
+        service = AsyncMock()
+        service.get_reference_duplicate_decision.return_value = mock_decision_pending
+        service.process_reference_duplicate_decision.side_effect = DeduplicationError(
+            "Candidate retrieval failed"
+        )
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_blob_repository",
+            AsyncMock(return_value=AsyncMock()),
+        )
+        monkeypatch.setattr(
+            "app.domain.references.tasks.get_reference_service",
+            AsyncMock(return_value=service),
+        )
+        return service
+
+    @pytest.fixture
+    def queue(self, monkeypatch):
+        queue = AsyncMock()
+        monkeypatch.setattr("app.domain.references.tasks.queue_task_with_trace", queue)
+        return queue
+
+    @pytest.fixture
+    def automatic(self, monkeypatch):
+        from app.domain.references import tasks
+
+        monkeypatch.setattr(
+            tasks.settings.feature_flags,
+            "enable_automatic_deduplication_decisions",
+            True,
+        )
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm", "automatic")
+    async def test_a_failure_with_retries_left_requeues(
+        self, decision_id, reference_service, queue
+    ):
+        await process_reference_duplicate_decision(decision_id, remaining_retries=1)
+
+        assert queue.await_args.kwargs["remaining_retries"] == 0
+        reference_service.mark_duplicate_decision_unsearchable.assert_not_awaited()
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm", "automatic")
+    async def test_exhausted_retries_mark_unsearchable_and_raise(
+        self, decision_id, reference_service, queue
+    ):
+        with pytest.raises(DeduplicationError):
+            await process_reference_duplicate_decision(decision_id, remaining_retries=0)
+
+        queue.assert_not_awaited()
+        reference_service.reproject_references.assert_awaited_once_with(
+            reference_service.mark_duplicate_decision_unsearchable.return_value
+        )
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm", "automatic")
+    async def test_a_defect_is_raised_without_retrying_or_deciding(
+        self, decision_id, reference_service, queue
+    ):
+        reference_service.process_reference_duplicate_decision.side_effect = (
+            DeduplicationValueError("Cannot mark a reference as a duplicate of itself.")
+        )
+
+        with pytest.raises(DeduplicationValueError):
+            await process_reference_duplicate_decision(decision_id, remaining_retries=1)
+
+        queue.assert_not_awaited()
+        reference_service.mark_duplicate_decision_unsearchable.assert_not_awaited()
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
+    async def test_with_automatic_decisions_off_a_failure_raises_untouched(
+        self, decision_id, reference_service, queue
+    ):
+        with pytest.raises(DeduplicationError):
+            await process_reference_duplicate_decision(decision_id)
+
+        queue.assert_not_awaited()
+        reference_service.mark_duplicate_decision_unsearchable.assert_not_awaited()
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
+    async def test_reprojection_follows_the_committed_decision(
+        self, decision_id, reference_id, reference_service
+    ):
+        reference_service.process_reference_duplicate_decision.side_effect = None
+        reference_service.process_reference_duplicate_decision.return_value = [
+            reference_id
+        ]
+
+        await process_reference_duplicate_decision(decision_id)
+
+        reference_service.reproject_references.assert_awaited_once_with([reference_id])

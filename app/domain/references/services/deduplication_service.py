@@ -20,6 +20,9 @@ from app.domain.references.models.models import (
     CandidateSelectionInput,
     CandidateSelectionRequest,
     CandidateSelectionResult,
+    DeduplicationAssessment,
+    DeduplicationAssessmentOutcome,
+    DeduplicationUnresolvedReason,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -148,7 +151,9 @@ def build_candidate_canonical_search_query(
         publication_year_range=publication_year_range,
         publication_year_decay=publication_year_decay,
         # Prevent concurrently deduplicated references forming conflicting links.
-        duplicate_determination=DuplicateDetermination.CANONICAL,
+        duplicate_determinations=tuple(
+            sorted(DuplicateDetermination.get_candidate_canonical_states())
+        ),
         excluded_reference_id=reference_id,
     )
 
@@ -242,6 +247,44 @@ def _trace_candidate_selection(
     trace_attribute(Attributes.CANDIDATE_SELECTION_TRUNCATED, diagnostics.truncated)
 
 
+def decide_from_assessment(
+    assessment: DeduplicationAssessment,
+) -> ReferenceDuplicateDeterminationResult:
+    """
+    Apply the acting policy to an assessment.
+
+    A stand-in until the first automatic policy (#877) is agreed: act on the
+    assessment's own proposal and leave unresolved whatever it declined to propose.
+    """
+    match assessment.outcome:
+        case DeduplicationAssessmentOutcome.PROPOSE_CANONICAL:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+            )
+        case DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.DUPLICATE,
+                canonical_reference_id=assessment.proposed_duplicate_of_id,
+            )
+        case DeduplicationAssessmentOutcome.NO_PROPOSAL:
+            if assessment.unscorable_candidate_ids:
+                reason = DeduplicationUnresolvedReason.UNSCORABLE_CANDIDATE
+            elif len(assessment.threshold_clearing_candidate_ids) > 1:
+                reason = DeduplicationUnresolvedReason.MULTIPLE_CLEARING
+            else:
+                # The input could not be searched, so the candidate set is incomplete.
+                return ReferenceDuplicateDeterminationResult(
+                    duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+                    detail=assessment.candidate_selection.input_searchability.reason,
+                )
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.UNRESOLVED,
+                detail=f"Unresolved: {reason}",
+            )
+        case _:  # pragma: no cover - exhaustiveness guard
+            assert_never(assessment.outcome)
+
+
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing reference duplicate detection."""
 
@@ -307,8 +350,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             title_stopwords_only = title_query is None
             searchable = not title_stopwords_only
         es_result = None
-        # Only the shadow retrieval is bounded. The decision path does not handle a
-        # stopped search, and the evaluation endpoint needs complete results.
+        # Only deep deduplication is bounded. The placeholder decision path does not
+        # handle a stopped search, and the evaluation endpoint needs complete results.
         scoring = settings.dedup_scoring
         terminate_after = (
             scoring.retrieval_terminate_after if deep_deduplication else None
@@ -471,10 +514,12 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         for reference in matched_references:
             if reference.id == self_id:
                 continue
-            # Identifier matches are not restricted to canonical-at-rest records.
-            # A duplicate match resolves to its canonical reference.
-            if reference.is_canonical_like:
+            # A duplicate match resolves to its canonical reference. A reference
+            # still undecided cannot take duplicates yet, as on the search route.
+            if reference.accepts_duplicates:
                 canonical_id = reference.id
+            elif reference.is_canonical_like:
+                continue
             elif (
                 reference.duplicate_decision
                 and reference.duplicate_decision.canonical_reference_id
@@ -737,7 +782,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 new_decision.canonical_reference_id,
                 preload=["duplicate_decision", "canonical_reference"],
             )
-            if not canonical_ref.is_canonical:
+            if not canonical_ref.accepts_duplicates:
                 non_canonical_determination = (
                     canonical_ref.duplicate_decision.duplicate_determination
                     if canonical_ref.duplicate_decision
@@ -784,8 +829,9 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             and active_decision.duplicate_determination
             == DuplicateDetermination.DUPLICATE
             and (
-                # Duplicate is becoming canonical
-                new_decision.duplicate_determination == DuplicateDetermination.CANONICAL
+                # Duplicate is becoming canonical, or unsearchable and so its own head
+                new_decision.duplicate_determination
+                in DuplicateDetermination.get_candidate_canonical_states()
                 or (
                     # Duplicate changes canonical reference
                     new_decision.duplicate_determination
@@ -947,6 +993,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 # Duplicate — use the decision's direct canonical reference ID
                 canonical_ids.add(candidate.duplicate_decision.canonical_reference_id)
 
+        # An unsearchable reference can now take duplicates, so it may be both.
+        undeduplicated_ids -= canonical_ids
         if len(canonical_ids) > 1:
             return [
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(

@@ -454,6 +454,48 @@ async def test_k_override_is_forwarded_to_elasticsearch(build_service):
     assert result.k_requested == 25
 
 
+def _canonical_decision(reference_id) -> ReferenceDuplicateDecision:
+    return ReferenceDuplicateDecision(
+        reference_id=reference_id,
+        active_decision=True,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+    )
+
+
+@pytest.mark.asyncio
+async def test_undecided_identifier_match_is_not_a_candidate(build_service):
+    """A reference still being decided cannot take duplicates, so it is skipped."""
+    doi = DOIIdentifierFactory.build()
+    pending = ReferenceFactory.build(visibility="public")
+    pending = pending.model_copy(
+        update={
+            "identifiers": [
+                LinkedExternalIdentifierFactory.build(
+                    identifier=doi, reference_id=pending.id
+                )
+            ],
+            "duplicate_decision": None,
+        }
+    )
+    service, _, _, _ = build_service(found_references=[pending])
+
+    result = await service.get_deduplication_candidates(
+        CandidateSelectionRequest(
+            input=CandidateSelectionInput(
+                identifiers=[
+                    CandidateIdentifier(
+                        identifier_type=ExternalIdentifierType.DOI,
+                        identifier=str(doi.identifier),
+                    )
+                ]
+            ),
+            hydrate=False,
+        )
+    )
+
+    assert result.candidates == []
+
+
 @pytest.mark.asyncio
 async def test_identifier_only_match_ranks_ahead_of_es_candidates(
     build_service, span_attributes
@@ -467,7 +509,7 @@ async def test_identifier_only_match_ranks_ahead_of_es_candidates(
                     identifier=doi, reference_id=identifier_ref.id
                 )
             ],
-            "duplicate_decision": None,  # canonical-like
+            "duplicate_decision": _canonical_decision(identifier_ref.id),
         }
     )
     es_ids = [uuid7() for _ in range(10)]
@@ -530,7 +572,7 @@ async def test_same_canonical_from_both_routes_is_returned_once(
                     identifier=doi, reference_id=matched.id
                 )
             ],
-            "duplicate_decision": None,
+            "duplicate_decision": _canonical_decision(matched.id),
         }
     )
     service, _, _, _ = build_service(
@@ -728,7 +770,7 @@ async def test_identifier_only_input_matches_when_es_unsearchable(build_service)
                     identifier=doi, reference_id=identifier_ref.id
                 )
             ],
-            "duplicate_decision": None,
+            "duplicate_decision": _canonical_decision(identifier_ref.id),
         }
     )
     service, es_refs, _, _ = build_service(found_references=[identifier_ref])
