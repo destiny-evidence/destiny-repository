@@ -128,26 +128,6 @@ class DeduplicationAssessmentRecorder:
             or assessment.unscorable_candidate_ids
         )
 
-    @staticmethod
-    def _scores(
-        assessment: DeduplicationAssessment,
-    ) -> tuple[float | None, float | None]:
-        """Return the best score and the best score that did not win."""
-        probabilities = [
-            scored.pair_result.probability
-            for scored in assessment.scored_candidates
-            if scored.pair_result.probability is not None
-        ]
-        # With no proposal every score is non-winning, so this collapses to the top
-        # score and one field carries the margin in both cases.
-        non_winning = [
-            scored.pair_result.probability
-            for scored in assessment.scored_candidates
-            if scored.pair_result.probability is not None
-            and scored.candidate.reference_id != assessment.proposed_duplicate_of_id
-        ]
-        return max(probabilities, default=None), max(non_winning, default=None)
-
     async def _store_payload(
         self, payload_id: UUID, assessment: DeduplicationAssessment
     ) -> _PayloadOutcome:
@@ -182,7 +162,7 @@ class DeduplicationAssessmentRecorder:
             return existing[0]
 
         selection = assessment.candidate_selection
-        best_score, best_non_winning_score = self._scores(assessment)
+        best_score, best_non_winning_score = assessment.best_scores()
         sampled = evidence_sampled(
             assessment.incoming_reference_id, self._evidence_sample_rate_bits
         )
