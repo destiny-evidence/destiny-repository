@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.core.exceptions import (
+    CandidateSearchTruncatedError,
     DeduplicationError,
     DeduplicationValueError,
     ESError,
@@ -25,10 +26,12 @@ from app.domain.references.models.models import (
     DeduplicationFieldStatus,
     DeduplicationPairResult,
     DeduplicationPaper,
+    DuplicateDetermination,
     EnhancementType,
     ExternalIdentifierType,
     InputSearchability,
     Reference,
+    ReferenceDuplicateDecision,
     RetrievalPolicyName,
 )
 from app.domain.references.models.projections import DeduplicationPaperProjection
@@ -633,6 +636,21 @@ async def test_evaluate_supplied_reports_retrieval_infrastructure_failure_per_re
 
 
 @pytest.mark.asyncio
+async def test_evaluate_supplied_passes_a_truncated_search_through():
+    """A bounded search is an outcome for the caller, not an infrastructure failure."""
+    incoming = _supplied_reference()
+    service, selector, _, pair_scorer = _build_service(_selection(), [], {})
+    selector.side_effect = CandidateSearchTruncatedError(
+        "stopped at the cap", bound="terminate_after", took_ms=10
+    )
+
+    with pytest.raises(CandidateSearchTruncatedError):
+        await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+    assert pair_scorer.calls == []
+
+
+@pytest.mark.asyncio
 async def test_evaluate_supplied_reports_hydration_infrastructure_failure_per_record():
     """A database blip while hydrating candidates is also one record's failure."""
     incoming = _supplied_reference()
@@ -801,6 +819,11 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
             identifier=_openalex_id(incoming),
         )
     ]
+    candidate.duplicate_decision = ReferenceDuplicateDecision(
+        reference_id=candidate.id,
+        active_decision=True,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
+    )
     references = fake_repository([candidate])
     references.find_with_identifiers = AsyncMock(return_value=[candidate])
     references.get_hydrated = AsyncMock(return_value=[candidate])

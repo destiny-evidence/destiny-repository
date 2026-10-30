@@ -109,7 +109,7 @@ def _candidate_query() -> CandidateCanonicalSearchQuery:
         author_terms=("Jane Doe",),
         author_tie_breaker=0.3,
         publication_year_range=(2023, 2025),
-        duplicate_determination=DuplicateDetermination.CANONICAL,
+        duplicate_determinations=(DuplicateDetermination.CANONICAL,),
         excluded_reference_id=None,
     )
 

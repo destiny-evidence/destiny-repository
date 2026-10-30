@@ -1,6 +1,7 @@
 """Durable recording of deduplication assessments, with no decision writing."""
 
 import hashlib
+from collections.abc import Awaitable
 from io import BytesIO
 from typing import NamedTuple, Protocol
 from uuid import UUID
@@ -47,14 +48,18 @@ def evidence_sampled(
 class AssessmentRecordStore(Protocol):
     """Persistence required to record an assessment."""
 
-    async def add_or_find_by_idempotency_key(
+    # Plain defs returning Awaitable: the traced repository methods are not
+    # coroutine functions, so an async def here would not match them.
+    def add_or_find_by_idempotency_key(
         self, record: DeduplicationAssessmentRecord
-    ) -> DeduplicationAssessmentRecord:
+    ) -> Awaitable[DeduplicationAssessmentRecord]:
         """Persist a record or return the row already written for its delivery."""
         ...
 
-    async def find(self, **filters: object) -> list[DeduplicationAssessmentRecord]:
-        """Return the records matching the given field filters."""
+    def find(
+        self, *, idempotency_key: UUID
+    ) -> Awaitable[list[DeduplicationAssessmentRecord]]:
+        """Return the records written for a delivery."""
         ...
 
 

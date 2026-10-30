@@ -382,6 +382,7 @@ class FeatureFlags(BaseModel):
     enable_percolation: bool = True
     enable_canonical_candidate_search: bool = True
     enable_deep_deduplication: bool = False
+    enable_automatic_deduplication_decisions: bool = False
 
 
 class DedupCandidateScoringConfig(BaseModel):
@@ -451,6 +452,11 @@ class DedupAssessmentRecordingConfig(BaseModel):
         "to score a candidate keeps its evidence regardless; this decides how many "
         "of the rest join them. 0 keeps all of them, null keeps none of them. Every "
         "assessment records whether it was in the sample, interesting or not.",
+    )
+    policy_generation: str = Field(
+        default="stand-in",
+        description="The acting-policy generation recorded with each assessment and "
+        "the automatic decisions made from it.",
     )
 
 

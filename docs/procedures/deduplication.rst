@@ -148,7 +148,7 @@ If no candidates are found, the incoming reference is immediately designated as 
 
 The search strategy is a work in progress, but will likely involve a combination of projected fields (defined in :class:`CandidateCanonicalSearchFields <app.domain.references.models.models.CandidateCanonicalSearchFields>`) and a fuzzy Elasticsearch query:
 
-At this stage, only canonical references are considered as candidates.
+Only references whose active decision is canonical or unsearchable are considered as candidates. An unsearchable reference could not be searched for itself, but a later arrival may still match it.
 
 .. automethod:: app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals
 
@@ -174,9 +174,31 @@ Deep Deduplication
 
 If candidate canonicals are found, each is compared in detail against the incoming reference to determine if they are true duplicates. This step prioritizes precision over recall, aiming to minimize false positives.
 
-This algorithm is still being built out. For now, we have a placeholder that we will update in the future:
+Automatic decisions are switched on by :attr:`enable_automatic_deduplication_decisions <app.core.config.FeatureFlags.enable_automatic_deduplication_decisions>`, which defaults off. While it is off, the placeholder below decides instead and no assessment is recorded:
 
 .. automethod:: app.domain.references.services.deduplication_service.DeduplicationService._placeholder_duplicate_determinator
+
+When it is on, the reference is assessed, the assessment is recorded with purpose ``deduplication`` and the configured policy generation, and the acting policy turns it into a decision. All three happen in one transaction, and a decision made from an assessment links to it through ``deduplication_assessment_id``.
+
+The acting policy is a stand-in until the first automatic policy is agreed:
+
+.. automethod:: app.domain.references.services.deduplication_service.decide_from_assessment
+
+Each automatic decision lands in one of two non-decisions when it cannot be ``CANONICAL`` or ``DUPLICATE``, and its detail says why:
+
+- :attr:`Unsearchable <app.domain.references.models.models.DuplicateDetermination.UNSEARCHABLE>`: no complete candidate set was retrieved. The reference lacks the metadata to search on, the search was truncated by its document cap or server-side timeout, or every attempt failed on infrastructure (for example Elasticsearch timing out). Truncation is final, as a retry would stop again; infrastructure failures are retried a bounded number of times first. If the decision cannot be written either, for example while Elasticsearch is down, it stays pending. A defect in deduplication itself is raised without retrying and also leaves the decision pending. The decision is active, so the reference can take duplicates, and it can be rerun through the invoke API.
+- :attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>`: candidates were retrieved and scored, but no determination could be reached. The detail carries a :class:`reason code <app.domain.references.models.models.DeduplicationUnresolvedReason>`, including when the only clearing candidate no longer accepts duplicates. It is inactive, replaces nothing, has no side effects and is not retried; how often each reason occurs is measured rather than reviewed case by case.
+
+Both are distinct from a ``DECOUPLED`` decision, which is a proposal blocked at `Action Decision`_.
+
+The decisions a policy generation produced can be listed by joining through the assessment:
+
+.. code-block:: sql
+
+    SELECT d.*
+    FROM reference_duplicate_decision d
+    JOIN deduplication_assessment a ON a.id = d.deduplication_assessment_id
+    WHERE a.policy_generation = :generation;
 
 
 Manual Resolution
@@ -254,13 +276,13 @@ There are three cases where the new decision is not automatically activated:
 
 1. An automatic proposal would replace a person-made active decision. This applies even when the proposed result is identical.
 
-2. The active decision is duplicate and the new decision is canonical or a duplicate of a different reference. This is a destructive change to the existing canonical reference, which may have implications for its enhancements, and needs to be reviewed in context.
+2. The active decision is duplicate and the new decision is canonical, unsearchable or a duplicate of a different reference. This is a destructive change to the existing canonical reference, which may have implications for its enhancements, and needs to be reviewed in context.
 
 3. The reference being marked as a duplicate already has duplicates pointing to it (which would create a chaining situation).
 
 These are marked as ``DECOUPLED`` for manual review via the ``POST /references/duplicate-decisions/`` endpoint. The decoupled decision is stored inactive, so the reference keeps whichever decision was already active.
 
-A proposal naming a canonical reference that is not itself canonical is not decoupled. It is rejected outright, and the manual endpoint returns ``422``.
+A proposal naming a canonical reference that is neither canonical nor unsearchable is not decoupled. It is rejected outright, and the manual endpoint returns ``422``.
 
 .. _deduplicated-projection:
 

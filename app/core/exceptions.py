@@ -696,6 +696,10 @@ class DeduplicationValueError(DeduplicationError, ValueError):
         super().__init__(detail)
 
 
+class DeduplicationInputError(DeduplicationValueError):
+    """A reference cannot be searched or scored as it stands."""
+
+
 class ParseError(DestinyRepositoryError):
     """An exception for when we fail to parse some input."""
 

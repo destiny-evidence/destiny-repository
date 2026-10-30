@@ -9,7 +9,11 @@ from structlog.contextvars import bound_contextvars
 
 from app.core.config import Environment, get_settings
 from app.core.entitlements import Entitlement
-from app.core.exceptions import SQLIntegrityError
+from app.core.exceptions import (
+    DeduplicationError,
+    DeduplicationValueError,
+    SQLIntegrityError,
+)
 from app.core.telemetry.attributes import (
     Attributes,
     name_span,
@@ -29,6 +33,9 @@ from app.domain.references.services.access_control_service import (
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
+)
+from app.domain.references.services.deduplication_assessment_service import (
+    INFRASTRUCTURE_ERRORS,
 )
 from app.domain.references.services.export_service import (
     ReferenceExportService,
@@ -435,7 +442,11 @@ async def process_reference_duplicate_decision(
                 )
                 return
 
-            if settings.feature_flags.enable_deep_deduplication:
+            if (
+                settings.feature_flags.enable_deep_deduplication
+                # Automatic decisions run the same retrieval and record it.
+                and not settings.feature_flags.enable_automatic_deduplication_decisions
+            ):
                 # Before the decision, so retrieval sees the corpus in the
                 # state deep deduplication will see it. The result is discarded.
                 try:
@@ -446,9 +457,40 @@ async def process_reference_duplicate_decision(
                     logger.exception("Deep deduplication retrieval failed.")
 
             try:
-                await reference_service.process_reference_duplicate_decision(
-                    reference_duplicate_decision
+                reproject_reference_ids = (
+                    await reference_service.process_reference_duplicate_decision(
+                        reference_duplicate_decision,
+                        blob_repository=blob_repository,
+                    )
                 )
+            except (DeduplicationError, *INFRASTRUCTURE_ERRORS) as exc:
+                if (
+                    not settings.feature_flags.enable_automatic_deduplication_decisions
+                    # A defect fails the same way every time, so it stays pending.
+                    or isinstance(exc, DeduplicationValueError)
+                ):
+                    raise
+                await sql_uow.rollback()
+                if remaining_retries > 0:
+                    logger.warning(
+                        "Automatic duplicate decision failed, retrying.",
+                        remaining_retries=remaining_retries,
+                        exc=repr(exc),
+                    )
+                    await queue_task_with_trace(
+                        process_reference_duplicate_decision,
+                        reference_duplicate_decision_id,
+                        remaining_retries=remaining_retries - 1,
+                        otel_enabled=settings.otel_enabled,
+                    )
+                    return
+                await reference_service.reproject_references(
+                    await reference_service.mark_duplicate_decision_unsearchable(
+                        reference_duplicate_decision_id,
+                        detail=f"Attempts exhausted ({exc!r})",
+                    )
+                )
+                raise
             except SQLIntegrityError as e:
                 # Only retry the specific TOCTOU race on the active-decision
                 # unique constraint. Other integrity errors (NOT NULL, FK, etc.)
@@ -490,6 +532,8 @@ async def process_reference_duplicate_decision(
                     )
                     return
                 raise
+            else:
+                await reference_service.reproject_references(reproject_reference_ids)
 
 
 @broker.task(

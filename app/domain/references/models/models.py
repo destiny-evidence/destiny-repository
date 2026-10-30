@@ -144,6 +144,19 @@ class DeduplicationRoute(StrEnum):
     """Candidates were retrieved and handed to the determinator."""
     DISABLED = auto()
     """Candidate search is switched off in this environment."""
+    AUTOMATIC_DECISION = auto()
+    """A recorded assessment was applied under the acting policy."""
+
+
+class DeduplicationUnresolvedReason(StrEnum):
+    """Why automation left a reference unresolved rather than deciding it."""
+
+    MULTIPLE_CLEARING = auto()
+    """More than one candidate cleared the threshold."""
+    UNSCORABLE_CANDIDATE = auto()
+    """A candidate could not be scored, so no proposal can be trusted."""
+    NON_CANONICAL_MATCH = auto()
+    """The only clearing candidate no longer accepts duplicates."""
 
 
 class DeepDeduplicationOutcome(StrEnum):
@@ -182,12 +195,15 @@ class DuplicateDetermination(StrEnum):
     CANONICAL = auto()
     """[TERMINAL] The reference is not a duplicate of another reference."""
     UNRESOLVED = auto()
-    """Automatic attempts to resolve the duplicate were unsuccessful."""
+    """
+    Candidates were retrieved and scored, but no determination could be reached.
+    Never active; the detail names the reason.
+    """
     UNSEARCHABLE = auto()
     """
-    [TERMINAL] The reference does not have sufficient metadata to be
-    automatically matched to other references, or the duplicate detection
-    process has been explicitly disabled.
+    [TERMINAL] Deduplication could not get a complete candidate set: the
+    reference lacks the metadata to search on, the search failed or was
+    truncated, or duplicate detection is disabled. The detail says which.
     """
     DECOUPLED = auto()
     """
@@ -205,6 +221,11 @@ class DuplicateDetermination(StrEnum):
             cls.CANONICAL,
             cls.UNSEARCHABLE,
         }
+
+    @classmethod
+    def get_candidate_canonical_states(cls) -> set["DuplicateDetermination"]:
+        """Return the active determinations a reference may be a duplicate of."""
+        return {cls.CANONICAL, cls.UNSEARCHABLE}
 
 
 class DuplicateDecisionAuthority(StrEnum):
@@ -282,6 +303,15 @@ class Reference(
         return (
             self.duplicate_decision.duplicate_determination
             == DuplicateDetermination.CANONICAL
+        )
+
+    @property
+    def accepts_duplicates(self) -> bool:
+        """Whether another reference may be marked a duplicate of this one."""
+        return bool(
+            self.duplicate_decision
+            and self.duplicate_decision.duplicate_determination
+            in DuplicateDetermination.get_candidate_canonical_states()
         )
 
     @property
@@ -824,7 +854,7 @@ class CandidateCanonicalSearchQuery(BaseModel):
     author_tie_breaker: float
     publication_year_range: tuple[int, int] | None
     publication_year_decay: YearDecay | None = None
-    duplicate_determination: DuplicateDetermination
+    duplicate_determinations: tuple[DuplicateDetermination, ...]
     excluded_reference_id: UUID | None
 
 
@@ -1537,6 +1567,10 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
     detail: str | None = Field(
         default=None,
         description="Optional additional detail about the decision.",
+    )
+    deduplication_assessment_id: UUID | None = Field(
+        default=None,
+        description="The assessment an automatic decision was made from.",
     )
 
     @model_validator(mode="after")

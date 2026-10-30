@@ -817,6 +817,9 @@ class ReferenceDuplicateDecision(
         nullable=True,
     )
     detail: Mapped[str | None] = mapped_column(String, nullable=True)
+    deduplication_assessment_id: Mapped[UUID | None] = mapped_column(
+        SQL_UUID, ForeignKey("deduplication_assessment.id"), nullable=True
+    )
 
     __table_args__ = (
         # Unique constraint to ensure only one active decision per reference
@@ -843,6 +846,11 @@ class ReferenceDuplicateDecision(
             "canonical_reference_id",
             "active_decision",
         ),
+        # For listing the decisions a policy generation made, via the assessment
+        Index(
+            "ix_reference_duplicate_decision_deduplication_assessment_id",
+            "deduplication_assessment_id",
+        ),
     )
 
     @classmethod
@@ -859,6 +867,7 @@ class ReferenceDuplicateDecision(
             canonical_reference_id=domain_obj.canonical_reference_id,
             duplicate_determination=domain_obj.duplicate_determination,
             detail=domain_obj.detail,
+            deduplication_assessment_id=domain_obj.deduplication_assessment_id,
         )
 
     def to_domain(
@@ -877,6 +886,7 @@ class ReferenceDuplicateDecision(
             canonical_reference_id=self.canonical_reference_id,
             duplicate_determination=self.duplicate_determination,
             detail=self.detail,
+            deduplication_assessment_id=self.deduplication_assessment_id,
         )
 
 

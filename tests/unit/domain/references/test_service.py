@@ -18,6 +18,9 @@ from destiny_sdk.references import ReferenceFileInput
 from app.core.entitlements import Entitlement
 from app.core.exceptions import (
     AuthError,
+    CandidateSearchTruncatedError,
+    DeduplicationInputError,
+    DeduplicationValueError,
     DuplicateEnhancementError,
     InvalidParentEnhancementError,
     InvalidSupersessionError,
@@ -26,6 +29,7 @@ from app.core.exceptions import (
 from app.domain.references.models.models import (
     CandidateSelectionDiagnostics,
     CandidateSelectionResult,
+    DeduplicationAssessmentPurpose,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -39,6 +43,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceDuplicateDeterminationResult,
     ReferenceIds,
     ReferenceWithChangeset,
     RetrievalPolicyName,
@@ -216,7 +221,9 @@ async def test_process_duplicate_decision_passes_full_candidate_selection(
     )
     service.apply_reference_duplicate_decision_side_effects = AsyncMock()  # type: ignore[method-assign]
 
-    await service.process_reference_duplicate_decision(decision)
+    await service.process_reference_duplicate_decision(
+        decision, blob_repository=MagicMock()
+    )
 
     service._deduplication_service.select_candidate_canonicals.assert_awaited_once_with(  # noqa: SLF001
         decision.reference_id
@@ -228,8 +235,9 @@ async def test_process_duplicate_decision_passes_full_candidate_selection(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("automatic", [False, True])
 async def test_process_duplicate_decision_skips_selection_when_disabled(
-    duplicate_processing_service, monkeypatch
+    duplicate_processing_service, monkeypatch, automatic
 ):
     from app.domain.references import service as reference_service_module
 
@@ -238,10 +246,19 @@ async def test_process_duplicate_decision_skips_selection_when_disabled(
         "enable_canonical_candidate_search",
         False,
     )
+    monkeypatch.setattr(
+        reference_service_module.settings.feature_flags,
+        "enable_automatic_deduplication_decisions",
+        automatic,
+    )
     service, decision = duplicate_processing_service
+    service._decide_from_assessment = AsyncMock()  # type: ignore[method-assign]  # noqa: SLF001
 
-    await service.process_reference_duplicate_decision(decision)
+    await service.process_reference_duplicate_decision(
+        decision, blob_repository=MagicMock()
+    )
 
+    service._decide_from_assessment.assert_not_awaited()  # noqa: SLF001
     service._deduplication_service.select_candidate_canonicals.assert_not_awaited()  # noqa: SLF001
     service._deduplication_service.determine_canonical_from_candidates.assert_not_awaited()  # noqa: SLF001
     mapped_decision = (
@@ -253,6 +270,161 @@ async def test_process_duplicate_decision_skips_selection_when_disabled(
         mapped_decision.duplicate_determination is DuplicateDetermination.UNSEARCHABLE
     )
     assert mapped_decision.detail == "Canonical candidate search is disabled."
+
+
+@pytest.fixture
+def automatic_decision_service(duplicate_processing_service, monkeypatch):
+    """Duplicate processing with automatic decisions on and assessment faked."""
+    from app.domain.references import service as reference_service_module
+
+    monkeypatch.setattr(
+        reference_service_module.settings.feature_flags,
+        "enable_automatic_deduplication_decisions",
+        True,
+    )
+    assessor = MagicMock()
+    assessor.evaluate = AsyncMock()
+    recorder = MagicMock()
+    recorder.record = AsyncMock(return_value=SimpleNamespace(id=uuid7()))
+    monkeypatch.setattr(
+        reference_service_module,
+        "DeduplicationAssessmentService",
+        MagicMock(return_value=assessor),
+    )
+    monkeypatch.setattr(
+        reference_service_module,
+        "DeduplicationAssessmentRecorder",
+        MagicMock(return_value=recorder),
+    )
+    monkeypatch.setattr(reference_service_module, "DeduperPairScorer", MagicMock())
+    service, decision = duplicate_processing_service
+    service.sql_uow.reference_duplicate_decisions = MagicMock(merge=AsyncMock())
+    service.sql_uow.deduplication_assessments = MagicMock()
+    service.sql_uow.references = MagicMock(
+        get_by_pk=AsyncMock(return_value=SimpleNamespace(accepts_duplicates=True))
+    )
+
+    def decide(result: ReferenceDuplicateDeterminationResult) -> None:
+        monkeypatch.setattr(
+            reference_service_module,
+            "decide_from_assessment",
+            MagicMock(return_value=result),
+        )
+
+    return SimpleNamespace(
+        service=service,
+        decision=decision,
+        assessor=assessor,
+        recorder=recorder,
+        decide=decide,
+    )
+
+
+@pytest.mark.asyncio
+async def test_automatic_decisions_off_never_assess(duplicate_processing_service):
+    from app.domain.references import service as reference_service_module
+
+    flags = reference_service_module.settings.feature_flags
+    assert not flags.enable_automatic_deduplication_decisions
+    service, decision = duplicate_processing_service
+    service._decide_from_assessment = AsyncMock()  # type: ignore[method-assign]  # noqa: SLF001
+
+    await service.process_reference_duplicate_decision(
+        decision, blob_repository=MagicMock()
+    )
+
+    service._decide_from_assessment.assert_not_awaited()  # noqa: SLF001
+
+
+@pytest.mark.asyncio
+async def test_automatic_decision_maps_the_proposal_linked_to_its_assessment(
+    automatic_decision_service,
+):
+    auto = automatic_decision_service
+    canonical_id = uuid7()
+    auto.decide(
+        ReferenceDuplicateDeterminationResult(
+            duplicate_determination=DuplicateDetermination.DUPLICATE,
+            canonical_reference_id=canonical_id,
+        )
+    )
+    mapped = auto.decision.model_copy(update={"active_decision": True})
+    auto.service._deduplication_service.map_duplicate_decision = AsyncMock(  # noqa: SLF001
+        return_value=(mapped, True, None)
+    )
+
+    reproject = await auto.service.process_reference_duplicate_decision(
+        auto.decision, blob_repository=MagicMock()
+    )
+
+    record_kwargs = auto.recorder.record.await_args.kwargs
+    assert record_kwargs["purpose"] == DeduplicationAssessmentPurpose.DEDUPLICATION
+    assert record_kwargs["idempotency_key"] == auto.decision.id
+    proposed = (
+        auto.service._deduplication_service.map_duplicate_decision.await_args.args[  # noqa: SLF001
+            0
+        ]
+    )
+    assert proposed.duplicate_determination == DuplicateDetermination.DUPLICATE
+    assert proposed.canonical_reference_id == canonical_id
+    assert proposed.deduplication_assessment_id == auto.recorder.record.return_value.id
+    # Reprojection waits for the caller to commit.
+    auto.service.apply_reference_duplicate_decision_side_effects.assert_awaited_once_with(
+        mapped, decision_changed=True, reproject=False
+    )
+    assert reproject == [auto.decision.reference_id]
+
+
+@pytest.mark.asyncio
+async def test_an_unresolved_outcome_is_inactive_without_side_effects(
+    automatic_decision_service,
+):
+    auto = automatic_decision_service
+    auto.decide(
+        ReferenceDuplicateDeterminationResult(
+            duplicate_determination=DuplicateDetermination.UNRESOLVED,
+            detail="Unresolved: multiple_clearing",
+        )
+    )
+
+    reproject = await auto.service.process_reference_duplicate_decision(
+        auto.decision, blob_repository=MagicMock()
+    )
+
+    unresolved = (
+        auto.service.sql_uow.reference_duplicate_decisions.merge.await_args.args[0]
+    )
+    assert unresolved.duplicate_determination == DuplicateDetermination.UNRESOLVED
+    assert unresolved.active_decision is False
+    assert (
+        unresolved.deduplication_assessment_id == auto.recorder.record.return_value.id
+    )
+    auto.service._deduplication_service.map_duplicate_decision.assert_not_awaited()  # noqa: SLF001
+    auto.service.apply_reference_duplicate_decision_side_effects.assert_not_awaited()
+    assert reproject == []
+
+
+@pytest.mark.asyncio
+async def test_a_truncated_search_is_unsearchable_without_an_assessment(
+    automatic_decision_service,
+):
+    auto = automatic_decision_service
+    auto.assessor.evaluate.side_effect = CandidateSearchTruncatedError(
+        "stopped at the cap", bound="terminate_after", took_ms=10
+    )
+
+    await auto.service.process_reference_duplicate_decision(
+        auto.decision, blob_repository=MagicMock()
+    )
+
+    proposed = (
+        auto.service._deduplication_service.map_duplicate_decision.await_args.args[  # noqa: SLF001
+            0
+        ]
+    )
+    assert proposed.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert proposed.detail.startswith("Candidate retrieval truncated")
+    auto.recorder.record.assert_not_awaited()
 
 
 @pytest.mark.asyncio
@@ -2524,7 +2696,9 @@ class TestDeduplicationDecisionTelemetry:
             return_value=(determined, True, None)
         )
 
-        await service.process_reference_duplicate_decision(decision)
+        await service.process_reference_duplicate_decision(
+            decision, blob_repository=MagicMock()
+        )
 
         assert span_attributes(self.SPAN) == {
             "app.reference.id": str(decision.reference_id),
@@ -2561,7 +2735,9 @@ class TestDeduplicationDecisionTelemetry:
             return_value=(decoupled, False, None)
         )
 
-        await service.process_reference_duplicate_decision(decision)
+        await service.process_reference_duplicate_decision(
+            decision, blob_repository=MagicMock()
+        )
 
         attributes = span_attributes(self.SPAN)
         assert attributes["app.deduplication.decision_changed"] is False
@@ -2601,7 +2777,9 @@ class TestDeduplicationDecisionTelemetry:
             AsyncMock(return_value=[shortcutted, side_effect])
         )
 
-        await service.process_reference_duplicate_decision(decision)
+        await service.process_reference_duplicate_decision(
+            decision, blob_repository=MagicMock()
+        )
 
         assert span_attributes(self.SPAN) == {
             "app.reference.id": str(decision.reference_id),
@@ -2628,7 +2806,9 @@ class TestDeduplicationDecisionTelemetry:
         )
         service, decision = duplicate_processing_service
 
-        await service.process_reference_duplicate_decision(decision)
+        await service.process_reference_duplicate_decision(
+            decision, blob_repository=MagicMock()
+        )
 
         attributes = span_attributes(self.SPAN)
         assert attributes["app.deduplication.route"] == "disabled"
@@ -2651,8 +2831,48 @@ class TestDeduplicationDecisionTelemetry:
         )
 
         with pytest.raises(RuntimeError):
-            await service.process_reference_duplicate_decision(decision)
+            await service.process_reference_duplicate_decision(
+                decision, blob_repository=MagicMock()
+            )
 
         attributes = span_attributes(self.SPAN)
         assert attributes["app.deduplication.route"] == "candidate_search"
         assert "app.deduplication.determination" not in attributes
+
+
+@pytest.mark.asyncio
+async def test_an_input_that_cannot_be_searched_is_unsearchable(
+    automatic_decision_service,
+):
+    auto = automatic_decision_service
+    auto.assessor.evaluate.side_effect = DeduplicationInputError("nothing to search")
+
+    await auto.service.process_reference_duplicate_decision(
+        auto.decision, blob_repository=MagicMock()
+    )
+
+    proposed = (
+        auto.service._deduplication_service.map_duplicate_decision.await_args.args[  # noqa: SLF001
+            0
+        ]
+    )
+    assert proposed.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert proposed.detail == "nothing to search"
+
+
+@pytest.mark.asyncio
+async def test_a_deduplication_defect_is_raised_not_decided(
+    automatic_decision_service,
+):
+    """A bug is raised for the task to leave pending, never decided here."""
+    auto = automatic_decision_service
+    auto.assessor.evaluate.side_effect = DeduplicationValueError(
+        "Cannot assess reference as a duplicate of itself"
+    )
+
+    with pytest.raises(DeduplicationValueError):
+        await auto.service.process_reference_duplicate_decision(
+            auto.decision, blob_repository=MagicMock()
+        )
+
+    auto.service._deduplication_service.map_duplicate_decision.assert_not_awaited()  # noqa: SLF001
