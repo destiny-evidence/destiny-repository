@@ -1544,8 +1544,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             recording_config=settings.dedup_assessment_recording,
         )
         # The record commits with the decision, so the decision id identifies the
-        # attempt: a later attempt only runs if this one rolled back.
-        record = await recorder.record(
+        # attempt (a later attempt only runs if this one rolled back) and links the
+        # decision to the assessment it was made from.
+        await recorder.record(
             assessment,
             purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
             policy_generation=settings.dedup_assessment_recording.policy_generation,
@@ -1573,7 +1574,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             result.canonical_reference_id
         )
         reference_duplicate_decision.detail = result.detail
-        reference_duplicate_decision.deduplication_assessment_id = record.id
         return reference_duplicate_decision
 
     @sql_unit_of_work

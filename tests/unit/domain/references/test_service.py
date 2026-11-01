@@ -285,7 +285,7 @@ def automatic_decision_service(duplicate_processing_service, monkeypatch):
     assessor = MagicMock()
     assessor.evaluate = AsyncMock()
     recorder = MagicMock()
-    recorder.record = AsyncMock(return_value=SimpleNamespace(id=uuid7()))
+    recorder.record = AsyncMock()
     monkeypatch.setattr(
         reference_service_module,
         "DeduplicationAssessmentService",
@@ -367,7 +367,6 @@ async def test_automatic_decision_maps_the_proposal_linked_to_its_assessment(
     )
     assert proposed.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert proposed.canonical_reference_id == canonical_id
-    assert proposed.deduplication_assessment_id == auto.recorder.record.return_value.id
     # Reprojection waits for the caller to commit.
     auto.service.apply_reference_duplicate_decision_side_effects.assert_awaited_once_with(
         mapped, decision_changed=True, reproject=False
@@ -396,9 +395,7 @@ async def test_an_unresolved_outcome_is_inactive_without_side_effects(
     )
     assert unresolved.duplicate_determination == DuplicateDetermination.UNRESOLVED
     assert unresolved.active_decision is False
-    assert (
-        unresolved.deduplication_assessment_id == auto.recorder.record.return_value.id
-    )
+    auto.recorder.record.assert_awaited_once()
     auto.service._deduplication_service.map_duplicate_decision.assert_not_awaited()  # noqa: SLF001
     auto.service.apply_reference_duplicate_decision_side_effects.assert_not_awaited()
     assert reproject == []

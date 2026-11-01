@@ -1568,10 +1568,6 @@ class ReferenceDuplicateDecision(DomainBaseModel, SQLAttributeMixin):
         default=None,
         description="Optional additional detail about the decision.",
     )
-    deduplication_assessment_id: UUID | None = Field(
-        default=None,
-        description="The assessment an automatic decision was made from.",
-    )
 
     @model_validator(mode="after")
     def check_provenance_is_classified_together(self) -> Self:

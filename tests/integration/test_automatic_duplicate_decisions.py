@@ -20,6 +20,7 @@ from app.domain.references.models.models import (
     CandidateSelectionDiagnostics,
     CandidateSelectionResult,
     DeduperMetadata,
+    DeduplicationAssessmentPurpose,
     DeduplicationPairResult,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
@@ -159,11 +160,12 @@ async def _stored_decision(session: AsyncSession, decision_id: UUID):  # noqa: A
     ).scalar_one()
 
 
-async def _assessment_count(session: AsyncSession, reference_id: UUID) -> int:
+async def _assessment_count(session: AsyncSession, decision_id: UUID) -> int:
+    """Count the assessments recorded for a decision, which key them by its id."""
     return (
         await session.execute(
             select(func.count()).where(
-                SQLDeduplicationAssessmentRecord.incoming_reference_id == reference_id
+                SQLDeduplicationAssessmentRecord.idempotency_key == decision_id
             )
         )
     ).scalar_one()
@@ -195,12 +197,14 @@ async def test_an_undecided_assessment_commits_unresolved_and_linked(
             select(SQLReferenceDuplicateDecision.id)
             .join(
                 SQLDeduplicationAssessmentRecord,
-                SQLDeduplicationAssessmentRecord.id
-                == SQLReferenceDuplicateDecision.deduplication_assessment_id,
+                SQLDeduplicationAssessmentRecord.idempotency_key
+                == SQLReferenceDuplicateDecision.id,
             )
             .where(
+                SQLDeduplicationAssessmentRecord.purpose
+                == DeduplicationAssessmentPurpose.DEDUPLICATION,
                 SQLDeduplicationAssessmentRecord.policy_generation
-                == settings.dedup_assessment_recording.policy_generation
+                == settings.dedup_assessment_recording.policy_generation,
             )
         )
     ).scalars()
@@ -224,7 +228,7 @@ async def test_a_match_no_longer_canonical_is_unresolved_and_linked(
     unresolved = await _stored_decision(session, pending.id)
     assert unresolved.duplicate_determination == DuplicateDetermination.UNRESOLVED
     assert unresolved.detail == "Unresolved: non_canonical_match"
-    assert unresolved.deduplication_assessment_id is not None
+    assert await _assessment_count(session, pending.id) == 1
     assert reproject == []
 
 
@@ -252,7 +256,7 @@ async def test_a_rolled_back_attempt_leaves_nothing_and_its_retry_records_once(
     assert (await _stored_decision(session, pending.id)).duplicate_determination == (
         DuplicateDetermination.PENDING
     )
-    assert await _assessment_count(session, incoming.id) == 0
+    assert await _assessment_count(session, pending.id) == 0
 
     deduplication_service.map_duplicate_decision = map_duplicate_decision  # type: ignore[method-assign]
     retry = ReferenceDuplicateDecision.model_validate(
@@ -266,8 +270,7 @@ async def test_a_rolled_back_attempt_leaves_nothing_and_its_retry_records_once(
     assert decided.duplicate_determination == DuplicateDetermination.DUPLICATE
     assert decided.canonical_reference_id == canonical.id
     assert decided.active_decision is True
-    assert decided.deduplication_assessment_id is not None
-    assert await _assessment_count(session, incoming.id) == 1
+    assert await _assessment_count(session, pending.id) == 1
     assert reproject == [incoming.id]
 
 
