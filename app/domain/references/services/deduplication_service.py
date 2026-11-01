@@ -259,10 +259,10 @@ def decide_from_assessment(
     assessment: DeduplicationAssessment,
 ) -> ReferenceDuplicateDeterminationResult:
     """
-    Apply the acting policy to an assessment.
+    Turn an assessment into a decision.
 
-    A stand-in until the first automatic policy (#877) is agreed: act on the
-    assessment's own proposal and leave unresolved whatever it declined to propose.
+    A stand-in until the first automatic policy (#877): follow the assessment's
+    proposal. Without one, the reference is unresolved or unsearchable.
     """
     match assessment.outcome:
         case DeduplicationAssessmentOutcome.PROPOSE_CANONICAL:
@@ -539,8 +539,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         for reference in matched_references:
             if reference.id == self_id:
                 continue
-            # A duplicate match resolves to its canonical reference. A reference
-            # still undecided cannot take duplicates yet, as on the search route.
+            # A duplicate resolves to its canonical. An undecided reference cannot
+            # take duplicates, so it is skipped.
             if reference.accepts_duplicates:
                 canonical_id = reference.id
             elif reference.is_canonical_like:
@@ -854,7 +854,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             and active_decision.duplicate_determination
             == DuplicateDetermination.DUPLICATE
             and (
-                # Duplicate is becoming canonical, or unsearchable and so its own head
+                # Duplicate is becoming its own head (canonical or unsearchable)
                 new_decision.duplicate_determination
                 in DuplicateDetermination.get_candidate_canonical_states()
                 or (
@@ -1018,7 +1018,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 # Duplicate — use the decision's direct canonical reference ID
                 canonical_ids.add(candidate.duplicate_decision.canonical_reference_id)
 
-        # An unsearchable reference can now take duplicates, so it may be both.
+        # An unsearchable reference with duplicates lands in both sets; it is their
+        # canonical.
         undeduplicated_ids -= canonical_ids
         if len(canonical_ids) > 1:
             return [

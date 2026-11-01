@@ -1376,9 +1376,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         Process a reference duplicate decision.
 
-        Elasticsearch has no transaction to share, so reprojection waits for the
-        decision to commit: the caller passes the returned reference ids to
-        :meth:`reproject_references`.
+        Returns the reference ids to pass to :meth:`reproject_references` once the
+        decision commits.
         """
         trace_attribute(
             Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
@@ -1448,7 +1447,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision.duplicate_determination
                 == DuplicateDetermination.UNRESOLVED
             ):
-                # Inactive, so it displaces nothing and has no side effects.
+                # Inactive, so there is nothing to map and no side effects.
                 await self.sql_uow.reference_duplicate_decisions.merge(
                     reference_duplicate_decision
                 )
@@ -1523,7 +1522,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision.reference_id
             )
         except CandidateSearchTruncatedError as exc:
-            # Retrying meets the same bound again, so this is final.
+            # A retry would hit the same bound.
             reference_duplicate_decision.duplicate_determination = (
                 DuplicateDetermination.UNSEARCHABLE
             )
@@ -1543,9 +1542,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             payload_writer=BlobAssessmentPayloadWriter(blob_repository=blob_repository),
             recording_config=settings.dedup_assessment_recording,
         )
-        # The record commits with the decision, so the decision id identifies the
-        # attempt (a later attempt only runs if this one rolled back) and links the
-        # decision to the assessment it was made from.
+        # Keyed by the decision id, which links the two. It commits with the
+        # decision, so a retry only runs after a rollback and records afresh.
         await recorder.record(
             assessment,
             purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
@@ -1579,7 +1577,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     @es_unit_of_work
     async def reproject_references(self, reference_ids: list[UUID]) -> None:
-        """Reproject references to Elasticsearch, moving duplicates to canonicals."""
+        """Reproject references to Elasticsearch."""
         for reference_id in reference_ids:
             await self._synchronizer.references.sql_to_es(reference_id)
 
@@ -1589,7 +1587,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, reference_duplicate_decision_id: UUID, detail: str
     ) -> list[UUID]:
         """
-        Decide a still-pending decision unsearchable once its attempts are spent.
+        Mark a pending decision unsearchable after its retries run out.
 
         Returns the reference ids to reproject once committed.
         """

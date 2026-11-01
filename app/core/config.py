@@ -455,8 +455,7 @@ class DedupAssessmentRecordingConfig(BaseModel):
     )
     policy_generation: str = Field(
         default="stand-in",
-        description="The acting-policy generation recorded with each assessment and "
-        "the automatic decisions made from it.",
+        description="The acting-policy generation recorded with each assessment.",
     )
 
 

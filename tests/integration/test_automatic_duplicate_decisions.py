@@ -1,9 +1,4 @@
-"""
-Integration tests for automatic duplicate decisions against a real session.
-
-Covers what mocks cannot: what is left in the database once a decision commits
-or rolls back, and that a retried attempt records its assessment only once.
-"""
+"""Integration tests for what automatic duplicate decisions leave in the database."""
 
 from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID
@@ -132,7 +127,7 @@ async def _decide(
 
 
 def _select(service: ReferenceService, *candidate_ids: UUID) -> None:
-    """Have retrieval surface exactly these candidates."""
+    """Make retrieval return exactly these candidates."""
     service._deduplication_service.get_deduplication_candidates = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
         return_value=CandidateSelectionResult(
             retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V2,
@@ -161,7 +156,7 @@ async def _stored_decision(session: AsyncSession, decision_id: UUID):  # noqa: A
 
 
 async def _assessment_count(session: AsyncSession, decision_id: UUID) -> int:
-    """Count the assessments recorded for a decision, which key them by its id."""
+    """Count the assessments keyed by a decision's id."""
     return (
         await session.execute(
             select(func.count()).where(
@@ -214,7 +209,7 @@ async def test_an_undecided_assessment_commits_unresolved_and_linked(
 async def test_a_match_no_longer_canonical_is_unresolved_and_linked(
     session: AsyncSession, service: ReferenceService, blob_repository: MagicMock
 ) -> None:
-    """A clearing candidate that cannot take duplicates is not mapped onto."""
+    """A clearing candidate that cannot take duplicates leaves it unresolved."""
     incoming = await _reference(session)
     stale = await _reference(session)
     pending = await _decide(session, incoming.id, DuplicateDetermination.PENDING)
@@ -235,7 +230,7 @@ async def test_a_match_no_longer_canonical_is_unresolved_and_linked(
 async def test_a_rolled_back_attempt_leaves_nothing_and_its_retry_records_once(
     session: AsyncSession, service: ReferenceService, blob_repository: MagicMock
 ) -> None:
-    """A failure after recording rolls the assessment back; the retry lands."""
+    """A failure after recording rolls the assessment back; the retry records once."""
     incoming = await _reference(session)
     canonical = await _reference(session)
     pending = await _decide(session, incoming.id, DuplicateDetermination.PENDING)

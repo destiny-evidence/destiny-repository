@@ -2861,7 +2861,7 @@ async def test_an_input_that_cannot_be_searched_is_unsearchable(
 async def test_a_deduplication_defect_is_raised_not_decided(
     automatic_decision_service,
 ):
-    """A bug is raised for the task to leave pending, never decided here."""
+    """A defect is raised, not turned into a decision."""
     auto = automatic_decision_service
     auto.assessor.evaluate.side_effect = DeduplicationValueError(
         "Cannot assess reference as a duplicate of itself"

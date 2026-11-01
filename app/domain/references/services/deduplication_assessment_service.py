@@ -189,7 +189,7 @@ class DeduplicationAssessmentService:
                 )
             )
         except CandidateSearchTruncatedError:
-            # An outcome, not a failure: retrying meets the same bound again.
+            # Not an infrastructure failure: a retry would hit the same bound.
             raise
         except INFRASTRUCTURE_ERRORS as exc:
             msg = f"Candidate retrieval failed ({type(exc).__name__}): {exc}"

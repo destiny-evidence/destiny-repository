@@ -48,8 +48,8 @@ def evidence_sampled(
 class AssessmentRecordStore(Protocol):
     """Persistence required to record an assessment."""
 
-    # Plain defs returning Awaitable: the traced repository methods are not
-    # coroutine functions, so an async def here would not match them.
+    # Plain defs: the traced repository methods return awaitables but are not
+    # coroutine functions, so an async def would not match them.
     def add_or_find_by_idempotency_key(
         self, record: DeduplicationAssessmentRecord
     ) -> Awaitable[DeduplicationAssessmentRecord]:

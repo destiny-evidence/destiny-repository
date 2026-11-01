@@ -1317,7 +1317,7 @@ class TestShortcutDeduplication:
         fake_uow,
         fake_repository,
     ):
-        """An unsearchable reference with duplicates is their head, not a stray."""
+        """An unsearchable reference with duplicates stays their canonical."""
         incoming: Reference = ReferenceFactory.build()
         assert incoming.identifiers
         incoming.identifiers.append(trusted_identifier)

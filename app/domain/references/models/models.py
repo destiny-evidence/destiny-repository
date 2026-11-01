@@ -145,16 +145,16 @@ class DeduplicationRoute(StrEnum):
     DISABLED = auto()
     """Candidate search is switched off in this environment."""
     AUTOMATIC_DECISION = auto()
-    """A recorded assessment was applied under the acting policy."""
+    """The decision was made from a recorded assessment."""
 
 
 class DeduplicationUnresolvedReason(StrEnum):
-    """Why automation left a reference unresolved rather than deciding it."""
+    """Why an automatic decision was left unresolved."""
 
     MULTIPLE_CLEARING = auto()
     """More than one candidate cleared the threshold."""
     UNSCORABLE_CANDIDATE = auto()
-    """A candidate could not be scored, so no proposal can be trusted."""
+    """A candidate could not be scored."""
     NON_CANONICAL_MATCH = auto()
     """The only clearing candidate no longer accepts duplicates."""
 
@@ -224,7 +224,7 @@ class DuplicateDetermination(StrEnum):
 
     @classmethod
     def get_candidate_canonical_states(cls) -> set["DuplicateDetermination"]:
-        """Return the active determinations a reference may be a duplicate of."""
+        """Return the determinations that let a reference take duplicates."""
         return {cls.CANONICAL, cls.UNSEARCHABLE}
 
 

@@ -697,7 +697,7 @@ class DeduplicationValueError(DeduplicationError, ValueError):
 
 
 class DeduplicationInputError(DeduplicationValueError):
-    """A reference cannot be searched or scored as it stands."""
+    """The reference's own data cannot be searched or scored."""
 
 
 class ParseError(DestinyRepositoryError):

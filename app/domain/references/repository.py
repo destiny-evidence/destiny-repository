@@ -948,8 +948,7 @@ class ReferenceESRepository(
             msg = f"Candidate search unavailable ({exc.meta.status}): {exc}"
             raise ESError(msg) from exc
 
-        # The clusters allow partial results, which leave out whatever the failed
-        # shards held, so a retry may still find the best candidates.
+        # Partial results are allowed and miss whatever the failed shards hold.
         shards = getattr(response, "_shards", None)
         if shards and shards.failed:
             msg = f"Candidate search failed on {shards.failed} of {shards.total} shards"
