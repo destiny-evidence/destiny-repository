@@ -850,15 +850,18 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             decision_changed = False
         elif (
             active_decision
+            and new_decision.duplicate_determination
+            == DuplicateDetermination.UNSEARCHABLE
+        ):
+            # Failing to deduplicate is no reason to replace a decision.
+            decision_changed = False
+        elif (
+            active_decision
             and active_decision.duplicate_determination
             == DuplicateDetermination.DUPLICATE
             and (
-                # Duplicate is being split off as canonical or unsearchable
-                new_decision.duplicate_determination
-                in (
-                    DuplicateDetermination.CANONICAL,
-                    DuplicateDetermination.UNSEARCHABLE,
-                )
+                # Duplicate is becoming canonical
+                new_decision.duplicate_determination == DuplicateDetermination.CANONICAL
                 or (
                     # Duplicate changes canonical reference
                     new_decision.duplicate_determination

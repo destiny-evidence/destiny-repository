@@ -919,13 +919,10 @@ async def test_determine_returns_terminal_decision_unchanged(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "determination",
-    [DuplicateDetermination.CANONICAL, DuplicateDetermination.UNSEARCHABLE],
-)
-async def test_map_duplicate_decision_decouples_duplicate_becoming_its_own_head(
-    fake_uow, fake_repository, anti_corruption_service, determination
+async def test_map_duplicate_decision_decouples_duplicate_becoming_canonical(
+    fake_uow, fake_repository, anti_corruption_service
 ):
+    # Setup reference and active decision (was DUPLICATE, now CANONICAL)
     reference = MagicMock(spec=Reference)
     reference.id = uuid7()
     active_decision = ReferenceDuplicateDecision(
@@ -938,7 +935,7 @@ async def test_map_duplicate_decision_decouples_duplicate_becoming_its_own_head(
 
     decision = ReferenceDuplicateDecision(
         reference_id=reference.id,
-        duplicate_determination=determination,
+        duplicate_determination=DuplicateDetermination.CANONICAL,
     )
 
     ref_repo = fake_repository([reference])
@@ -963,6 +960,50 @@ async def test_map_duplicate_decision_decouples_duplicate_becoming_its_own_head(
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "active_determination",
+    [DuplicateDetermination.CANONICAL, DuplicateDetermination.DUPLICATE],
+)
+async def test_map_duplicate_decision_keeps_the_active_decision_when_unsearchable(
+    fake_uow, fake_repository, anti_corruption_service, active_determination
+):
+    """Failing to deduplicate is no reason to replace a decision."""
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=active_determination,
+        canonical_reference_id=(
+            uuid7()
+            if active_determination == DuplicateDetermination.DUPLICATE
+            else None
+        ),
+        active_decision=True,
+    )
+    reference.duplicate_decision = active_decision
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+    )
+    dec_repo = fake_repository([active_decision, decision])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=fake_repository([reference]),
+            reference_duplicate_decisions=dec_repo,
+        ),
+        fake_uow(),
+    )
+
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(decision)
+
+    assert out_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert not out_decision.active_decision
+    assert not decision_changed
+    assert (await dec_repo.get_by_pk(active_decision.id)).active_decision
 
 
 @pytest.mark.asyncio
