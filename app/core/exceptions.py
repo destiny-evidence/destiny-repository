@@ -1,7 +1,7 @@
 """Custom exceptions for the app."""
 
 import re
-from typing import Any, ClassVar, Self
+from typing import Any, Self
 
 import destiny_sdk
 from fastapi import HTTPException
@@ -18,8 +18,6 @@ class CustomHTTPException(HTTPException):
 class DestinyRepositoryError(Exception):
     """Base class for all exceptions in the Destiny Repository app."""
 
-    marks_span_errored: ClassVar[bool] = True
-
     def __init__(self, detail: str | None = None, *args: object) -> None:
         """
         Initialize the DestinyRepositoryException.
@@ -29,12 +27,11 @@ class DestinyRepositoryError(Exception):
             **kwargs: Additional keyword arguments for the exception.
 
         """
-        if self.marks_span_errored:
-            set_span_status(
-                StatusCode.ERROR,
-                detail=detail,
-                exception=self,
-            )
+        set_span_status(
+            StatusCode.ERROR,
+            detail=detail,
+            exception=self,
+        )
         self.detail = detail or "No detail provided."
         super().__init__(detail, *args)
 
@@ -225,9 +222,6 @@ class CandidateSearchTruncatedError(ESError):
     timeout. The hits it returned are whichever documents it reached first, not
     the best-scoring ones, so they must not be used as a candidate set.
     """
-
-    # An expected outcome, so error alerts on spans stay reserved for failures.
-    marks_span_errored = False
 
     def __init__(self, detail: str, *, bound: str, took_ms: int) -> None:
         """
