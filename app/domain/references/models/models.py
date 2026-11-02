@@ -158,6 +158,29 @@ class DeepDeduplicationOutcome(StrEnum):
     timeout, so no complete candidate set exists for this reference."""
 
 
+class IdentifierCandidateOutcome(StrEnum):
+    """How the best identifier-surfaced candidate fared against the rest."""
+
+    NONE = auto()
+    """No candidate was surfaced by an identifier match."""
+    TOP = auto()
+    """An identifier-surfaced candidate scored highest."""
+    BEATEN = auto()
+    """A candidate no identifier surfaced outscored every one an identifier did."""
+    UNSCORED = auto()
+    """Every identifier-surfaced candidate was unscorable."""
+
+
+class OpenAlexRelation(StrEnum):
+    """How the top-scoring candidate's OpenAlex ID relates to the incoming one."""
+
+    ABSENT = auto()
+    """One side, or both, has no OpenAlex ID."""
+    SAME = auto()
+    DIFFERENT = auto()
+    """The top-scoring candidate has a different OpenAlex ID."""
+
+
 class DuplicateDetermination(StrEnum):
     """
     The determination of whether a reference is a duplicate.
@@ -1241,6 +1264,23 @@ class DeduplicationAssessment(BaseModel):
     proposed_duplicate_of_id: UUID | None = None
     threshold_clearing_candidate_ids: list[UUID] = Field(default_factory=list)
     unscorable_candidate_ids: list[UUID] = Field(default_factory=list)
+
+    def best_scores(self) -> tuple[float | None, float | None]:
+        """Return the best score and the best score that did not win."""
+        probabilities = [
+            scored.pair_result.probability
+            for scored in self.scored_candidates
+            if scored.pair_result.probability is not None
+        ]
+        # With no proposal every score is non-winning, so this collapses to the top
+        # score and one field carries the margin in both cases.
+        non_winning = [
+            scored.pair_result.probability
+            for scored in self.scored_candidates
+            if scored.pair_result.probability is not None
+            and scored.candidate.reference_id != self.proposed_duplicate_of_id
+        ]
+        return max(probabilities, default=None), max(non_winning, default=None)
 
 
 # The enhancement types the Deduper compares. Abstracts are excluded because its
