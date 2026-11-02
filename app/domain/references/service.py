@@ -1446,7 +1446,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision.duplicate_determination
                 == DuplicateDetermination.UNRESOLVED
             ):
-                # Inactive, so there is nothing to map.
+                # Inactive, so there is nothing to map and no side effects.
                 await self.sql_uow.reference_duplicate_decisions.merge(
                     reference_duplicate_decision
                 )
@@ -1454,17 +1454,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     Attributes.DEDUPLICATION_DETERMINATION,
                     DuplicateDetermination.UNRESOLVED.value,
                 )
-                reference = await self._get_canonical_reference_with_implied_changeset(
-                    reference_duplicate_decision.reference_id
-                )
-                # With no active decision it stands alone, so enhance it as itself.
-                if not reference.changeset.duplicate_decision:
-                    await self._detect_and_dispatch_robot_automations(
-                        reference=reference,
-                        source_str=(
-                            f"DuplicateDecision:{reference_duplicate_decision.id}"
-                        ),
-                    )
                 return []
         else:
             trace_attribute(

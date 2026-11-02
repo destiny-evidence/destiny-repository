@@ -375,9 +375,8 @@ async def test_automatic_decision_maps_the_proposal_linked_to_its_assessment(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("has_active_decision", [False, True])
-async def test_an_unresolved_outcome_is_inactive_and_enhanced_only_if_standalone(
-    automatic_decision_service, has_active_decision
+async def test_an_unresolved_outcome_is_inactive_without_side_effects(
+    automatic_decision_service,
 ):
     auto = automatic_decision_service
     auto.decide(
@@ -386,15 +385,6 @@ async def test_an_unresolved_outcome_is_inactive_and_enhanced_only_if_standalone
             detail="Unresolved: multiple_clearing",
         )
     )
-    reference = SimpleNamespace(
-        changeset=SimpleNamespace(
-            duplicate_decision=MagicMock() if has_active_decision else None
-        )
-    )
-    auto.service._get_canonical_reference_with_implied_changeset = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
-        return_value=reference
-    )
-    auto.service._detect_and_dispatch_robot_automations = AsyncMock()  # type: ignore[method-assign]  # noqa: SLF001
 
     reproject = await auto.service.process_reference_duplicate_decision(
         auto.decision, blob_repository=MagicMock()
@@ -408,8 +398,6 @@ async def test_an_unresolved_outcome_is_inactive_and_enhanced_only_if_standalone
     auto.recorder.record.assert_awaited_once()
     auto.service._deduplication_service.map_duplicate_decision.assert_not_awaited()  # noqa: SLF001
     auto.service.apply_reference_duplicate_decision_side_effects.assert_not_awaited()
-    dispatch = auto.service._detect_and_dispatch_robot_automations  # noqa: SLF001
-    assert dispatch.await_count == (0 if has_active_decision else 1)
     assert reproject == []
 
 

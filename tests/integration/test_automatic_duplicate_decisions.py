@@ -190,8 +190,6 @@ async def test_an_undecided_assessment_commits_unresolved_and_linked(
     assert unresolved.active_decision is False
     assert unresolved.detail == "Unresolved: multiple_clearing"
     assert reproject == []
-    # It has no active decision, so it is enhanced as itself.
-    service._detect_and_dispatch_robot_automations.assert_awaited_once()  # type: ignore[attr-defined]  # noqa: SLF001
     by_generation = (
         await session.execute(
             select(SQLReferenceDuplicateDecision.id)
