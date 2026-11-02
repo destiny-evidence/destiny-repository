@@ -26,12 +26,10 @@ from app.domain.references.models.models import (
     DeduplicationFieldStatus,
     DeduplicationPairResult,
     DeduplicationPaper,
-    DuplicateDetermination,
     EnhancementType,
     ExternalIdentifierType,
     InputSearchability,
     Reference,
-    ReferenceDuplicateDecision,
     RetrievalPolicyName,
 )
 from app.domain.references.models.projections import DeduplicationPaperProjection
@@ -819,11 +817,6 @@ async def test_evaluate_supplied_runs_real_candidate_union_without_side_effects(
             identifier=_openalex_id(incoming),
         )
     ]
-    candidate.duplicate_decision = ReferenceDuplicateDecision(
-        reference_id=candidate.id,
-        active_decision=True,
-        duplicate_determination=DuplicateDetermination.CANONICAL,
-    )
     references = fake_repository([candidate])
     references.find_with_identifiers = AsyncMock(return_value=[candidate])
     references.get_hydrated = AsyncMock(return_value=[candidate])

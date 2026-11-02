@@ -211,15 +211,23 @@ async def test_an_undecided_assessment_commits_unresolved_and_linked(
     assert list(by_generation) == [pending.id]
 
 
-async def test_a_match_no_longer_canonical_is_unresolved_and_linked(
-    session: AsyncSession, service: ReferenceService, blob_repository: MagicMock
+@pytest.mark.parametrize(
+    "match_determination", [None, DuplicateDetermination.UNSEARCHABLE]
+)
+async def test_a_match_that_is_not_canonical_is_unresolved(
+    session: AsyncSession,
+    service: ReferenceService,
+    blob_repository: MagicMock,
+    match_determination: DuplicateDetermination | None,
 ) -> None:
-    """A clearing candidate that cannot take duplicates leaves it unresolved."""
+    """Only a canonical can take duplicates, so any other match is unresolved."""
     incoming = await _reference(session)
-    stale = await _reference(session)
+    match = await _reference(session)
     pending = await _decide(session, incoming.id, DuplicateDetermination.PENDING)
+    if match_determination:
+        await _decide(session, match.id, match_determination)
     await session.commit()
-    _select(service, stale.id)
+    _select(service, match.id)
 
     reproject = await service.process_reference_duplicate_decision(
         pending, blob_repository=blob_repository

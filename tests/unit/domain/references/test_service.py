@@ -301,7 +301,7 @@ def automatic_decision_service(duplicate_processing_service, monkeypatch):
     service.sql_uow.reference_duplicate_decisions = MagicMock(merge=AsyncMock())
     service.sql_uow.deduplication_assessments = MagicMock()
     service.sql_uow.references = MagicMock(
-        get_by_pk=AsyncMock(return_value=SimpleNamespace(accepts_duplicates=True))
+        get_by_pk=AsyncMock(return_value=SimpleNamespace(is_canonical=True))
     )
 
     def decide(result: ReferenceDuplicateDeterminationResult) -> None:

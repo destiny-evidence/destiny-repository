@@ -1567,7 +1567,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 await self.sql_uow.references.get_by_pk(
                     result.canonical_reference_id, preload=["duplicate_decision"]
                 )
-            ).accepts_duplicates
+            ).is_canonical
         ):
             result = ReferenceDuplicateDeterminationResult(
                 duplicate_determination=DuplicateDetermination.UNRESOLVED,

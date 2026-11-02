@@ -156,7 +156,7 @@ class DeduplicationUnresolvedReason(StrEnum):
     UNSCORABLE_CANDIDATE = auto()
     """A candidate could not be scored."""
     NON_CANONICAL_MATCH = auto()
-    """The only match cannot take duplicates."""
+    """The only match is not canonical."""
 
 
 class DeepDeduplicationOutcome(StrEnum):
@@ -214,11 +214,6 @@ class DuplicateDetermination(StrEnum):
             cls.CANONICAL,
             cls.UNSEARCHABLE,
         }
-
-    @classmethod
-    def get_candidate_canonical_states(cls) -> set["DuplicateDetermination"]:
-        """Return the determinations that let a reference take duplicates."""
-        return {cls.CANONICAL, cls.UNSEARCHABLE}
 
 
 class DuplicateDecisionAuthority(StrEnum):
@@ -296,15 +291,6 @@ class Reference(
         return (
             self.duplicate_decision.duplicate_determination
             == DuplicateDetermination.CANONICAL
-        )
-
-    @property
-    def accepts_duplicates(self) -> bool:
-        """Whether other references can be duplicates of this one."""
-        return bool(
-            self.duplicate_decision
-            and self.duplicate_decision.duplicate_determination
-            in DuplicateDetermination.get_candidate_canonical_states()
         )
 
     @property
@@ -847,7 +833,7 @@ class CandidateCanonicalSearchQuery(BaseModel):
     author_tie_breaker: float
     publication_year_range: tuple[int, int] | None
     publication_year_decay: YearDecay | None = None
-    duplicate_determinations: tuple[DuplicateDetermination, ...]
+    duplicate_determination: DuplicateDetermination
     excluded_reference_id: UUID | None
 
 

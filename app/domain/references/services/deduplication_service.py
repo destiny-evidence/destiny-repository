@@ -159,9 +159,7 @@ def build_candidate_canonical_search_query(
         publication_year_range=publication_year_range,
         publication_year_decay=publication_year_decay,
         # Prevent concurrently deduplicated references forming conflicting links.
-        duplicate_determinations=tuple(
-            sorted(DuplicateDetermination.get_candidate_canonical_states())
-        ),
+        duplicate_determination=DuplicateDetermination.CANONICAL,
         excluded_reference_id=reference_id,
     )
 
@@ -265,7 +263,7 @@ def decide_from_assessment(
     """
     Turn an assessment into a decision.
 
-    A stand-in until the first automatic policy (#877).
+    A stand-in until an automatic policy is implemented.
     """
     match assessment.outcome:
         case DeduplicationAssessmentOutcome.PROPOSE_CANONICAL:
@@ -542,12 +540,10 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         for reference in matched_references:
             if reference.id == self_id:
                 continue
-            # A duplicate resolves to its canonical. An undecided reference cannot
-            # take duplicates, so it is skipped.
-            if reference.accepts_duplicates:
+            # Identifier matches are not restricted to canonical-at-rest records.
+            # A duplicate match resolves to its canonical reference.
+            if reference.is_canonical_like:
                 canonical_id = reference.id
-            elif reference.is_canonical_like:
-                continue
             elif (
                 reference.duplicate_decision
                 and reference.duplicate_decision.canonical_reference_id
@@ -810,7 +806,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 new_decision.canonical_reference_id,
                 preload=["duplicate_decision", "canonical_reference"],
             )
-            if not canonical_ref.accepts_duplicates:
+            if not canonical_ref.is_canonical:
                 non_canonical_determination = (
                     canonical_ref.duplicate_decision.duplicate_determination
                     if canonical_ref.duplicate_decision
@@ -857,9 +853,12 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             and active_decision.duplicate_determination
             == DuplicateDetermination.DUPLICATE
             and (
-                # Duplicate is becoming its own head (canonical or unsearchable)
+                # Duplicate is being split off as canonical or unsearchable
                 new_decision.duplicate_determination
-                in DuplicateDetermination.get_candidate_canonical_states()
+                in (
+                    DuplicateDetermination.CANONICAL,
+                    DuplicateDetermination.UNSEARCHABLE,
+                )
                 or (
                     # Duplicate changes canonical reference
                     new_decision.duplicate_determination
@@ -1021,9 +1020,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 # Duplicate — use the decision's direct canonical reference ID
                 canonical_ids.add(candidate.duplicate_decision.canonical_reference_id)
 
-        # An unsearchable reference with duplicates lands in both sets; it is their
-        # canonical.
-        undeduplicated_ids -= canonical_ids
         if len(canonical_ids) > 1:
             return [
                 await self.sql_uow.reference_duplicate_decisions.update_by_pk(

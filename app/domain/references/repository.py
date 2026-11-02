@@ -780,8 +780,8 @@ class ReferenceESRepository(
             )
         filter_clauses.append(
             Q(
-                "terms",
-                duplicate_determination=list(query.duplicate_determinations),
+                "term",
+                duplicate_determination=query.duplicate_determination,
             )
         )
         bool_query = Q(

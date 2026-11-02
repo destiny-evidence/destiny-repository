@@ -82,11 +82,11 @@ def test_service_builds_complete_query_regime():
     assert query.title_minimum_should_match == "50%"
     assert query.author_terms == ("Smith",)
     assert query.author_tie_breaker == 0.1
-    assert set(query.duplicate_determinations) == {"canonical", "unsearchable"}
+    assert query.duplicate_determination.value == "canonical"
 
 
 def test_build_candidate_query_canonical_unconditional():
-    """Determination filter present for every strategy; only the year range varies."""
+    """Canonical filter present for every strategy; only the year range varies."""
     fields = CandidateCanonicalSearchFields(
         title="Shared Title", authors=["Smith"], publication_year=2000
     )
@@ -98,7 +98,7 @@ def test_build_candidate_query_canonical_unconditional():
         query = repo._to_es_candidate_query(_query(fields, policy_name))
         filter_dicts = [clause.to_dict() for clause in query.filter]
         assert any(
-            "terms" in fd and "duplicate_determination" in fd["terms"]
+            "term" in fd and "duplicate_determination" in fd["term"]
             for fd in filter_dicts
         )
         has_year_range = any(
@@ -150,14 +150,7 @@ def test_es_translation_preserves_baseline_query_semantics():
                         }
                     }
                 },
-                {
-                    "terms": {
-                        "duplicate_determination": [
-                            DuplicateDetermination.CANONICAL,
-                            DuplicateDetermination.UNSEARCHABLE,
-                        ]
-                    }
-                },
+                {"term": {"duplicate_determination": DuplicateDetermination.CANONICAL}},
             ],
             "must_not": [{"ids": {"values": [reference_id]}}],
         }
@@ -241,11 +234,10 @@ def test_soft_decay_es_translation_wraps_function_score():
                     ],
                     "filter": [
                         {
-                            "terms": {
-                                "duplicate_determination": [
-                                    DuplicateDetermination.CANONICAL,
-                                    DuplicateDetermination.UNSEARCHABLE,
-                                ]
+                            "term": {
+                                "duplicate_determination": (
+                                    DuplicateDetermination.CANONICAL
+                                )
                             }
                         }
                     ],

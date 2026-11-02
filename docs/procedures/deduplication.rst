@@ -148,7 +148,7 @@ If no candidates are found, the incoming reference is immediately designated as 
 
 The search strategy is a work in progress, but will likely involve a combination of projected fields (defined in :class:`CandidateCanonicalSearchFields <app.domain.references.models.models.CandidateCanonicalSearchFields>`) and a fuzzy Elasticsearch query:
 
-Only references whose active decision is canonical or unsearchable are candidates. An unsearchable reference could not be searched for itself, but a later arrival may still match it.
+Title search only considers canonical references. Identifier matches are not restricted, and a duplicate is replaced by its canonical.
 
 .. automethod:: app.domain.references.repository.ReferenceESRepository.search_for_candidate_canonicals
 
@@ -186,8 +186,8 @@ The acting policy is a stand-in until the first automatic policy is agreed:
 
 An automatic decision that is neither ``CANONICAL`` nor ``DUPLICATE`` is one of these:
 
-- :attr:`Unsearchable <app.domain.references.models.models.DuplicateDetermination.UNSEARCHABLE>`: no complete candidate set was retrieved. The reference lacks the metadata to search on, the search was truncated by its document cap or server timeout, or the search failed on every attempt (for example an Elasticsearch timeout or failed shards). Truncation is not retried, as a retry would stop again. The decision is active, so the reference can take duplicates, and it can be rerun through the invoke API. If the decision cannot be written, for example while Elasticsearch is down, it stays pending, as it does for a defect in deduplication itself.
-- :attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>`: candidates were retrieved and scored, but no determination could be reached. The detail gives a :class:`reason code <app.domain.references.models.models.DeduplicationUnresolvedReason>`. It is inactive, replaces nothing and is not retried. A reference with no other active decision stands alone: it stays searchable and is enhanced as itself.
+- :attr:`Unsearchable <app.domain.references.models.models.DuplicateDetermination.UNSEARCHABLE>`: no complete candidate set was retrieved. The reference lacks the metadata to search on, the search was truncated by its document cap or server timeout, or the search failed on every attempt (for example an Elasticsearch timeout or failed shards). Truncation is not retried, as a retry would stop again. The decision is active but cannot take duplicates: the reference stands alone, searchable and enhanced, and can be rerun through the invoke API. If the decision cannot be written, for example while Elasticsearch is down, it stays pending, as it does for a defect in deduplication itself.
+- :attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>`: candidates were retrieved and scored, but no determination could be reached, for example because several matched or the only match is not canonical. The detail gives a :class:`reason code <app.domain.references.models.models.DeduplicationUnresolvedReason>`. It is inactive, replaces nothing and is not retried. A reference with no other active decision stands alone: it stays searchable and is enhanced as itself.
 
 Both are distinct from a ``DECOUPLED`` decision, which is a proposal blocked at `Action Decision`_.
 
@@ -273,7 +273,7 @@ There are three cases where the new decision is not automatically activated:
 
 These are marked as ``DECOUPLED`` for manual review via the ``POST /references/duplicate-decisions/`` endpoint. The decoupled decision is stored inactive, so the reference keeps whichever decision was already active.
 
-A proposal whose target is neither canonical nor unsearchable is not decoupled. It is rejected outright, and the manual endpoint returns ``422``.
+A proposal naming a canonical reference that is not itself canonical is not decoupled. It is rejected outright, and the manual endpoint returns ``422``.
 
 .. _deduplicated-projection:
 
