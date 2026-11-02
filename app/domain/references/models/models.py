@@ -141,22 +141,22 @@ class DeduplicationRoute(StrEnum):
     """A configured trusted identifier type matched, so Elasticsearch was never
     consulted."""
     CANDIDATE_SEARCH = auto()
-    """Candidates were retrieved and handed to the determinator."""
+    """Candidates were retrieved but not deduplicated."""
     DISABLED = auto()
     """Candidate search is switched off in this environment."""
     AUTOMATIC_DECISION = auto()
-    """The decision was made from a recorded assessment."""
+    """Candidates were retrieved and deduplicated."""
 
 
 class DeduplicationUnresolvedReason(StrEnum):
     """Why an automatic decision was left unresolved."""
 
     MULTIPLE_CLEARING = auto()
-    """More than one candidate cleared the threshold."""
+    """More than one candidate matched."""
     UNSCORABLE_CANDIDATE = auto()
     """A candidate could not be scored."""
     NON_CANONICAL_MATCH = auto()
-    """The only clearing candidate no longer accepts duplicates."""
+    """The only match cannot take duplicates."""
 
 
 class DeepDeduplicationOutcome(StrEnum):
@@ -195,16 +195,9 @@ class DuplicateDetermination(StrEnum):
     CANONICAL = auto()
     """[TERMINAL] The reference is not a duplicate of another reference."""
     UNRESOLVED = auto()
-    """
-    Candidates were retrieved and scored, but no determination could be reached.
-    Never active; the detail names the reason.
-    """
+    """Deduplication ran but could not reach a decision."""
     UNSEARCHABLE = auto()
-    """
-    [TERMINAL] Deduplication could not get a complete candidate set: the
-    reference lacks the metadata to search on, the search failed or was
-    truncated, or duplicate detection is disabled. The detail says which.
-    """
+    """[TERMINAL] Deduplication could not be run for this reference."""
     DECOUPLED = auto()
     """
     A decision has been made, but needs further attention. This could
@@ -307,7 +300,7 @@ class Reference(
 
     @property
     def accepts_duplicates(self) -> bool:
-        """Whether another reference may be marked a duplicate of this one."""
+        """Whether other references can be duplicates of this one."""
         return bool(
             self.duplicate_decision
             and self.duplicate_decision.duplicate_determination

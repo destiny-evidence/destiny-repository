@@ -184,10 +184,10 @@ The acting policy is a stand-in until the first automatic policy is agreed:
 
 .. automethod:: app.domain.references.services.deduplication_service.decide_from_assessment
 
-An automatic decision that is neither ``CANONICAL`` nor ``DUPLICATE`` is one of these, and its detail says why:
+An automatic decision that is neither ``CANONICAL`` nor ``DUPLICATE`` is one of these:
 
 - :attr:`Unsearchable <app.domain.references.models.models.DuplicateDetermination.UNSEARCHABLE>`: no complete candidate set was retrieved. The reference lacks the metadata to search on, the search was truncated by its document cap or server timeout, or the search failed on every attempt (for example an Elasticsearch timeout or failed shards). Truncation is not retried, as a retry would stop again. The decision is active, so the reference can take duplicates, and it can be rerun through the invoke API. If the decision cannot be written, for example while Elasticsearch is down, it stays pending, as it does for a defect in deduplication itself.
-- :attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>`: candidates were retrieved and scored, but no determination could be reached. The detail gives a :class:`reason code <app.domain.references.models.models.DeduplicationUnresolvedReason>`. It is inactive, replaces nothing, has no side effects and is not retried.
+- :attr:`Unresolved <app.domain.references.models.models.DuplicateDetermination.UNRESOLVED>`: candidates were retrieved and scored, but no determination could be reached. The detail gives a :class:`reason code <app.domain.references.models.models.DeduplicationUnresolvedReason>`. It is inactive, replaces nothing and is not retried. A reference with no other active decision stands alone: it stays searchable and is enhanced as itself.
 
 Both are distinct from a ``DECOUPLED`` decision, which is a proposal blocked at `Action Decision`_.
 

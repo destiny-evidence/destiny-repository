@@ -453,10 +453,6 @@ class DedupAssessmentRecordingConfig(BaseModel):
         "of the rest join them. 0 keeps all of them, null keeps none of them. Every "
         "assessment records whether it was in the sample, interesting or not.",
     )
-    policy_generation: str = Field(
-        default="stand-in",
-        description="The acting-policy generation recorded with each assessment.",
-    )
 
 
 class Settings(BaseSettings):

@@ -39,6 +39,9 @@ from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.deduplication_service import (
+    ACTING_POLICY_GENERATION,
+)
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import (
@@ -187,6 +190,8 @@ async def test_an_undecided_assessment_commits_unresolved_and_linked(
     assert unresolved.active_decision is False
     assert unresolved.detail == "Unresolved: multiple_clearing"
     assert reproject == []
+    # It has no active decision, so it is enhanced as itself.
+    service._detect_and_dispatch_robot_automations.assert_awaited_once()  # type: ignore[attr-defined]  # noqa: SLF001
     by_generation = (
         await session.execute(
             select(SQLReferenceDuplicateDecision.id)
@@ -199,7 +204,7 @@ async def test_an_undecided_assessment_commits_unresolved_and_linked(
                 SQLDeduplicationAssessmentRecord.purpose
                 == DeduplicationAssessmentPurpose.DEDUPLICATION,
                 SQLDeduplicationAssessmentRecord.policy_generation
-                == settings.dedup_assessment_recording.policy_generation,
+                == ACTING_POLICY_GENERATION,
             )
         )
     ).scalars()

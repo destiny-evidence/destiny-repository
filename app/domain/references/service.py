@@ -87,6 +87,7 @@ from app.domain.references.services.deduplication_assessment_service import (
     DeduplicationAssessmentService,
 )
 from app.domain.references.services.deduplication_service import (
+    ACTING_POLICY_GENERATION,
     DeduplicationService,
     decide_from_assessment,
 )
@@ -1345,8 +1346,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         Apply side-effects of a reference duplicate decision.
 
         This reprojects the deduplicated reference to ES, and triggers any robot
-        automations if the decision has changed. A caller that reprojects after
-        commit passes ``reproject=False``.
+        automations if the decision has changed.
         """
         if reference_duplicate_decision.active_decision:
             if reproject:
@@ -1376,8 +1376,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         Process a reference duplicate decision.
 
-        Returns the reference ids to pass to :meth:`reproject_references` once the
-        decision commits.
+        Returns the reference ids to reproject once the decision commits.
         """
         trace_attribute(
             Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
@@ -1447,7 +1446,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 reference_duplicate_decision.duplicate_determination
                 == DuplicateDetermination.UNRESOLVED
             ):
-                # Inactive, so there is nothing to map and no side effects.
+                # Inactive, so there is nothing to map.
                 await self.sql_uow.reference_duplicate_decisions.merge(
                     reference_duplicate_decision
                 )
@@ -1455,6 +1454,17 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     Attributes.DEDUPLICATION_DETERMINATION,
                     DuplicateDetermination.UNRESOLVED.value,
                 )
+                reference = await self._get_canonical_reference_with_implied_changeset(
+                    reference_duplicate_decision.reference_id
+                )
+                # With no active decision it stands alone, so enhance it as itself.
+                if not reference.changeset.duplicate_decision:
+                    await self._detect_and_dispatch_robot_automations(
+                        reference=reference,
+                        source_str=(
+                            f"DuplicateDecision:{reference_duplicate_decision.id}"
+                        ),
+                    )
                 return []
         else:
             trace_attribute(
@@ -1477,7 +1487,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def _apply_duplicate_decision(
         self, reference_duplicate_decision: ReferenceDuplicateDecision
     ) -> list[UUID]:
-        """Map a decision and apply its side effects, returning ids to reproject."""
+        """Apply a decision, returning the reference ids to reproject."""
         (
             reference_duplicate_decision,
             decision_changed,
@@ -1507,7 +1517,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_duplicate_decision: ReferenceDuplicateDecision,
         blob_repository: BlobRepository,
     ) -> ReferenceDuplicateDecision:
-        """Assess the reference, record the assessment and apply the acting policy."""
+        """Decide a reference from a recorded assessment."""
         assessor = DeduplicationAssessmentService(
             candidate_selector=functools.partial(
                 self._deduplication_service.get_deduplication_candidates,
@@ -1547,7 +1557,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         await recorder.record(
             assessment,
             purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
-            policy_generation=settings.dedup_assessment_recording.policy_generation,
+            policy_generation=ACTING_POLICY_GENERATION,
             idempotency_key=reference_duplicate_decision.id,
         )
         result = decide_from_assessment(assessment)
@@ -1587,7 +1597,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self, reference_duplicate_decision_id: UUID, detail: str
     ) -> list[UUID]:
         """
-        Mark a pending decision unsearchable after its retries run out.
+        Mark a decision unsearchable if it is still pending.
 
         Returns the reference ids to reproject once committed.
         """

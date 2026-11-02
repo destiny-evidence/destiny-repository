@@ -51,7 +51,6 @@ UNPROJECTABLE_CANDIDATE_REASON = "Candidate could not be projected for scoring."
 class ReferenceReader(Protocol):
     """Reference reads required by assessment orchestration."""
 
-    # A plain def returning Awaitable matches the traced repository method.
     def get_hydrated(
         self,
         reference_ids: list[UUID],

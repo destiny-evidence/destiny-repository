@@ -255,14 +255,17 @@ def _trace_candidate_selection(
     trace_attribute(Attributes.CANDIDATE_SELECTION_TRUNCATED, diagnostics.truncated)
 
 
+# Recorded with each assessment. Change it whenever decide_from_assessment changes.
+ACTING_POLICY_GENERATION = "stand-in"
+
+
 def decide_from_assessment(
     assessment: DeduplicationAssessment,
 ) -> ReferenceDuplicateDeterminationResult:
     """
     Turn an assessment into a decision.
 
-    A stand-in until the first automatic policy (#877): follow the assessment's
-    proposal. Without one, the reference is unresolved or unsearchable.
+    A stand-in until the first automatic policy (#877).
     """
     match assessment.outcome:
         case DeduplicationAssessmentOutcome.PROPOSE_CANONICAL:
