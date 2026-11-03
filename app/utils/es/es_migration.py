@@ -52,8 +52,6 @@ def get_index_settings_changeset(
                     "query": {
                         "warn": slowlog_thresholds.warn,
                         "info": slowlog_thresholds.info,
-                        "debug": slowlog_thresholds.debug,
-                        "trace": slowlog_thresholds.trace,
                     }
                 }
             }

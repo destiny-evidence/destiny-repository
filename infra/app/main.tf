@@ -822,10 +822,8 @@ resource "azurerm_container_app_job" "es_index_migrator" {
       env {
         name = "SLOWLOG_THRESHOLDS"
         value = jsonencode({
-          warn  = var.es_slowlog_warn_threshold
-          info  = var.es_slowlog_info_threshold
-          debug = var.es_slowlog_debug_threshold
-          trace = var.es_slowlog_trace_threshold
+          warn = var.es_slowlog_warn_threshold
+          info = var.es_slowlog_info_threshold
         })
       }
     }
