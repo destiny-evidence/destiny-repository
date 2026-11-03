@@ -280,10 +280,10 @@ async def test_incoherent_payload_state_is_rejected(
         await repository.add(record)
 
 
-async def test_one_attempt_cannot_write_two_records(
+async def test_one_attempt_cannot_write_two_records_for_the_same_purpose(
     repository: DeduplicationAssessmentSQLRepository,
 ) -> None:
-    """The database refuses a second record for the same delivery."""
+    """The database refuses a second record for the same delivery and purpose."""
     # The recorder looks the key up before writing, but two concurrent redeliveries
     # can both miss that read; the constraint is what makes the second one fail.
     attempt = uuid7()
