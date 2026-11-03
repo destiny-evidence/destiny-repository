@@ -14,6 +14,7 @@ from destiny_sdk.enhancements import (
 )
 from destiny_sdk.identifiers import DOIIdentifier
 from destiny_sdk.references import ReferenceFileInput
+from elastic_transport import ConnectionTimeout
 
 from app.core.entitlements import Entitlement
 from app.core.exceptions import (
@@ -422,6 +423,32 @@ async def test_a_truncated_search_is_unsearchable_without_an_assessment(
     assert proposed.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
     assert proposed.detail.startswith("Candidate retrieval truncated")
     auto.recorder.record.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_the_unsearchable_fallback_survives_failed_automations(
+    duplicate_processing_service,
+):
+    service, decision = duplicate_processing_service
+    service.sql_uow.reference_duplicate_decisions = MagicMock(
+        get_by_pk=AsyncMock(return_value=decision)
+    )
+    mapped = decision.model_copy(update={"active_decision": True})
+    service._deduplication_service.map_duplicate_decision.return_value = (  # noqa: SLF001
+        mapped,
+        True,
+        None,
+    )
+    service.apply_reference_duplicate_decision_side_effects.side_effect = (
+        ConnectionTimeout("timed out")
+    )
+
+    reproject = await service.mark_duplicate_decision_unsearchable(
+        decision.id, detail="Attempts exhausted"
+    )
+
+    assert decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert reproject == [decision.reference_id]
 
 
 @pytest.mark.asyncio

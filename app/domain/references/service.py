@@ -1474,7 +1474,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         return await self._apply_duplicate_decision(reference_duplicate_decision)
 
     async def _apply_duplicate_decision(
-        self, reference_duplicate_decision: ReferenceDuplicateDecision
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+        *,
+        tolerate_automation_failure: bool = False,
     ) -> list[UUID]:
         """Apply a decision, returning the reference ids to reproject."""
         (
@@ -1490,11 +1493,19 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         trace_attribute(Attributes.DEDUPLICATION_DECISION_CHANGED, decision_changed)
 
-        await self.apply_reference_duplicate_decision_side_effects(
-            reference_duplicate_decision,
-            decision_changed=decision_changed,
-            reproject=False,
-        )
+        try:
+            await self.apply_reference_duplicate_decision_side_effects(
+                reference_duplicate_decision,
+                decision_changed=decision_changed,
+                reproject=False,
+            )
+        except Exception:
+            if not tolerate_automation_failure:
+                raise
+            logger.exception(
+                "Robot automations failed, keeping the decision without them.",
+                reference_id=str(reference_duplicate_decision.reference_id),
+            )
         return (
             [reference_duplicate_decision.reference_id]
             if reference_duplicate_decision.active_decision
@@ -1604,7 +1615,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             DuplicateDetermination.UNSEARCHABLE
         )
         reference_duplicate_decision.detail = detail
-        return await self._apply_duplicate_decision(reference_duplicate_decision)
+        # Retries often run out because Elasticsearch is down, which automations
+        # also need.
+        return await self._apply_duplicate_decision(
+            reference_duplicate_decision, tolerate_automation_failure=True
+        )
 
     @sql_unit_of_work
     async def claim_and_create_robot_enhancement_batch(
