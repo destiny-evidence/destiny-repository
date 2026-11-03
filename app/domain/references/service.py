@@ -34,6 +34,7 @@ from app.domain.references.models.models import (
     CandidateSelectionRequest,
     CandidateSelectionResult,
     CrossFacetResult,
+    DeduplicationAssessment,
     DeduplicationAssessmentPurpose,
     DeduplicationRoute,
     DeduplicationUnresolvedReason,
@@ -580,22 +581,32 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     @sql_unit_of_work
     @es_unit_of_work
+    # Named before the shadow scored, so queries from retrieval-only runs still apply.
     @tracer.start_as_current_span("Deep deduplication retrieval")
-    async def run_deep_deduplication_retrieval(self, reference_id: UUID) -> None:
+    async def run_deep_deduplication_shadow(
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+        blob_repository: BlobRepository,
+    ) -> None:
         """
-        Retrieve candidates for measurement only, discarding the result.
+        Assess and record a reference for measurement only, never deciding from it.
 
-        A search stopped by its bound is an expected outcome, recorded on the span
-        and logged as a warning. Other exceptions propagate so the caller logs the
-        failure and the unit of work marks its span errored.
+        A search stopped by its bound, or a reference too sparse to search, is an
+        expected outcome recorded on the span. Other exceptions propagate so the
+        caller logs the failure and the unit of work marks its span errored.
         """
         with _active_retrievals as active:
             trace_attribute(Attributes.DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS, active)
             try:
-                await self._deduplication_service.select_candidate_canonicals(
-                    reference_id,
-                    deep_deduplication=True,
-                    request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
+                await self._assess_and_record(
+                    reference_duplicate_decision,
+                    blob_repository,
+                    DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW,
+                )
+            except DeduplicationInputError:
+                trace_attribute(
+                    Attributes.DEEP_DEDUPLICATION_OUTCOME,
+                    DeepDeduplicationOutcome.UNSEARCHABLE.value,
                 )
             except CandidateSearchTruncatedError as exc:
                 trace_attribute(
@@ -1512,12 +1523,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             else []
         )
 
-    async def _decide_from_assessment(
+    async def _assess_and_record(
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
         blob_repository: BlobRepository,
-    ) -> ReferenceDuplicateDecision:
-        """Decide a reference from a recorded assessment."""
+        purpose: DeduplicationAssessmentPurpose,
+    ) -> DeduplicationAssessment:
+        """Assess a reference and record the assessment against its decision."""
         assessor = DeduplicationAssessmentService(
             candidate_selector=functools.partial(
                 self._deduplication_service.get_deduplication_candidates,
@@ -1527,9 +1539,34 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_reader=self.sql_uow.references,
             pair_scorer=DeduperPairScorer(),
         )
+        assessment = await assessor.evaluate(reference_duplicate_decision.reference_id)
+        recorder = DeduplicationAssessmentRecorder(
+            record_store=self.sql_uow.deduplication_assessments,
+            payload_writer=BlobAssessmentPayloadWriter(blob_repository=blob_repository),
+            recording_config=settings.dedup_assessment_recording,
+        )
+        # Keyed by the decision id, which links the two.
+        await recorder.record(
+            assessment,
+            purpose=purpose,
+            policy_generation=ACTING_POLICY_GENERATION,
+            idempotency_key=reference_duplicate_decision.id,
+        )
+        return assessment
+
+    async def _decide_from_assessment(
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+        blob_repository: BlobRepository,
+    ) -> ReferenceDuplicateDecision:
+        """Decide a reference from a recorded assessment."""
         try:
-            assessment = await assessor.evaluate(
-                reference_duplicate_decision.reference_id
+            # The record commits with the decision, so a retry only runs after a
+            # rollback and records afresh.
+            assessment = await self._assess_and_record(
+                reference_duplicate_decision,
+                blob_repository,
+                DeduplicationAssessmentPurpose.DEDUPLICATION,
             )
         except CandidateSearchTruncatedError as exc:
             # A retry would hit the same bound.
@@ -1547,19 +1584,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             reference_duplicate_decision.detail = str(exc)
             return reference_duplicate_decision
 
-        recorder = DeduplicationAssessmentRecorder(
-            record_store=self.sql_uow.deduplication_assessments,
-            payload_writer=BlobAssessmentPayloadWriter(blob_repository=blob_repository),
-            recording_config=settings.dedup_assessment_recording,
-        )
-        # Keyed by the decision id, which links the two. It commits with the
-        # decision, so a retry only runs after a rollback and records afresh.
-        await recorder.record(
-            assessment,
-            purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
-            policy_generation=ACTING_POLICY_GENERATION,
-            idempotency_key=reference_duplicate_decision.id,
-        )
         result = decide_from_assessment(assessment)
         if (
             result.canonical_reference_id

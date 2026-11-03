@@ -1,5 +1,5 @@
 """
-Integration test for deep deduplication retrieval against a real session.
+Integration test for the deep deduplication shadow against a real session.
 
 Covers what a mocked failure cannot: a genuine SQL error reaches the caller
 rather than being absorbed, and leaves the session usable for the decision that
@@ -7,13 +7,17 @@ runs next. A mocked TimeoutError never touches the session and proves neither.
 """
 
 from unittest.mock import AsyncMock
-from uuid import UUID
 
 import pytest
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.references.models.models import (
+    CandidateSelectionRequest,
+    DuplicateDetermination,
+    ReferenceDuplicateDecision,
+)
 from app.domain.references.models.sql import (
     ExternalIdentifier as SQLExternalIdentifier,
 )
@@ -39,7 +43,7 @@ def service(session: AsyncSession) -> ReferenceService:
     )
 
 
-async def test_a_sql_failure_in_retrieval_reaches_the_caller(
+async def test_a_sql_failure_in_the_shadow_reaches_the_caller(
     session: AsyncSession,
     service: ReferenceService,
     monkeypatch: pytest.MonkeyPatch,
@@ -49,18 +53,24 @@ async def test_a_sql_failure_in_retrieval_reaches_the_caller(
     await session.commit()
 
     async def _fail_against_the_database(
-        _reference_id: UUID, **_kwargs: object
+        _request: CandidateSelectionRequest, **_kwargs: object
     ) -> None:
         await service.sql_uow.session.execute(text("SELECT * FROM no_such_table"))
 
     monkeypatch.setattr(
         service._deduplication_service,  # noqa: SLF001
-        "select_candidate_canonicals",
+        "get_deduplication_candidates",
         _fail_against_the_database,
     )
 
     with pytest.raises(DBAPIError):
-        await service.run_deep_deduplication_retrieval(reference.id)
+        await service.run_deep_deduplication_shadow(
+            ReferenceDuplicateDecision(
+                reference_id=reference.id,
+                duplicate_determination=DuplicateDetermination.PENDING,
+            ),
+            blob_repository=AsyncMock(),
+        )
 
     identifier = await service.add_identifier(
         reference.id, OpenAlexIdentifierFactory.build()

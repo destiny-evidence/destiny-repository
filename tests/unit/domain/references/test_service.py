@@ -274,15 +274,10 @@ async def test_process_duplicate_decision_skips_selection_when_disabled(
 
 
 @pytest.fixture
-def automatic_decision_service(duplicate_processing_service, monkeypatch):
-    """Duplicate processing with automatic decisions on and assessment faked."""
+def faked_assessment(duplicate_processing_service, monkeypatch):
+    """Duplicate processing with the assessor and recorder faked."""
     from app.domain.references import service as reference_service_module
 
-    monkeypatch.setattr(
-        reference_service_module.settings.feature_flags,
-        "enable_automatic_deduplication_decisions",
-        True,
-    )
     assessor = MagicMock()
     assessor.evaluate = AsyncMock()
     recorder = MagicMock()
@@ -319,6 +314,19 @@ def automatic_decision_service(duplicate_processing_service, monkeypatch):
         recorder=recorder,
         decide=decide,
     )
+
+
+@pytest.fixture
+def automatic_decision_service(faked_assessment, monkeypatch):
+    """Duplicate processing with automatic decisions on and assessment faked."""
+    from app.domain.references import service as reference_service_module
+
+    monkeypatch.setattr(
+        reference_service_module.settings.feature_flags,
+        "enable_automatic_deduplication_decisions",
+        True,
+    )
+    return faked_assessment
 
 
 @pytest.mark.asyncio
@@ -2502,28 +2510,54 @@ async def test_collect_search_enhancement_request_marks_failed_on_error(
     assert "boom" in stored.error
 
 
-class TestDeepDeduplicationRetrievalBudget:
-    """Only the measurement arm bounds Elasticsearch."""
+class TestDeepDeduplicationShadow:
+    """The shadow assesses and records arrivals without deciding them."""
 
     @pytest.mark.asyncio
-    async def test_shadow_retrieval_bounds_its_own_elasticsearch_calls(
-        self, duplicate_processing_service
+    async def test_the_shadow_records_its_assessment_and_decides_nothing(
+        self, faked_assessment
+    ):
+        shadow = faked_assessment
+
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
+        )
+
+        shadow.assessor.evaluate.assert_awaited_once_with(shadow.decision.reference_id)
+        record_kwargs = shadow.recorder.record.await_args.kwargs
+        assert (
+            record_kwargs["purpose"]
+            == DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW
+        )
+        assert record_kwargs["idempotency_key"] == shadow.decision.id
+        shadow.service._deduplication_service.map_duplicate_decision.assert_not_awaited()  # noqa: SLF001
+        shadow.service.sql_uow.reference_duplicate_decisions.merge.assert_not_awaited()
+        shadow.service.apply_reference_duplicate_decision_side_effects.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_the_shadow_bounds_its_own_elasticsearch_calls(
+        self, faked_assessment
     ):
         from app.domain.references import service as reference_service_module
 
-        service, decision = duplicate_processing_service
+        shadow = faked_assessment
 
-        await service.run_deep_deduplication_retrieval(decision.reference_id)
-
-        selection = service._deduplication_service.select_candidate_canonicals  # noqa: SLF001
-        assert (
-            selection.await_args.kwargs["request_timeout"]
-            == reference_service_module.settings.dedup_scoring.retrieval_timeout_seconds
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
         )
 
+        assessor_class = reference_service_module.DeduplicationAssessmentService
+        selector = assessor_class.call_args.kwargs["candidate_selector"]
+        assert selector.keywords == {
+            "deep_deduplication": True,
+            "request_timeout": (
+                reference_service_module.settings.dedup_scoring.retrieval_timeout_seconds
+            ),
+        }
 
-class TestDeepDeduplicationRetrievalTelemetry:
-    """What the measurement-only retrieval records about itself."""
+
+class TestDeepDeduplicationShadowTelemetry:
+    """What the shadow records about itself."""
 
     SPAN = "Deep deduplication retrieval"
 
@@ -2537,12 +2571,14 @@ class TestDeepDeduplicationRetrievalTelemetry:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixed_peak_rss")
-    async def test_a_completed_retrieval_records_what_it_cost_the_worker(
-        self, duplicate_processing_service, span_attributes
+    async def test_a_completed_shadow_records_what_it_cost_the_worker(
+        self, faked_assessment, span_attributes
     ):
-        service, decision = duplicate_processing_service
+        shadow = faked_assessment
 
-        await service.run_deep_deduplication_retrieval(decision.reference_id)
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
+        )
 
         assert span_attributes(self.SPAN) == {
             "app.deep_deduplication.outcome": "completed",
@@ -2551,28 +2587,26 @@ class TestDeepDeduplicationRetrievalTelemetry:
         }
 
     @pytest.mark.asyncio
-    async def test_peak_rss_is_read_after_the_retrieval_not_before(
-        self, duplicate_processing_service, span_attributes, monkeypatch
+    async def test_peak_rss_is_read_after_the_assessment_not_before(
+        self, faked_assessment, span_attributes, monkeypatch
     ):
-        """Read at the top, the high-water mark cannot include this retrieval."""
+        """Read at the top, the high-water mark cannot include this assessment."""
         from app.domain.references import service as reference_service_module
 
         peak = {"bytes": 100}
         monkeypatch.setattr(
             reference_service_module, "_peak_resident_bytes", lambda: peak["bytes"]
         )
-        service, decision = duplicate_processing_service
+        shadow = faked_assessment
 
-        async def _retrieval_that_allocates(_reference_id, **_kwargs):
+        async def _assessment_that_allocates(_reference_id):
             peak["bytes"] = 500
 
-        monkeypatch.setattr(
-            service._deduplication_service,  # noqa: SLF001
-            "select_candidate_canonicals",
-            _retrieval_that_allocates,
-        )
+        shadow.assessor.evaluate.side_effect = _assessment_that_allocates
 
-        await service.run_deep_deduplication_retrieval(decision.reference_id)
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
+        )
 
         assert (
             span_attributes(self.SPAN)["app.deep_deduplication.peak_rss_bytes"] == 500
@@ -2580,29 +2614,32 @@ class TestDeepDeduplicationRetrievalTelemetry:
 
     @pytest.mark.asyncio
     @pytest.mark.usefixtures("fixed_peak_rss")
-    async def test_concurrent_retrievals_count_each_other(
-        self, fake_repository, fake_uow, all_span_attributes
+    async def test_concurrent_shadows_count_each_other(
+        self, faked_assessment, fake_repository, fake_uow, all_span_attributes
     ):
         """A single in-flight reading cannot tell a real count from a hardcoded one."""
         both_arrived = asyncio.Barrier(2)
 
-        async def _wait_for_the_other(_reference_id, **_kwargs):
+        async def _wait_for_the_other(_reference_id):
             await both_arrived.wait()
 
-        services = []
-        for _ in range(2):
+        def _service() -> ReferenceService:
             service = ReferenceService(
                 ReferenceAntiCorruptionService(fake_repository()),
                 fake_uow(),
                 fake_uow(),
             )
-            service._deduplication_service.select_candidate_canonicals = (  # noqa: SLF001
-                _wait_for_the_other
-            )
-            services.append(service)
+            service.sql_uow.deduplication_assessments = MagicMock()
+            return service
 
+        faked_assessment.assessor.evaluate.side_effect = _wait_for_the_other
         await asyncio.gather(
-            *(s.run_deep_deduplication_retrieval(uuid7()) for s in services)
+            *(
+                _service().run_deep_deduplication_shadow(
+                    faked_assessment.decision, blob_repository=MagicMock()
+                )
+                for _ in range(2)
+            )
         )
 
         counts = [
@@ -2612,11 +2649,10 @@ class TestDeepDeduplicationRetrievalTelemetry:
         assert max(counts) == 2
 
         # The count must come back down, or every later reading is inflated.
-        service = ReferenceService(
-            ReferenceAntiCorruptionService(fake_repository()), fake_uow(), fake_uow()
+        faked_assessment.assessor.evaluate.side_effect = None
+        await _service().run_deep_deduplication_shadow(
+            faked_assessment.decision, blob_repository=MagicMock()
         )
-        service._deduplication_service.select_candidate_canonicals = AsyncMock()  # noqa: SLF001
-        await service.run_deep_deduplication_retrieval(uuid7())
         latest = all_span_attributes(self.SPAN)[-1]
         assert latest["app.deep_deduplication.active_retrievals"] == 1
 
@@ -2627,7 +2663,7 @@ class TestDeepDeduplicationRetrievalTelemetry:
     )
     async def test_peak_rss_is_recorded_in_bytes_on_either_platform(
         self,
-        duplicate_processing_service,
+        faked_assessment,
         span_attributes,
         monkeypatch,
         platform,
@@ -2638,29 +2674,31 @@ class TestDeepDeduplicationRetrievalTelemetry:
         import resource
         import sys
 
-        service, decision = duplicate_processing_service
+        shadow = faked_assessment
         monkeypatch.setattr(sys, "platform", platform)
         monkeypatch.setattr(
             resource, "getrusage", lambda _who: SimpleNamespace(ru_maxrss=ru_maxrss)
         )
 
-        await service.run_deep_deduplication_retrieval(decision.reference_id)
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
+        )
 
         attributes = span_attributes(self.SPAN)
         assert attributes["app.deep_deduplication.peak_rss_bytes"] == expected
 
     @pytest.mark.asyncio
-    async def test_a_failed_retrieval_records_the_failed_outcome(
-        self, duplicate_processing_service, span_attributes
+    async def test_a_failed_shadow_records_the_failed_outcome(
+        self, faked_assessment, span_attributes
     ):
         """A raise is groupable as an outcome, not only visible as a span status."""
-        service, decision = duplicate_processing_service
-        service._deduplication_service.select_candidate_canonicals = AsyncMock(  # noqa: SLF001
-            side_effect=RuntimeError("retrieval boom")
-        )
+        shadow = faked_assessment
+        shadow.assessor.evaluate.side_effect = RuntimeError("scorer failed")
 
         with pytest.raises(RuntimeError):
-            await service.run_deep_deduplication_retrieval(decision.reference_id)
+            await shadow.service.run_deep_deduplication_shadow(
+                shadow.decision, blob_repository=MagicMock()
+            )
 
         attributes = span_attributes(self.SPAN)
         assert attributes["app.deep_deduplication.outcome"] == "failed"
@@ -2668,22 +2706,21 @@ class TestDeepDeduplicationRetrievalTelemetry:
 
     @pytest.mark.asyncio
     async def test_a_stopped_search_is_an_outcome_not_an_error(
-        self, duplicate_processing_service, span_attributes, monkeypatch
+        self, faked_assessment, span_attributes, monkeypatch
     ):
         """Hitting a bound is recorded for tuning and never reaches the unit of work."""
-        from app.core.exceptions import CandidateSearchTruncatedError
         from app.domain.references import service as reference_service_module
 
         logger = MagicMock()
         monkeypatch.setattr(reference_service_module, "logger", logger)
-        service, decision = duplicate_processing_service
-        service._deduplication_service.select_candidate_canonicals = AsyncMock(  # noqa: SLF001
-            side_effect=CandidateSearchTruncatedError(
-                "stopped at the cap", bound="terminate_after", took_ms=1234
-            )
+        shadow = faked_assessment
+        shadow.assessor.evaluate.side_effect = CandidateSearchTruncatedError(
+            "stopped at the cap", bound="terminate_after", took_ms=1234
         )
 
-        await service.run_deep_deduplication_retrieval(decision.reference_id)
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
+        )
 
         attributes = span_attributes(self.SPAN)
         assert attributes["app.deep_deduplication.outcome"] == "truncated"
@@ -2691,6 +2728,24 @@ class TestDeepDeduplicationRetrievalTelemetry:
         assert attributes["app.candidate_selection.es_took_ms"] == 1234
         logger.warning.assert_called_once()
         logger.exception.assert_not_called()
+        shadow.recorder.record.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_an_input_that_cannot_be_searched_is_an_outcome_not_an_error(
+        self, faked_assessment, span_attributes
+    ):
+        shadow = faked_assessment
+        shadow.assessor.evaluate.side_effect = DeduplicationInputError(
+            "nothing to search"
+        )
+
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
+        )
+
+        attributes = span_attributes(self.SPAN)
+        assert attributes["app.deep_deduplication.outcome"] == "unsearchable"
+        shadow.recorder.record.assert_not_awaited()
 
 
 class TestDeduplicationDecisionTelemetry:
