@@ -16,6 +16,7 @@ from app.domain.references.models.models import (
     DuplicateDecisionTrigger,
     DuplicateDetermination,
     InputSearchability,
+    LinkedExternalIdentifier,
     Reference,
     ReferenceDuplicateDecision,
     RetrievalPolicyName,
@@ -54,7 +55,10 @@ class FakePairScorer:
         return DeduplicationPairResult(probability=0.99)
 
 
-async def add_reference(session: AsyncSession) -> Reference:
+async def add_reference(
+    session: AsyncSession,
+    identifiers: list[LinkedExternalIdentifier] | None = None,
+) -> Reference:
     """Store a reference with a title the scorer can compare."""
     reference = ReferenceFactory.build(
         visibility="public",
@@ -65,6 +69,7 @@ async def add_reference(session: AsyncSession) -> Reference:
                 )
             )
         ],
+        identifiers=identifiers,
     )
     for enhancement in reference.enhancements or []:
         enhancement.reference_id = reference.id
