@@ -6,7 +6,9 @@ absorbed and leaves the session usable, and the decision that runs after the sha
 is the one the trusted identifier shortcut makes on its own.
 """
 
+from typing import NamedTuple
 from unittest.mock import AsyncMock, MagicMock
+from uuid import UUID
 
 import pytest
 from sqlalchemy import select, text
@@ -20,6 +22,7 @@ from app.domain.references.models.models import (
     DeduplicationAssessmentPurpose,
     DuplicateDetermination,
     ExternalIdentifierType,
+    Reference,
     ReferenceDuplicateDecision,
 )
 from app.domain.references.models.sql import (
@@ -99,15 +102,19 @@ async def test_a_sql_failure_in_the_shadow_reaches_the_caller(
     assert persisted.scalar_one_or_none() is not None
 
 
-@pytest.mark.parametrize("shadow_fails", [False, True], ids=["proposes", "fails"])
-async def test_the_shortcut_decides_alone_whatever_the_shadow_does(
-    session: AsyncSession,
-    service: ReferenceService,
-    blob_repository: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-    shadow_fails: bool,  # noqa: FBT001
-) -> None:
-    """The shadow proposes a different match or fails, and writes no decision."""
+class ShortcutCase(NamedTuple):
+    """A pending reference whose OpenAlex ID matches a held one."""
+
+    held: Reference
+    other: Reference
+    pending: ReferenceDuplicateDecision
+
+
+@pytest.fixture
+async def shortcut_case(
+    session: AsyncSession, service: ReferenceService, monkeypatch: pytest.MonkeyPatch
+) -> ShortcutCase:
+    """Store a reference the shortcut matches to a held one, and offer another."""
     monkeypatch.setattr(
         settings, "trusted_unique_identifier_types", {ExternalIdentifierType.OPEN_ALEX}
     )
@@ -126,42 +133,76 @@ async def test_the_shortcut_decides_alone_whatever_the_shadow_does(
     pending = await add_decision(session, incoming.id, DuplicateDetermination.PENDING)
     await session.commit()
     select_candidates(service, other.id)
-    if shadow_fails:
-        service._deduplication_service.get_deduplication_candidates = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
-            side_effect=RuntimeError("search failed")
-        )
+    return ShortcutCase(held=held, other=other, pending=pending)
 
-    if shadow_fails:
-        with pytest.raises(RuntimeError):
-            await service.run_deep_deduplication_shadow(
-                pending, blob_repository=blob_repository
-            )
-    else:
-        await service.run_deep_deduplication_shadow(
-            pending, blob_repository=blob_repository
-        )
 
-    shadowed = await stored_decision(session, pending.id)
-    assert shadowed.duplicate_determination == DuplicateDetermination.PENDING
-    record = (
+async def shadow_record(
+    session: AsyncSession, decision_id: UUID
+) -> SQLDeduplicationAssessmentRecord | None:
+    """Read the shadow's record for a decision, if it wrote one."""
+    return (
         await session.execute(
             select(SQLDeduplicationAssessmentRecord).where(
-                SQLDeduplicationAssessmentRecord.idempotency_key == pending.id
+                SQLDeduplicationAssessmentRecord.idempotency_key == decision_id,
+                SQLDeduplicationAssessmentRecord.purpose
+                == DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW,
             )
         )
     ).scalar_one_or_none()
-    if shadow_fails:
-        assert record is None
-    else:
-        assert record is not None
-        assert record.purpose == DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW
-        assert record.proposed_duplicate_of_id == other.id
 
-    await service.process_reference_duplicate_decision(
-        pending, blob_repository=blob_repository
+
+async def test_the_shortcut_decides_alone_after_a_shadow_proposes_another_match(
+    session: AsyncSession,
+    service: ReferenceService,
+    blob_repository: MagicMock,
+    shortcut_case: ShortcutCase,
+) -> None:
+    """The shadow records its proposal and writes no decision."""
+    await service.run_deep_deduplication_shadow(
+        shortcut_case.pending, blob_repository=blob_repository
     )
 
-    decided = await stored_decision(session, pending.id)
+    shadowed = await stored_decision(session, shortcut_case.pending.id)
+    assert shadowed.duplicate_determination == DuplicateDetermination.PENDING
+    record = await shadow_record(session, shortcut_case.pending.id)
+    assert record is not None
+    assert record.proposed_duplicate_of_id == shortcut_case.other.id
+
+    await service.process_reference_duplicate_decision(
+        shortcut_case.pending, blob_repository=blob_repository
+    )
+
+    decided = await stored_decision(session, shortcut_case.pending.id)
     assert decided.duplicate_determination == DuplicateDetermination.DUPLICATE
-    assert decided.canonical_reference_id == held.id
+    assert decided.canonical_reference_id == shortcut_case.held.id
+    assert decided.active_decision is True
+
+
+async def test_the_shortcut_decides_alone_after_a_shadow_fails(
+    session: AsyncSession,
+    service: ReferenceService,
+    blob_repository: MagicMock,
+    shortcut_case: ShortcutCase,
+) -> None:
+    """A failed shadow records nothing and writes no decision."""
+    service._deduplication_service.get_deduplication_candidates = AsyncMock(  # type: ignore[method-assign]  # noqa: SLF001
+        side_effect=RuntimeError("search failed")
+    )
+
+    with pytest.raises(RuntimeError):
+        await service.run_deep_deduplication_shadow(
+            shortcut_case.pending, blob_repository=blob_repository
+        )
+
+    shadowed = await stored_decision(session, shortcut_case.pending.id)
+    assert shadowed.duplicate_determination == DuplicateDetermination.PENDING
+    assert await shadow_record(session, shortcut_case.pending.id) is None
+
+    await service.process_reference_duplicate_decision(
+        shortcut_case.pending, blob_repository=blob_repository
+    )
+
+    decided = await stored_decision(session, shortcut_case.pending.id)
+    assert decided.duplicate_determination == DuplicateDetermination.DUPLICATE
+    assert decided.canonical_reference_id == shortcut_case.held.id
     assert decided.active_decision is True
