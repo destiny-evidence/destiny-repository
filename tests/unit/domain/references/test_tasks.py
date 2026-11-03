@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import pytest
+from elastic_transport import ConnectionTimeout
 from sqlalchemy.ext.asyncio import AsyncSession
 from taskiq import InMemoryBroker
 
@@ -32,6 +33,7 @@ from app.domain.references.services.enhancement_service import ProcessedResults
 from app.domain.references.services.export_service import SearchExportService
 from app.domain.references.tasks import (
     process_reference_duplicate_decision,
+    repair_reference_index_subset,
     run_search_export_task,
     validate_and_import_robot_enhancement_batch_result,
 )
@@ -817,3 +819,19 @@ class TestAutomaticDecisionRetries:
         await process_reference_duplicate_decision(decision_id)
 
         reference_service.reproject_references.assert_awaited_once_with([reference_id])
+
+    @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm")
+    async def test_a_failed_reprojection_queues_an_index_repair(
+        self, decision_id, reference_id, reference_service, queue
+    ):
+        reference_service.process_reference_duplicate_decision.side_effect = None
+        reference_service.process_reference_duplicate_decision.return_value = [
+            reference_id
+        ]
+        reference_service.reproject_references.side_effect = ConnectionTimeout(
+            "timed out"
+        )
+
+        await process_reference_duplicate_decision(decision_id)
+
+        assert queue.await_args.args == (repair_reference_index_subset, [reference_id])

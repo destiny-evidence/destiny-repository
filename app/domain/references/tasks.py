@@ -398,6 +398,24 @@ async def repair_robot_automation_percolation_index() -> None:
         await reference_service.repopulate_robot_automation_percolation_index()
 
 
+async def _reproject_or_queue_repair(
+    reference_service: ReferenceService, reference_ids: list[UUID]
+) -> None:
+    # The decision has committed, so a redelivered task would skip it.
+    try:
+        await reference_service.reproject_references(reference_ids)
+    except Exception:
+        logger.exception(
+            "Reprojection failed, queueing index repair.",
+            reference_ids=[str(reference_id) for reference_id in reference_ids],
+        )
+        await queue_task_with_trace(
+            repair_reference_index_subset,
+            reference_ids,
+            otel_enabled=settings.otel_enabled,
+        )
+
+
 @broker.task
 async def process_reference_duplicate_decision(
     reference_duplicate_decision_id: UUID,
@@ -484,11 +502,12 @@ async def process_reference_duplicate_decision(
                         otel_enabled=settings.otel_enabled,
                     )
                     return
-                await reference_service.reproject_references(
+                await _reproject_or_queue_repair(
+                    reference_service,
                     await reference_service.mark_duplicate_decision_unsearchable(
                         reference_duplicate_decision_id,
                         detail=f"Attempts exhausted ({exc!r})",
-                    )
+                    ),
                 )
                 raise
             except SQLIntegrityError as e:
@@ -533,7 +552,9 @@ async def process_reference_duplicate_decision(
                     return
                 raise
             else:
-                await reference_service.reproject_references(reproject_reference_ids)
+                await _reproject_or_queue_repair(
+                    reference_service, reproject_reference_ids
+                )
 
 
 @broker.task(
