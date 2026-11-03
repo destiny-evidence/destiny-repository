@@ -505,18 +505,6 @@ variable "es_slowlog_info_threshold" {
   default     = null
 }
 
-variable "es_slowlog_debug_threshold" {
-  description = "Elasticsearch slowlog debug threshold"
-  type        = string
-  default     = null
-}
-
-variable "es_slowlog_trace_threshold" {
-  description = "Elasticsearch slowlog trace threshold"
-  type        = string
-  default     = null
-}
-
 variable "alert_email_recipients" {
   description = "List of email addresses to receive alerts"
   type        = list(string)
