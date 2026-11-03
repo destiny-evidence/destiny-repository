@@ -470,9 +470,9 @@ variable "trusted_unique_identifier_types" {
 }
 
 variable "dedup_assessment_recording" {
-  description = "Overrides for deduplication assessment evidence retention: evidence_sample_rate_bits and near_miss_margin. Unset keys take the application defaults."
+  description = "Overrides for deduplication assessment evidence retention: evidence_sample_rate_bits and near_miss_margin. Unset keys take the application defaults, and the application's sample rate keeps every payload, so a value set here should keep evidence_sample_rate_bits."
   type        = map(number)
-  default     = {}
+  default     = { evidence_sample_rate_bits = 6 }
 }
 
 variable "allowed_import_domains" {
