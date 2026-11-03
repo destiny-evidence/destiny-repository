@@ -21,16 +21,14 @@ from app.domain.references.models.models import (
 from app.domain.references.models.sql import (
     ExternalIdentifier as SQLExternalIdentifier,
 )
-from app.domain.references.repository import (
-    ReferenceSQLRepository,
-)
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
-from tests.factories import OpenAlexIdentifierFactory, ReferenceFactory
+from tests.factories import OpenAlexIdentifierFactory
+from tests.integration.deduplication import add_reference
 
 
 @pytest.fixture
@@ -49,7 +47,7 @@ async def test_a_sql_failure_in_the_shadow_reaches_the_caller(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The caller sees the failure, and the write that runs next still commits."""
-    reference = await ReferenceSQLRepository(session).add(ReferenceFactory.build())
+    reference = await add_reference(session)
     await session.commit()
 
     async def _fail_against_the_database(
