@@ -128,6 +128,44 @@ async def test_a_match_that_is_not_canonical_is_unresolved(
     assert reproject == []
 
 
+async def test_a_decision_after_a_shadow_records_its_own_assessment(
+    session: AsyncSession, service: ReferenceService, blob_repository: MagicMock
+) -> None:
+    """A delivery shadowed before the turn-on keeps both records and both payloads."""
+    incoming = await add_reference(session)
+    first, second = await add_reference(session), await add_reference(session)
+    pending = await add_decision(session, incoming.id, DuplicateDetermination.PENDING)
+    for canonical in (first, second):
+        await add_decision(session, canonical.id, DuplicateDetermination.CANONICAL)
+    await session.commit()
+    select_candidates(service, first.id)
+    await service.run_deep_deduplication_shadow(
+        pending, blob_repository=blob_repository
+    )
+    select_candidates(service, second.id)
+
+    await service.process_reference_duplicate_decision(
+        pending, blob_repository=blob_repository
+    )
+
+    decided = await stored_decision(session, pending.id)
+    assert decided.canonical_reference_id == second.id
+    proposals = (
+        await session.execute(
+            select(
+                SQLDeduplicationAssessmentRecord.purpose,
+                SQLDeduplicationAssessmentRecord.proposed_duplicate_of_id,
+            ).where(SQLDeduplicationAssessmentRecord.idempotency_key == pending.id)
+        )
+    ).all()
+    assert set(proposals) == {
+        (DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW, first.id),
+        (DeduplicationAssessmentPurpose.DEDUPLICATION, second.id),
+    }
+    uploads = blob_repository.upload_file_to_blob_storage.await_args_list
+    assert len({(c.kwargs["path"], c.kwargs["filename"]) for c in uploads}) == 2
+
+
 async def test_a_rolled_back_attempt_leaves_nothing_and_its_retry_records_once(
     session: AsyncSession, service: ReferenceService, blob_repository: MagicMock
 ) -> None:

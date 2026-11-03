@@ -298,17 +298,22 @@ async def test_one_attempt_cannot_write_two_records(
         await repository.add(second)
 
 
-async def test_idempotent_add_returns_the_existing_record(
+async def test_idempotent_add_returns_the_existing_record_of_its_purpose(
     repository: DeduplicationAssessmentSQLRepository,
 ) -> None:
-    """The idempotent writer resolves a unique-key collision to the stored row."""
+    """A unique-key collision resolves to the stored row with the same purpose."""
     attempt = uuid7()
+    acting = build_record()
+    acting.idempotency_key = attempt
+    await repository.add(acting)
     first = build_record()
     first.idempotency_key = attempt
+    first.purpose = DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW
     await repository.add(first)
 
     second = build_record()
     second.idempotency_key = attempt
+    second.purpose = DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW
 
     returned = await repository.add_or_find_by_idempotency_key(second)
 

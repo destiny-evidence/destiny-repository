@@ -78,7 +78,10 @@ class FakePayloadWriter:
         self.error: Exception | None = None
 
     async def write(
-        self, payload_id: UUID, assessment: DeduplicationAssessment
+        self,
+        payload_id: UUID,
+        purpose: DeduplicationAssessmentPurpose,
+        assessment: DeduplicationAssessment,
     ) -> StoredPayload:
         self.calls.append(payload_id)
         self.events.append("payload")

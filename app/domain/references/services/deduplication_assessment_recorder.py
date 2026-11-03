@@ -55,7 +55,7 @@ class AssessmentRecordStore(Protocol):
         ...
 
     def find(
-        self, *, idempotency_key: UUID
+        self, *, idempotency_key: UUID, purpose: DeduplicationAssessmentPurpose
     ) -> Awaitable[list[DeduplicationAssessmentRecord]]:
         """Return the records written for a delivery."""
         ...
@@ -81,7 +81,10 @@ class AssessmentPayloadWriter(Protocol):
     """Writer for the full evidence payload behind an assessment."""
 
     async def write(
-        self, payload_id: UUID, assessment: DeduplicationAssessment
+        self,
+        payload_id: UUID,
+        purpose: DeduplicationAssessmentPurpose,
+        assessment: DeduplicationAssessment,
     ) -> StoredPayload:
         """Store the payload and return where it went and how large it was."""
         ...
@@ -95,13 +98,16 @@ class BlobAssessmentPayloadWriter:
         self._blob_repository = blob_repository
 
     async def write(
-        self, payload_id: UUID, assessment: DeduplicationAssessment
+        self,
+        payload_id: UUID,
+        purpose: DeduplicationAssessmentPurpose,
+        assessment: DeduplicationAssessment,
     ) -> StoredPayload:
         """Store the payload under the delivery it belongs to."""
         content = assessment.model_dump_json().encode()
         file = await self._blob_repository.upload_file_to_blob_storage(
             content=BytesIO(content),
-            path=PAYLOAD_PATH,
+            path=f"{PAYLOAD_PATH}/{purpose}",
             filename=f"{payload_id}.json",
             container=BlobContainer.OPERATIONS,
         )
@@ -134,12 +140,15 @@ class DeduplicationAssessmentRecorder:
         )
 
     async def _store_payload(
-        self, payload_id: UUID, assessment: DeduplicationAssessment
+        self,
+        payload_id: UUID,
+        purpose: DeduplicationAssessmentPurpose,
+        assessment: DeduplicationAssessment,
     ) -> _PayloadOutcome:
         """Write the payload, reporting a storage failure rather than raising."""
         try:
             stored = await self._payload_writer.write(
-                payload_id=payload_id, assessment=assessment
+                payload_id=payload_id, purpose=purpose, assessment=assessment
             )
         except BlobStorageError as exc:
             # Coverage is why every assessment gets a row, so a storage failure must
@@ -162,7 +171,9 @@ class DeduplicationAssessmentRecorder:
         """Persist an assessment summary, and its payload when worth keeping."""
         # Identifies the delivery, not the reference: the same reference is legitimately
         # reassessed under one generation as the corpus moves beneath it.
-        existing = await self._record_store.find(idempotency_key=idempotency_key)
+        existing = await self._record_store.find(
+            idempotency_key=idempotency_key, purpose=purpose
+        )
         if existing:
             return existing[0]
 
@@ -177,7 +188,7 @@ class DeduplicationAssessmentRecorder:
         # committed rows, so a retry after a rolled-back insert would otherwise mint a
         # fresh record id and strand a second copy of the same payload.
         payload = (
-            await self._store_payload(idempotency_key, assessment)
+            await self._store_payload(idempotency_key, purpose, assessment)
             if retain_payload
             else _PayloadOutcome(AssessmentPayloadState.NOT_RETAINED)
         )

@@ -1461,7 +1461,9 @@ class DeduplicationAssessmentSQLRepository(
                 raise sql_error from e
             # The insert blocked until the winner committed, so at read committed
             # this statement's fresh snapshot sees the row it collided with.
-            existing = await self.find(idempotency_key=record.idempotency_key)
+            existing = await self.find(
+                idempotency_key=record.idempotency_key, purpose=record.purpose
+            )
             if existing:
                 return existing[0]
             raise sql_error from e
