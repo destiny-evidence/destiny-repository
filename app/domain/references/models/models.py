@@ -1404,7 +1404,7 @@ class AssessmentPayloadState(StrEnum):
     """Whether the full evidence payload for an assessment was stored."""
 
     NOT_RETAINED = auto()
-    """Nothing cleared the threshold and every candidate scored, so none was kept."""
+    """Nothing came near the threshold and every candidate scored, so none was kept."""
     STORED = auto()
     """The payload was written and its location is on the record."""
     FAILED = auto()

@@ -122,13 +122,15 @@ class DeduplicationAssessmentRecorder:
         self._record_store = record_store
         self._payload_writer = payload_writer
         self._evidence_sample_rate_bits = recording_config.evidence_sample_rate_bits
+        self._near_miss_margin = recording_config.near_miss_margin
 
-    @staticmethod
-    def _is_interesting(assessment: DeduplicationAssessment) -> bool:
+    def _is_interesting(
+        self, assessment: DeduplicationAssessment, best_score: float | None
+    ) -> bool:
         """Whether a later reader would need this assessment's evidence."""
-        return bool(
-            assessment.threshold_clearing_candidate_ids
-            or assessment.unscorable_candidate_ids
+        return bool(assessment.unscorable_candidate_ids) or (
+            best_score is not None
+            and best_score >= assessment.deduper.threshold - self._near_miss_margin
         )
 
     async def _store_payload(
@@ -169,7 +171,7 @@ class DeduplicationAssessmentRecorder:
         sampled = evidence_sampled(
             assessment.incoming_reference_id, self._evidence_sample_rate_bits
         )
-        retain_payload = self._is_interesting(assessment) or sampled
+        retain_payload = self._is_interesting(assessment, best_score) or sampled
 
         # Named for the delivery, not the record: the find-first guard above only sees
         # committed rows, so a retry after a rolled-back insert would otherwise mint a
