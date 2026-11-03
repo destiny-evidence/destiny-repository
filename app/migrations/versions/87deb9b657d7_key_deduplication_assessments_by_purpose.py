@@ -24,5 +24,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Fails while any decision holds both a shadow and an acting record: the old key
+    # cannot represent them, and assessments are not deleted to make it fit.
     op.drop_index('uq_deduplication_assessment_idempotency_key_purpose', table_name='deduplication_assessment')
     op.create_index('uq_deduplication_assessment_idempotency_key', 'deduplication_assessment', ['idempotency_key'], unique=True)
