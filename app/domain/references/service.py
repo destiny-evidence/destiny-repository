@@ -138,7 +138,7 @@ def _peak_resident_bytes() -> int:
 
 
 class _ActiveRetrievals:
-    """In-flight deep deduplication retrievals on this worker."""
+    """In-flight deep deduplication shadows on this worker, scoring included."""
 
     def __init__(self) -> None:
         self._count = 0
@@ -581,7 +581,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     @sql_unit_of_work
     @es_unit_of_work
-    # Named before the shadow scored, so queries from retrieval-only runs still apply.
+    # Named before the shadow scored, so outcome and truncation queries from
+    # retrieval-only runs still apply; its duration now includes scoring and recording.
     @tracer.start_as_current_span("Deep deduplication retrieval")
     async def run_deep_deduplication_shadow(
         self,
