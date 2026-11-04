@@ -595,7 +595,7 @@ resource "ec_deployment" "cluster" {
   name                   = "${var.app_name}-${substr(var.environment, 0, 4)}-es"
   region                 = var.elasticsearch_region
   version                = var.elastic_stack_version
-  deployment_template_id = "azure-general-purpose"
+  deployment_template_id = local.env.es_deployment_template_id
 
   elasticsearch = {
     autoscale = true

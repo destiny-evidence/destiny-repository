@@ -24,9 +24,10 @@ locals {
       db_log_disconnections         = "on"
       db_log_min_duration_statement = 500 # Log queries > 500ms
 
-      es_snapshot_schedule   = "0 30 1 * * ?" # Daily at 01:30
-      es_snapshot_retention  = 7
-      es_hot_max_size_memory = "8g" # 280GB storage: https://cloud.elastic.co/pricing
+      es_snapshot_schedule      = "0 30 1 * * ?" # Daily at 01:30
+      es_snapshot_retention     = 7
+      es_hot_max_size_memory    = "8g" # 280GB storage: https://cloud.elastic.co/pricing
+      es_deployment_template_id = "azure-general-purpose"
     }
 
     staging = {
@@ -49,9 +50,10 @@ locals {
       db_log_disconnections         = "on"
       db_log_min_duration_statement = 500 # Log queries > 500ms
 
-      es_snapshot_schedule   = "0 30 1 * * ?"
-      es_snapshot_retention  = 7
-      es_hot_max_size_memory = "8g" # 280GB storage: https://cloud.elastic.co/pricing
+      es_snapshot_schedule      = "0 30 1 * * ?"
+      es_snapshot_retention     = 7
+      es_hot_max_size_memory    = "8g" # 280GB storage: https://cloud.elastic.co/pricing
+      es_deployment_template_id = "azure-general-purpose"
     }
 
     production = {
@@ -74,9 +76,10 @@ locals {
       db_log_disconnections         = "off" # High volume in production
       db_log_min_duration_statement = 500   # Log queries > 500ms
 
-      es_snapshot_schedule   = "0 30 1 * * ?" # Daily at 01:30
-      es_snapshot_retention  = 30             # 30 days
-      es_hot_max_size_memory = "60g"          # 2TB storage: https://cloud.elastic.co/pricing
+      es_snapshot_schedule      = "0 30 1 * * ?" # Daily at 01:30
+      es_snapshot_retention     = 30             # 30 days
+      es_hot_max_size_memory    = "60g"          # 2TB storage: https://cloud.elastic.co/pricing
+      es_deployment_template_id = "azure-cpu-optimized"
     }
   }
 
