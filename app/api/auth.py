@@ -278,7 +278,8 @@ def _unverified_claims(token: str) -> dict[str, Any]:
     """Read a token's claims without verifying its signature."""
     try:
         claims = json.loads(joserfc_jws.extract_compact(token.encode()).payload)
-    except ValueError as exc:
+    # joserfc raises a bare TypeError for some malformed headers, e.g. a JSON list
+    except (ValueError, TypeError) as exc:
         raise joserfc_errors.DecodeError from exc
     if not isinstance(claims, dict):
         raise joserfc_errors.DecodeError
@@ -377,7 +378,8 @@ class JwksJwtAuth(JwtAuth, ABC):
                 detail="Unable to parse authentication token.",
             ) from exc
 
-        except joserfc_errors.JoseError as exc:
+        # joserfc raises a bare TypeError for some malformed headers, e.g. a JSON list
+        except (joserfc_errors.JoseError, TypeError) as exc:
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to parse authentication token.",
@@ -390,6 +392,12 @@ class JwksJwtAuth(JwtAuth, ABC):
         # One key we can't parse shouldn't take down verification with the others
         keys = []
         for key_data in response.json()["keys"]:
+            # A bare string would otherwise import as a symmetric key
+            if not isinstance(key_data, dict):
+                logger.warning(
+                    "Skipping non-object entry in JWKS", jwks_uri=self.jwks_uri
+                )
+                continue
             try:
                 keys.append(import_key(key_data))
             except Exception:  # noqa: BLE001

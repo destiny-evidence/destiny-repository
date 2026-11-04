@@ -2,7 +2,6 @@
 
 import base64
 import datetime
-import json
 import re
 from unittest.mock import Mock
 
@@ -229,17 +228,25 @@ class TestMultiIssuerAuth:
             await multi_issuer_auth(fake_request, credentials)
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @pytest.mark.parametrize("payload", ["not json", "[]", "null"])
-    async def test_non_object_payload(
+    @pytest.mark.parametrize(
+        ("header", "payload"),
+        [
+            ('{"alg": "RS256"}', "not json"),
+            ('{"alg": "RS256"}', "[]"),
+            ('{"alg": "RS256"}', "null"),
+            ('["alg", "b64"]', '{"iss": "x"}'),
+        ],
+    )
+    async def test_malformed_header_or_payload(
         self,
         multi_issuer_auth: MultiIssuerJwtAuth,
         fake_request: Request,
+        header: str,
         payload: str,
     ) -> None:
-        """Well-formed compact token whose payload isn't a claims object gets 401."""
-        header = _b64url(json.dumps({"alg": "RS256"}))
+        """Compact token with a malformed header or non-object payload gets 401."""
         credentials = Mock()
-        credentials.credentials = f"{header}.{_b64url(payload)}.signature"
+        credentials.credentials = f"{_b64url(header)}.{_b64url(payload)}.signature"
         with pytest.raises(HTTPException) as exc_info:
             await multi_issuer_auth(fake_request, credentials)
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED

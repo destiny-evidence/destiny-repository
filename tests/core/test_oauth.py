@@ -1,5 +1,6 @@
 """Test auth tools."""
 
+import base64
 import datetime
 from collections.abc import Callable
 from enum import StrEnum
@@ -8,6 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
+from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import KeySet, RSAKey
 from pytest_httpx import HTTPXMock
 
@@ -138,6 +140,28 @@ async def test_verify_token_incorrect_claims(
     assert "aud=" in excinfo.value.detail
 
 
+async def test_verify_token_missing_audience(
+    httpx_mock: HTTPXMock,
+    auth: AzureJwtAuth,
+    fake_application_id: str,
+):
+    """Test that a token without an aud claim is rejected."""
+    signing_key = RSAKey.generate_key(2048, parameters={"kid": "no-aud"})
+    httpx_mock.add_response(json={"keys": [signing_key.as_dict(private=False)]})
+    now = int(datetime.datetime.now(datetime.UTC).timestamp())
+    token = joserfc_jwt.encode(
+        {"alg": "RS256", "kid": "no-aud"},
+        {"iss": auth.issuer, "exp": now + 600, "sub": "test_subject"},
+        signing_key,
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await auth.verify_token(token)
+    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Incorrect claims" in excinfo.value.detail
+    assert f"Expected aud={fake_application_id}, got=None" in excinfo.value.detail
+
+
 async def test_verify_token_issued_in_future(
     httpx_mock: HTTPXMock,
     auth: AzureJwtAuth,
@@ -165,6 +189,8 @@ async def test_verify_token_skips_unparseable_jwks_entries(
 ):
     """Test that a bad key in the JWKS doesn't block verification with a good one."""
     bad_keys = [
+        None,
+        "not-a-key",
         {"kid": "no-kty"},
         {"kty": "RSA", "kid": "bad-n", "n": "not base64", "e": "AQAB"},
         {"kty": "EC", "kid": "bad-crv", "crv": "P-999", "x": "a", "y": "b"},
@@ -202,7 +228,8 @@ async def test_verify_token_malformed_does_not_refresh_cached_jwks(
     """Test that a token that isn't a JWT fails without refetching keys."""
     auth.cache["jwks"] = KeySet.import_key_set({"keys": [fake_public_key]})
 
-    for token in ("garbage", "a.b.c"):
+    list_header = base64.urlsafe_b64encode(b'["alg", "b64"]').rstrip(b"=").decode()
+    for token in ("garbage", "a.b.c", f"{list_header}.e30.sig"):
         with pytest.raises(HTTPException) as excinfo:
             await auth.verify_token(token)
         assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
