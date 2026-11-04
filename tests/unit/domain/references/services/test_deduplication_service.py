@@ -6,16 +6,18 @@ from uuid import uuid7
 import pytest
 from destiny_sdk.enhancements import Authorship
 from destiny_sdk.identifiers import OtherIdentifier
-from opentelemetry.trace import StatusCode
 
 from app.core.config import Environment, get_settings
-from app.core.exceptions import CandidateSearchTruncatedError, DeduplicationValueError
+from app.core.exceptions import DeduplicationValueError
 from app.domain.references.models.models import (
     Candidate,
     CandidateSelectionDiagnostics,
     CandidateSelectionInput,
     CandidateSelectionRequest,
     CandidateSelectionResult,
+    DeduperMetadata,
+    DeduplicationAssessment,
+    DeduplicationAssessmentOutcome,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -29,7 +31,10 @@ from app.domain.references.models.models import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.deduplication_service import DeduplicationService
+from app.domain.references.services.deduplication_service import (
+    DeduplicationService,
+    decide_from_assessment,
+)
 from app.persistence.es.persistence import (
     CandidateCanonicalSearchResult,
     ESScoreResult,
@@ -954,6 +959,50 @@ async def test_map_duplicate_decision_decouples_duplicate_becoming_canonical(
     assert (
         "Decouple reason: Existing duplicate decision changed." in out_decision.detail
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "active_determination",
+    [DuplicateDetermination.CANONICAL, DuplicateDetermination.DUPLICATE],
+)
+async def test_map_duplicate_decision_keeps_the_active_decision_when_unsearchable(
+    fake_uow, fake_repository, anti_corruption_service, active_determination
+):
+    """Failing to deduplicate is no reason to replace a decision."""
+    reference = MagicMock(spec=Reference)
+    reference.id = uuid7()
+    active_decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=active_determination,
+        canonical_reference_id=(
+            uuid7()
+            if active_determination == DuplicateDetermination.DUPLICATE
+            else None
+        ),
+        active_decision=True,
+    )
+    reference.duplicate_decision = active_decision
+    decision = ReferenceDuplicateDecision(
+        reference_id=reference.id,
+        duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+    )
+    dec_repo = fake_repository([active_decision, decision])
+    service = DeduplicationService(
+        anti_corruption_service,
+        fake_uow(
+            references=fake_repository([reference]),
+            reference_duplicate_decisions=dec_repo,
+        ),
+        fake_uow(),
+    )
+
+    out_decision, decision_changed, _ = await service.map_duplicate_decision(decision)
+
+    assert out_decision.duplicate_determination == DuplicateDetermination.UNSEARCHABLE
+    assert not out_decision.active_decision
+    assert not decision_changed
+    assert (await dec_repo.get_by_pk(active_decision.id)).active_decision
 
 
 @pytest.mark.asyncio
@@ -1890,37 +1939,6 @@ class TestCandidateSelectionTelemetry:
             assert kwargs["search_timeout"] is None
 
     @pytest.mark.asyncio
-    async def test_a_stopped_search_leaves_the_selection_span_unerrored(
-        self,
-        searchable_reference,
-        anti_corruption_service,
-        fake_uow,
-        fake_repository,
-        finished_span,
-    ):
-        """Error alerts track real failures; the outcome attribute tracks the cap."""
-        service = DeduplicationService(
-            anti_corruption_service,
-            fake_uow(references=fake_repository([searchable_reference])),
-            fake_uow(),
-        )
-        _mock_candidate_selection(service)
-        service.es_uow.references.search_for_candidate_canonicals.side_effect = (
-            CandidateSearchTruncatedError(
-                "stopped at the cap", bound="terminate_after", took_ms=1
-            )
-        )
-
-        with pytest.raises(CandidateSearchTruncatedError):
-            await service.select_candidate_canonicals(
-                searchable_reference.id, deep_deduplication=True
-            )
-
-        span = finished_span("Select deduplication candidates")
-        assert span.status.status_code is StatusCode.UNSET
-        assert span.events == ()
-
-    @pytest.mark.asyncio
     async def test_truncation_is_recorded_when_hits_exceed_returned(
         self,
         searchable_reference,
@@ -1976,3 +1994,105 @@ class TestCandidateSelectionTelemetry:
         assert attributes["app.candidate_selection.publication_year_present"] is False
         assert "app.candidate_selection.es_took_ms" not in attributes
         assert "app.candidate_selection.es_total_hits" not in attributes
+
+
+def _assessment(
+    outcome: DeduplicationAssessmentOutcome,
+    *,
+    candidate_count: int = 0,
+    clearing: int = 0,
+    unscorable: int = 0,
+) -> DeduplicationAssessment:
+    candidates = [
+        Candidate(reference_id=uuid7(), rank=rank, routes=[])
+        for rank in range(1, candidate_count + 1)
+    ]
+    ids = [candidate.reference_id for candidate in candidates]
+    clearing_ids = ids[:clearing]
+    return DeduplicationAssessment(
+        incoming_reference_id=uuid7(),
+        candidate_selection=CandidateSelectionResult(
+            retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V2,
+            k_requested=10,
+            input_searchability=InputSearchability(
+                searchable=False, reason="missing: title"
+            ),
+            diagnostics=CandidateSelectionDiagnostics(candidate_count=candidate_count),
+            candidates=candidates,
+        ),
+        deduper=DeduperMetadata(
+            package_version="0", configuration_hash="x", threshold=0.9
+        ),
+        outcome=outcome,
+        proposed_duplicate_of_id=(
+            clearing_ids[0]
+            if outcome == DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE
+            else None
+        ),
+        threshold_clearing_candidate_ids=clearing_ids,
+        unscorable_candidate_ids=ids[clearing : clearing + unscorable],
+    )
+
+
+@pytest.mark.parametrize(
+    ("assessment", "determination", "detail"),
+    [
+        (
+            _assessment(DeduplicationAssessmentOutcome.PROPOSE_CANONICAL),
+            DuplicateDetermination.CANONICAL,
+            None,
+        ),
+        (
+            _assessment(
+                DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE,
+                candidate_count=1,
+                clearing=1,
+            ),
+            DuplicateDetermination.DUPLICATE,
+            None,
+        ),
+        (
+            _assessment(DeduplicationAssessmentOutcome.NO_PROPOSAL),
+            DuplicateDetermination.UNSEARCHABLE,
+            "missing: title",
+        ),
+        (
+            _assessment(
+                DeduplicationAssessmentOutcome.NO_PROPOSAL,
+                candidate_count=2,
+                clearing=2,
+            ),
+            DuplicateDetermination.UNRESOLVED,
+            "Unresolved: multiple_clearing",
+        ),
+        (
+            _assessment(
+                DeduplicationAssessmentOutcome.NO_PROPOSAL,
+                candidate_count=2,
+                clearing=1,
+                unscorable=1,
+            ),
+            DuplicateDetermination.UNRESOLVED,
+            "Unresolved: unscorable_candidate",
+        ),
+        (
+            _assessment(DeduplicationAssessmentOutcome.NO_PROPOSAL, candidate_count=1),
+            DuplicateDetermination.UNSEARCHABLE,
+            "missing: title",
+        ),
+    ],
+    ids=[
+        "canonical",
+        "duplicate",
+        "unsearchable-no-candidates",
+        "unresolved-multiple",
+        "unresolved-unscorable",
+        "unsearchable-with-unclearing-candidates",
+    ],
+)
+def test_decide_from_assessment(assessment, determination, detail):
+    result = decide_from_assessment(assessment)
+
+    assert result.duplicate_determination == determination
+    assert result.canonical_reference_id == assessment.proposed_duplicate_of_id
+    assert result.detail == detail

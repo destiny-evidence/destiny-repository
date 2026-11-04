@@ -6,16 +6,8 @@ from uuid import UUID
 from opentelemetry import trace
 
 from app.core.config import DedupCandidateScoringConfig, Environment, get_settings
-from app.core.exceptions import (
-    CandidateSearchTruncatedError,
-    DeduplicationError,
-    DeduplicationValueError,
-)
-from app.core.telemetry.attributes import (
-    Attributes,
-    start_span_passing,
-    trace_attribute,
-)
+from app.core.exceptions import DeduplicationError, DeduplicationValueError
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     Candidate,
@@ -28,6 +20,9 @@ from app.domain.references.models.models import (
     CandidateSelectionInput,
     CandidateSelectionRequest,
     CandidateSelectionResult,
+    DeduplicationAssessment,
+    DeduplicationAssessmentOutcome,
+    DeduplicationUnresolvedReason,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
@@ -250,6 +245,47 @@ def _trace_candidate_selection(
     trace_attribute(Attributes.CANDIDATE_SELECTION_TRUNCATED, diagnostics.truncated)
 
 
+# Recorded with each assessment. Change it whenever decide_from_assessment changes.
+ACTING_POLICY_GENERATION = "stand-in"
+
+
+def decide_from_assessment(
+    assessment: DeduplicationAssessment,
+) -> ReferenceDuplicateDeterminationResult:
+    """
+    Turn an assessment into a decision.
+
+    A stand-in until an automatic policy is implemented.
+    """
+    match assessment.outcome:
+        case DeduplicationAssessmentOutcome.PROPOSE_CANONICAL:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.CANONICAL,
+            )
+        case DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE:
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.DUPLICATE,
+                canonical_reference_id=assessment.proposed_duplicate_of_id,
+            )
+        case DeduplicationAssessmentOutcome.NO_PROPOSAL:
+            if assessment.unscorable_candidate_ids:
+                reason = DeduplicationUnresolvedReason.UNSCORABLE_CANDIDATE
+            elif len(assessment.threshold_clearing_candidate_ids) > 1:
+                reason = DeduplicationUnresolvedReason.MULTIPLE_CLEARING
+            else:
+                # The input could not be searched, so the candidate set is incomplete.
+                return ReferenceDuplicateDeterminationResult(
+                    duplicate_determination=DuplicateDetermination.UNSEARCHABLE,
+                    detail=assessment.candidate_selection.input_searchability.reason,
+                )
+            return ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.UNRESOLVED,
+                detail=f"Unresolved: {reason}",
+            )
+        case _:  # pragma: no cover - exhaustiveness guard
+            assert_never(assessment.outcome)
+
+
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
     """Service for managing reference duplicate detection."""
 
@@ -262,6 +298,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         """Initialize the service with a unit of work."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
 
+    @tracer.start_as_current_span("Select deduplication candidates")
     async def get_deduplication_candidates(
         self,
         request: CandidateSelectionRequest,
@@ -270,24 +307,6 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         request_timeout: float | None = None,
     ) -> CandidateSelectionResult:
         """Return ranked candidates with provenance, without persisting state."""
-        with start_span_passing(
-            tracer,
-            "Select deduplication candidates",
-            passing=(CandidateSearchTruncatedError,),
-        ):
-            return await self._get_deduplication_candidates(
-                request,
-                deep_deduplication=deep_deduplication,
-                request_timeout=request_timeout,
-            )
-
-    async def _get_deduplication_candidates(
-        self,
-        request: CandidateSelectionRequest,
-        *,
-        deep_deduplication: bool,
-        request_timeout: float | None,
-    ) -> CandidateSelectionResult:
         trace_attribute(
             Attributes.CANDIDATE_SELECTION_DEEP_DEDUPLICATION, deep_deduplication
         )
@@ -332,8 +351,8 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             title_stopwords_only = title_query is None
             searchable = not title_stopwords_only
         es_result = None
-        # Only the shadow retrieval is bounded. The decision path does not handle a
-        # stopped search, and the evaluation endpoint needs complete results.
+        # Only deep deduplication is bounded. The placeholder decision path does not
+        # handle a stopped search, and the evaluation endpoint needs complete results.
         scoring = settings.dedup_scoring
         terminate_after = (
             scoring.retrieval_terminate_after if deep_deduplication else None
@@ -803,6 +822,13 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 f"Proposed determination: {proposed_determination.value}. "
                 + (new_decision.detail if new_decision.detail else "")
             )
+            decision_changed = False
+        elif (
+            active_decision
+            and new_decision.duplicate_determination
+            == DuplicateDetermination.UNSEARCHABLE
+        ):
+            # Failing to deduplicate is no reason to replace a decision.
             decision_changed = False
         elif (
             active_decision

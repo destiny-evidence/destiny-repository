@@ -1,7 +1,5 @@
 """Mixes OpenTelemetry semantic conventions with application-specific attributes."""
 
-import contextlib
-from collections.abc import Iterator, Mapping
 from enum import StrEnum
 
 from opentelemetry import trace
@@ -134,6 +132,46 @@ class Attributes(StrEnum):
     DEEP_DEDUPLICATION_ACTIVE_RETRIEVALS = "app.deep_deduplication.active_retrievals"
     DEEP_DEDUPLICATION_PEAK_RSS_BYTES = "app.deep_deduplication.peak_rss_bytes"
 
+    # Deduplication scoring
+    DEDUPLICATION_ASSESSMENT_DEDUPER_VERSION = (
+        "app.deduplication_assessment.deduper_version"
+    )
+    DEDUPLICATION_ASSESSMENT_DEDUPER_CONFIGURATION_HASH = (
+        "app.deduplication_assessment.deduper_configuration_hash"
+    )
+    DEDUPLICATION_ASSESSMENT_THRESHOLD = "app.deduplication_assessment.threshold"
+    DEDUPLICATION_ASSESSMENT_OUTCOME = "app.deduplication_assessment.outcome"
+    DEDUPLICATION_ASSESSMENT_SCORED_COUNT = "app.deduplication_assessment.scored_count"
+    DEDUPLICATION_ASSESSMENT_CLEARING_COUNT = (
+        "app.deduplication_assessment.clearing_count"
+    )
+    DEDUPLICATION_ASSESSMENT_UNSCORABLE_COUNT = (
+        "app.deduplication_assessment.unscorable_count"
+    )
+    DEDUPLICATION_ASSESSMENT_BEST_PROBABILITY = (
+        "app.deduplication_assessment.best_probability"
+    )
+    DEDUPLICATION_ASSESSMENT_BEST_NON_WINNING_PROBABILITY = (
+        "app.deduplication_assessment.best_non_winning_probability"
+    )
+    # A prefix: each early-stop rule is suffixed on and carries its pair count.
+    DEDUPLICATION_ASSESSMENT_EARLY_STOP = "app.deduplication_assessment.early_stop"
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_OUTCOME = (
+        "app.deduplication_assessment.identifier_outcome"
+    )
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_TYPES = (
+        "app.deduplication_assessment.identifier_types"
+    )
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_PROBABILITY = (
+        "app.deduplication_assessment.identifier_probability"
+    )
+    DEDUPLICATION_ASSESSMENT_IDENTIFIER_CLEARS_THRESHOLD = (
+        "app.deduplication_assessment.identifier_clears_threshold"
+    )
+    DEDUPLICATION_ASSESSMENT_OPENALEX_RELATION = (
+        "app.deduplication_assessment.openalex_relation"
+    )
+
     # Deduplication decisions
     DEDUPLICATION_ROUTE = "app.deduplication.route"
     DEDUPLICATION_DETERMINATION = "app.deduplication.determination"
@@ -155,9 +193,10 @@ class Attributes(StrEnum):
     FILE_LINE_NO = "app.file.line_number"
 
 
-def trace_attribute(attribute: Attributes, value: AttributeValue) -> None:
-    """Trace an attribute in the current span."""
-    trace.get_current_span().set_attribute(attribute.value, value)
+def trace_attribute(attribute: Attributes, value: AttributeValue | None) -> None:
+    """Trace an attribute in the current span, skipping an absent value."""
+    if value is not None:
+        trace.get_current_span().set_attribute(attribute.value, value)
 
 
 def sample_trace() -> None:
@@ -186,34 +225,3 @@ def set_span_status(
     trace.get_current_span().set_status(trace.Status(status, detail))
     if exception:
         trace.get_current_span().record_exception(exception)
-
-
-@contextlib.contextmanager
-def start_span_passing(
-    tracer: trace.Tracer,
-    name: str,
-    *,
-    passing: tuple[type[Exception], ...],
-    attributes: Mapping[str, AttributeValue] | None = None,
-) -> Iterator[trace.Span]:
-    """
-    Start a span that lets the given exceptions through without marking it errored.
-
-    Any other exception is recorded and errors the span, as it would by default.
-    """
-    with tracer.start_as_current_span(
-        name,
-        attributes=attributes,
-        record_exception=False,
-        set_status_on_exception=False,
-    ) as span:
-        try:
-            yield span
-        except passing:
-            raise
-        except Exception as exc:
-            span.record_exception(exc)
-            span.set_status(
-                trace.Status(trace.StatusCode.ERROR, f"{type(exc).__name__}: {exc}")
-            )
-            raise

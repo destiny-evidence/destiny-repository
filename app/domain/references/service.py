@@ -19,6 +19,7 @@ from app.core.config import (
 from app.core.exceptions import (
     AuthError,
     CandidateSearchTruncatedError,
+    DeduplicationInputError,
     DuplicateEnhancementError,
     FullTextIngestionError,
     InvalidPayloadError,
@@ -33,7 +34,9 @@ from app.domain.references.models.models import (
     CandidateSelectionRequest,
     CandidateSelectionResult,
     CrossFacetResult,
+    DeduplicationAssessmentPurpose,
     DeduplicationRoute,
+    DeduplicationUnresolvedReason,
     DeepDeduplicationOutcome,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
@@ -51,6 +54,7 @@ from app.domain.references.models.models import (
     PendingEnhancementStatus,
     Reference,
     ReferenceDuplicateDecision,
+    ReferenceDuplicateDeterminationResult,
     ReferenceIds,
     ReferenceWithChangeset,
     RobotAutomation,
@@ -74,7 +78,19 @@ from app.domain.references.services.access_control_service import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
-from app.domain.references.services.deduplication_service import DeduplicationService
+from app.domain.references.services.deduper_pair_scorer import DeduperPairScorer
+from app.domain.references.services.deduplication_assessment_recorder import (
+    BlobAssessmentPayloadWriter,
+    DeduplicationAssessmentRecorder,
+)
+from app.domain.references.services.deduplication_assessment_service import (
+    DeduplicationAssessmentService,
+)
+from app.domain.references.services.deduplication_service import (
+    ACTING_POLICY_GENERATION,
+    DeduplicationService,
+    decide_from_assessment,
+)
 from app.domain.references.services.enhancement_service import (
     EnhancementService,
     ProcessedResults,
@@ -1324,6 +1340,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_duplicate_decision: ReferenceDuplicateDecision,
         *,
         decision_changed: bool,
+        reproject: bool = True,
     ) -> ReferenceDuplicateDecision:
         """
         Apply side-effects of a reference duplicate decision.
@@ -1332,9 +1349,10 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         automations if the decision has changed.
         """
         if reference_duplicate_decision.active_decision:
-            await self._synchronizer.references.sql_to_es(
-                reference_duplicate_decision.reference_id
-            )
+            if reproject:
+                await self._synchronizer.references.sql_to_es(
+                    reference_duplicate_decision.reference_id
+                )
             if decision_changed:
                 reference = await self._get_canonical_reference_with_implied_changeset(
                     reference_duplicate_decision.reference_id
@@ -1352,8 +1370,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def process_reference_duplicate_decision(
         self,
         reference_duplicate_decision: ReferenceDuplicateDecision,
-    ) -> None:
-        """Process a reference duplicate decision."""
+        *,
+        blob_repository: BlobRepository,
+    ) -> list[UUID]:
+        """
+        Process a reference duplicate decision.
+
+        Returns the reference ids to reproject once the decision commits.
+        """
         trace_attribute(
             Attributes.REFERENCE_ID, str(reference_duplicate_decision.reference_id)
         )
@@ -1392,10 +1416,46 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     await self.apply_reference_duplicate_decision_side_effects(
                         decision,
                         decision_changed=True,
+                        reproject=False,
                     )
-                return
+                return [
+                    decision.reference_id
+                    for decision in shortcutted_decisions
+                    if decision.active_decision
+                ]
 
-        if settings.feature_flags.enable_canonical_candidate_search:
+        if not settings.feature_flags.enable_canonical_candidate_search:
+            trace_attribute(
+                Attributes.DEDUPLICATION_ROUTE, DeduplicationRoute.DISABLED.value
+            )
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.UNSEARCHABLE
+            )
+            reference_duplicate_decision.detail = (
+                "Canonical candidate search is disabled."
+            )
+        elif settings.feature_flags.enable_automatic_deduplication_decisions:
+            trace_attribute(
+                Attributes.DEDUPLICATION_ROUTE,
+                DeduplicationRoute.AUTOMATIC_DECISION.value,
+            )
+            reference_duplicate_decision = await self._decide_from_assessment(
+                reference_duplicate_decision, blob_repository
+            )
+            if (
+                reference_duplicate_decision.duplicate_determination
+                == DuplicateDetermination.UNRESOLVED
+            ):
+                # Inactive, so there is nothing to map and no side effects.
+                await self.sql_uow.reference_duplicate_decisions.merge(
+                    reference_duplicate_decision
+                )
+                trace_attribute(
+                    Attributes.DEDUPLICATION_DETERMINATION,
+                    DuplicateDetermination.UNRESOLVED.value,
+                )
+                return []
+        else:
             trace_attribute(
                 Attributes.DEDUPLICATION_ROUTE,
                 DeduplicationRoute.CANDIDATE_SEARCH.value,
@@ -1411,17 +1471,15 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     candidate_selection,
                 )
             )
-        else:
-            trace_attribute(
-                Attributes.DEDUPLICATION_ROUTE, DeduplicationRoute.DISABLED.value
-            )
-            reference_duplicate_decision.duplicate_determination = (
-                DuplicateDetermination.UNSEARCHABLE
-            )
-            reference_duplicate_decision.detail = (
-                "Canonical candidate search is disabled."
-            )
+        return await self._apply_duplicate_decision(reference_duplicate_decision)
 
+    async def _apply_duplicate_decision(
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+        *,
+        tolerate_automation_failure: bool = False,
+    ) -> list[UUID]:
+        """Apply a decision, returning the reference ids to reproject."""
         (
             reference_duplicate_decision,
             decision_changed,
@@ -1435,9 +1493,132 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         )
         trace_attribute(Attributes.DEDUPLICATION_DECISION_CHANGED, decision_changed)
 
-        await self.apply_reference_duplicate_decision_side_effects(
-            reference_duplicate_decision,
-            decision_changed=decision_changed,
+        try:
+            await self.apply_reference_duplicate_decision_side_effects(
+                reference_duplicate_decision,
+                decision_changed=decision_changed,
+                reproject=False,
+            )
+        except Exception:
+            if not tolerate_automation_failure:
+                raise
+            logger.exception(
+                "Robot automations failed, keeping the decision without them.",
+                reference_id=str(reference_duplicate_decision.reference_id),
+            )
+        return (
+            [reference_duplicate_decision.reference_id]
+            if reference_duplicate_decision.active_decision
+            else []
+        )
+
+    async def _decide_from_assessment(
+        self,
+        reference_duplicate_decision: ReferenceDuplicateDecision,
+        blob_repository: BlobRepository,
+    ) -> ReferenceDuplicateDecision:
+        """Decide a reference from a recorded assessment."""
+        assessor = DeduplicationAssessmentService(
+            candidate_selector=functools.partial(
+                self._deduplication_service.get_deduplication_candidates,
+                deep_deduplication=True,
+                request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
+            ),
+            reference_reader=self.sql_uow.references,
+            pair_scorer=DeduperPairScorer(),
+        )
+        try:
+            assessment = await assessor.evaluate(
+                reference_duplicate_decision.reference_id
+            )
+        except CandidateSearchTruncatedError as exc:
+            # A retry would hit the same bound.
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.UNSEARCHABLE
+            )
+            reference_duplicate_decision.detail = (
+                f"Candidate retrieval truncated: {exc}"
+            )
+            return reference_duplicate_decision
+        except DeduplicationInputError as exc:
+            reference_duplicate_decision.duplicate_determination = (
+                DuplicateDetermination.UNSEARCHABLE
+            )
+            reference_duplicate_decision.detail = str(exc)
+            return reference_duplicate_decision
+
+        recorder = DeduplicationAssessmentRecorder(
+            record_store=self.sql_uow.deduplication_assessments,
+            payload_writer=BlobAssessmentPayloadWriter(blob_repository=blob_repository),
+            recording_config=settings.dedup_assessment_recording,
+        )
+        # Keyed by the decision id, which links the two. It commits with the
+        # decision, so a retry only runs after a rollback and records afresh.
+        await recorder.record(
+            assessment,
+            purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+            policy_generation=ACTING_POLICY_GENERATION,
+            idempotency_key=reference_duplicate_decision.id,
+        )
+        result = decide_from_assessment(assessment)
+        if (
+            result.canonical_reference_id
+            and not (
+                await self.sql_uow.references.get_by_pk(
+                    result.canonical_reference_id, preload=["duplicate_decision"]
+                )
+            ).is_canonical
+        ):
+            result = ReferenceDuplicateDeterminationResult(
+                duplicate_determination=DuplicateDetermination.UNRESOLVED,
+                detail=(
+                    f"Unresolved: {DeduplicationUnresolvedReason.NON_CANONICAL_MATCH}"
+                ),
+            )
+        reference_duplicate_decision.duplicate_determination = (
+            result.duplicate_determination
+        )
+        reference_duplicate_decision.canonical_reference_id = (
+            result.canonical_reference_id
+        )
+        reference_duplicate_decision.detail = result.detail
+        return reference_duplicate_decision
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def reproject_references(self, reference_ids: list[UUID]) -> None:
+        """Reproject references to Elasticsearch."""
+        for reference_id in reference_ids:
+            await self._synchronizer.references.sql_to_es(reference_id)
+
+    @sql_unit_of_work
+    @es_unit_of_work
+    async def mark_duplicate_decision_unsearchable(
+        self, reference_duplicate_decision_id: UUID, detail: str
+    ) -> list[UUID]:
+        """
+        Mark a decision unsearchable if it is still pending.
+
+        Returns the reference ids to reproject once committed.
+        """
+        reference_duplicate_decision = (
+            await self.sql_uow.reference_duplicate_decisions.get_by_pk(
+                reference_duplicate_decision_id
+            )
+        )
+        if (
+            reference_duplicate_decision.duplicate_determination
+            != DuplicateDetermination.PENDING
+        ):
+            return []
+        reference_duplicate_decision.duplicate_determination = (
+            DuplicateDetermination.UNSEARCHABLE
+        )
+        reference_duplicate_decision.detail = detail
+        # Retries often run out because Elasticsearch is down, which automations
+        # also need.
+        return await self._apply_duplicate_decision(
+            reference_duplicate_decision, tolerate_automation_failure=True
         )
 
     @sql_unit_of_work
