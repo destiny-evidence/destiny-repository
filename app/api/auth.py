@@ -365,7 +365,7 @@ class AzureJwtAuth(JwtAuth):
             except Exception as exc:
                 raise AuthError(
                     status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unable to parse authentication token.",
+                    detail="Unable to fetch signing keys from identity provider.",
                 ) from exc
             self.cache["jwks"] = jwks
 
@@ -391,7 +391,11 @@ class AzureJwtAuth(JwtAuth):
                 ),
             ) from exc
 
-        except joserfc_errors.JoseError as exc:
+        # Only these can mean the cached keys are stale, so junk tokens don't refetch
+        except (
+            joserfc_errors.InvalidKeyIdError,
+            joserfc_errors.BadSignatureError,
+        ) as exc:
             if cached_jwks:
                 self.cache.pop("jwks", None)
                 return await self.verify_token(token)
@@ -405,9 +409,16 @@ class AzureJwtAuth(JwtAuth):
                 detail="Unable to parse authentication token.",
             ) from exc
 
+        except joserfc_errors.JoseError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
     async def _get_microsoft_keys(self) -> KeySet:
         async with AsyncClient() as client:
             response = await client.get(f"{self.login_url}/discovery/v2.0/keys")
+            response.raise_for_status()
         # One key we can't parse shouldn't take down verification with the others
         keys = []
         for key_data in response.json()["keys"]:

@@ -177,6 +177,55 @@ async def test_verify_token_skips_unparseable_jwks_entries(
     assert payload["sub"] == result["sub"]
 
 
+async def test_verify_token_unknown_kid_refreshes_cached_jwks(
+    httpx_mock: HTTPXMock,
+    auth: AzureJwtAuth,
+    fake_public_key: dict,
+    generate_fake_token: Callable[[dict], str],
+):
+    """Test that a kid missing from the cached keys triggers one refresh."""
+    rotated_key = RSAKey.generate_key(2048, parameters={"kid": "rotated-out"})
+    auth.cache["jwks"] = KeySet([RSAKey.import_key(rotated_key.as_dict(private=False))])
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+
+    payload = {"sub": "test_subject"}
+    result = await auth.verify_token(generate_fake_token(payload))
+    assert payload["sub"] == result["sub"]
+    assert len(httpx_mock.get_requests()) == 1
+
+
+async def test_verify_token_malformed_does_not_refresh_cached_jwks(
+    httpx_mock: HTTPXMock,
+    auth: AzureJwtAuth,
+    fake_public_key: dict,
+):
+    """Test that a token that isn't a JWT fails without refetching keys."""
+    auth.cache["jwks"] = KeySet.import_key_set({"keys": [fake_public_key]})
+
+    for token in ("garbage", "a.b.c"):
+        with pytest.raises(HTTPException) as excinfo:
+            await auth.verify_token(token)
+        assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert excinfo.value.detail == "Unable to parse authentication token."
+    assert len(httpx_mock.get_requests()) == 0
+
+
+async def test_verify_token_jwks_fetch_failure(
+    httpx_mock: HTTPXMock,
+    auth: AzureJwtAuth,
+    generate_fake_token: Callable[[], str],
+):
+    """Test that an identity provider outage isn't reported as a bad token."""
+    httpx_mock.add_response(status_code=503)
+
+    with pytest.raises(HTTPException) as excinfo:
+        await auth.verify_token(generate_fake_token())
+    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert (
+        excinfo.value.detail == "Unable to fetch signing keys from identity provider."
+    )
+
+
 async def test_verify_token_no_keys(
     httpx_mock: HTTPXMock,
     auth: AzureJwtAuth,
