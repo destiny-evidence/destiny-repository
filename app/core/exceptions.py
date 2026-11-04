@@ -690,6 +690,10 @@ class DeduplicationValueError(DeduplicationError, ValueError):
         super().__init__(detail)
 
 
+class DeduplicationInputError(DeduplicationValueError):
+    """The reference's own data cannot be searched or scored."""
+
+
 class ParseError(DestinyRepositoryError):
     """An exception for when we fail to parse some input."""
 

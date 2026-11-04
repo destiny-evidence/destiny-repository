@@ -948,6 +948,11 @@ class ReferenceESRepository(
             msg = f"Candidate search unavailable ({exc.meta.status}): {exc}"
             raise ESError(msg) from exc
 
+        # Partial results are allowed and miss whatever the failed shards hold.
+        shards = getattr(response, "_shards", None)
+        if shards and shards.failed:
+            msg = f"Candidate search failed on {shards.failed} of {shards.total} shards"
+            raise ESError(msg)
         # A stopped search returns whichever documents the shards reached first,
         # so its hits say nothing about the best candidates.
         if getattr(response, "terminated_early", False):

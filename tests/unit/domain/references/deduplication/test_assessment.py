@@ -8,6 +8,7 @@ from opentelemetry.trace import StatusCode
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
 from app.core.exceptions import (
+    CandidateSearchTruncatedError,
     DeduplicationError,
     DeduplicationValueError,
     ESError,
@@ -631,6 +632,21 @@ async def test_evaluate_supplied_reports_retrieval_infrastructure_failure_per_re
     selector.side_effect = ESError("candidate search unavailable (503)")
 
     with pytest.raises(DeduplicationError):
+        await service.evaluate_supplied(incoming, _supplied_input(incoming))
+
+    assert pair_scorer.calls == []
+
+
+@pytest.mark.asyncio
+async def test_evaluate_supplied_passes_a_truncated_search_through():
+    """A bounded search is an outcome for the caller, not an infrastructure failure."""
+    incoming = _supplied_reference()
+    service, selector, _, pair_scorer = _build_service(_selection(), [], {})
+    selector.side_effect = CandidateSearchTruncatedError(
+        "stopped at the cap", bound="terminate_after", took_ms=10
+    )
+
+    with pytest.raises(CandidateSearchTruncatedError):
         await service.evaluate_supplied(incoming, _supplied_input(incoming))
 
     assert pair_scorer.calls == []

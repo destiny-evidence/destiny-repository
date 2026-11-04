@@ -141,9 +141,22 @@ class DeduplicationRoute(StrEnum):
     """A configured trusted identifier type matched, so Elasticsearch was never
     consulted."""
     CANDIDATE_SEARCH = auto()
-    """Candidates were retrieved and handed to the determinator."""
+    """Candidates were retrieved but not deduplicated."""
     DISABLED = auto()
     """Candidate search is switched off in this environment."""
+    AUTOMATIC_DECISION = auto()
+    """Candidates were retrieved and deduplicated."""
+
+
+class DeduplicationUnresolvedReason(StrEnum):
+    """Why an automatic decision was left unresolved."""
+
+    MULTIPLE_CLEARING = auto()
+    """More than one candidate matched."""
+    UNSCORABLE_CANDIDATE = auto()
+    """A candidate could not be scored."""
+    NON_CANONICAL_MATCH = auto()
+    """The only match is not canonical."""
 
 
 class DeepDeduplicationOutcome(StrEnum):
@@ -205,13 +218,9 @@ class DuplicateDetermination(StrEnum):
     CANONICAL = auto()
     """[TERMINAL] The reference is not a duplicate of another reference."""
     UNRESOLVED = auto()
-    """Automatic attempts to resolve the duplicate were unsuccessful."""
+    """Deduplication ran but could not reach a decision."""
     UNSEARCHABLE = auto()
-    """
-    [TERMINAL] The reference does not have sufficient metadata to be
-    automatically matched to other references, or the duplicate detection
-    process has been explicitly disabled.
-    """
+    """[TERMINAL] Deduplication could not be run for this reference."""
     DECOUPLED = auto()
     """
     A decision has been made, but needs further attention. This could

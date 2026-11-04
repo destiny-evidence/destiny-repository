@@ -281,6 +281,15 @@ class TestCandidateSearchBounds:
         assert raised.value.bound == bound
         assert raised.value.took_ms == 7
 
+    @pytest.mark.asyncio
+    async def test_a_search_missing_shards_raises_instead_of_returning_hits(
+        self, monkeypatch
+    ):
+        with pytest.raises(ESError, match="1 of 3 shards"):
+            await self._search(
+                monkeypatch, _response(_shards=SimpleNamespace(total=3, failed=1))
+            )
+
 
 class TestAnalyzeTitle:
     """Title analysis runs the inline chain against the reference index."""

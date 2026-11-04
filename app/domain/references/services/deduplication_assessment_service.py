@@ -10,7 +10,9 @@ from pydantic import ValidationError
 from sqlalchemy.exc import InterfaceError, OperationalError
 
 from app.core.exceptions import (
+    CandidateSearchTruncatedError,
     DeduplicationError,
+    DeduplicationInputError,
     DeduplicationNotFoundError,
     DeduplicationValueError,
     ESError,
@@ -204,12 +206,12 @@ def _trace_assessment(
 class ReferenceReader(Protocol):
     """Reference reads required by assessment orchestration."""
 
-    async def get_hydrated(
+    def get_hydrated(
         self,
         reference_ids: list[UUID],
         enhancement_types: list[str] | None = None,
         external_identifier_types: list[str] | None = None,
-    ) -> list[Reference]:
+    ) -> Awaitable[list[Reference]]:
         """Read full references with optional relationship filters."""
         ...
 
@@ -270,7 +272,7 @@ class DeduplicationAssessmentService:
             # ``from exc`` keeps the projection failure as the cause, so the message
             # does not need to restate it.
             msg = f"Cannot build a deduplication paper for {reference.id}"
-            raise DeduplicationValueError(msg) from exc
+            raise DeduplicationInputError(msg) from exc
 
     async def _hydrate_one(self, reference_id: UUID) -> Reference:
         """Read one stored reference, treating an empty result as not-found."""
@@ -306,7 +308,7 @@ class DeduplicationAssessmentService:
             )
         except ValidationError as exc:
             msg = f"Cannot build a candidate query for {reference_id}: {exc}"
-            raise DeduplicationValueError(msg) from exc
+            raise DeduplicationInputError(msg) from exc
         return await self._assess(
             reference,
             selection_input,
@@ -359,6 +361,9 @@ class DeduplicationAssessmentService:
                     hydrate=False,
                 )
             )
+        except CandidateSearchTruncatedError:
+            # Not an infrastructure failure: a retry would hit the same bound.
+            raise
         except INFRASTRUCTURE_ERRORS as exc:
             msg = f"Candidate retrieval failed ({type(exc).__name__}): {exc}"
             raise DeduplicationError(msg) from exc
