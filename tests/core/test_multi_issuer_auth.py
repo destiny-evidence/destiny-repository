@@ -1,6 +1,8 @@
 """Test multi-issuer JWT authentication (Azure AD + Keycloak)."""
 
+import base64
 import datetime
+import json
 import re
 from unittest.mock import Mock
 
@@ -97,6 +99,10 @@ def multi_issuer_auth(
 def fake_request() -> Request:
     """Create a fake request for testing."""
     return Request(scope={"type": "http", "path": "/test"})
+
+
+def _b64url(value: str) -> str:
+    return base64.urlsafe_b64encode(value.encode()).rstrip(b"=").decode()
 
 
 def _generate_azure_token(
@@ -222,6 +228,22 @@ class TestMultiIssuerAuth:
         with pytest.raises(HTTPException) as exc_info:
             await multi_issuer_auth(fake_request, credentials)
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+    @pytest.mark.parametrize("payload", ["not json", "[]", "null"])
+    async def test_non_object_payload(
+        self,
+        multi_issuer_auth: MultiIssuerJwtAuth,
+        fake_request: Request,
+        payload: str,
+    ) -> None:
+        """Well-formed compact token whose payload isn't a claims object gets 401."""
+        header = _b64url(json.dumps({"alg": "RS256"}))
+        credentials = Mock()
+        credentials.credentials = f"{header}.{_b64url(payload)}.signature"
+        with pytest.raises(HTTPException) as exc_info:
+            await multi_issuer_auth(fake_request, credentials)
+        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert exc_info.value.detail == "Unable to parse authentication token."
 
 
 class TestBuildJwtAuth:

@@ -138,6 +138,45 @@ async def test_verify_token_incorrect_claims(
     assert "aud=" in excinfo.value.detail
 
 
+async def test_verify_token_issued_in_future(
+    httpx_mock: HTTPXMock,
+    auth: AzureJwtAuth,
+    fake_public_key: dict,
+    generate_fake_token: Callable[[dict], str],
+):
+    """Test that the claim error names the failing claim, not just aud/iss."""
+    payload = {
+        "iat": datetime.datetime.now(datetime.UTC) + datetime.timedelta(minutes=5),
+    }
+    httpx_mock.add_response(json={"keys": [fake_public_key]})
+
+    token = generate_fake_token(payload)
+    with pytest.raises(HTTPException) as excinfo:
+        await auth.verify_token(token)
+    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "issued in the future" in excinfo.value.detail
+
+
+async def test_verify_token_skips_unparseable_jwks_entries(
+    httpx_mock: HTTPXMock,
+    auth: AzureJwtAuth,
+    fake_public_key: dict,
+    generate_fake_token: Callable[[dict], str],
+):
+    """Test that a bad key in the JWKS doesn't block verification with a good one."""
+    bad_keys = [
+        {"kid": "no-kty"},
+        {"kty": "RSA", "kid": "bad-n", "n": "not base64", "e": "AQAB"},
+        {"kty": "EC", "kid": "bad-crv", "crv": "P-999", "x": "a", "y": "b"},
+    ]
+    httpx_mock.add_response(json={"keys": [*bad_keys, fake_public_key]})
+
+    payload = {"sub": "test_subject"}
+    token = generate_fake_token(payload)
+    result = await auth.verify_token(token)
+    assert payload["sub"] == result["sub"]
+
+
 async def test_verify_token_no_keys(
     httpx_mock: HTTPXMock,
     auth: AzureJwtAuth,

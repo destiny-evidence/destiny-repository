@@ -27,17 +27,19 @@ from httpx import AsyncClient
 from joserfc import errors as joserfc_errors
 from joserfc import jws as joserfc_jws
 from joserfc import jwt as joserfc_jwt
-from joserfc.jwk import KeySet
+from joserfc.jwk import KeySet, import_key
 from opentelemetry import trace
 
 from app.core.config import get_settings
 from app.core.entitlements import Entitlement
 from app.core.exceptions import AuthError, NotFoundError
 from app.core.telemetry.attributes import Attributes
+from app.core.telemetry.logger import get_logger
 
 CACHE_TTL = 60 * 60 * 24  # 24 hours
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 # Dependency to get the token from the Authorization header
 # `auto_error=False` allows us to provide a more meaningful error message
@@ -274,7 +276,13 @@ class CachingStrategyAuth(StrategyAuth):
 
 def _unverified_claims(token: str) -> dict[str, Any]:
     """Read a token's claims without verifying its signature."""
-    return json.loads(joserfc_jws.extract_compact(token.encode()).payload)
+    try:
+        claims = json.loads(joserfc_jws.extract_compact(token.encode()).payload)
+    except ValueError as exc:
+        raise joserfc_errors.DecodeError from exc
+    if not isinstance(claims, dict):
+        raise joserfc_errors.DecodeError
+    return claims
 
 
 class AzureJwtAuth(JwtAuth):
@@ -377,7 +385,7 @@ class AzureJwtAuth(JwtAuth):
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=(
-                    f"Incorrect claims. "
+                    f"Incorrect claims ({exc.description}). "
                     f"Expected aud={self.api_audience}, got={unverified.get('aud')}. "
                     f"Expected iss={self.issuer}, got={unverified.get('iss')}"
                 ),
@@ -400,7 +408,18 @@ class AzureJwtAuth(JwtAuth):
     async def _get_microsoft_keys(self) -> KeySet:
         async with AsyncClient() as client:
             response = await client.get(f"{self.login_url}/discovery/v2.0/keys")
-            return KeySet.import_key_set(response.json())
+        # One key we can't parse shouldn't take down verification with the others
+        keys = []
+        for key_data in response.json()["keys"]:
+            try:
+                keys.append(import_key(key_data))
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Skipping unparseable key in Entra JWKS",
+                    kid=key_data.get("kid"),
+                    exc_info=True,
+                )
+        return KeySet(keys)
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> SubjectType:
         # Delegated (user) token: check scopes
