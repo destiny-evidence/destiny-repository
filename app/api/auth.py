@@ -285,7 +285,124 @@ def _unverified_claims(token: str) -> dict[str, Any]:
     return claims
 
 
-class AzureJwtAuth(JwtAuth):
+class JwksJwtAuth(JwtAuth, ABC):
+    """Verifies RS256 JWTs against the signing keys an identity provider publishes."""
+
+    def __init__(
+        self, issuer: str, audience: str, jwks_uri: str, cache_ttl: int
+    ) -> None:
+        """
+        Initialize the verifier.
+
+        Args:
+            issuer: The expected ``iss`` claim
+            audience: The expected ``aud`` claim
+            jwks_uri: Where the identity provider publishes its signing keys
+            cache_ttl: Time to live for the cached signing keys, in seconds
+
+        """
+        self.issuer = issuer
+        self.audience = audience
+        self.jwks_uri = jwks_uri
+        self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
+        self._claims_registry = joserfc_jwt.JWTClaimsRegistry(
+            iss={"essential": True, "value": issuer},
+            aud={"essential": True, "value": audience},
+        )
+
+    async def verify_token(self, token: str) -> dict[str, Any]:
+        """
+        Verify the token's signature and claims against the provider's keys.
+
+        Args:
+            token: The JWT to be verified
+
+        Returns:
+            The decoded token payload
+
+        Raises:
+            AuthError: If token verification fails
+
+        """
+        jwks = self.cache.get("jwks")
+        cached_jwks = bool(jwks)
+
+        if not jwks:
+            try:
+                jwks = await self._get_keys()
+            except Exception as exc:
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to fetch signing keys from identity provider.",
+                ) from exc
+            self.cache["jwks"] = jwks
+
+        try:
+            decoded = joserfc_jwt.decode(token, jwks, algorithms=["RS256"])
+            self._claims_registry.validate(decoded.claims)
+            return dict(decoded.claims)
+
+        except joserfc_errors.ExpiredTokenError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
+            ) from exc
+
+        except joserfc_errors.ClaimError as exc:
+            unverified = _unverified_claims(token)
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    f"Incorrect claims ({exc.description}). "
+                    f"Expected aud={self.audience}, got={unverified.get('aud')}. "
+                    f"Expected iss={self.issuer}, got={unverified.get('iss')}"
+                ),
+            ) from exc
+
+        # Only these can mean the cached keys are stale, so junk tokens don't refetch
+        except (
+            joserfc_errors.InvalidKeyIdError,
+            joserfc_errors.BadSignatureError,
+        ) as exc:
+            if cached_jwks:
+                self.cache.pop("jwks", None)
+                return await self.verify_token(token)
+            if isinstance(exc, joserfc_errors.InvalidKeyIdError):
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to find appropriate key.",
+                ) from exc
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
+        except joserfc_errors.JoseError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
+    async def _get_keys(self) -> KeySet:
+        async with AsyncClient() as client:
+            response = await client.get(self.jwks_uri)
+            response.raise_for_status()
+        # One key we can't parse shouldn't take down verification with the others
+        keys = []
+        for key_data in response.json()["keys"]:
+            try:
+                keys.append(import_key(key_data))
+            except Exception:  # noqa: BLE001
+                logger.warning(
+                    "Skipping unparseable key in JWKS",
+                    jwks_uri=self.jwks_uri,
+                    kid=key_data.get("kid"),
+                    exc_info=True,
+                )
+        return KeySet(keys)
+
+
+class AzureJwtAuth(JwksJwtAuth):
     """
     AuthMethod for authorizing requests using the JWT provided by Azure.
 
@@ -336,101 +453,15 @@ class AzureJwtAuth(JwtAuth):
         cache_ttl (int): Time to live for cache entries, defaults to 24 hours.
 
         """
-        self.api_audience = application_id
+        login_url = settings.azure_login_url.rstrip("/")
+        super().__init__(
+            issuer=f"{login_url}/v2.0",
+            audience=application_id,
+            jwks_uri=f"{login_url}/discovery/v2.0/keys",
+            cache_ttl=cache_ttl,
+        )
         self.scope = scope
         self.role = role
-        self.login_url = settings.azure_login_url.rstrip("/")
-        self.issuer = f"{self.login_url}/v2.0"
-        self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
-
-        self._claims_registry = joserfc_jwt.JWTClaimsRegistry(
-            iss={"essential": True, "value": self.issuer},
-            aud={"essential": True, "value": self.api_audience},
-        )
-
-    async def verify_token(self, token: str) -> dict[str, Any]:
-        """
-        Verify the token using the JWKS fetched from the Microsoft Entra endpoint.
-
-        Args:
-        token (str): The JWT to be verified
-
-        """
-        jwks = self.cache.get("jwks")
-        cached_jwks = bool(jwks)
-
-        if not jwks:
-            try:
-                jwks = await self._get_microsoft_keys()
-            except Exception as exc:
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unable to fetch signing keys from identity provider.",
-                ) from exc
-            self.cache["jwks"] = jwks
-
-        try:
-            decoded = joserfc_jwt.decode(token, jwks, algorithms=["RS256"])
-            self._claims_registry.validate(decoded.claims)
-            return dict(decoded.claims)
-
-        except joserfc_errors.ExpiredTokenError as exc:
-            raise AuthError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
-            ) from exc
-
-        except joserfc_errors.ClaimError as exc:
-            unverified = _unverified_claims(token)
-            raise AuthError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=(
-                    f"Incorrect claims ({exc.description}). "
-                    f"Expected aud={self.api_audience}, got={unverified.get('aud')}. "
-                    f"Expected iss={self.issuer}, got={unverified.get('iss')}"
-                ),
-            ) from exc
-
-        # Only these can mean the cached keys are stale, so junk tokens don't refetch
-        except (
-            joserfc_errors.InvalidKeyIdError,
-            joserfc_errors.BadSignatureError,
-        ) as exc:
-            if cached_jwks:
-                self.cache.pop("jwks", None)
-                return await self.verify_token(token)
-            if isinstance(exc, joserfc_errors.InvalidKeyIdError):
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unable to find appropriate key.",
-                ) from exc
-            raise AuthError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unable to parse authentication token.",
-            ) from exc
-
-        except joserfc_errors.JoseError as exc:
-            raise AuthError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unable to parse authentication token.",
-            ) from exc
-
-    async def _get_microsoft_keys(self) -> KeySet:
-        async with AsyncClient() as client:
-            response = await client.get(f"{self.login_url}/discovery/v2.0/keys")
-            response.raise_for_status()
-        # One key we can't parse shouldn't take down verification with the others
-        keys = []
-        for key_data in response.json()["keys"]:
-            try:
-                keys.append(import_key(key_data))
-            except Exception:  # noqa: BLE001
-                logger.warning(
-                    "Skipping unparseable key in Entra JWKS",
-                    kid=key_data.get("kid"),
-                    exc_info=True,
-                )
-        return KeySet(keys)
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> SubjectType:
         # Delegated (user) token: check scopes
@@ -488,12 +519,11 @@ class AzureJwtAuth(JwtAuth):
         return derive_entitlements(subject_type, frozenset(scopes | roles))
 
 
-class KeycloakJwtAuth(JwtAuth):
+class KeycloakJwtAuth(JwksJwtAuth):
     """
     AuthMethod for authorizing requests using JWTs issued by Keycloak.
 
     Similar to AzureJwtAuth but configured for Keycloak's OIDC endpoints.
-    Uses joserfc for JWT verification and JWKS handling.
 
     Authorization is the set of client roles held on ``client_id``.
 
@@ -544,87 +574,17 @@ class KeycloakJwtAuth(JwtAuth):
                 different URL than the internal JWKS endpoint (e.g., in Docker).
 
         """
-        self.keycloak_url = keycloak_url.rstrip("/")
-        self.realm = realm
+        keycloak_url = keycloak_url.rstrip("/")
+        issuer_base = (issuer_url or keycloak_url).rstrip("/")
+        super().__init__(
+            issuer=f"{issuer_base}/realms/{realm}",
+            audience=client_id,
+            jwks_uri=f"{keycloak_url}/realms/{realm}/protocol/openid-connect/certs",
+            cache_ttl=cache_ttl,
+        )
         self.client_id = client_id
         self.scope = scope
         self.role = role
-        self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
-
-        issuer_base = (issuer_url or keycloak_url).rstrip("/")
-        self.issuer = f"{issuer_base}/realms/{self.realm}"
-        self.jwks_uri = (
-            f"{self.keycloak_url}/realms/{self.realm}/protocol/openid-connect/certs"
-        )
-
-        self._claims_registry = joserfc_jwt.JWTClaimsRegistry(
-            iss={"essential": True, "value": self.issuer},
-            aud={"essential": True, "value": self.client_id},
-        )
-
-    async def verify_token(self, token: str) -> dict[str, Any]:
-        """
-        Verify the token using JWKS fetched from Keycloak.
-
-        Uses joserfc for JWT decoding and JWKS key matching.
-
-        Args:
-            token: The JWT to be verified
-
-        Returns:
-            The decoded token payload
-
-        Raises:
-            AuthError: If token verification fails
-
-        """
-        jwks = self.cache.get("jwks")
-        cached_jwks = bool(jwks)
-
-        if not jwks:
-            try:
-                jwks = await self._get_keycloak_keys()
-            except Exception as exc:
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unable to fetch signing keys from identity provider.",
-                ) from exc
-            self.cache["jwks"] = jwks
-
-        try:
-            decoded = joserfc_jwt.decode(token, jwks, algorithms=["RS256"])
-            self._claims_registry.validate(decoded.claims)
-            return dict(decoded.claims)
-
-        except joserfc_errors.ExpiredTokenError as exc:
-            raise AuthError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
-            ) from exc
-
-        except joserfc_errors.InvalidClaimError as exc:
-            raise AuthError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=f"Invalid token claims: {exc}",
-            ) from exc
-
-        except joserfc_errors.JoseError as exc:
-            # If we had cached JWKS and verification failed,
-            # try refreshing the keys (key rotation)
-            if cached_jwks:
-                self.cache.pop("jwks", None)
-                return await self.verify_token(token)
-            raise AuthError(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Unable to parse authentication token.",
-            ) from exc
-
-    async def _get_keycloak_keys(self) -> KeySet:
-        """Fetch and import JWKS from Keycloak's OIDC endpoint."""
-        async with AsyncClient() as client:
-            response = await client.get(self.jwks_uri)
-            response.raise_for_status()
-            return KeySet.import_key_set(response.json())
 
     def _extract_roles(self, verified_claims: dict[str, Any]) -> frozenset[str]:
         """
@@ -707,7 +667,7 @@ class MultiIssuerJwtAuth(JwtAuth):
         Initialize multi-issuer auth with both Azure AD and Keycloak validators.
 
         Issuer patterns are derived from the auth instances themselves:
-        - Azure: ``{login_url}/v2.0`` (matching AzureJwtAuth.verify_token)
+        - Azure: ``azure_auth.issuer`` (set during AzureJwtAuth.__init__)
         - Keycloak: ``keycloak_auth.issuer`` (set during KeycloakJwtAuth.__init__)
 
         Args:

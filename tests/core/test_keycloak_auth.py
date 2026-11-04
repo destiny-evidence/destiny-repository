@@ -261,7 +261,45 @@ async def test_verify_token_incorrect_audience(
     with pytest.raises(HTTPException) as excinfo:
         await auth.verify_token(token)
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "Invalid token claims" in excinfo.value.detail
+    assert "Incorrect claims" in excinfo.value.detail
+
+
+async def test_verify_token_missing_claim_does_not_refresh_cached_jwks(
+    httpx_mock: HTTPXMock,
+    auth: KeycloakJwtAuth,
+    fake_public_key: dict,
+    fake_keycloak_url: str,
+    fake_realm: str,
+):
+    """Test that a token missing a required claim gets the claims error."""
+    auth.cache["jwks"] = KeySet.import_key_set({"keys": [fake_public_key]})
+    now = int(datetime.datetime.now(datetime.UTC).timestamp())
+    token = joserfc_jwt.encode(
+        {"alg": "RS256", "kid": _test_private_key["kid"]},
+        {"iss": f"{fake_keycloak_url}/realms/{fake_realm}", "exp": now + 600},
+        RSAKey.import_key(_test_private_key),
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await auth.verify_token(token)
+    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert "Incorrect claims" in excinfo.value.detail
+    assert len(httpx_mock.get_requests()) == 0
+
+
+async def test_verify_token_malformed_does_not_refresh_cached_jwks(
+    httpx_mock: HTTPXMock,
+    auth: KeycloakJwtAuth,
+    fake_public_key: dict,
+):
+    """Test that a token that isn't a JWT fails without refetching keys."""
+    auth.cache["jwks"] = KeySet.import_key_set({"keys": [fake_public_key]})
+
+    with pytest.raises(HTTPException) as excinfo:
+        await auth.verify_token("garbage")
+    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert excinfo.value.detail == "Unable to parse authentication token."
+    assert len(httpx_mock.get_requests()) == 0
 
 
 async def test_verify_token_jwks_retry(
@@ -304,7 +342,7 @@ async def test_verify_token_parse_failure_after_retry(
 
     assert len(httpx_mock.get_requests()) == 1
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
-    assert "Unable to parse authentication token" in excinfo.value.detail
+    assert excinfo.value.detail == "Unable to find appropriate key."
 
 
 async def test_requires_role_success(
