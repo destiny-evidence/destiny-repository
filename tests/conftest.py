@@ -10,7 +10,8 @@ from typing import Any
 import pytest
 from alembic.command import upgrade
 from elasticsearch import AsyncElasticsearch
-from jose import jwt
+from joserfc import jwt as joserfc_jwt
+from joserfc.jwk import RSAKey
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
@@ -209,11 +210,10 @@ def generate_fake_token(
         elif role:
             payload["roles"] = [role]
 
-        return jwt.encode(
+        return joserfc_jwt.encode(
+            {"alg": "RS256", "kid": _fake_private_key["kid"]},
             payload,
-            _fake_private_key,
-            algorithm="RS256",
-            headers={"kid": _fake_private_key["kid"]},
+            RSAKey.import_key(_fake_private_key),
         )
 
     return __generate_token

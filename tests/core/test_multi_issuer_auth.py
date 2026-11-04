@@ -6,7 +6,6 @@ from unittest.mock import Mock
 
 import pytest
 from fastapi import HTTPException, Request, status
-from jose import jwt as jose_jwt
 from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import RSAKey
 from pytest_httpx import HTTPXMock
@@ -119,12 +118,9 @@ def _generate_azure_token(
         payload["scp"] = scope
     elif role:
         payload["roles"] = [role]
-    return jose_jwt.encode(
-        payload,
-        _test_private_key,
-        algorithm="RS256",
-        headers={"kid": _test_private_key["kid"]},
-    )
+    private_key = RSAKey.import_key(_test_private_key)
+    header = {"alg": "RS256", "kid": _test_private_key["kid"]}
+    return joserfc_jwt.encode(header, payload, private_key)
 
 
 def _generate_keycloak_token(
