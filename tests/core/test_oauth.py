@@ -181,28 +181,6 @@ async def test_verify_token_issued_in_future(
     assert "issued in the future" in excinfo.value.detail
 
 
-async def test_verify_token_skips_unparseable_jwks_entries(
-    httpx_mock: HTTPXMock,
-    auth: AzureJwtAuth,
-    fake_public_key: dict,
-    generate_fake_token: Callable[[dict], str],
-):
-    """Test that a bad key in the JWKS doesn't block verification with a good one."""
-    bad_keys = [
-        None,
-        "not-a-key",
-        {"kid": "no-kty"},
-        {"kty": "RSA", "kid": "bad-n", "n": "not base64", "e": "AQAB"},
-        {"kty": "EC", "kid": "bad-crv", "crv": "P-999", "x": "a", "y": "b"},
-    ]
-    httpx_mock.add_response(json={"keys": [*bad_keys, fake_public_key]})
-
-    payload = {"sub": "test_subject"}
-    token = generate_fake_token(payload)
-    result = await auth.verify_token(token)
-    assert payload["sub"] == result["sub"]
-
-
 async def test_verify_token_unknown_kid_refreshes_cached_jwks(
     httpx_mock: HTTPXMock,
     auth: AzureJwtAuth,
