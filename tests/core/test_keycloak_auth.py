@@ -1,6 +1,8 @@
 """Test Keycloak JWT authentication."""
 
+import base64
 import datetime
+import json
 from enum import StrEnum
 from typing import Protocol
 from unittest.mock import Mock
@@ -223,6 +225,26 @@ async def test_verify_token_invalid(
         await auth.verify_token("sample.jwt.token")
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Unable to parse authentication token" in excinfo.value.detail
+
+
+async def test_verify_token_malformed_header(
+    httpx2_mock: HTTPXMock,
+    auth: KeycloakJwtAuth,
+    fake_public_key: dict,
+):
+    """Test that a header joserfc can't handle gets a 401, not a server error."""
+    auth.cache["jwks"] = KeySet.import_key_set({"keys": [fake_public_key]})
+    header = {"alg": "RS256", "kid": fake_public_key["kid"], "crit": 5}
+    segments = (json.dumps(header), json.dumps({"iss": auth.issuer}))
+    token = ".".join(
+        base64.urlsafe_b64encode(s.encode()).rstrip(b"=").decode() for s in segments
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        await auth.verify_token(f"{token}.signature")
+    assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
+    assert excinfo.value.detail == "Unable to parse authentication token."
+    assert len(httpx2_mock.get_requests()) == 0
 
 
 async def test_verify_token_expired(
