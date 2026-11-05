@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import httpx
+import httpx2
 from fastapi import status
 
 
@@ -20,12 +20,12 @@ def check_signed_url(
     :rtype: str | None
     """
     try:
-        with httpx.Client() as client:
+        with httpx2.Client() as client:
             response = client.get(url)
             if response.status_code == status.HTTP_200_OK:
                 return None
             return response.text
-    except httpx.RequestError as e:
+    except httpx2.RequestError as e:
         return str(e)
 
 

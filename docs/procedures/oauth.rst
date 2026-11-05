@@ -145,7 +145,7 @@ The API base URL for each environment is as follows:
 Using the SDK
 ^^^^^^^^^^^^^
 
-Again, we recommend using the :doc:`SDK <../sdk/client>` to make API requests, as it will handle including the token for you. Some endpoints will have convenience methods available, otherwise you can access the underlying ``httpx`` client directly.
+Again, we recommend using the :doc:`SDK <../sdk/client>` to make API requests, as it will handle including the token for you. Some endpoints will have convenience methods available, otherwise you can access the underlying ``httpx2`` client directly.
 
 .. autoclass:: destiny_sdk.client.OAuthClient
     :no-index:

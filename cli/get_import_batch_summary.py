@@ -4,7 +4,7 @@
 from uuid import UUID
 
 import destiny_sdk
-import httpx
+import httpx2
 from fastapi import status
 from pydantic import ValidationError
 
@@ -12,7 +12,7 @@ from cli.client import ApiArgumentParser
 
 
 def check_import_batch_status(
-    client: httpx.Client, import_record_id: UUID, import_batch_id: UUID
+    client: httpx2.Client, import_record_id: UUID, import_batch_id: UUID
 ) -> destiny_sdk.imports.ImportBatchSummary:
     """Check the status of an import batch."""
     response = client.get(
@@ -21,7 +21,7 @@ def check_import_batch_status(
 
     if response.status_code >= status.HTTP_400_BAD_REQUEST:
         msg = response.json()["detail"]
-        raise httpx.HTTPError(msg)
+        raise httpx2.HTTPError(msg)
 
     return destiny_sdk.imports.ImportBatchSummary.model_validate(response.json())
 
@@ -59,5 +59,5 @@ if __name__ == "__main__":
 
         print(import_batch_summary)
 
-    except (httpx.HTTPError, ValidationError) as exc:
+    except (httpx2.HTTPError, ValidationError) as exc:
         print(f"Getting batch summary failed: {exc}")

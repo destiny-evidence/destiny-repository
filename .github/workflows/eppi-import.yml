@@ -37,7 +37,7 @@ jobs:
         run: pip install -e libs/sdk
 
       - name: Install dependencies
-        run: pip install httpx
+        run: pip install httpx2
 
       - name: Download input file and count references
         id: download_and_count

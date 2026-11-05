@@ -28,7 +28,7 @@ import os
 import time
 
 import destiny_sdk
-import httpx
+import httpx2
 from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
 
 if __name__ == "__main__":
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     CONTAINER_NAME = os.environ["CONTAINER_NAME"]
     API_HOST = os.getenv("API_HOST", "http://127.0.0.1:8000")
 
-    with httpx.Client(
+    with httpx2.Client(
         base_url=API_HOST,
         headers={"Authorization": f"Bearer {os.environ['ACCESS_TOKEN']}"},
     ) as client:

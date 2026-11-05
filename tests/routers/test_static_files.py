@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 from fastapi import FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 from app.api.root import mount_static_files
 

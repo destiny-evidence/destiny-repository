@@ -4,7 +4,7 @@ import json
 import time
 from uuid import UUID, uuid7
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.auth import TOKEN_EXPIRED_MESSAGE
 from destiny_sdk.client import (
@@ -32,7 +32,7 @@ from msal import (
     PublicClientApplication,
 )
 from pydantic import HttpUrl, SecretStr
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 
 
 @pytest.fixture
@@ -68,7 +68,7 @@ class TestRobotClient:
 
     def test_verify_hmac_headers_sent(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         frozen_time,
     ) -> None:
         """Test that robot enhancement batch result request is authorized."""
@@ -96,7 +96,7 @@ class TestRobotClient:
             timestamp=time.time(),
         )
 
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=fake_destiny_repository_url
             + "/robot-enhancement-batches/"
             + f"{fake_batch_result.request_id}/results/",
@@ -117,7 +117,7 @@ class TestRobotClient:
             robot_enhancement_batch_result=fake_batch_result,
         )
 
-        callback_request = httpx_mock.get_requests()
+        callback_request = httpx2_mock.get_requests()
         assert len(callback_request) == 1
 
 
@@ -129,18 +129,18 @@ class TestOAuthClient:
         # Auth is required; use a no-op stand-in so tests focus on request shape,
         # not authentication. AzureOAuthMiddleware/KeycloakOAuthMiddleware are
         # exercised separately below.
-        return OAuthClient(base_url=base_url, auth=httpx.BasicAuth("user", "pass"))
+        return OAuthClient(base_url=base_url, auth=httpx2.BasicAuth("user", "pass"))
 
     def test_search(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
         test_reference_id: UUID,
         mock_reference_response: dict,
     ) -> None:
         """Test that search builds the expected request and parses results."""
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=f"{base_url}/v1/references/search/?q=test+query&page=1",
             method="GET",
             json={
@@ -167,14 +167,14 @@ class TestOAuthClient:
 
     def test_search_with_filters(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
         mock_reference_response: dict,
     ) -> None:
         """Test search with year filters, annotations, and sorting."""
-        httpx_mock.add_response(
-            url=f"{base_url}/v1/references/search/?q=test&page=2&start_year=2020&end_year=2023&annotation=inclusion:destiny&annotation=taxonomy:biology&annotation=inclusion:otherdomain@0.5&sort=-year",
+        httpx2_mock.add_response(
+            url=f"{base_url}/v1/references/search/?q=test&page=2&start_year=2020&end_year=2023&annotation=inclusion:destiny&annotation=taxonomy/biology&annotation=inclusion/otherdomain@0.5&sort=-year",
             method="GET",
             json={
                 "references": [mock_reference_response],
@@ -209,13 +209,13 @@ class TestOAuthClient:
 
     def test_search_with_concept_filters(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
         mock_reference_response: dict,
     ) -> None:
         """Concepts: strings pass through, tuples join with comma for OR semantics."""
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=(
                 f"{base_url}/v1/references/search/?q=test&page=1"
                 "&concept=https://vocab.example.org/A"
@@ -242,13 +242,13 @@ class TestOAuthClient:
 
     def test_lookup(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
         test_reference_id: UUID,
     ) -> None:
         """Test lookup references by identifiers."""
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=f"{base_url}/v1/references/?identifier=doi%3A10.1234%2Ftest%2Cpm_id%3A123456%2C{test_reference_id}",
             method="GET",
             json=[
@@ -281,7 +281,7 @@ class TestOAuthClient:
 
     def test_request_search_enhancement(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
     ) -> None:
@@ -293,7 +293,7 @@ class TestOAuthClient:
             search_status=EnhancementRequestSearchStatus.PENDING,
             request_status=EnhancementRequestStatus.RECEIVED,
         )
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=f"{base_url}/v1/enhancement-requests/search/?dry_run=false",
             method="POST",
             status_code=202,
@@ -312,12 +312,12 @@ class TestOAuthClient:
 
     def test_request_search_enhancement_dry_run(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
     ) -> None:
         """A dry run returns the exact (uncapped) match count without creating one."""
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=f"{base_url}/v1/enhancement-requests/search/?dry_run=true",
             method="POST",
             status_code=200,
@@ -338,7 +338,7 @@ class TestOAuthClient:
 
     def test_get_search_enhancement_request(
         self,
-        httpx_mock: HTTPXMock,
+        httpx2_mock: HTTPXMock,
         oauth_client: OAuthClient,
         base_url: str,
     ) -> None:
@@ -353,7 +353,7 @@ class TestOAuthClient:
             n_enhancements_requested=42,
             enhancement_status_counts={"pending": 40, "completed": 2},
         )
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=f"{base_url}/v1/enhancement-requests/search/{request_id}/",
             method="GET",
             json=expected.model_dump(mode="json"),
@@ -366,17 +366,17 @@ class TestOAuthClient:
         assert result.search_status == EnhancementRequestSearchStatus.COMPLETED
 
     def test_handles_error_responses(
-        self, httpx_mock: HTTPXMock, oauth_client: OAuthClient, base_url: str
+        self, httpx2_mock: HTTPXMock, oauth_client: OAuthClient, base_url: str
     ) -> None:
         """Test that client properly handles error responses."""
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=f"{base_url}/v1/references/search/?q=test&page=1",
             method="GET",
             status_code=400,
             json={"detail": "Invalid query parameter"},
         )
 
-        with pytest.raises(httpx.HTTPStatusError) as exc_info:
+        with pytest.raises(httpx2.HTTPStatusError) as exc_info:
             oauth_client.search(query="test")
 
         assert "400" in str(exc_info.value)
@@ -412,7 +412,7 @@ class TestOAuthClientEnvShortcut:
 
     def test_explicit_auth_overrides_env_default(self, base_url: str) -> None:
         """An explicit auth is preserved when env is also provided."""
-        custom_auth = httpx.BasicAuth("user", "pass")
+        custom_auth = httpx2.BasicAuth("user", "pass")
         client = OAuthClient(env="production", base_url=base_url, auth=custom_auth)
         assert client._client.auth is custom_auth  # noqa: SLF001
 
@@ -424,7 +424,7 @@ class TestOAuthClientEnvShortcut:
     def test_rejects_missing_base_url_when_env_omitted(self) -> None:
         """Without env, base_url must be provided explicitly even if auth is."""
         with pytest.raises(ValueError, match=r"^base_url required"):
-            OAuthClient(auth=httpx.BasicAuth("user", "pass"))
+            OAuthClient(auth=httpx2.BasicAuth("user", "pass"))
 
     def test_rejects_missing_auth_and_base_url(self) -> None:
         """When both are missing the error names both."""
@@ -488,7 +488,7 @@ class TestAzureOAuthMiddleware:
             )
 
         # Create a test request
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
 
         # Execute the auth flow
         flow = middleware.auth_flow(request)
@@ -518,7 +518,7 @@ class TestAzureOAuthMiddleware:
             )
 
         # Create a test request
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
 
         # Execute the auth flow
         flow = middleware.auth_flow(request)
@@ -562,7 +562,7 @@ class TestAzureOAuthMiddleware:
         assert not deprecations
 
         # Create a test request
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
 
         # Execute the auth flow
         flow = middleware.auth_flow(request)
@@ -596,14 +596,14 @@ class TestAzureOAuthMiddleware:
                 azure_application_id="test-app",
             )
 
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
 
         # Execute the auth flow
         flow = middleware.auth_flow(request)
         authenticated_request = next(flow)
 
         # Simulate token expiry response
-        expired_response = httpx.Response(
+        expired_response = httpx2.Response(
             status_code=401,
             json={"detail": TOKEN_EXPIRED_MESSAGE},
             request=authenticated_request,
@@ -622,12 +622,12 @@ class TestAzureOAuthMiddleware:
 class TestKeycloakOAuthMiddleware:
     """Tests for KeycloakOAuthMiddleware authentication."""
 
-    def test_client_credentials_auth_flow(self, httpx_mock: HTTPXMock) -> None:
+    def test_client_credentials_auth_flow(self, httpx2_mock: HTTPXMock) -> None:
         """Test Keycloak middleware auth flow with client credentials."""
         mock_token = "keycloak_cc_token_789"
 
         # Mock the Keycloak token endpoint
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
             method="POST",
             json={
@@ -645,7 +645,7 @@ class TestKeycloakOAuthMiddleware:
             client_secret=SecretStr("test-secret"),
         )
 
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
 
         flow = middleware.auth_flow(request)
         authenticated_request = next(flow)
@@ -653,9 +653,9 @@ class TestKeycloakOAuthMiddleware:
         assert "Authorization" in authenticated_request.headers
         assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
 
-    @pytest.mark.httpx_mock(can_send_already_matched_responses=True)
+    @pytest.mark.httpx2_mock(can_send_already_matched_responses=True)
     def test_client_credentials_reacquires_on_expiry(
-        self, httpx_mock: HTTPXMock
+        self, httpx2_mock: HTTPXMock
     ) -> None:
         """Test that client credentials middleware re-acquires token on 401."""
         initial_token = "keycloak_cc_token_initial"
@@ -665,7 +665,7 @@ class TestKeycloakOAuthMiddleware:
         def token_response(_request, **_kwargs):
             call_count["count"] += 1
             token = refreshed_token if call_count["count"] > 1 else initial_token
-            return httpx.Response(
+            return httpx2.Response(
                 200,
                 json={
                     "access_token": token,
@@ -675,7 +675,7 @@ class TestKeycloakOAuthMiddleware:
                 },
             )
 
-        httpx_mock.add_callback(
+        httpx2_mock.add_callback(
             token_response,
             url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
             method="POST",
@@ -688,7 +688,7 @@ class TestKeycloakOAuthMiddleware:
             client_secret=SecretStr("test-secret"),
         )
 
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
 
         flow = middleware.auth_flow(request)
         authenticated_request = next(flow)
@@ -698,7 +698,7 @@ class TestKeycloakOAuthMiddleware:
         )
 
         # Simulate token expiry
-        expired_response = httpx.Response(
+        expired_response = httpx2.Response(
             status_code=401,
             json={"detail": TOKEN_EXPIRED_MESSAGE},
             request=authenticated_request,
@@ -713,10 +713,10 @@ class TestKeycloakOAuthMiddleware:
 class TestOAuthMiddleware:
     """Tests for the OAuthMiddleware router."""
 
-    def test_routes_to_keycloak_on_auth_url(self, httpx_mock: HTTPXMock) -> None:
+    def test_routes_to_keycloak_on_auth_url(self, httpx2_mock: HTTPXMock) -> None:
         """Keycloak kwargs route through to KeycloakOAuthMiddleware."""
         mock_token = "router_keycloak_token"
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url="http://localhost:8080/realms/destiny/protocol/openid-connect/token",
             method="POST",
             json={
@@ -736,7 +736,7 @@ class TestOAuthMiddleware:
 
         assert isinstance(middleware._inner, KeycloakOAuthMiddleware)  # noqa: SLF001
 
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
         flow = middleware.auth_flow(request)
         authenticated_request = next(flow)
         assert authenticated_request.headers["Authorization"] == f"Bearer {mock_token}"
@@ -767,7 +767,7 @@ class TestOAuthMiddleware:
 
         assert isinstance(middleware._inner, AzureOAuthMiddleware)  # noqa: SLF001
 
-        request = httpx.Request("GET", "https://api.example.com/test")
+        request = httpx2.Request("GET", "https://api.example.com/test")
         flow = middleware.auth_flow(request)
         authenticated_request = next(flow)
         assert (
@@ -899,13 +899,13 @@ def _build_azure_middleware(monkeypatch) -> AzureOAuthMiddleware:
 )
 def test_token_refresh_through_real_client(monkeypatch, build_middleware) -> None:
     """
-    Renewal must work through httpx's full auth flow on a streamed response.
+    Renewal must work through httpx2's full auth flow on a streamed response.
 
-    This drives a real ``httpx.Client`` with an unread, streamed response to
+    This drives a real ``httpx2.Client`` with an unread, streamed response to
     catch that regression, across both OAuth middlewares.
     """
 
-    class _Stream(httpx.SyncByteStream):
+    class _Stream(httpx2.SyncByteStream):
         def __init__(self, data: bytes) -> None:
             self._data = data
 
@@ -915,8 +915,8 @@ def test_token_refresh_through_real_client(monkeypatch, build_middleware) -> Non
         def close(self) -> None:
             pass
 
-    def streamed(status_code: int, payload: dict) -> httpx.Response:
-        return httpx.Response(
+    def streamed(status_code: int, payload: dict) -> httpx2.Response:
+        return httpx2.Response(
             status_code,
             headers={"Content-Type": "application/json"},
             stream=_Stream(json.dumps(payload).encode()),
@@ -924,7 +924,7 @@ def test_token_refresh_through_real_client(monkeypatch, build_middleware) -> Non
 
     server_requests = {"count": 0}
 
-    def handler(_request: httpx.Request) -> httpx.Response:
+    def handler(_request: httpx2.Request) -> httpx2.Response:
         server_requests["count"] += 1
         if server_requests["count"] == 1:
             return streamed(401, {"detail": TOKEN_EXPIRED_MESSAGE})
@@ -944,7 +944,7 @@ def test_token_refresh_through_real_client(monkeypatch, build_middleware) -> Non
     # Bypass real token acquisition; only the auth_flow retry logic is under test.
     middleware._get_token = fake_get_token  # noqa: SLF001
 
-    client = httpx.Client(transport=httpx.MockTransport(handler), auth=middleware)
+    client = httpx2.Client(transport=httpx2.MockTransport(handler), auth=middleware)
     response = client.get("https://api.example.com/test")
 
     assert response.status_code == 200

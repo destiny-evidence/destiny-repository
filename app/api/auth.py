@@ -23,7 +23,7 @@ import destiny_sdk
 from cachetools import TTLCache
 from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from httpx import AsyncClient
+from httpx2 import AsyncClient
 from joserfc import errors as joserfc_errors
 from joserfc import jws as joserfc_jws
 from joserfc import jwt as joserfc_jwt

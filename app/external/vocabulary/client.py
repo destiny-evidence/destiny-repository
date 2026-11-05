@@ -2,12 +2,12 @@
 
 from functools import lru_cache
 
-import httpx
+import httpx2
 import tenacity
 from async_lru import alru_cache
 from cachetools import LRUCache
 from opentelemetry import trace
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
 from rdflib import Graph, URIRef
 from rdflib.namespace import RDF, SKOS
 
@@ -46,7 +46,7 @@ class VocabularyArtifactClient:
 
         try:
             response = await self._fetch(uri)
-        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+        except (httpx2.HTTPStatusError, httpx2.TransportError) as exc:
             raise VocabularyFetchError(uri, repr(exc)) from exc
 
         try:
@@ -73,7 +73,7 @@ class VocabularyArtifactClient:
 
         try:
             response = await self._fetch(uri)
-        except (httpx.HTTPStatusError, httpx.TransportError) as exc:
+        except (httpx2.HTTPStatusError, httpx2.TransportError) as exc:
             raise VocabularyFetchError(uri, repr(exc)) from exc
 
         try:
@@ -152,7 +152,7 @@ class VocabularyArtifactClient:
         return _build_concept_scheme_members(await self.get_vocabulary(uri))
 
     @tenacity.retry(
-        retry=tenacity.retry_if_exception_type(httpx.TransportError),
+        retry=tenacity.retry_if_exception_type(httpx2.TransportError),
         wait=tenacity.wait_exponential(multiplier=1, max=30),
         stop=tenacity.stop_after_attempt(3),
         reraise=True,
@@ -162,7 +162,7 @@ class VocabularyArtifactClient:
             exc=repr(rs.outcome.exception()) if rs.outcome else None,
         ),
     )
-    async def _fetch(self, uri: str) -> httpx.Response:
+    async def _fetch(self, uri: str) -> httpx2.Response:
         """
         Fetch a document over HTTP with retries and instrumentation.
 
@@ -173,11 +173,11 @@ class VocabularyArtifactClient:
             "vocabulary_artifact_client.fetch",
             attributes={"vocabulary.uri": uri},
         ):
-            async with httpx.AsyncClient(
+            async with httpx2.AsyncClient(
                 follow_redirects=True,
                 max_redirects=1,
             ) as client:
-                HTTPXClientInstrumentor().instrument_client(client)
+                HTTPX2ClientInstrumentor().instrument_client(client)
                 response = await client.get(uri)
                 response.raise_for_status()
             return response

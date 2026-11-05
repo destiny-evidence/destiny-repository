@@ -3,7 +3,7 @@
 from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.enhancements import Authorship
 from destiny_sdk.identifiers import DOIIdentifier
@@ -61,7 +61,7 @@ async def _count_duplicate_decisions(pg_session: AsyncSession) -> int:
 
 
 async def test_candidates_inline_unions_es_and_identifier_without_persisting(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -128,7 +128,7 @@ async def test_candidates_inline_unions_es_and_identifier_without_persisting(  #
 
 
 async def test_candidates_by_reference_id_is_searchable_and_read_only(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -165,7 +165,7 @@ async def test_candidates_by_reference_id_is_searchable_and_read_only(
 
 
 async def test_candidates_identifier_only_input_matches_despite_unsearchable(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -207,7 +207,7 @@ async def test_candidates_identifier_only_input_matches_despite_unsearchable(  #
 
 
 async def test_candidates_unsearchable_returns_empty_200(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
 ):
     """A record without enough bibliographic signal returns empty candidates."""
     response = await destiny_client_v1.post(
@@ -222,7 +222,7 @@ async def test_candidates_unsearchable_returns_empty_200(
 
 
 async def test_candidates_year_optional_policy_admits_missing_year(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
 ):
     """The year-optional policy admits a title+authors input that lacks a year."""
     payload = {"input": {"title": "A title without a year", "authors": ["Jane Doe"]}}
@@ -242,7 +242,7 @@ async def test_candidates_year_optional_policy_admits_missing_year(
 
 
 async def test_candidates_invalid_identifier_returns_422(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
 ):
     """A malformed identifier value fails normalisation with a 422."""
     response = await destiny_client_v1.post(
@@ -257,7 +257,7 @@ async def test_candidates_invalid_identifier_returns_422(
 
 
 async def test_candidates_rejects_removed_include_identifier_matches(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
 ):
     """The retired include_identifier_matches flag is now an unknown field (422)."""
     response = await destiny_client_v1.post(
@@ -271,7 +271,7 @@ async def test_candidates_rejects_removed_include_identifier_matches(
 
 
 async def test_candidates_unknown_retrieval_policy_returns_422(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
 ):
     """An unknown retrieval_policy surfaces a helpful 422."""
     response = await destiny_client_v1.post(
@@ -286,7 +286,7 @@ async def test_candidates_unknown_retrieval_policy_returns_422(
 
 
 async def test_candidates_rejects_both_and_neither_inputs(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
 ):
     """The input must be exactly one of reference_id or inline fields."""
     neither = await destiny_client_v1.post(CANDIDATES_URL, json={"input": {}})

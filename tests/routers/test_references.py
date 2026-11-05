@@ -9,7 +9,7 @@ import pytest
 from destiny_sdk.enhancements import EnhancementType
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from pydantic import HttpUrl
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession

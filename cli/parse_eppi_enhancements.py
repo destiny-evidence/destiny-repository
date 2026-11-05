@@ -32,7 +32,7 @@ from datetime import datetime
 from pathlib import Path
 from uuid import UUID
 
-import httpx
+import httpx2
 from destiny_sdk.enhancements import Enhancement, EnhancementType
 from destiny_sdk.parsers.eppi_parser import EPPIParser, load_eppi_export
 from destiny_sdk.parsers.exceptions import ReferenceIdNotFoundError
@@ -108,7 +108,7 @@ def report_title_mismatches(
 
 
 def verify_references(
-    client: httpx.Client, enhancements: Sequence[Enhancement]
+    client: httpx2.Client, enhancements: Sequence[Enhancement]
 ) -> None:
     """
     Check each reference exists, reporting every missing one at once.
@@ -248,7 +248,7 @@ if __name__ == "__main__":
     except (
         ReferenceIdNotFoundError,
         ValueError,
-        httpx.HTTPError,
+        httpx2.HTTPError,
         OSError,
     ) as exc:
         print(f"Parsing EPPI enhancements failed: {exc}")

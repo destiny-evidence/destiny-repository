@@ -3,9 +3,9 @@
 from collections.abc import AsyncGenerator, AsyncIterator
 from io import BytesIO
 
-import httpx
+import httpx2
 from opentelemetry import trace
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
 
 from app.core.exceptions import RemoteBlobStorageError
 from app.core.telemetry.blob import (
@@ -27,8 +27,8 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
 
     def __init__(self) -> None:
         """Initialize RemoteBlobStorageClient."""
-        self._client = httpx.AsyncClient(follow_redirects=False)
-        HTTPXClientInstrumentor().instrument_client(self._client)
+        self._client = httpx2.AsyncClient(follow_redirects=False)
+        HTTPX2ClientInstrumentor().instrument_client(self._client)
 
     @trace_blob_client_method(tracer)
     async def upload_file(
@@ -57,7 +57,7 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
                 response.raise_for_status()
                 async for chunk in response.aiter_bytes():
                     yield chunk
-        except httpx.HTTPError as e:
+        except httpx2.HTTPError as e:
             msg = f"Failed to stream file from remote URL {file.to_uri()}: {e}"
             raise RemoteBlobStorageError(msg) from e
 
@@ -74,5 +74,5 @@ class RemoteBlobStorageClient(GenericBlobStorageClient):
         raise RemoteBlobStorageError(msg)
 
     async def aclose(self) -> None:
-        """Close the underlying httpx client."""
+        """Close the underlying httpx2 client."""
         await self._client.aclose()

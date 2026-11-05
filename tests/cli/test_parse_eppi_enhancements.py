@@ -6,12 +6,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid7
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.enhancements import Enhancement, EnhancementType, RawEnhancement
 from destiny_sdk.parsers.exceptions import ReferenceIdNotFoundError
 from destiny_sdk.visibility import Visibility
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 
 from app.core.config import Environment
 from cli.client import get_client
@@ -96,7 +96,7 @@ def _args(export: Path, output: Path, *extra: str) -> argparse.Namespace:
 
 
 def test_enhancement_is_written_for_each_verified_reference(
-    tmp_path: Path, httpx_mock: HTTPXMock
+    tmp_path: Path, httpx2_mock: HTTPXMock
 ) -> None:
     """A reference the repository knows is written out as a raw enhancement."""
     export = _export(
@@ -109,7 +109,7 @@ def test_enhancement_is_written_for_each_verified_reference(
         },
     )
     output = tmp_path / "enhancements.jsonl"
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
         json={"id": str(REFERENCE_ID), "visibility": "public"},
@@ -126,12 +126,12 @@ def test_enhancement_is_written_for_each_verified_reference(
 
 
 def test_reference_not_in_the_repository_writes_nothing(
-    tmp_path: Path, httpx_mock: HTTPXMock
+    tmp_path: Path, httpx2_mock: HTTPXMock
 ) -> None:
     """Enhancements are only written once every reference is known to exist."""
     export = _export(tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL})
     output = tmp_path / "enhancements.jsonl"
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
         status_code=404,
@@ -144,7 +144,7 @@ def test_reference_not_in_the_repository_writes_nothing(
 
 
 def test_reference_without_an_id_is_never_verified(
-    tmp_path: Path, httpx_mock: HTTPXMock
+    tmp_path: Path, httpx2_mock: HTTPXMock
 ) -> None:
     """An export we can't attach fails before any reference is looked up."""
     export = _export(tmp_path, {"ItemId": 116012899, "URL": "https://eppi.example/1"})
@@ -153,12 +153,12 @@ def test_reference_without_an_id_is_never_verified(
     with pytest.raises(ReferenceIdNotFoundError, match="ItemId 116012899"):
         parse_eppi_enhancements(_args(export, output))
 
-    assert not httpx_mock.get_requests()
+    assert not httpx2_mock.get_requests()
     assert not output.exists()
 
 
 def test_duplicate_references_are_reported_before_verification(
-    tmp_path: Path, httpx_mock: HTTPXMock
+    tmp_path: Path, httpx2_mock: HTTPXMock
 ) -> None:
     """Every reference enhanced more than once is named, in the export's order."""
     export = _export(
@@ -179,7 +179,7 @@ def test_duplicate_references_are_reported_before_verification(
         f"{REFERENCE_ID} (3 enhancements), "
         f"{EARLIER_REFERENCE_ID} (2 enhancements)."
     )
-    assert not httpx_mock.get_requests()
+    assert not httpx2_mock.get_requests()
     assert not output.exists()
 
 
@@ -187,14 +187,14 @@ TITLE = "An Evaluation of the Early Childhood Care and Development Programme in 
 
 
 def test_title_differing_from_the_repository_warns_without_failing(
-    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, httpx2_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A title the repository disagrees with is reported, and still written out."""
     export = _export(
         tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
     )
     output = tmp_path / "enhancements.jsonl"
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
         json=_reference_response(REFERENCE_ID, "A Study of Something Else Entirely"),
@@ -210,7 +210,7 @@ def test_title_differing_from_the_repository_warns_without_failing(
 
 
 def test_title_differing_only_in_case_and_whitespace_does_not_warn(
-    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, httpx2_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Incidental formatting differences are not worth warning about."""
     export = _export(
@@ -218,7 +218,7 @@ def test_title_differing_only_in_case_and_whitespace_does_not_warn(
         {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": f"  {TITLE.upper()}  "},
     )
     output = tmp_path / "enhancements.jsonl"
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
         json=_reference_response(REFERENCE_ID, TITLE.replace(" the ", "\n the  ")),
@@ -230,14 +230,14 @@ def test_title_differing_only_in_case_and_whitespace_does_not_warn(
 
 
 def test_matching_one_of_several_repository_titles_does_not_warn(
-    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, httpx2_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A reference titled by several sources matches if any one of them agrees."""
     export = _export(
         tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
     )
     output = tmp_path / "enhancements.jsonl"
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
         json=_reference_response(REFERENCE_ID, "An Evaluation of the ECCD", TITLE),
@@ -249,14 +249,14 @@ def test_matching_one_of_several_repository_titles_does_not_warn(
 
 
 def test_reference_the_repository_holds_no_title_for_is_not_a_mismatch(
-    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, httpx2_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """Nothing to compare against is counted, not warned about."""
     export = _export(
         tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
     )
     output = tmp_path / "enhancements.jsonl"
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
         json=_reference_response(REFERENCE_ID),
@@ -270,14 +270,14 @@ def test_reference_the_repository_holds_no_title_for_is_not_a_mismatch(
 
 
 def test_excluding_the_title_from_the_raw_enhancement_leaves_nothing_to_compare(
-    tmp_path: Path, httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, httpx2_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A title kept out of the enhancement is reported rather than silently skipped."""
     export = _export(
         tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL, "Title": TITLE}
     )
     output = tmp_path / "enhancements.jsonl"
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{REFERENCE_ID}/",
         json=_reference_response(REFERENCE_ID, "A Study of Something Else Entirely"),
@@ -291,7 +291,7 @@ def test_excluding_the_title_from_the_raw_enhancement_leaves_nothing_to_compare(
 
 
 def test_skip_verification_asks_the_repository_nothing(
-    tmp_path: Path, httpx_mock: HTTPXMock
+    tmp_path: Path, httpx2_mock: HTTPXMock
 ) -> None:
     """A disconnected run writes the enhancements without checking them."""
     export = _export(tmp_path, {"ItemId": 116012899, "URL": REFERENCE_URL})
@@ -299,16 +299,16 @@ def test_skip_verification_asks_the_repository_nothing(
 
     parse_eppi_enhancements(_args(export, output, "--skip-verification"))
 
-    assert not httpx_mock.get_requests()
+    assert not httpx2_mock.get_requests()
     assert len(output.read_text().splitlines()) == 1
 
 
 def test_unauthorized_verification_is_not_reported_as_a_missing_reference(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
 ) -> None:
     """A rejected request says so, rather than claiming the reference is absent."""
     reference_id = uuid7()
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/references/{reference_id}/",
         status_code=401,
@@ -316,6 +316,6 @@ def test_unauthorized_verification_is_not_reported_as_a_missing_reference(
 
     with (
         get_client(Environment.LOCAL) as client,
-        pytest.raises(httpx.HTTPStatusError),
+        pytest.raises(httpx2.HTTPStatusError),
     ):
         verify_references(client, [_raw_enhancement(reference_id)])

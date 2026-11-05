@@ -60,7 +60,7 @@ class AzureBlobStorageClient(GenericBlobStorageClient):
         self.user_delegation_key_duration = config.user_delegation_key_duration
         # Hold the aio credential explicitly so aclose() can release it; the
         # azure SDK's close() doesn't propagate to externally-constructed
-        # credentials, so without this its httpx clients leak.
+        # credentials, so without this its HTTP sessions leak.
         self._aio_credential = (
             DefaultAzureCredential() if self.uses_managed_identity else None
         )

@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 from app.persistence.es.client import get_client
 from app.persistence.sql.session import get_session

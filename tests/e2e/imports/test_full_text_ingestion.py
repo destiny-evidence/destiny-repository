@@ -4,7 +4,7 @@ from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from pathlib import Path
 
-import httpx
+import httpx2
 import pytest
 from aiohttp import web
 from destiny_sdk.enhancements import EnhancementFileInput, FullTextEnhancement
@@ -54,10 +54,10 @@ def serve_fixture_pdf() -> Callable[[], AbstractAsyncContextManager[str]]:
 
 
 async def test_happy_full_text_ingestion(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     get_import_file_signed_url: GetImportFileSignedUrl,
     serve_fixture_pdf: Callable[[], AbstractAsyncContextManager[str]],
-    signed_url_client: httpx.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
 ):
     """
     Full-text storage round-trip.
