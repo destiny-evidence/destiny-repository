@@ -2548,12 +2548,31 @@ class TestDeepDeduplicationShadow:
 
         assessor_class = reference_service_module.DeduplicationAssessmentService
         selector = assessor_class.call_args.kwargs["candidate_selector"]
-        assert selector.keywords == {
-            "deep_deduplication": True,
-            "request_timeout": (
-                reference_service_module.settings.dedup_scoring.retrieval_timeout_seconds
-            ),
-        }
+        assert selector.keywords["deep_deduplication"] is True
+        assert selector.keywords["request_timeout"] == (
+            reference_service_module.settings.dedup_scoring.retrieval_timeout_seconds
+        )
+
+    @pytest.mark.asyncio
+    async def test_the_shadow_searches_community_references(
+        self, faked_assessment, monkeypatch
+    ):
+        from app.domain.references import service as reference_service_module
+
+        monkeypatch.setattr(
+            reference_service_module.settings.dedup_scoring,
+            "community_annotations",
+            ["domain-inclusion/hpv"],
+        )
+        shadow = faked_assessment
+
+        await shadow.service.run_deep_deduplication_shadow(
+            shadow.decision, blob_repository=MagicMock()
+        )
+
+        assessor_class = reference_service_module.DeduplicationAssessmentService
+        selector = assessor_class.call_args.kwargs["candidate_selector"]
+        assert selector.keywords["community_annotations"] == ("domain-inclusion/hpv",)
 
 
 class TestDeepDeduplicationShadowTelemetry:

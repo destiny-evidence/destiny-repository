@@ -778,12 +778,15 @@ class ReferenceESRepository(
             filter_clauses.append(
                 Q("range", publication_year={"gte": start, "lte": end})
             )
-        filter_clauses.append(
-            Q(
-                "term",
-                duplicate_determination=query.duplicate_determination,
+        if query.duplicate_determination is not None:
+            filter_clauses.append(
+                Q(
+                    "term",
+                    duplicate_determination=query.duplicate_determination,
+                )
             )
-        )
+        if query.annotations:
+            filter_clauses.append(Q("terms", annotations=list(query.annotations)))
         bool_query = Q(
             "bool",
             must=[

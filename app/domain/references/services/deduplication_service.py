@@ -100,6 +100,7 @@ def build_candidate_canonical_search_query(
     scoring_config: DedupCandidateScoringConfig,
     policy: RetrievalPolicy,
     reference_id: UUID | None,
+    community_annotations: tuple[str, ...] = (),
 ) -> CandidateCanonicalSearchQuery:
     """Interpret a retrieval policy as a service-owned search specification."""
     if not search_fields.title:
@@ -151,8 +152,12 @@ def build_candidate_canonical_search_query(
         publication_year_range=publication_year_range,
         publication_year_decay=publication_year_decay,
         # Prevent concurrently deduplicated references forming conflicting links.
-        duplicate_determination=DuplicateDetermination.CANONICAL,
+        # The community search only measures, so it searches every state.
+        duplicate_determination=None
+        if community_annotations
+        else DuplicateDetermination.CANONICAL,
         excluded_reference_id=reference_id,
+        annotations=community_annotations,
     )
 
 
@@ -305,10 +310,14 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         *,
         deep_deduplication: bool = False,
         request_timeout: float | None = None,
+        community_annotations: tuple[str, ...] = (),
     ) -> CandidateSelectionResult:
         """Return ranked candidates with provenance, without persisting state."""
         trace_attribute(
             Attributes.CANDIDATE_SELECTION_DEEP_DEDUPLICATION, deep_deduplication
+        )
+        trace_attribute(
+            Attributes.CANDIDATE_SELECTION_COMMUNITY_SCOPED, bool(community_annotations)
         )
         k = request.k or settings.dedup_scoring.candidate_k
         policy_name = (
@@ -366,6 +375,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
                 scoring_config=settings.dedup_scoring,
                 policy=policy,
                 reference_id=self_id,
+                community_annotations=community_annotations,
             )
             es_result = await self.es_uow.references.search_for_candidate_canonicals(
                 query,
@@ -663,6 +673,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
         *,
         deep_deduplication: bool = False,
         request_timeout: float | None = None,
+        community_annotations: tuple[str, ...] = (),
     ) -> CandidateSelectionResult:
         """
         Select candidates and return their complete retrieval provenance.
@@ -677,6 +688,7 @@ class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
             ),
             deep_deduplication=deep_deduplication,
             request_timeout=request_timeout,
+            community_annotations=community_annotations,
         )
 
     async def _placeholder_duplicate_determinator(

@@ -285,3 +285,22 @@ def test_candidate_selection_v2_applies_tiered_minimum_should_match():
     translated = ReferenceESRepository._to_es_candidate_query(query).to_dict()
     title_clause = translated["function_score"]["query"]["bool"]["must"][0]
     assert title_clause["match"]["title"]["minimum_should_match"] == "2<75% 5<50%"
+
+
+def test_community_scope_filters_on_annotations_in_any_state():
+    fields = CandidateCanonicalSearchFields(
+        title="Shared Title", authors=["Smith"], publication_year=2000
+    )
+    query = build_candidate_canonical_search_query(
+        fields,
+        scoring_config=DedupCandidateScoringConfig(),
+        policy=resolve_retrieval_policy(RetrievalPolicyName.CANDIDATE_SELECTION_V2),
+        reference_id=None,
+        community_annotations=("domain-inclusion/hpv", "domain-inclusion/x"),
+    )
+
+    translated = ReferenceESRepository._to_es_candidate_query(query).to_dict()
+    filters = translated["function_score"]["query"]["bool"]["filter"]
+    annotations = ["domain-inclusion/hpv", "domain-inclusion/x"]
+    assert {"terms": {"annotations": annotations}} in filters
+    assert not any("duplicate_determination" in str(clause) for clause in filters)

@@ -1829,6 +1829,7 @@ class TestCandidateSelectionTelemetry:
 
         assert span_attributes(self.SPAN) == {
             "app.candidate_selection.deep_deduplication": False,
+            "app.candidate_selection.community_scoped": False,
             "app.candidate_selection.retrieval_policy": "candidate_selection_v2",
             "app.candidate_selection.k_requested": 10,
             "app.candidate_selection.searchable": True,
@@ -1866,6 +1867,32 @@ class TestCandidateSelectionTelemetry:
         )
 
         assert span_attributes(self.SPAN)["app.candidate_selection.deep_deduplication"]
+
+    @pytest.mark.asyncio
+    async def test_community_scope_reaches_the_search_and_marks_the_selection(
+        self,
+        searchable_reference,
+        anti_corruption_service,
+        fake_uow,
+        fake_repository,
+        span_attributes,
+    ):
+        service = DeduplicationService(
+            anti_corruption_service,
+            fake_uow(references=fake_repository([searchable_reference])),
+            fake_uow(),
+        )
+        _mock_candidate_selection(service, uuid7())
+
+        await service.select_candidate_canonicals(
+            searchable_reference.id, community_annotations=("domain-inclusion/hpv",)
+        )
+
+        call = service.es_uow.references.search_for_candidate_canonicals
+        query = call.call_args.args[0]
+        assert query.annotations == ("domain-inclusion/hpv",)
+        assert query.duplicate_determination is None
+        assert span_attributes(self.SPAN)["app.candidate_selection.community_scoped"]
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
