@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 import destiny_sdk
-import httpx
+import httpx2
 from fastapi import status
 from pydantic import ValidationError
 
@@ -13,7 +13,7 @@ from cli.client import ApiArgumentParser
 
 
 def add_robot_automation(
-    client: httpx.Client, automation: destiny_sdk.robots.RobotAutomationIn
+    client: httpx2.Client, automation: destiny_sdk.robots.RobotAutomationIn
 ) -> destiny_sdk.robots.RobotAutomation:
     """Add a robot automation to destiny repository."""
     response = client.post(
@@ -23,7 +23,7 @@ def add_robot_automation(
 
     if response.status_code >= status.HTTP_400_BAD_REQUEST:
         msg = response.json().get("detail", response.text)
-        raise httpx.HTTPError(msg)
+        raise httpx2.HTTPError(msg)
 
     return destiny_sdk.robots.RobotAutomation.model_validate(response.json())
 
@@ -81,5 +81,5 @@ if __name__ == "__main__":
         print(f"Robot Id: {added_automation.robot_id}")
         print(f"Query: {json.dumps(added_automation.query)}")
 
-    except (httpx.HTTPError, ValidationError, json.JSONDecodeError, OSError) as exc:
+    except (httpx2.HTTPError, ValidationError, json.JSONDecodeError, OSError) as exc:
         print(f"Adding robot automation failed: {exc}")

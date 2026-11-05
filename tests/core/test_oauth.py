@@ -8,7 +8,7 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from fastapi import HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 
 from app.api.auth import AuthMethod, AzureJwtAuth, StrategyAuth, SuccessAuth
 
@@ -42,14 +42,14 @@ def fake_request() -> Request:
 
 
 async def test_verify_token_success(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[[dict], str],
 ) -> None:
     """Test that a valid token is successfully verified."""
     payload = {"sub": "test_subject"}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(payload)
     result = await auth.verify_token(token)
@@ -57,14 +57,14 @@ async def test_verify_token_success(
 
 
 async def test_verify_token_cached_jwks(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[[dict], str],
 ):
     """Test that we cache the jwks fetched from Azure."""
     payload = {"sub": "test_subject"}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(payload)
 
@@ -75,14 +75,14 @@ async def test_verify_token_cached_jwks(
     assert payload["sub"] == result["sub"]
 
     # Check we have one request to Azure despite verifying two tokens
-    assert len(httpx_mock.get_requests()) == 1
+    assert len(httpx2_mock.get_requests()) == 1
 
 
 async def test_verify_token_invalid(
-    httpx_mock: HTTPXMock, auth: AzureJwtAuth, fake_public_key: dict
+    httpx2_mock: HTTPXMock, auth: AzureJwtAuth, fake_public_key: dict
 ):
     """Test that we raise an appropriate exception with an invalid token."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     with pytest.raises(HTTPException) as excinfo:
         await auth.verify_token("sample.jwt.token")
@@ -91,7 +91,7 @@ async def test_verify_token_invalid(
 
 
 async def test_verify_token_expired(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[[dict], str],
@@ -100,7 +100,7 @@ async def test_verify_token_expired(
     payload = {
         "exp": datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=10),
     }
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(payload)
     with pytest.raises(HTTPException) as excinfo:
@@ -110,7 +110,7 @@ async def test_verify_token_expired(
 
 
 async def test_verify_token_incorrect_claims(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[[dict], str],
@@ -119,7 +119,7 @@ async def test_verify_token_incorrect_claims(
     payload = {
         "aud": "api://wrong_application_id",
     }
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(payload)
     with pytest.raises(HTTPException) as excinfo:
@@ -130,12 +130,12 @@ async def test_verify_token_incorrect_claims(
 
 
 async def test_verify_token_no_keys(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     generate_fake_token: Callable[[], str],
 ):
     """Test that we raise an exception when our token's kid can't be found."""
-    httpx_mock.add_response(json={"keys": [{"kid": "wrong_kid"}]})
+    httpx2_mock.add_response(json={"keys": [{"kid": "wrong_kid"}]})
 
     token = generate_fake_token()
     with pytest.raises(HTTPException) as excinfo:
@@ -145,7 +145,7 @@ async def test_verify_token_no_keys(
 
 
 async def test_verify_token_jwks_retry(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[[dict], str],
@@ -154,19 +154,19 @@ async def test_verify_token_jwks_retry(
     stale_public_key = fake_public_key.copy()
     stale_public_key["n"] = "stale_n"
     auth.cache["jwks"] = {"keys": [stale_public_key]}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     payload = {"sub": "test_subject"}
     token = generate_fake_token(payload)
     result = await auth.verify_token(token)
     assert payload["sub"] == result["sub"]
 
-    assert len(httpx_mock.get_requests()) == 1
+    assert len(httpx2_mock.get_requests()) == 1
     assert auth.cache["jwks"] == {"keys": [fake_public_key]}
 
 
 async def test_verify_token_parse_failure_after_retry(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[[], str],
@@ -175,26 +175,26 @@ async def test_verify_token_parse_failure_after_retry(
     stale_public_key = fake_public_key.copy()
     stale_public_key["n"] = "stale_n"
     auth.cache["jwks"] = {"keys": [stale_public_key]}
-    httpx_mock.add_response(json={"keys": [stale_public_key]})
+    httpx2_mock.add_response(json={"keys": [stale_public_key]})
 
     token = generate_fake_token()
     with pytest.raises(HTTPException) as excinfo:
         await auth.verify_token(token)
 
-    assert len(httpx_mock.get_requests()) == 1
+    assert len(httpx2_mock.get_requests()) == 1
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
     assert excinfo.value.detail == "Unable to parse authentication token."
 
 
 async def test_requires_read_all_scope_success(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
     fake_request: Request,
 ):
     """Test that we successfully validate a token with the requested scope."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(scope=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
@@ -203,14 +203,14 @@ async def test_requires_read_all_scope_success(
 
 
 async def test_requires_read_all_role_success(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth_with_role: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
     fake_request: Request,
 ):
     """Test that we successfully validate a token with the requested scope."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(role=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
@@ -219,14 +219,14 @@ async def test_requires_read_all_role_success(
 
 
 async def test_requires_read_all_scope_not_found(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
     fake_request: Request,
 ):
     """Test that we raise an exception with a token without the appropriate scope."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(scope="not.read.all")
     credentials = Mock()
@@ -241,14 +241,14 @@ async def test_requires_read_all_scope_not_found(
 
 
 async def test_requires_read_all_role_not_found(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth_with_role: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
     fake_request: Request,
 ):
     """Test that we raise an exception with a token without the appropriate scope."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token(role="not.read.all")
     credentials = Mock()
@@ -263,14 +263,14 @@ async def test_requires_read_all_role_not_found(
 
 
 async def test_required_scope_and_role_not_present(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: AzureJwtAuth,
     fake_public_key: dict,
     generate_fake_token: Callable[..., str],
     fake_request: Request,
 ):
     """Test that we raise an exception when no scope is present."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_fake_token()
     credentials = Mock()

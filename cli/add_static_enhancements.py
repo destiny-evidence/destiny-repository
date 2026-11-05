@@ -45,7 +45,7 @@ from math import ceil
 from pathlib import Path
 from uuid import UUID
 
-import httpx
+import httpx2
 from destiny_sdk.client import RobotClient
 from destiny_sdk.enhancements import Enhancement, EnhancementFileInput, EnhancementType
 from destiny_sdk.robots import (
@@ -134,7 +134,7 @@ def required_entitlements(enhancements: Iterable[Enhancement]) -> set[RobotEntit
 
 
 def claim_robot(
-    client: httpx.Client,
+    client: httpx2.Client,
     robot_id: UUID | None,
     entitlements: set[RobotEntitlement],
 ) -> Robot:
@@ -159,7 +159,7 @@ def claim_robot(
 
 
 def resolve_robot(
-    client: httpx.Client,
+    client: httpx2.Client,
     robot_id: UUID | None,
     name: str | None,
     entitlements: set[RobotEntitlement],
@@ -187,7 +187,7 @@ def resolve_robot(
 
 
 def describe_robot(
-    client: httpx.Client,
+    client: httpx2.Client,
     robot_id: UUID | None,
     name: str | None,
     entitlements: set[RobotEntitlement],
@@ -205,7 +205,7 @@ def describe_robot(
 
 
 def request_enhancements(
-    client: httpx.Client,
+    client: httpx2.Client,
     robot_id: UUID,
     reference_ids: set[UUID],
     source: str | None,
@@ -240,7 +240,7 @@ def fulfil_enhancements(
     """Act as the robot, claiming each pending batch and writing its enhancements."""
     enhanced: set[UUID] = set()
     # Batch reference and result files live on signed blob URLs, not the repository.
-    with httpx.Client(timeout=120) as blob_client:
+    with httpx2.Client(timeout=120) as blob_client:
         while batch := robot_client.poll_robot_enhancement_batch(
             robot_id=robot_id, limit=BATCH_SIZE
         ):
@@ -251,7 +251,7 @@ def fulfil_enhancements(
 
 def _fulfil_batch(
     robot_client: RobotClient,
-    blob_client: httpx.Client,
+    blob_client: httpx2.Client,
     batch: RobotEnhancementBatch,
     enhancements: dict[UUID, Enhancement],
 ) -> set[UUID]:
@@ -284,7 +284,7 @@ def _fulfil_batch(
 
 
 def _batch_reference_ids(
-    blob_client: httpx.Client, reference_storage_url: HttpUrl
+    blob_client: httpx2.Client, reference_storage_url: HttpUrl
 ) -> set[UUID]:
     """Read the reference ids out of a batch's reference file."""
     with blob_client.stream("GET", str(reference_storage_url)) as response:
@@ -299,7 +299,7 @@ def _batch_reference_ids(
 
 
 def poll_until_complete(
-    client: httpx.Client,
+    client: httpx2.Client,
     request_ids: set[UUID],
     poll_interval: float = 10,
 ) -> dict[UUID, EnhancementRequestRead]:
@@ -336,7 +336,7 @@ def poll_until_complete(
 
 
 def add_static_enhancements(
-    client: httpx.Client,
+    client: httpx2.Client,
     robot: ProvisionedRobot,
     enhancements: dict[UUID, Enhancement],
     source: str | None = None,
@@ -488,6 +488,6 @@ if __name__ == "__main__":
                 poll_interval=args.poll_interval,
             )
 
-    except (ValueError, httpx.HTTPError, OSError) as exc:
+    except (ValueError, httpx2.HTTPError, OSError) as exc:
         print(f"Adding static enhancements failed: {exc}")
         sys.exit(1)

@@ -3,11 +3,11 @@
 import json
 from uuid import UUID, uuid7
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.imports import ImportBatchStatus
 from destiny_sdk.references import ExportStatus
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 
 from app.core.config import Environment
 from cli.client import get_client
@@ -18,21 +18,21 @@ DEST_URL = "https://dest.example.com/v1"
 RESULT_URL = "https://source.blob.core.windows.net/exports/abc.jsonl?sig=redacted"
 
 
-def _client(url: str) -> httpx.Client:
+def _client(url: str) -> httpx2.Client:
     """
     Build a client for an arbitrary base URL with no authentication.
 
     Must stay on a local environment. A real one attaches the SDK's OAuth
     middleware, which acquires a token on every request over its own connection
-    — outside the transport ``pytest_httpx`` patches — so these tests would
+    — outside the transport ``pytest_httpx2`` patches — so these tests would
     prompt an interactive login.
     """
     return get_client(Environment.LOCAL, url)
 
 
-def _mock_export(httpx_mock: HTTPXMock) -> None:
+def _mock_export(httpx2_mock: HTTPXMock) -> None:
     """Stub a source export that completes immediately."""
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="POST",
         url=f"{SOURCE_URL}/references/exports/",
         json={
@@ -46,9 +46,11 @@ def _mock_export(httpx_mock: HTTPXMock) -> None:
     )
 
 
-def _mock_import(httpx_mock: HTTPXMock, record_id: UUID, batch_ids: list[UUID]) -> None:
+def _mock_import(
+    httpx2_mock: HTTPXMock, record_id: UUID, batch_ids: list[UUID]
+) -> None:
     """Stub the destination's record, batch, finalise and summary endpoints."""
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="POST",
         url=f"{DEST_URL}/imports/records/",
         json={
@@ -67,17 +69,17 @@ def _mock_import(httpx_mock: HTTPXMock, record_id: UUID, batch_ids: list[UUID]) 
             "storage_url": RESULT_URL,
             "import_record_id": str(record_id),
         }
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             method="POST",
             url=f"{DEST_URL}/imports/records/{record_id}/batches/",
             json=batch | {"status": ImportBatchStatus.CREATED.value},
         )
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             method="GET",
             url=f"{DEST_URL}/imports/records/{record_id}/batches/{batch_id}/",
             json=batch | {"status": ImportBatchStatus.COMPLETED.value},
         )
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             method="GET",
             url=f"{DEST_URL}/imports/records/{record_id}/batches/{batch_id}/summary/",
             json=batch
@@ -88,7 +90,7 @@ def _mock_import(httpx_mock: HTTPXMock, record_id: UUID, batch_ids: list[UUID]) 
                 "failure_details": None,
             },
         )
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="PATCH",
         url=f"{DEST_URL}/imports/records/{record_id}/finalise/",
         json={},
@@ -107,11 +109,11 @@ def test_production_destination_is_not_a_valid_choice(
     assert "invalid choice: 'production'" in capsys.readouterr().err
 
 
-def test_signed_export_url_is_handed_over_unmodified(httpx_mock: HTTPXMock) -> None:
+def test_signed_export_url_is_handed_over_unmodified(httpx2_mock: HTTPXMock) -> None:
     """The destination imports the source's file by URL; nothing is rewritten."""
     record_id, batch_id = uuid7(), uuid7()
-    _mock_export(httpx_mock)
-    _mock_import(httpx_mock, record_id, [batch_id])
+    _mock_export(httpx2_mock)
+    _mock_import(httpx2_mock, record_id, [batch_id])
 
     with _client(SOURCE_URL) as source_client, _client(DEST_URL) as dest_client:
         migrate_references(
@@ -125,21 +127,21 @@ def test_signed_export_url_is_handed_over_unmodified(httpx_mock: HTTPXMock) -> N
 
     batch_request = next(
         request
-        for request in httpx_mock.get_requests()
+        for request in httpx2_mock.get_requests()
         if request.method == "POST" and request.url.path.endswith("/batches/")
     )
     assert json.loads(batch_request.content)["storage_url"] == RESULT_URL
 
 
 def test_ids_beyond_the_chunk_size_become_separate_batches(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
 ) -> None:
     """Chunking splits one import record into a batch per export."""
     record_id = uuid7()
     batch_ids = [uuid7(), uuid7()]
     for _ in batch_ids:
-        _mock_export(httpx_mock)
-    _mock_import(httpx_mock, record_id, batch_ids)
+        _mock_export(httpx2_mock)
+    _mock_import(httpx2_mock, record_id, batch_ids)
 
     with _client(SOURCE_URL) as source_client, _client(DEST_URL) as dest_client:
         migrate_references(
@@ -154,7 +156,7 @@ def test_ids_beyond_the_chunk_size_become_separate_batches(
 
     export_sizes = [
         len(json.loads(request.content))
-        for request in httpx_mock.get_requests()
+        for request in httpx2_mock.get_requests()
         if request.method == "POST"
         and request.url.path.endswith("/references/exports/")
     ]

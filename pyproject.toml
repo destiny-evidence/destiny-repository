@@ -6,6 +6,7 @@ requires = ["hatchling"]
 dev = [
     "destiny-sdk",
     "faker>=40.1",
+    "httpx2-pytest>=2.0.0,<3",
     "msal>=1.31.1,<2",
     "mypy>=1.14.1,<2",
     "opentelemetry-instrumentation-aio-pika>=0.65b0,<0.66",
@@ -13,8 +14,7 @@ dev = [
     "psycopg>=3.2.6,<4",
     "pytest-asyncio>=1.0.0,<2",
     "pytest-cov>=6.2.1",
-    "pytest-httpx>=0.35.0,<0.36",
-    "pytest>=8.3.4,<9",
+    "pytest>=9.0.0,<10",
     "ruff>=0.8.6,<0.9",
     "types-cachetools>=5.5.0.20240820,<6",
     "types-python-jose>=3.4.0.20250224,<4",
@@ -29,11 +29,10 @@ docs = [
 test = [
     "aiohttp>=3.13.5",
     "factory-boy>=3.3.3",
-    "httpx>=0.28.1,<0.29",
     "psycopg>=3.2.6,<4",
     "pytest-env>=1.1.5,<2",
     "pytest-order>=1.3.0,<2",
-    "pytest>=8.3.4,<9",
+    "pytest>=9.0.0,<10",
     "testcontainers[azurite,elasticsearch,postgres,rabbitmq]>=4.14",
 ]
 
@@ -56,9 +55,11 @@ dependencies = [
     "destiny-deduper>=0.2.7,<0.3",
     "destiny-sdk",
     "elasticsearch[async]>=9.1.2,<9.2",
-    "fastapi[standard]~=0.140.13",
+    "fastapi-cli>=0.0.20",
+    "fastapi~=0.140.13",
     "frozenlist==1.6.0",
     "greenlet>=3.1.1,<4",
+    "httpx2>=2.16.0,<3",
     "joserfc>=1.6.3",
     "numpy>=2.5.1",
     "opentelemetry-distro>=0.65b0,<0.66",

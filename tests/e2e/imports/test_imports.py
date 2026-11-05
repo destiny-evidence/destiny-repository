@@ -4,7 +4,7 @@ from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
 from uuid import UUID
 
-import httpx
+import httpx2
 from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy import text
@@ -25,7 +25,7 @@ from tests.e2e.utils import (
 
 
 async def test_happy_import(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     generate_sdk_reference_file_inputs: Callable[[int], list[ReferenceFileInput]],

@@ -8,7 +8,7 @@ import destiny_sdk
 import pytest
 from destiny_sdk.client import create_signature
 from fastapi import APIRouter, Depends, FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 
 TEST_SECRET_KEY = "dlfskdfhgk8ei346oiehslkdfrerikfglser934utofs"
 TEST_CLIENT_ID = uuid7()

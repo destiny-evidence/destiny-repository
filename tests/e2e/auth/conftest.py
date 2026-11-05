@@ -3,7 +3,7 @@
 import os
 import pathlib
 
-import httpx
+import httpx2
 import pytest
 from testcontainers.azurite import AzuriteContainer
 from testcontainers.core.container import DockerContainer
@@ -85,7 +85,7 @@ async def get_keycloak_token(keycloak_url: str, username: str) -> str:
     """
     token_url = f"{keycloak_url}/realms/destiny/protocol/openid-connect/token"
 
-    async with httpx.AsyncClient() as client:
+    async with httpx2.AsyncClient() as client:
         response = await client.post(
             token_url,
             data={
@@ -199,11 +199,11 @@ def keycloak_app(  # noqa: PLR0913
 
 
 @pytest.fixture
-async def keycloak_api_client(keycloak_app: DockerContainer) -> httpx.AsyncClient:
-    """Get an httpx client for the Keycloak-enabled app."""
+async def keycloak_api_client(keycloak_app: DockerContainer) -> httpx2.AsyncClient:
+    """Get an httpx2 client for the Keycloak-enabled app."""
     host = keycloak_app.get_container_host_ip()
     port = keycloak_app.get_exposed_port(app_port)
     url = f"http://{host}:{port}/v1/"
-    logger.info("Creating httpx client for Keycloak app at %s", url)
-    async with httpx.AsyncClient(base_url=url) as client:
+    logger.info("Creating httpx2 client for Keycloak app at %s", url)
+    async with httpx2.AsyncClient(base_url=url) as client:
         yield client

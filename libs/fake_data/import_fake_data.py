@@ -11,7 +11,7 @@ from functools import partial
 from pathlib import Path
 from uuid import uuid7
 
-import httpx
+import httpx2
 
 # Configure logging
 logging.basicConfig(
@@ -97,8 +97,8 @@ def check_file_exists(filename: str) -> None:
 def import_fake_data(filename: str, callback_id: str) -> None:
     """Import fake data into the server."""
     check_file_exists(filename)
-    logging.getLogger("httpx").setLevel(logging.WARNING)  # Suppress httpx logs
-    client = httpx.Client(base_url="http://localhost:8000")
+    logging.getLogger("httpx2").setLevel(logging.WARNING)  # Suppress httpx2 logs
+    client = httpx2.Client(base_url="http://localhost:8000")
     # Register a new import
     logger.info("Registering a new import...")
     import_record = client.post(

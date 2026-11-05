@@ -9,7 +9,7 @@ from fastapi import HTTPException, Request, status
 from jose import jwt as jose_jwt
 from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import RSAKey
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 
 from app.api.auth import (
     AuthRole,
@@ -153,19 +153,19 @@ def _generate_keycloak_token(
 
 
 @pytest.fixture
-def stub_azure_jwks(httpx_mock: HTTPXMock, fake_public_key: dict) -> None:
+def stub_azure_jwks(httpx2_mock: HTTPXMock, fake_public_key: dict) -> None:
     """Stub JWKS response for Azure AD."""
     escaped_url = re.escape(FAKE_AZURE_LOGIN_URL)
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         url=re.compile(rf"{escaped_url}/"),
         json={"keys": [fake_public_key]},
     )
 
 
 @pytest.fixture
-def stub_keycloak_jwks(httpx_mock: HTTPXMock, fake_public_key: dict) -> None:
+def stub_keycloak_jwks(httpx2_mock: HTTPXMock, fake_public_key: dict) -> None:
     """Stub JWKS response for Keycloak."""
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         url=f"{FAKE_KEYCLOAK_URL}/realms/{FAKE_KEYCLOAK_REALM}"
         "/protocol/openid-connect/certs",
         json={"keys": [fake_public_key]},

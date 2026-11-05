@@ -6,7 +6,7 @@ import warnings
 from collections.abc import Collection, Generator
 from typing import Literal, overload
 
-import httpx
+import httpx2
 from msal import (
     ConfidentialClientApplication,
     ManagedIdentityClient,
@@ -47,7 +47,7 @@ _DEFAULT_API_URLS: dict[str, str] = {
 _ENV_TYPE = Literal["development", "staging", "production"]
 
 
-class HMACSigningAuth(httpx.Auth):
+class HMACSigningAuth(httpx2.Auth):
     """Client that adds an HMAC signature to a request."""
 
     requires_request_body = True
@@ -63,15 +63,15 @@ class HMACSigningAuth(httpx.Auth):
         self.client_id = client_id
 
     def auth_flow(
-        self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> Generator[httpx2.Request, httpx2.Response]:
         """
         Add a signature to the given request.
 
         :param request: request to be sent with signature
-        :type request: httpx.Request
+        :type request: httpx2.Request
         :yield: Generator for Request with signature headers set
-        :rtype: Generator[httpx.Request, httpx.Response]
+        :rtype: Generator[httpx2.Request, httpx2.Response]
         """
         timestamp = time.time()
         signature = create_signature(
@@ -101,7 +101,7 @@ class RobotClient:
         :param client_id: The client ID for signing requests
         :type client_id: UUID
         """
-        self.session = httpx.Client(
+        self.session = httpx2.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
             headers={
                 "Content-Type": "application/json",
@@ -181,7 +181,7 @@ class RobotClient:
             timeout=timeout,
         )
         # HTTP 204 No Content indicates no batches available
-        if response.status_code == httpx.codes.NO_CONTENT:
+        if response.status_code == httpx2.codes.NO_CONTENT:
             return None
 
         response.raise_for_status()
@@ -213,7 +213,7 @@ class RobotClient:
 Client = RobotClient
 
 
-class AzureOAuthMiddleware(httpx.Auth):
+class AzureOAuthMiddleware(httpx2.Auth):
     """
     Auth middleware that handles Azure AD OAuth2 token retrieval and refresh.
 
@@ -314,7 +314,7 @@ class AzureOAuthMiddleware(httpx.Auth):
                 raise ValueError(msg)
             self._oauth_app = ManagedIdentityClient(
                 UserAssignedManagedIdentity(client_id=azure_client_id),
-                http_client=httpx.Client(),
+                http_client=httpx2.Client(),
             )
             self._get_token = self._get_token_from_managed_identity
         elif azure_client_secret:
@@ -455,15 +455,15 @@ class AzureOAuthMiddleware(httpx.Auth):
         return self._parse_token(result)
 
     def auth_flow(
-        self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> Generator[httpx2.Request, httpx2.Response]:
         """
         Add OAuth2 token to request and handle token refresh on expiration.
 
         :param request: The request to authenticate.
-        :type request: httpx.Request
+        :type request: httpx2.Request
         :yield: Authenticated request with token refresh handling.
-        :rtype: Generator[httpx.Request, httpx.Response]
+        :rtype: Generator[httpx2.Request, httpx2.Response]
         """
         # Add initial token
         token = self._get_token()
@@ -472,7 +472,7 @@ class AzureOAuthMiddleware(httpx.Auth):
         response = yield request
 
         # Check if token expired and retry once with fresh token
-        if response.status_code == httpx.codes.UNAUTHORIZED:
+        if response.status_code == httpx2.codes.UNAUTHORIZED:
             response.read()
             try:
                 json_response: dict = response.json()
@@ -487,7 +487,7 @@ class AzureOAuthMiddleware(httpx.Auth):
                 yield request
 
 
-class KeycloakOAuthMiddleware(httpx.Auth):
+class KeycloakOAuthMiddleware(httpx2.Auth):
     """
     Auth middleware that handles Keycloak OAuth2 token retrieval and refresh.
 
@@ -585,7 +585,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
                 raise TypeError(msg)
             try:
                 self._token = self._auth_flow.refresh_token(self._token.refresh_token)
-            except httpx.HTTPStatusError:
+            except httpx2.HTTPStatusError:
                 # Refresh failed, will do full auth flow below
                 pass
             else:
@@ -620,15 +620,15 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         return self._token.access_token
 
     def auth_flow(
-        self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> Generator[httpx2.Request, httpx2.Response]:
         """
         Add OAuth2 token to request and handle token refresh on expiration.
 
         :param request: The request to authenticate.
-        :type request: httpx.Request
+        :type request: httpx2.Request
         :yield: Authenticated request with token refresh handling.
-        :rtype: Generator[httpx.Request, httpx.Response]
+        :rtype: Generator[httpx2.Request, httpx2.Response]
         """
         # Add initial token
         token = self._get_token()
@@ -637,7 +637,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
         response = yield request
 
         # Check if token expired and retry once with fresh token
-        if response.status_code == httpx.codes.UNAUTHORIZED:
+        if response.status_code == httpx2.codes.UNAUTHORIZED:
             response.read()
             try:
                 json_response: dict = response.json()
@@ -652,7 +652,7 @@ class KeycloakOAuthMiddleware(httpx.Auth):
                 yield request
 
 
-class OAuthMiddleware(httpx.Auth):
+class OAuthMiddleware(httpx2.Auth):
     """
     Auth middleware that routes to either Keycloak or Azure OAuth backends.
 
@@ -703,7 +703,7 @@ class OAuthMiddleware(httpx.Auth):
                 use_managed_identity,
             ]
         )
-        self._inner: httpx.Auth
+        self._inner: httpx2.Auth
         if azure_args_present:
             if not azure_client_id or not azure_application_id:
                 msg = (
@@ -741,8 +741,8 @@ class OAuthMiddleware(httpx.Auth):
             )
 
     def auth_flow(
-        self, request: httpx.Request
-    ) -> Generator[httpx.Request, httpx.Response]:
+        self, request: httpx2.Request
+    ) -> Generator[httpx2.Request, httpx2.Response]:
         """Delegate authentication to the routed inner middleware."""
         return self._inner.auth_flow(request)
 
@@ -754,7 +754,7 @@ class OAuthClient:
     This will apply the provided authentication, usually
     :class:`OAuthMiddleware <libs.sdk.src.destiny_sdk.client.OAuthMiddleware>`,
     to all requests. Some API endpoints are supported directly through methods on this
-    class, while others can be accessed through the underlying ``httpx`` client.
+    class, while others can be accessed through the underlying ``httpx2`` client.
 
     Example usage:
 
@@ -772,14 +772,14 @@ class OAuthClient:
         # Supported method
         response = client.search(query="example")
 
-        # Unsupported method, use underlying httpx client
+        # Unsupported method, use underlying httpx2 client
         response = client.get_client().get("/system/healthcheck/")
     """
 
     def __init__(
         self,
         base_url: HttpUrl | str | None = None,
-        auth: httpx.Auth | None = None,
+        auth: httpx2.Auth | None = None,
         timeout: int = 10,
         *,
         env: _ENV_TYPE | None = None,
@@ -794,7 +794,7 @@ class OAuthClient:
         :param auth: The middleware for authentication. If not provided and
             ``env`` is given, an :class:`OAuthMiddleware` configured for that
             environment is used.
-        :type auth: httpx.Auth | None
+        :type auth: httpx2.Auth | None
         :param timeout: The timeout for requests, in seconds. Defaults to 10 seconds.
         :type timeout: int
         :param env: The Destiny environment. When set, fills in
@@ -814,7 +814,7 @@ class OAuthClient:
             msg = f"{' and '.join(missing)} required when env is not provided"
             raise ValueError(msg)
 
-        self._client = httpx.Client(
+        self._client = httpx2.Client(
             base_url=str(base_url).removesuffix("/").removesuffix("/v1") + "/v1",
             headers={
                 "Content-Type": "application/json",
@@ -825,22 +825,22 @@ class OAuthClient:
 
         self._client.auth = auth
 
-    def _raise_for_status(self, response: httpx.Response) -> None:
+    def _raise_for_status(self, response: httpx2.Response) -> None:
         """
         Raise an error if the response status is not successful.
 
         :param response: The HTTP response to check.
-        :type response: httpx.Response
-        :raises httpx.HTTPStatusError: If the response status is not successful.
+        :type response: httpx2.Response
+        :raises httpx2.HTTPStatusError: If the response status is not successful.
         """
         try:
             response.raise_for_status()
-        except httpx.HTTPStatusError as exc:
+        except httpx2.HTTPStatusError as exc:
             msg = (
                 f"Error response {exc.response.status_code} from "
                 f"{exc.request.url}: {exc.response.text}"
             )
-            raise httpx.HTTPStatusError(
+            raise httpx2.HTTPStatusError(
                 msg, request=exc.request, response=exc.response
             ) from exc
 
@@ -899,7 +899,7 @@ class OAuthClient:
         response = self._client.get(
             "/references/search/",
             params=params,
-            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
+            timeout=timeout or httpx2.USE_CLIENT_DEFAULT,
         )
         self._raise_for_status(response)
         return ReferenceSearchResult.model_validate(response.json())
@@ -927,7 +927,7 @@ class OAuthClient:
             params={
                 "identifier": ",".join([str(identifier) for identifier in identifiers])
             },
-            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
+            timeout=timeout or httpx2.USE_CLIENT_DEFAULT,
         )
         self._raise_for_status(response)
         return TypeAdapter(list[Reference]).validate_python(response.json())
@@ -995,7 +995,7 @@ class OAuthClient:
             "/enhancement-requests/search/",
             params={"dry_run": dry_run},
             json=request_in.model_dump(mode="json"),
-            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
+            timeout=timeout or httpx2.USE_CLIENT_DEFAULT,
         )
         self._raise_for_status(response)
         if dry_run:
@@ -1027,18 +1027,18 @@ class OAuthClient:
         """
         response = self._client.get(
             f"/enhancement-requests/search/{enhancement_request_id}/",
-            timeout=timeout or httpx.USE_CLIENT_DEFAULT,
+            timeout=timeout or httpx2.USE_CLIENT_DEFAULT,
         )
         self._raise_for_status(response)
         return SearchEnhancementRequestRead.model_validate(response.json())
 
-    def get_client(self) -> httpx.Client:
+    def get_client(self) -> httpx2.Client:
         """
-        Get the underlying ``httpx`` client.
+        Get the underlying ``httpx2`` client.
 
         This can be used to make custom requests not covered by the SDK methods.
 
-        :return: The underlying ``httpx`` client with authentication attached.
-        :rtype: `httpx.Client <https://www.python-httpx.org/advanced/clients/>`_
+        :return: The underlying ``httpx2`` client with authentication attached.
+        :rtype: `httpx2.Client <https://pydantic.dev/docs/httpx2/advanced/clients/>`_
         """
         return self._client

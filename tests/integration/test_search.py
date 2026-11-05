@@ -8,7 +8,7 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from elasticsearch.helpers import async_bulk
 from fastapi import FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 

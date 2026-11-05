@@ -2,7 +2,7 @@
 
 # ruff: noqa: T201
 import destiny_sdk
-import httpx
+import httpx2
 from fastapi import status
 from pydantic import ValidationError
 
@@ -10,7 +10,7 @@ from cli.client import ApiArgumentParser
 
 
 def register_robot(
-    client: httpx.Client, robot_to_register: destiny_sdk.robots.RobotIn
+    client: httpx2.Client, robot_to_register: destiny_sdk.robots.RobotIn
 ) -> destiny_sdk.robots.ProvisionedRobot:
     """Register a robot to destiny repository."""
     response = client.post(
@@ -20,7 +20,7 @@ def register_robot(
 
     if response.status_code >= status.HTTP_400_BAD_REQUEST:
         msg = response.json()["detail"]
-        raise httpx.HTTPError(msg)
+        raise httpx2.HTTPError(msg)
 
     return destiny_sdk.robots.ProvisionedRobot.model_validate(response.json())
 
@@ -87,5 +87,5 @@ if __name__ == "__main__":
         print(f"Robot Id: {registered_robot.id}")
         print(f"Robot Secret: {registered_robot.client_secret}")
 
-    except (httpx.HTTPError, ValidationError) as exc:
+    except (httpx2.HTTPError, ValidationError) as exc:
         print(f"Robot registration failed: {exc}")

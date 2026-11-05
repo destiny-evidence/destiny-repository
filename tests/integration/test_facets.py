@@ -6,7 +6,7 @@ from uuid import uuid7
 import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from rdflib import Graph
 
 from app.api.exception_handlers import (

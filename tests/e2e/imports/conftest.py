@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid7
 
-import httpx
+import httpx2
 import pytest
 from azure.storage.blob import BlobSasPermissions, BlobServiceClient, generate_blob_sas
 from destiny_sdk.enhancements import EnhancementFileInput
@@ -91,7 +91,7 @@ def get_import_file_signed_url(azurite: AzuriteContainer):
 
 @pytest.fixture
 async def robot_automation_on_all_imports(
-    destiny_client_v1: httpx.AsyncClient, es_client: AsyncElasticsearch, robot: Robot
+    destiny_client_v1: httpx2.AsyncClient, es_client: AsyncElasticsearch, robot: Robot
 ) -> UUID:
     """Create a robot automation that runs on all imports."""
     response = await destiny_client_v1.post(

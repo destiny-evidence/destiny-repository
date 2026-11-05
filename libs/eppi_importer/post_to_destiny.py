@@ -14,7 +14,7 @@ import sys
 import time
 from uuid import UUID
 
-import httpx
+import httpx2
 from destiny_sdk.imports import (
     ImportBatchIn,
     ImportBatchRead,
@@ -25,7 +25,7 @@ from destiny_sdk.imports import (
 
 
 def register_import_record(
-    client: httpx.Client,
+    client: httpx2.Client,
     expected_reference_count: int,
     processor_name: str,
     processor_version: str,
@@ -49,7 +49,7 @@ def register_import_record(
 
 
 def register_import_batch(
-    client: httpx.Client, import_record_id: UUID, file_url: str
+    client: httpx2.Client, import_record_id: UUID, file_url: str
 ) -> ImportBatchRead:
     """Register an import batch for the given file URL."""
     print(f"Registering import batch for file: {file_url}")
@@ -65,7 +65,7 @@ def register_import_batch(
     return import_batch
 
 
-def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None:
+def finalise_import_record(client: httpx2.Client, import_record_id: UUID) -> None:
     """Finalise the import record."""
     print("Finalising import record...")
     response = client.patch(
@@ -76,7 +76,7 @@ def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None
 
 
 def poll_and_summarise(
-    client: httpx.Client, import_record_id: UUID, import_batch_id: UUID
+    client: httpx2.Client, import_record_id: UUID, import_batch_id: UUID
 ) -> None:
     """Poll for completion and produce a summary of the import."""
     print(f"Polling import batch {import_batch_id} for completion...")
@@ -138,7 +138,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    with httpx.Client(
+    with httpx2.Client(
         base_url=args.api_endpoint,
         headers={"Authorization": f"Bearer {args.access_token}"},
     ) as client:

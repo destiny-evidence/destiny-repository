@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid7
 
 import destiny_sdk
-import httpx
+import httpx2
 import pytest
 
 from app.core.exceptions import MessageTooLargeError
@@ -200,7 +200,7 @@ class TestDistributeImportBatch:
             for i, line in enumerate(self._lines):
                 if self._fail_after is not None and i >= self._fail_after:
                     msg = "peer closed connection"
-                    raise httpx.RemoteProtocolError(msg)
+                    raise httpx2.RemoteProtocolError(msg)
                 yield line
 
         async def __aenter__(self):
@@ -256,7 +256,7 @@ class TestDistributeImportBatch:
 
         client = self.FakeClient(lines)
         # Accept **kwargs to absorb follow_redirects=False
-        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
+        monkeypatch.setattr(httpx2, "AsyncClient", lambda **_kwargs: client)
 
         created_results = []
         queued_tasks = []
@@ -295,7 +295,7 @@ class TestDistributeImportBatch:
         # First attempt fails after 2 lines, second attempt succeeds
         client = self.FakeClient(lines, fail_after_sequence=[2, None])
         # Accept **kwargs to absorb follow_redirects=False
-        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
+        monkeypatch.setattr(httpx2, "AsyncClient", lambda **_kwargs: client)
 
         queued_lines = []
 
@@ -336,7 +336,7 @@ class TestDistributeImportBatch:
 
         client = self.FakeClient(lines)
         # Accept **kwargs to absorb follow_redirects=False
-        monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: client)
+        monkeypatch.setattr(httpx2, "AsyncClient", lambda **_kwargs: client)
 
         queued_lines = []
         update_result_calls = []
@@ -392,7 +392,7 @@ async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
         is_success = False
 
         def __init__(self):
-            self.request = httpx.Request("GET", str(import_batch.storage_url))
+            self.request = httpx2.Request("GET", str(import_batch.storage_url))
 
         async def aiter_lines(self):
             return
@@ -428,11 +428,11 @@ async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
             return FakeStreamContext(FakeRedirectResponse())
 
     # Accept **kwargs to absorb follow_redirects=False
-    monkeypatch.setattr(httpx, "AsyncClient", lambda **_kwargs: FakeClient())
+    monkeypatch.setattr(httpx2, "AsyncClient", lambda **_kwargs: FakeClient())
 
     service = ImportService(ImportAntiCorruptionService(), fake_uow())
 
-    with pytest.raises(httpx.HTTPStatusError, match="302"):
+    with pytest.raises(httpx2.HTTPStatusError, match="302"):
         await service.distribute_import_batch(import_batch)
 
 

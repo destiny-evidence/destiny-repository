@@ -1,9 +1,9 @@
 """Tests for VocabularyArtifactClient."""
 
-import httpx
+import httpx2
 import pytest
 import pytest_asyncio
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 from rdflib import Graph
 
 from app.core.exceptions import VocabularyFetchError
@@ -81,10 +81,10 @@ def client() -> VocabularyArtifactClient:
 
 @pytest_asyncio.fixture
 async def skos_client(
-    client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+    client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
 ) -> VocabularyArtifactClient:
     """Client primed to serve the SKOS sample vocabulary at VOCAB_URI."""
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         url=VOCAB_URI,
         text=SKOS_TURTLE,
         headers={"content-type": "text/turtle"},
@@ -95,9 +95,9 @@ async def skos_client(
 class TestGetVocabulary:
     @pytest.mark.asyncio
     async def test_fetches_and_parses_turtle(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=VOCAB_URI,
             text=SAMPLE_TURTLE,
             headers={"content-type": "text/turtle"},
@@ -109,9 +109,9 @@ class TestGetVocabulary:
 
     @pytest.mark.asyncio
     async def test_cache_hit_skips_http(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=VOCAB_URI,
             text=SAMPLE_TURTLE,
             headers={"content-type": "text/turtle"},
@@ -121,21 +121,21 @@ class TestGetVocabulary:
         second = await client.get_vocabulary(VOCAB_URI)
 
         assert first is second
-        assert len(httpx_mock.get_requests()) == 1
+        assert len(httpx2_mock.get_requests()) == 1
 
     @pytest.mark.asyncio
     async def test_different_uris_cached_separately(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
         uri_v1 = "https://vocab.example.org/vocabulary/v1"
         uri_v2 = "https://vocab.example.org/vocabulary/v2"
 
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=uri_v1,
             text=SAMPLE_TURTLE,
             headers={"content-type": "text/turtle"},
         )
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=uri_v2,
             text=SAMPLE_TURTLE,
             headers={"content-type": "text/turtle"},
@@ -144,13 +144,13 @@ class TestGetVocabulary:
         await client.get_vocabulary(uri_v1)
         await client.get_vocabulary(uri_v2)
 
-        assert len(httpx_mock.get_requests()) == 2
+        assert len(httpx2_mock.get_requests()) == 2
 
     @pytest.mark.asyncio
     async def test_http_error_raises(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=VOCAB_URI, status_code=404)
+        httpx2_mock.add_response(url=VOCAB_URI, status_code=404)
 
         with pytest.raises(VocabularyFetchError) as exc_info:
             await client.get_vocabulary(VOCAB_URI)
@@ -160,15 +160,15 @@ class TestGetVocabulary:
 
     @pytest.mark.asyncio
     async def test_failed_fetch_not_cached(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=VOCAB_URI, status_code=500)
+        httpx2_mock.add_response(url=VOCAB_URI, status_code=500)
 
         with pytest.raises(VocabularyFetchError):
             await client.get_vocabulary(VOCAB_URI)
 
         # Subsequent call should retry, not return a cached error
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=VOCAB_URI,
             text=SAMPLE_TURTLE,
             headers={"content-type": "text/turtle"},
@@ -179,9 +179,9 @@ class TestGetVocabulary:
 
     @pytest.mark.asyncio
     async def test_malformed_body_raises(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=VOCAB_URI, text="this is not valid turtle {{{}}")
+        httpx2_mock.add_response(url=VOCAB_URI, text="this is not valid turtle {{{}}")
 
         with pytest.raises(VocabularyFetchError) as exc_info:
             await client.get_vocabulary(VOCAB_URI)
@@ -190,10 +190,10 @@ class TestGetVocabulary:
 
     @pytest.mark.asyncio
     async def test_retries_on_transport_error(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_exception(httpx.ConnectError("connection refused"))
-        httpx_mock.add_response(
+        httpx2_mock.add_exception(httpx2.ConnectError("connection refused"))
+        httpx2_mock.add_response(
             url=VOCAB_URI,
             text=SAMPLE_TURTLE,
             headers={"content-type": "text/turtle"},
@@ -201,19 +201,19 @@ class TestGetVocabulary:
 
         graph = await client.get_vocabulary(VOCAB_URI)
         assert len(graph) > 0
-        assert len(httpx_mock.get_requests()) == 2
+        assert len(httpx2_mock.get_requests()) == 2
 
     @pytest.mark.asyncio
     async def test_follows_single_redirect(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
         blob_url = "https://blob.storage.example.org/vocabulary/v1.ttl"
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=VOCAB_URI,
             status_code=302,
             headers={"location": blob_url},
         )
-        httpx_mock.add_response(
+        httpx2_mock.add_response(
             url=blob_url,
             text=SAMPLE_TURTLE,
             headers={"content-type": "text/turtle"},
@@ -221,15 +221,15 @@ class TestGetVocabulary:
 
         graph = await client.get_vocabulary(VOCAB_URI)
         assert len(graph) > 0
-        assert len(httpx_mock.get_requests()) == 2
+        assert len(httpx2_mock.get_requests()) == 2
 
 
 class TestGetContext:
     @pytest.mark.asyncio
     async def test_fetches_and_parses_json(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
+        httpx2_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
 
         doc = await client.get_context(CONTEXT_URI)
 
@@ -237,21 +237,21 @@ class TestGetContext:
 
     @pytest.mark.asyncio
     async def test_cache_hit_skips_http(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
+        httpx2_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
 
         first = await client.get_context(CONTEXT_URI)
         second = await client.get_context(CONTEXT_URI)
 
         assert first is second
-        assert len(httpx_mock.get_requests()) == 1
+        assert len(httpx2_mock.get_requests()) == 1
 
     @pytest.mark.asyncio
     async def test_http_error_raises(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=CONTEXT_URI, status_code=404)
+        httpx2_mock.add_response(url=CONTEXT_URI, status_code=404)
 
         with pytest.raises(VocabularyFetchError) as exc_info:
             await client.get_context(CONTEXT_URI)
@@ -261,23 +261,23 @@ class TestGetContext:
 
     @pytest.mark.asyncio
     async def test_failed_fetch_not_cached(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=CONTEXT_URI, status_code=500)
+        httpx2_mock.add_response(url=CONTEXT_URI, status_code=500)
 
         with pytest.raises(VocabularyFetchError):
             await client.get_context(CONTEXT_URI)
 
-        httpx_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
+        httpx2_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
 
         doc = await client.get_context(CONTEXT_URI)
         assert doc == SAMPLE_CONTEXT
 
     @pytest.mark.asyncio
     async def test_malformed_body_raises(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=CONTEXT_URI, text="not json {{{")
+        httpx2_mock.add_response(url=CONTEXT_URI, text="not json {{{")
 
         with pytest.raises(VocabularyFetchError) as exc_info:
             await client.get_context(CONTEXT_URI)
@@ -288,9 +288,9 @@ class TestGetContext:
 class TestDocumentLoader:
     @pytest.mark.asyncio
     async def test_returns_cached_context(
-        self, client: VocabularyArtifactClient, httpx_mock: HTTPXMock
+        self, client: VocabularyArtifactClient, httpx2_mock: HTTPXMock
     ):
-        httpx_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
+        httpx2_mock.add_response(url=CONTEXT_URI, json=SAMPLE_CONTEXT)
         await client.get_context(CONTEXT_URI)
 
         result = client.document_loader(CONTEXT_URI)

@@ -9,7 +9,7 @@ import pytest
 from fastapi import HTTPException, Request, status
 from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import KeySet, RSAKey
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 
 from app.api.auth import KeycloakJwtAuth, SubjectType
 from app.core.entitlements import Entitlement
@@ -175,14 +175,14 @@ def generate_keycloak_token(
 
 
 async def test_verify_token_success(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
 ) -> None:
     """Test that a valid token is successfully verified."""
     payload = {"sub": "test_subject"}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(payload)
     result = await auth.verify_token(token)
@@ -190,14 +190,14 @@ async def test_verify_token_success(
 
 
 async def test_verify_token_cached_jwks(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
 ):
     """Test that we cache the JWKS fetched from Keycloak."""
     payload = {"sub": "test_subject"}
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(payload)
 
@@ -208,16 +208,16 @@ async def test_verify_token_cached_jwks(
     assert result["sub"] == "test_subject"
 
     # Check we have one request to Keycloak despite verifying two tokens
-    assert len(httpx_mock.get_requests()) == 1
+    assert len(httpx2_mock.get_requests()) == 1
 
 
 async def test_verify_token_invalid(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
 ):
     """Test that we raise an appropriate exception with an invalid token."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     with pytest.raises(HTTPException) as excinfo:
         await auth.verify_token("sample.jwt.token")
@@ -226,7 +226,7 @@ async def test_verify_token_invalid(
 
 
 async def test_verify_token_expired(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
@@ -236,7 +236,7 @@ async def test_verify_token_expired(
     payload = {
         "exp": int((now - datetime.timedelta(minutes=10)).timestamp()),
     }
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(payload)
     with pytest.raises(HTTPException) as excinfo:
@@ -246,7 +246,7 @@ async def test_verify_token_expired(
 
 
 async def test_verify_token_incorrect_audience(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
@@ -255,7 +255,7 @@ async def test_verify_token_incorrect_audience(
     payload = {
         "aud": "wrong-client-id",
     }
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(payload)
     with pytest.raises(HTTPException) as excinfo:
@@ -265,7 +265,7 @@ async def test_verify_token_incorrect_audience(
 
 
 async def test_verify_token_jwks_retry(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
@@ -275,7 +275,7 @@ async def test_verify_token_jwks_retry(
     auth.cache["jwks"] = KeySet.import_key_set({"keys": [_stale_public_key]})
 
     # Add fresh JWKS response
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     payload = {"sub": "test_subject"}
     token = generate_keycloak_token(payload)
@@ -283,11 +283,11 @@ async def test_verify_token_jwks_retry(
     assert result["sub"] == "test_subject"
 
     # Verify we made a request to refresh JWKS
-    assert len(httpx_mock.get_requests()) == 1
+    assert len(httpx2_mock.get_requests()) == 1
 
 
 async def test_verify_token_parse_failure_after_retry(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     generate_keycloak_token: TokenGenerator,
 ):
@@ -296,26 +296,26 @@ async def test_verify_token_parse_failure_after_retry(
     auth.cache["jwks"] = KeySet.import_key_set({"keys": [_stale_public_key]})
 
     # Return the same wrong key on refresh
-    httpx_mock.add_response(json={"keys": [_stale_public_key]})
+    httpx2_mock.add_response(json={"keys": [_stale_public_key]})
 
     token = generate_keycloak_token()
     with pytest.raises(HTTPException) as excinfo:
         await auth.verify_token(token)
 
-    assert len(httpx_mock.get_requests()) == 1
+    assert len(httpx2_mock.get_requests()) == 1
     assert excinfo.value.status_code == status.HTTP_401_UNAUTHORIZED
     assert "Unable to parse authentication token" in excinfo.value.detail
 
 
 async def test_requires_role_success(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that a client role on the configured client grants access."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(roles=[FakeAuthRoles.READER.value])
     credentials = Mock()
@@ -324,14 +324,14 @@ async def test_requires_role_success(
 
 
 async def test_requires_role_not_found(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that we raise an exception with a token without the appropriate role."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(roles=["wrong.role"])
     credentials = Mock()
@@ -343,14 +343,14 @@ async def test_requires_role_not_found(
 
 
 async def test_scope_confers_no_access(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that the scope claim alone does not authorize a request."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(scope=FakeAuthScopes.READ_ALL.value)
     credentials = Mock()
@@ -361,14 +361,14 @@ async def test_scope_confers_no_access(
 
 
 async def test_realm_role_confers_no_access(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that a realm role of the same name does not authorize a request."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(realm_roles=[FakeAuthRoles.READER.value])
     credentials = Mock()
@@ -379,14 +379,14 @@ async def test_realm_role_confers_no_access(
 
 
 async def test_role_on_another_client_confers_no_access(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that another environment's client roles do not authorize a request."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
 
     token = generate_keycloak_token(
         roles=[FakeAuthRoles.READER.value],
@@ -400,14 +400,14 @@ async def test_role_on_another_client_confers_no_access(
 
 
 async def test_entitlements_derive_from_client_roles_only(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     fake_public_key: dict,
     generate_keycloak_token: TokenGenerator,
     fake_request: Request,
 ):
     """Test that entitlements come from client roles and not from scopes."""
-    httpx_mock.add_response(json={"keys": [fake_public_key]})
+    httpx2_mock.add_response(json={"keys": [fake_public_key]})
     credentials = Mock()
 
     credentials.credentials = generate_keycloak_token(
@@ -461,12 +461,12 @@ async def test_missing_credentials(
 
 
 async def test_jwks_fetch_failure(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     auth: KeycloakJwtAuth,
     generate_keycloak_token: TokenGenerator,
 ):
     """Test that a JWKS fetch failure returns 401 instead of crashing."""
-    httpx_mock.add_response(status_code=500)
+    httpx2_mock.add_response(status_code=500)
 
     token = generate_keycloak_token()
     with pytest.raises(HTTPException) as excinfo:
@@ -476,7 +476,7 @@ async def test_jwks_fetch_failure(
 
 
 async def test_custom_issuer_url(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
     fake_public_key: dict,
     fake_realm: str,
     fake_client_id: str,
@@ -496,7 +496,7 @@ async def test_custom_issuer_url(
     )
 
     # JWKS should be fetched from keycloak_url
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         url=f"{keycloak_url}/realms/{fake_realm}/protocol/openid-connect/certs",
         json={"keys": [fake_public_key]},
     )

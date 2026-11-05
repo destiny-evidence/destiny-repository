@@ -8,7 +8,7 @@ from base64 import b64encode
 from collections.abc import AsyncIterator
 from uuid import UUID
 
-import httpx
+import httpx2
 import pytest
 import testcontainers.elasticsearch
 import testcontainers.rabbitmq
@@ -16,7 +16,7 @@ from alembic.command import upgrade
 from azure.storage.blob import BlobServiceClient
 from elasticsearch import AsyncElasticsearch
 from opentelemetry import context, trace
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
 from opentelemetry.trace import set_span_in_context
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -74,7 +74,7 @@ if otel_enabled and (otel_config := os.getenv("OTEL_CONFIG")):
         Environment.TEST,
     )
 
-HTTPXClientInstrumentor().instrument()
+HTTPX2ClientInstrumentor().instrument()
 
 _cwd = pathlib.Path.cwd()
 logger.info("Current working directory: %s", _cwd)
@@ -120,7 +120,7 @@ async def trace_test(request: pytest.FixtureRequest):
 @pytest.fixture(scope="session")
 async def signed_url_client():
     """Yield a client for fetching and uploading to signed blob URLs."""
-    async with httpx.AsyncClient() as client:
+    async with httpx2.AsyncClient() as client:
         yield client
 
 
@@ -462,13 +462,13 @@ async def app(  # noqa: PLR0913
             print_logs("App", container)
 
 
-def _get_httpx_client_for_app(app: DockerContainer) -> httpx.AsyncClient:
-    """Create an httpx client for the app container."""
+def _get_httpx_client_for_app(app: DockerContainer) -> httpx2.AsyncClient:
+    """Create an httpx2 client for the app container."""
     host = app.get_container_host_ip()
     port = app.get_exposed_port(app_port)
     url = f"http://{host}:{port}/v1/"
-    logger.info("Creating httpx client for %s", url)
-    return httpx.AsyncClient(base_url=url)
+    logger.info("Creating httpx2 client for %s", url)
+    return httpx2.AsyncClient(base_url=url)
 
 
 @pytest.fixture(scope="session")
@@ -476,7 +476,7 @@ async def configured_repository_factory(app: DockerContainer, worker: DockerCont
     """Get a factory to configure repository containers with specific env vars."""
 
     @contextlib.asynccontextmanager
-    async def _factory(env: dict) -> AsyncIterator[httpx.AsyncClient]:
+    async def _factory(env: dict) -> AsyncIterator[httpx2.AsyncClient]:
         msg = f"Reconfiguring repository containers with env vars: {env}"
         logger.info(msg)
         old_envs = {}
@@ -502,8 +502,8 @@ async def configured_repository_factory(app: DockerContainer, worker: DockerCont
 
 # Function scoped as the bindings may change per test due to the factory above
 @pytest.fixture
-async def destiny_client_v1(app: DockerContainer) -> httpx.AsyncClient:
-    """Get a httpx client for the main application."""
+async def destiny_client_v1(app: DockerContainer) -> httpx2.AsyncClient:
+    """Get an httpx2 client for the main application."""
     return _get_httpx_client_for_app(app)
 
 
@@ -524,7 +524,7 @@ def pytest_addoption(parser: pytest.Parser):
 
 
 @pytest.fixture
-async def robot(destiny_client_v1: httpx.AsyncClient) -> Robot:
+async def robot(destiny_client_v1: httpx2.AsyncClient) -> Robot:
     """Create a robot."""
     robot: Robot = RobotFactory.build()
     response = await destiny_client_v1.post(
