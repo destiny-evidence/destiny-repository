@@ -17,7 +17,6 @@ dev = [
     "pytest>=8.3.4,<9",
     "ruff>=0.8.6,<0.9",
     "types-cachetools>=5.5.0.20240820,<6",
-    "types-python-jose>=3.4.0.20250224,<4",
     "vulture>=2.14",
 ]
 docs = [
@@ -72,7 +71,6 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyld>=2.0.4,<3",
     "pyshacl>=0.30.0,<1",
-    "python-jose[cryptography]>=3.5.0,<4",
     "rdflib>=7.0.0,<8",
     "sqlalchemy-utils>=0.41.2,<0.42",
     "structlog>=25.1.0,<26",
@@ -161,9 +159,6 @@ overrides."tool.coverage.paths.source".inline_arrays = false
 default-groups = [
     "dev",
     "test",
-]
-exclude-dependencies = [
-    "ecdsa", # Required until https://github.com/mpdavis/python-jose/issues/390 is resolved
 ]
 package = false
 

@@ -1,12 +1,12 @@
 """Test multi-issuer JWT authentication (Azure AD + Keycloak)."""
 
+import base64
 import datetime
 import re
 from unittest.mock import Mock
 
 import pytest
 from fastapi import HTTPException, Request, status
-from jose import jwt as jose_jwt
 from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import RSAKey
 from pytest_httpx import HTTPXMock
@@ -100,6 +100,10 @@ def fake_request() -> Request:
     return Request(scope={"type": "http", "path": "/test"})
 
 
+def _b64url(value: str) -> str:
+    return base64.urlsafe_b64encode(value.encode()).rstrip(b"=").decode()
+
+
 def _generate_azure_token(
     user_payload: dict | None = None,
     scope: AuthScope | None = None,
@@ -119,12 +123,9 @@ def _generate_azure_token(
         payload["scp"] = scope
     elif role:
         payload["roles"] = [role]
-    return jose_jwt.encode(
-        payload,
-        _test_private_key,
-        algorithm="RS256",
-        headers={"kid": _test_private_key["kid"]},
-    )
+    private_key = RSAKey.import_key(_test_private_key)
+    header = {"alg": "RS256", "kid": _test_private_key["kid"]}
+    return joserfc_jwt.encode(header, payload, private_key)
 
 
 def _generate_keycloak_token(
@@ -226,6 +227,30 @@ class TestMultiIssuerAuth:
         with pytest.raises(HTTPException) as exc_info:
             await multi_issuer_auth(fake_request, credentials)
         assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+
+    @pytest.mark.parametrize(
+        ("header", "payload"),
+        [
+            ('{"alg": "RS256"}', "not json"),
+            ('{"alg": "RS256"}', "[]"),
+            ('{"alg": "RS256"}', "null"),
+            ('["alg", "b64"]', '{"iss": "x"}'),
+        ],
+    )
+    async def test_malformed_header_or_payload(
+        self,
+        multi_issuer_auth: MultiIssuerJwtAuth,
+        fake_request: Request,
+        header: str,
+        payload: str,
+    ) -> None:
+        """Compact token with a malformed header or non-object payload gets 401."""
+        credentials = Mock()
+        credentials.credentials = f"{_b64url(header)}.{_b64url(payload)}.signature"
+        with pytest.raises(HTTPException) as exc_info:
+            await multi_issuer_auth(fake_request, credentials)
+        assert exc_info.value.status_code == status.HTTP_401_UNAUTHORIZED
+        assert exc_info.value.detail == "Unable to parse authentication token."
 
 
 class TestBuildJwtAuth:

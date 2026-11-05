@@ -12,6 +12,7 @@ This module is based on the following references :
 """
 
 import hmac
+import json
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from enum import StrEnum, auto
@@ -23,8 +24,8 @@ from cachetools import TTLCache
 from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from httpx import AsyncClient
-from jose import exceptions, jwt
 from joserfc import errors as joserfc_errors
+from joserfc import jws as joserfc_jws
 from joserfc import jwt as joserfc_jwt
 from joserfc.jwk import KeySet
 from opentelemetry import trace
@@ -271,6 +272,18 @@ class CachingStrategyAuth(StrategyAuth):
         self._cached_strategy = None
 
 
+def _unverified_claims(token: str) -> dict[str, Any]:
+    """Read a token's claims without verifying its signature."""
+    try:
+        claims = json.loads(joserfc_jws.extract_compact(token.encode()).payload)
+    # joserfc raises a bare TypeError for some malformed headers, e.g. a JSON list
+    except (ValueError, TypeError) as exc:
+        raise joserfc_errors.DecodeError from exc
+    if not isinstance(claims, dict):
+        raise joserfc_errors.DecodeError
+    return claims
+
+
 class AzureJwtAuth(JwtAuth):
     """
     AuthMethod for authorizing requests using the JWT provided by Azure.
@@ -326,7 +339,13 @@ class AzureJwtAuth(JwtAuth):
         self.scope = scope
         self.role = role
         self.login_url = settings.azure_login_url.rstrip("/")
+        self.issuer = f"{self.login_url}/v2.0"
         self.cache: TTLCache = TTLCache(maxsize=1, ttl=cache_ttl)
+
+        self._claims_registry = joserfc_jwt.JWTClaimsRegistry(
+            iss={"essential": True, "value": self.issuer},
+            aud={"essential": True, "value": self.api_audience},
+        )
 
     async def verify_token(self, token: str) -> dict[str, Any]:
         """
@@ -336,76 +355,71 @@ class AzureJwtAuth(JwtAuth):
         token (str): The JWT to be verified
 
         """
-        try:
-            jwks = self.cache.get("jwks")
-            cached_jwks = bool(jwks)
-            if not jwks:
-                jwks = await self._get_microsoft_keys()
-                self.cache["jwks"] = jwks
+        jwks = self.cache.get("jwks")
+        cached_jwks = bool(jwks)
 
-            unverified_header = jwt.get_unverified_header(token)
-            rsa_key = {}
-            for key in jwks["keys"]:
-                if key["kid"] == unverified_header["kid"]:
-                    rsa_key = {
-                        "kty": key["kty"],
-                        "kid": key["kid"],
-                        "use": key["use"],
-                        "n": key["n"],
-                        "e": key["e"],
-                    }
-        except Exception as exc:
+        if not jwks:
+            try:
+                jwks = await self._get_microsoft_keys()
+            except Exception as exc:
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to fetch signing keys from identity provider.",
+                ) from exc
+            self.cache["jwks"] = jwks
+
+        try:
+            decoded = joserfc_jwt.decode(token, jwks, algorithms=["RS256"])
+            self._claims_registry.validate(decoded.claims)
+            return dict(decoded.claims)
+
+        except joserfc_errors.ExpiredTokenError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
+            ) from exc
+
+        except joserfc_errors.ClaimError as exc:
+            unverified = _unverified_claims(token)
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=(
+                    f"Incorrect claims ({exc.description}). "
+                    f"Expected aud={self.api_audience}, got={unverified.get('aud')}. "
+                    f"Expected iss={self.issuer}, got={unverified.get('iss')}"
+                ),
+            ) from exc
+
+        # Only these can mean the cached keys are stale, so junk tokens don't refetch
+        except (
+            joserfc_errors.InvalidKeyIdError,
+            joserfc_errors.BadSignatureError,
+        ) as exc:
+            if cached_jwks:
+                self.cache.pop("jwks", None)
+                return await self.verify_token(token)
+            if isinstance(exc, joserfc_errors.InvalidKeyIdError):
+                raise AuthError(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Unable to find appropriate key.",
+                ) from exc
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to parse authentication token.",
             ) from exc
 
-        if rsa_key:
-            try:
-                expected_issuer = f"{self.login_url}/v2.0"
-                payload = jwt.decode(
-                    token,
-                    rsa_key,
-                    algorithms=["RS256"],
-                    audience=self.api_audience,
-                    issuer=expected_issuer,
-                )
-            except exceptions.ExpiredSignatureError as exc:
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=destiny_sdk.auth.TOKEN_EXPIRED_MESSAGE,
-                ) from exc
-            except exceptions.JWTClaimsError as exc:
-                unverified = jwt.get_unverified_claims(token)
-                token_aud = unverified.get("aud")
-                token_iss = unverified.get("iss")
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail=(
-                        f"Incorrect claims. "
-                        f"Expected aud={self.api_audience}, got={token_aud}. "
-                        f"Expected iss={expected_issuer}, got={token_iss}"
-                    ),
-                ) from exc
-            except Exception as exc:
-                if cached_jwks:
-                    self.cache.pop("jwks", None)
-                    return await self.verify_token(token)
-                raise AuthError(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Unable to parse authentication token.",
-                ) from exc
-            else:
-                return payload
-        raise AuthError(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Unable to find appropriate key.",
-        )
+        # joserfc raises a bare TypeError for some malformed headers, e.g. a JSON list
+        except (joserfc_errors.JoseError, TypeError) as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
 
-    async def _get_microsoft_keys(self) -> Any:  # noqa: ANN401
+    async def _get_microsoft_keys(self) -> KeySet:
         async with AsyncClient() as client:
             response = await client.get(f"{self.login_url}/discovery/v2.0/keys")
-            return response.json()
+            response.raise_for_status()
+            return KeySet.import_key_set(response.json())
 
     def _require_scope_or_role(self, verified_claims: dict[str, Any]) -> SubjectType:
         # Delegated (user) token: check scopes
@@ -594,6 +608,13 @@ class KeycloakJwtAuth(JwtAuth):
                 detail="Unable to parse authentication token.",
             ) from exc
 
+        # joserfc raises a bare TypeError for some malformed headers, e.g. a JSON list
+        except TypeError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
     async def _get_keycloak_keys(self) -> KeySet:
         """Fetch and import JWKS from Keycloak's OIDC endpoint."""
         async with AsyncClient() as client:
@@ -692,7 +713,7 @@ class MultiIssuerJwtAuth(JwtAuth):
         """
         self._azure_auth = azure_auth
         self._keycloak_auth = keycloak_auth
-        self._azure_issuer = f"{azure_auth.login_url}/v2.0"
+        self._azure_issuer = azure_auth.issuer
         self._keycloak_issuer = keycloak_auth.issuer
 
     def _select_validator(self, token: str) -> JwtAuth:
@@ -704,8 +725,8 @@ class MultiIssuerJwtAuth(JwtAuth):
         full token verification independently.
         """
         try:
-            unverified = jwt.get_unverified_claims(token)
-        except Exception as exc:
+            unverified = _unverified_claims(token)
+        except joserfc_errors.JoseError as exc:
             raise AuthError(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Unable to parse authentication token.",
