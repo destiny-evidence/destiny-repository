@@ -196,6 +196,29 @@ class OpenAlexRelation(StrEnum):
     """The top-scoring candidate has a different OpenAlex ID."""
 
 
+class IdentifierCandidateOutcome(StrEnum):
+    """How the best identifier-surfaced candidate fared against the rest."""
+
+    NONE = auto()
+    """No candidate was surfaced by an identifier match."""
+    TOP = auto()
+    """An identifier-surfaced candidate scored highest."""
+    BEATEN = auto()
+    """A candidate no identifier surfaced outscored every one an identifier did."""
+    UNSCORED = auto()
+    """Every identifier-surfaced candidate was unscorable."""
+
+
+class OpenAlexRelation(StrEnum):
+    """How the top-scoring candidate's OpenAlex ID relates to the incoming one."""
+
+    ABSENT = auto()
+    """One side, or both, has no OpenAlex ID."""
+    SAME = auto()
+    DIFFERENT = auto()
+    """The top-scoring candidate has a different OpenAlex ID."""
+
+
 class DuplicateDetermination(StrEnum):
     """
     The determination of whether a reference is a duplicate.
