@@ -140,6 +140,7 @@ All three behave the same way:
 - Each value is a single code, or a comma-separated list of codes.
 - Within a single value, codes are combined using ``OR``; multiple parameters AND, including across different parameters.
 - Codes are uppercased on input, so ``us`` and ``US`` both match. Codes outside the accepted values return ``400``.
+- Regions and income groups are the World Bank's current classification of each country, not the classification when the research was published.
 
 .. code-block::
 
