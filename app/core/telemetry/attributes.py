@@ -125,6 +125,7 @@ class Attributes(StrEnum):
     CANDIDATE_SELECTION_DEEP_DEDUPLICATION = (
         "app.candidate_selection.deep_deduplication"
     )
+    CANDIDATE_SELECTION_COMMUNITY_SCOPED = "app.candidate_selection.community_scoped"
 
     # Deep deduplication retrieval
     DEEP_DEDUPLICATION_OUTCOME = "app.deep_deduplication.outcome"

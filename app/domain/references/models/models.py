@@ -858,8 +858,9 @@ class CandidateCanonicalSearchQuery(BaseModel):
     author_tie_breaker: float
     publication_year_range: tuple[int, int] | None
     publication_year_decay: YearDecay | None = None
-    duplicate_determination: DuplicateDetermination
+    duplicate_determination: DuplicateDetermination | None
     excluded_reference_id: UUID | None
+    annotations: tuple[str, ...] = ()
 
 
 class ReferenceSearchFields(ProjectedBaseModel):

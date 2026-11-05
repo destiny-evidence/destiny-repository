@@ -603,6 +603,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     reference_duplicate_decision,
                     blob_repository,
                     DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW,
+                    community_annotations=tuple(
+                        settings.dedup_scoring.community_annotations
+                    ),
                 )
             except DeduplicationInputError:
                 trace_attribute(
@@ -1529,6 +1532,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_duplicate_decision: ReferenceDuplicateDecision,
         blob_repository: BlobRepository,
         purpose: DeduplicationAssessmentPurpose,
+        community_annotations: tuple[str, ...] = (),
     ) -> DeduplicationAssessment:
         """Assess a reference and record the assessment against its decision."""
         assessor = DeduplicationAssessmentService(
@@ -1536,6 +1540,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 self._deduplication_service.get_deduplication_candidates,
                 deep_deduplication=True,
                 request_timeout=settings.dedup_scoring.retrieval_timeout_seconds,
+                community_annotations=community_annotations,
             ),
             reference_reader=self.sql_uow.references,
             pair_scorer=DeduperPairScorer(),

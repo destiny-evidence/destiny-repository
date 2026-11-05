@@ -400,6 +400,16 @@ class DedupCandidateScoringConfig(BaseModel):
         le=5,
         description="Minimum token length for author name matching.",
     )
+    community_annotations: list[str] = Field(
+        default=[
+            "domain-inclusion/jacobs-education",
+            "domain-inclusion/hpv",
+            "domain-inclusion/destiny-high-recall",
+            "domain-inclusion/galenos",
+        ],
+        description="Annotations marking community references, which the shadow "
+        "retrieval searches instead of the whole corpus.",
+    )
     candidate_k: int = Field(
         default=10,
         ge=1,
