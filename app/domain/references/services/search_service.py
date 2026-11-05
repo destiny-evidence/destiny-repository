@@ -20,6 +20,9 @@ from app.domain.references.models.models import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.world_bank_income_groups import (
+    WORLD_BANK_INCOME_GROUPS,
+)
 from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.domain.service import GenericService
 from app.external.vocabulary.client import (
@@ -53,6 +56,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
     _LITERAL_AXIS_SIZES: ClassVar[dict[FacetType, int]] = {
         FacetType.COUNTRIES: 256,  # conservative bound on the ~249 ISO 3166-1 codes
         FacetType.COUNTRY_WB_REGIONS: len(WORLD_BANK_REGIONS),
+        FacetType.COUNTRY_WB_INCOME_GROUPS: len(WORLD_BANK_INCOME_GROUPS),
     }
 
     def __init__(
@@ -145,22 +149,15 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
             counting[FacetType.CONCEPTS] = FacetCounting(
                 include=concepts, sibling_groups=groups
             )
-        if query.linked_data_country_filters and FacetType.COUNTRIES in counting:
-            counting[FacetType.COUNTRIES] = FacetCounting(
-                sibling_groups=self._universal_sibling_groups(
-                    tuple(f.country_codes) for f in query.linked_data_country_filters
+        # Concepts take scheme-scoped sibling groups above; for every other facet
+        # the whole field is one sibling set.
+        for facet, or_sets in query.term_filters.items():
+            if facet is not FacetType.CONCEPTS and facet in counting and or_sets:
+                counting[facet] = FacetCounting(
+                    sibling_groups=self._universal_sibling_groups(
+                        tuple(values) for values in or_sets
+                    )
                 )
-            )
-        if (
-            query.linked_data_country_wb_region_filters
-            and FacetType.COUNTRY_WB_REGIONS in counting
-        ):
-            counting[FacetType.COUNTRY_WB_REGIONS] = FacetCounting(
-                sibling_groups=self._universal_sibling_groups(
-                    tuple(f.region_ids)
-                    for f in query.linked_data_country_wb_region_filters
-                )
-            )
         return await self.es_uow.references.aggregate_facets(
             query,
             counting,
