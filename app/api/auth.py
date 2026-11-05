@@ -608,6 +608,13 @@ class KeycloakJwtAuth(JwtAuth):
                 detail="Unable to parse authentication token.",
             ) from exc
 
+        # joserfc raises a bare TypeError for some malformed headers, e.g. a JSON list
+        except TypeError as exc:
+            raise AuthError(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Unable to parse authentication token.",
+            ) from exc
+
     async def _get_keycloak_keys(self) -> KeySet:
         """Fetch and import JWKS from Keycloak's OIDC endpoint."""
         async with AsyncClient() as client:
