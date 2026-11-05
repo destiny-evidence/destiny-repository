@@ -9,6 +9,8 @@ from destiny_sdk.enhancements import LinkedDataEnhancement
 from rdflib import Graph
 
 from app.core.config import get_settings
+from app.domain.references.models.es import ReferenceSearchFieldsMixin
+from app.domain.references.models.models import ReferenceSearchFields
 from app.domain.references.services.linked_data_projection_service import (
     LinkedDataProjectionService,
 )
@@ -121,6 +123,18 @@ def projector_destiny() -> LinkedDataProjectionService:
         return_value=_build_concept_schemes(vocab_graph)
     )
     return LinkedDataProjectionService(client)
+
+
+@pytest.fixture
+def destiny_location_enhancement() -> LinkedDataEnhancement:
+    """Example LocationCodingAnnotation enhancement (New Delhi, IN; Bangladesh, BD)."""
+    with (FIXTURES_DIR / "destiny-location-enhancement.json").open() as f:
+        example = json.load(f)
+    return LinkedDataEnhancement(
+        context_uri=DESTINY_CONTEXT_URI,
+        vocabulary_uri=DESTINY_VOCAB_URI,
+        data=example["data"],
+    )
 
 
 def _location_annotation(
@@ -707,18 +721,12 @@ class TestLinkedDataProjectionService:
 
 class TestLocationCodingAnnotationCountries:
     @pytest.mark.asyncio
-    async def test_extracts_country_from_example_enhancement(self, projector_destiny):
-        with (FIXTURES_DIR / "destiny-location-enhancement.json").open() as f:
-            example = json.load(f)
-        enhancement = LinkedDataEnhancement(
-            context_uri=DESTINY_CONTEXT_URI,
-            vocabulary_uri=DESTINY_VOCAB_URI,
-            data=example["data"],
-        )
+    async def test_extracts_country_from_example_enhancement(
+        self, projector_destiny, destiny_location_enhancement
+    ):
+        result = await projector_destiny.project(destiny_location_enhancement)
 
-        result = await projector_destiny.project(enhancement)
-
-        assert result.countries == {"IN"}
+        assert result.countries == {"IN", "BD"}
 
     @pytest.mark.asyncio
     async def test_extracts_countries_from_multiple_mentions(self, projector_destiny):
@@ -798,3 +806,54 @@ class TestLocationCodingAnnotationCountries:
         result = await projector_destiny.project(enhancement)
 
         assert result.countries == {"IN"}
+
+    @pytest.mark.asyncio
+    async def test_derives_region_and_income_group_from_example_enhancement(
+        self, projector_destiny, destiny_location_enhancement
+    ):
+        result = await projector_destiny.project(destiny_location_enhancement)
+
+        assert result.country_wb_regions == {SOUTH_ASIA}
+        assert result.country_wb_income_groups == {LOWER_MIDDLE_INCOME}
+
+    @pytest.mark.asyncio
+    async def test_derives_distinct_regions_across_mentions(self, projector_destiny):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", "IN", "evrepo:coded"),
+            _location_annotation("184745", "KE", "evrepo:coded"),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.country_wb_regions == {SOUTH_ASIA, SUB_SAHARAN_AFRICA}
+        # IN and KE are both lower-middle income — income groups deduplicate.
+        assert result.country_wb_income_groups == {LOWER_MIDDLE_INCOME}
+
+    @pytest.mark.asyncio
+    async def test_unknown_country_code_omitted_from_region_and_income_group(
+        self, projector_destiny
+    ):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", "IN", "evrepo:coded"),
+            _location_annotation("0000001", "ZZ", "evrepo:coded"),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == {"IN", "ZZ"}
+        assert result.country_wb_regions == {SOUTH_ASIA}
+        assert result.country_wb_income_groups == {LOWER_MIDDLE_INCOME}
+
+    @pytest.mark.asyncio
+    async def test_example_enhancement_populates_search_document_fields(
+        self, projector_destiny, destiny_location_enhancement
+    ):
+        projection = await projector_destiny.project(destiny_location_enhancement)
+
+        fields = ReferenceSearchFieldsMixin.from_projections(
+            ReferenceSearchFields(), projection
+        )
+
+        assert sorted(fields.linked_data_countries or []) == ["BD", "IN"]
+        assert fields.linked_data_country_wb_regions == [SOUTH_ASIA]
+        assert fields.linked_data_country_wb_income_groups == [LOWER_MIDDLE_INCOME]
