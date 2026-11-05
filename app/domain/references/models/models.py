@@ -1477,6 +1477,7 @@ class LinkedDataProjection(ProjectedBaseModel):
     evaluated_properties: set[str] = Field(default_factory=set)
     countries: set[str] = Field(default_factory=set)
     country_wb_regions: set[str] = Field(default_factory=set)
+    country_wb_income_groups: set[str] = Field(default_factory=set)
 
     @classmethod
     def union(cls, projections: Iterable[Self]) -> Self:
@@ -1488,6 +1489,7 @@ class LinkedDataProjection(ProjectedBaseModel):
             merged.evaluated_properties |= projection.evaluated_properties
             merged.countries |= projection.countries
             merged.country_wb_regions |= projection.country_wb_regions
+            merged.country_wb_income_groups |= projection.country_wb_income_groups
         return merged
 
 

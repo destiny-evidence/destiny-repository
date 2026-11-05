@@ -346,6 +346,12 @@ class ReferenceSearchFieldsMixin(InnerDoc):
     )
     """World Bank regions derived from ``linked_data_countries``."""
 
+    linked_data_country_wb_income_groups: list[str] | None = mapped_field(
+        Keyword(required=False),
+        default=None,
+    )
+    """World Bank income groups derived from ``linked_data_countries``."""
+
     @classmethod
     def from_projections(
         cls,
@@ -378,6 +384,11 @@ class ReferenceSearchFieldsMixin(InnerDoc):
             else None,
             linked_data_country_wb_regions=list(
                 linked_data_projection.country_wb_regions
+            )
+            if linked_data_projection
+            else None,
+            linked_data_country_wb_income_groups=list(
+                linked_data_projection.country_wb_income_groups
             )
             if linked_data_projection
             else None,
