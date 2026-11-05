@@ -10,7 +10,7 @@
 
 import datetime
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, get_args
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
@@ -86,6 +86,8 @@ from app.domain.references.services.export_service import (
     SearchExportService,
 )
 from app.domain.references.services.search_service import SearchService
+from app.domain.references.services.world_bank_income_groups import WBIncomeGroupID
+from app.domain.references.services.world_bank_regions import WBRegionID
 from app.domain.references.tasks import (
     run_reference_export_task,
     run_search_enhancement_request_task,
@@ -482,11 +484,16 @@ def parse_linked_data_country_wb_region_filters(
         Query(
             description=(
                 "A list of World Bank region filters to apply to the search.\n\n"
-                "- Each value matches references whose `linked_data_country_wb_"
-                "regions` contain at least one of the listed region IDs.\n"
-                "- Within a single value, separate multiple IDs with commas "
-                "(`,`). These are combined with OR logic.\n"
-                "- Multiple `country_wb_region` parameters are combined with AND."
+                "- Each value is one or more region IDs separated by commas "
+                "(`,`). A reference matches if any of its countries is in any of "
+                "those regions (OR).\n"
+                "- Multiple `country_wb_region` parameters are combined with AND.\n"
+                "- Accepted IDs: "
+                + ", ".join(f"`{region}`" for region in get_args(WBRegionID))
+                + ".\n"
+                "- Countries are grouped by the World Bank's current "
+                "classification, not their classification when the research was "
+                "published."
             ),
             examples=["EAS", "EAS,ECS"],
         ),
@@ -515,13 +522,17 @@ def parse_linked_data_country_wb_income_group_filters(
         Query(
             description=(
                 "A list of World Bank income group filters to apply to the search.\n\n"
-                "- Each value matches references whose `linked_data_country_wb_"
-                "income_groups` contain at least one of the listed income group "
-                "IDs.\n"
-                "- Within a single value, separate multiple IDs with commas "
-                "(`,`). These are combined with OR logic.\n"
+                "- Each value is one or more income group IDs separated by commas "
+                "(`,`). A reference matches if any of its countries is in any of "
+                "those groups (OR).\n"
                 "- Multiple `country_wb_income_group` parameters are combined with "
-                "AND."
+                "AND.\n"
+                "- Accepted IDs: "
+                + ", ".join(f"`{group}`" for group in get_args(WBIncomeGroupID))
+                + ".\n"
+                "- Countries are grouped by the World Bank's current "
+                "classification, not their classification when the research was "
+                "published."
             ),
             examples=["LIC", "LIC,LMC"],
         ),
