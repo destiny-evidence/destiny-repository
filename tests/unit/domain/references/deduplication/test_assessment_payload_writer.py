@@ -5,6 +5,7 @@ from uuid import uuid7
 import pytest
 
 from app.domain.references.models.models import (
+    DeduplicationAssessmentPurpose,
     DeduplicationFieldComparison,
     DeduplicationFieldStatus,
 )
@@ -35,23 +36,22 @@ def writer(blob_repository: AsyncMock) -> BlobAssessmentPayloadWriter:
     return BlobAssessmentPayloadWriter(blob_repository=blob_repository)
 
 
-async def test_payload_is_written_to_the_operations_container_under_the_record_id(
+async def test_payload_is_written_to_the_operations_container_under_its_delivery(
     writer: BlobAssessmentPayloadWriter,
     blob_repository: AsyncMock,
 ) -> None:
     record_id = uuid7()
 
     stored = await writer.write(
-        payload_id=record_id, assessment=build_assessment([scored_candidate(0.95)])
+        payload_id=record_id,
+        purpose=DeduplicationAssessmentPurpose.PERFORMANCE_SHADOW,
+        assessment=build_assessment([scored_candidate(0.95)]),
     )
 
     call = blob_repository.upload_file_to_blob_storage.call_args.kwargs
     assert call["container"] == BlobContainer.OPERATIONS
-    assert call["path"] == "deduplication-assessments"
-    assert call["filename"] == f"{record_id}.json"
-    assert (
-        stored.location
-        == f"azure://operations/deduplication-assessments/{record_id}.json"
+    assert stored.location == (
+        f"azure://operations/deduplication-assessments/performance_shadow/{record_id}.json"
     )
 
 
@@ -60,7 +60,9 @@ async def test_written_payload_reports_the_bytes_it_stored(
     blob_repository: AsyncMock,
 ) -> None:
     stored = await writer.write(
-        payload_id=uuid7(), assessment=build_assessment([scored_candidate(0.95)])
+        payload_id=uuid7(),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        assessment=build_assessment([scored_candidate(0.95)]),
     )
 
     uploaded = blob_repository.upload_file_to_blob_storage.call_args.kwargs["content"]
@@ -91,7 +93,11 @@ async def test_payload_carries_the_values_the_scorer_actually_compared(
         ]
     )
 
-    await writer.write(payload_id=uuid7(), assessment=assessment)
+    await writer.write(
+        payload_id=uuid7(),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        assessment=assessment,
+    )
 
     content = blob_repository.upload_file_to_blob_storage.call_args.kwargs["content"]
     written = json.loads(content.getvalue())
@@ -111,7 +117,11 @@ async def test_written_payload_is_the_serialised_assessment(
         [scored_candidate(0.95), scored_candidate(0.2, rank=2)]
     )
 
-    await writer.write(payload_id=uuid7(), assessment=assessment)
+    await writer.write(
+        payload_id=uuid7(),
+        purpose=DeduplicationAssessmentPurpose.DEDUPLICATION,
+        assessment=assessment,
+    )
 
     content = blob_repository.upload_file_to_blob_storage.call_args.kwargs["content"]
     written = json.loads(content.getvalue())

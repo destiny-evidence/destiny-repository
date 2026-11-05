@@ -462,17 +462,18 @@ async def process_reference_duplicate_decision(
 
             if (
                 settings.feature_flags.enable_deep_deduplication
-                # Automatic decisions run the same retrieval and record it.
+                # Automatic decisions record their own assessment, of only what the
+                # shortcut leaves; the shadow assesses every arrival.
                 and not settings.feature_flags.enable_automatic_deduplication_decisions
             ):
-                # Before the decision, so retrieval sees the corpus in the
-                # state deep deduplication will see it. The result is discarded.
+                # Before the decision, so the assessment sees the corpus in the
+                # state deep deduplication will see it. Nothing is decided from it.
                 try:
-                    await reference_service.run_deep_deduplication_retrieval(
-                        reference_duplicate_decision.reference_id
+                    await reference_service.run_deep_deduplication_shadow(
+                        reference_duplicate_decision, blob_repository=blob_repository
                     )
                 except Exception:
-                    logger.exception("Deep deduplication retrieval failed.")
+                    logger.exception("Deep deduplication shadow failed.")
 
             try:
                 reproject_reference_ids = (

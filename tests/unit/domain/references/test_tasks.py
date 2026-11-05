@@ -630,8 +630,8 @@ async def test_run_search_export_task_skips_non_pending_row(
     assert export.n_references == 42
 
 
-class TestDeepDeduplicationRetrieval:
-    """Deep deduplication retrieval measures the arrivals without deciding them."""
+class TestDeepDeduplicationShadow:
+    """The deep deduplication shadow measures the arrivals without deciding them."""
 
     @pytest.fixture
     def mock_reference_service(self, mock_decision_pending):
@@ -640,10 +640,14 @@ class TestDeepDeduplicationRetrieval:
         return service
 
     @pytest.fixture
-    def _task_dependencies(self, monkeypatch, mock_reference_service):
+    def blob_repository(self):
+        return AsyncMock()
+
+    @pytest.fixture
+    def _task_dependencies(self, monkeypatch, mock_reference_service, blob_repository):
         monkeypatch.setattr(
             "app.domain.references.tasks.get_blob_repository",
-            AsyncMock(return_value=AsyncMock()),
+            AsyncMock(return_value=blob_repository),
         )
         monkeypatch.setattr(
             "app.domain.references.tasks.get_reference_service",
@@ -659,12 +663,12 @@ class TestDeepDeduplicationRetrieval:
         )
 
     @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm", "_task_dependencies")
-    async def test_retrieval_does_not_run_by_default(
+    async def test_the_shadow_does_not_run_by_default(
         self, decision_id, mock_reference_service
     ):
         await process_reference_duplicate_decision(decision_id)
 
-        mock_reference_service.run_deep_deduplication_retrieval.assert_not_awaited()
+        mock_reference_service.run_deep_deduplication_shadow.assert_not_awaited()
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
 
     @pytest.mark.usefixtures(
@@ -673,16 +677,20 @@ class TestDeepDeduplicationRetrieval:
         "_task_dependencies",
         "enable_deep_deduplication",
     )
-    async def test_retrieval_runs_before_the_decision(
-        self, decision_id, reference_id, mock_reference_service
+    async def test_the_shadow_runs_before_the_decision(
+        self,
+        decision_id,
+        mock_decision_pending,
+        mock_reference_service,
+        blob_repository,
     ):
         await process_reference_duplicate_decision(decision_id)
 
-        mock_reference_service.run_deep_deduplication_retrieval.assert_awaited_once_with(
-            reference_id
+        mock_reference_service.run_deep_deduplication_shadow.assert_awaited_once_with(
+            mock_decision_pending, blob_repository=blob_repository
         )
         called = [call[0] for call in mock_reference_service.mock_calls]
-        assert called.index("run_deep_deduplication_retrieval") < called.index(
+        assert called.index("run_deep_deduplication_shadow") < called.index(
             "process_reference_duplicate_decision"
         )
 
@@ -692,11 +700,11 @@ class TestDeepDeduplicationRetrieval:
         "_task_dependencies",
         "enable_deep_deduplication",
     )
-    async def test_the_decision_still_runs_when_retrieval_fails(
+    async def test_the_decision_still_runs_when_the_shadow_fails(
         self, decision_id, mock_reference_service
     ):
-        mock_reference_service.run_deep_deduplication_retrieval.side_effect = (
-            RuntimeError("retrieval boom")
+        mock_reference_service.run_deep_deduplication_shadow.side_effect = RuntimeError(
+            "shadow failed"
         )
 
         await process_reference_duplicate_decision(decision_id)
@@ -709,7 +717,7 @@ class TestDeepDeduplicationRetrieval:
         "_task_dependencies",
         "enable_deep_deduplication",
     )
-    async def test_retrieval_is_skipped_when_automatic_decisions_search(
+    async def test_the_shadow_is_skipped_when_automatic_decisions_assess(
         self, decision_id, mock_reference_service, monkeypatch
     ):
         from app.domain.references import tasks as tasks_module
@@ -722,7 +730,7 @@ class TestDeepDeduplicationRetrieval:
 
         await process_reference_duplicate_decision(decision_id)
 
-        mock_reference_service.run_deep_deduplication_retrieval.assert_not_awaited()
+        mock_reference_service.run_deep_deduplication_shadow.assert_not_awaited()
         mock_reference_service.process_reference_duplicate_decision.assert_awaited_once()
 
 
