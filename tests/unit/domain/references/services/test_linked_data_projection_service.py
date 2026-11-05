@@ -30,6 +30,9 @@ ESEA_NS = "https://vocab.esea.education/"
 EVREPO_NS = "https://vocab.evidence-repository.org/"
 
 _STATIC_VOCAB_DIR = get_settings().project_root / "app" / "static" / "vocab" / "esea"
+_STATIC_DESTINY_VOCAB_DIR = (
+    get_settings().project_root / "app" / "static" / "vocab" / "destiny"
+)
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 
@@ -91,6 +94,65 @@ def enhancement(test_data) -> LinkedDataEnhancement:
         context_uri="https://vocab.esea.education/context/v1.jsonld",
         vocabulary_uri="https://vocab.esea.education/vocabulary/v1",
         data=test_data,
+    )
+
+
+DESTINY_VOCAB_URI = "https://vocab.destiny-evidence.org/vocabulary/v1"
+DESTINY_CONTEXT_URI = "https://vocab.destiny-evidence.org/context/v1.jsonld"
+
+
+@pytest.fixture
+def projector_destiny() -> LinkedDataProjectionService:
+    vocab_graph = Graph()
+    vocab_graph.parse(_STATIC_DESTINY_VOCAB_DIR / "destiny-vocab.ttl", format="turtle")
+    with (_STATIC_DESTINY_VOCAB_DIR / "destiny-context.jsonld").open() as f:
+        context = json.load(f)
+
+    client = MagicMock(spec=VocabularyArtifactClient)
+    client.get_vocabulary = AsyncMock(return_value=vocab_graph)
+    client.get_context = AsyncMock(return_value=context)
+    client.get_concept_labels = AsyncMock(
+        return_value=_build_concept_labels(vocab_graph)
+    )
+    client.get_concept_schemes = AsyncMock(
+        return_value=_build_concept_schemes(vocab_graph)
+    )
+    return LinkedDataProjectionService(client)
+
+
+def _location_annotation(
+    geonames_id: str, country_code: str | None, status: str | None
+) -> dict:
+    """Build a LocationCodingAnnotation; ``None`` omits the field."""
+    coded_value: dict = {
+        "@id": f"http://sws.geonames.org/{geonames_id}/",
+        "@type": "GeonamesFeature",
+        "geonamesID": geonames_id,
+    }
+    if country_code is not None:
+        coded_value["countryCode"] = country_code
+    annotation: dict = {
+        "@type": "LocationCodingAnnotation",
+        "codedBy": "mordecai3/3.0.0",
+        "codedValue": coded_value,
+    }
+    if status is not None:
+        annotation["status"] = status
+    return annotation
+
+
+def _location_enhancement(*annotations: dict) -> LinkedDataEnhancement:
+    return LinkedDataEnhancement(
+        context_uri=DESTINY_CONTEXT_URI,
+        vocabulary_uri=DESTINY_VOCAB_URI,
+        data={
+            "@context": DESTINY_CONTEXT_URI,
+            "@type": "LinkedDataEnhancement",
+            "hasInvestigation": {
+                "@type": "Investigation",
+                "mentionedPlace": list(annotations),
+            },
+        },
     )
 
 
@@ -628,3 +690,98 @@ class TestLinkedDataProjectionService:
         assert f"{EVREPO_NS}computedFromStats" in result.concepts
         assert f"{EVREPO_NS}effectSizeMetric" in result.evaluated_properties
         assert f"{EVREPO_NS}estimateSource" in result.evaluated_properties
+
+
+class TestLocationCodingAnnotationCountries:
+    @pytest.mark.asyncio
+    async def test_extracts_country_from_example_enhancement(self, projector_destiny):
+        with (FIXTURES_DIR / "destiny-location-enhancement.json").open() as f:
+            example = json.load(f)
+        enhancement = LinkedDataEnhancement(
+            context_uri=DESTINY_CONTEXT_URI,
+            vocabulary_uri=DESTINY_VOCAB_URI,
+            data=example["data"],
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == {"IN"}
+
+    @pytest.mark.asyncio
+    async def test_extracts_countries_from_multiple_mentions(self, projector_destiny):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", "IN", "evrepo:coded"),
+            _location_annotation("184745", "KE", "evrepo:coded"),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == {"IN", "KE"}
+
+    @pytest.mark.asyncio
+    async def test_deduplicates_countries_across_mentions(self, projector_destiny):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", "IN", "evrepo:coded"),
+            _location_annotation("1275339", "IN", "evrepo:coded"),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == {"IN"}
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "status",
+        ["evrepo:notReported", "evrepo:notApplicable"],
+    )
+    async def test_excludes_uncoded_mention(self, projector_destiny, status):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", "IN", status),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == set()
+
+    @pytest.mark.asyncio
+    async def test_includes_mention_without_status(self, projector_destiny):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", "IN", None),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == {"IN"}
+
+    @pytest.mark.asyncio
+    async def test_normalises_country_code_to_uppercase(self, projector_destiny):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", " in ", "evrepo:coded"),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == {"IN"}
+
+    @pytest.mark.asyncio
+    async def test_feature_without_country_code_is_skipped(self, projector_destiny):
+        enhancement = _location_enhancement(
+            _location_annotation("6295630", None, "evrepo:coded"),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == set()
+
+    @pytest.mark.asyncio
+    async def test_shared_feature_is_included_if_any_mention_is_coded(
+        self, projector_destiny
+    ):
+        enhancement = _location_enhancement(
+            _location_annotation("1261481", "IN", "evrepo:notReported"),
+            _location_annotation("1261481", "IN", "evrepo:coded"),
+        )
+
+        result = await projector_destiny.project(enhancement)
+
+        assert result.countries == {"IN"}

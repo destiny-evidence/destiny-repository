@@ -5,6 +5,7 @@ import json
 from destiny_sdk.enhancements import LinkedDataEnhancement
 from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, SKOS
+from rdflib.term import Node
 
 from app.domain.references.models.models import LinkedDataProjection
 from app.domain.references.services.world_bank_income_groups import (
@@ -15,6 +16,7 @@ from app.external.vocabulary.client import VocabularyArtifactClient
 
 EVREPO = Namespace("https://vocab.evidence-repository.org/")
 ESEA = Namespace("https://vocab.esea.education/")
+GN = Namespace("http://www.geonames.org/ontology#")
 
 # Vocabulary properties whose StringCodingAnnotation values are ISO 3166-1
 # alpha-2 country codes. New vocabularies that introduce a country property
@@ -105,21 +107,51 @@ class LinkedDataProjectionService:
         )
 
     def _extract_countries(self, data_graph: Graph) -> set[str]:
+        """Extract ISO country codes from string and GeoNames country annotations."""
+        return self._extract_string_countries(
+            data_graph
+        ) | self._extract_geonames_countries(data_graph)
+
+    def _extract_string_countries(self, data_graph: Graph) -> set[str]:
         """Extract ISO country codes from registered country-typed properties."""
         countries: set[str] = set()
         for country_property in _COUNTRY_PROPERTIES:
             for _, _, annotation in data_graph.triples((None, country_property, None)):
-                status = self._get_status(data_graph, annotation)
-                if status not in (EVREPO.coded, None):
+                if not self._is_coded(data_graph, annotation):
                     continue
                 for _, _, value in data_graph.triples(
                     (annotation, EVREPO.codedValue, None)
                 ):
-                    if isinstance(value, Literal):
-                        code = str(value).strip().upper()
-                        if code:
-                            countries.add(code)
+                    code = self._normalise_country_code(value)
+                    if code is not None:
+                        countries.add(code)
         return countries
+
+    def _extract_geonames_countries(self, data_graph: Graph) -> set[str]:
+        """Extract ``gn:countryCode`` from GeoNames features coded by annotations."""
+        countries: set[str] = set()
+        for annotation, _, feature in data_graph.triples(
+            (None, EVREPO.codedValue, None)
+        ):
+            if not self._is_coded(data_graph, annotation):
+                continue
+            for _, _, value in data_graph.triples((feature, GN.countryCode, None)):
+                code = self._normalise_country_code(value)
+                if code is not None:
+                    countries.add(code)
+        return countries
+
+    def _is_coded(self, data_graph: Graph, annotation: Node) -> bool:
+        """Return whether an annotation's status counts as coded."""
+        return self._get_status(data_graph, annotation) in (EVREPO.coded, None)
+
+    @staticmethod
+    def _normalise_country_code(value: Node) -> str | None:
+        """Return an upper-cased ISO code from a literal, or None if not usable."""
+        if not isinstance(value, Literal):
+            return None
+        code = str(value).strip().upper()
+        return code or None
 
     @staticmethod
     def _project_unwrapped_concept_properties(  # noqa: PLR0913
@@ -172,7 +204,7 @@ class LinkedDataProjectionService:
         return properties
 
     @staticmethod
-    def _get_status(data_graph: Graph, node: URIRef) -> URIRef | None:
+    def _get_status(data_graph: Graph, node: Node) -> URIRef | None:
         """Get the evrepo:status of a node in the data graph."""
         for _, _, status in data_graph.triples((node, EVREPO.status, None)):
             if isinstance(status, URIRef):

@@ -1,0 +1,38 @@
+{
+  "enhancement_type": "linked_data",
+  "vocabulary_uri": "https://vocab.staging.evidence-repository.org/published/01a1ad6a-69c4-7228-9328-6596d5892455/1.0/vocabulary.ttl",
+  "data": {
+    "@context": "https://vocab.staging.evidence-repository.org/published/01a1ad6a-69c4-7228-9328-6596d5892455/1.0/context.jsonld",
+    "@type": "LinkedDataEnhancement",
+    "hasInvestigation": {
+      "@type": "Investigation",
+      "mentionedPlace": [
+        {
+          "@type": "LocationCodingAnnotation",
+          "status": "evrepo:coded",
+          "codedBy": "mordecai3/3.0.0",
+          "codedValue": {
+            "@id": "http://sws.geonames.org/1261481/",
+            "@type": "GeonamesFeature",
+            "geonamesID": "1261481",
+            "gn:name": "New Delhi",
+            "countryCode": "IN",
+            "lat": "28.63576",
+            "long": "77.22445",
+            "featureClass": {
+              "@id": "gn:P"
+            },
+            "featureCode": {
+              "@id": "gn:P.PPLC"
+            }
+          },
+          "supportingText": "We assessed heat-related mortality in New Delhi between 2010 and 2019.",
+          "mentionText": "New Delhi",
+          "startChar": 38,
+          "endChar": 47,
+          "codingScore": "0.98"
+        }
+      ]
+    }
+  }
+}
