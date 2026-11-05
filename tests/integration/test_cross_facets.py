@@ -53,12 +53,16 @@ AFRICA = "https://vocab.example.org/test/Africa"
 ASIA = "https://vocab.example.org/test/Asia"
 EUROPE = "https://vocab.example.org/test/Europe"
 
-# ISO 3166-1 alpha-2 codes and their World Bank region IDs (KE/UG -> SSF, US -> NAC).
+# ISO 3166-1 alpha-2 codes and their World Bank region IDs (KE/UG -> SSF, US -> NAC)
+# and income group IDs (KE -> LMC, UG -> LIC, US -> HIC).
 COUNTRY_KE = "KE"
 COUNTRY_UG = "UG"
 COUNTRY_US = "US"
 REGION_SSF = "SSF"
 REGION_NAC = "NAC"
+INCOME_HIC = "HIC"
+INCOME_LMC = "LMC"
+INCOME_LIC = "LIC"
 
 NOT_A_SCHEME = "https://vocab.example.org/test/NotAScheme"
 BAD_HOST_VOCAB = "https://vocab.evil.example.org/v.ttl"
@@ -108,14 +112,16 @@ async def client(
 @pytest.fixture
 async def cross_references(es_client: AsyncElasticsearch) -> None:
     """
-    Index references with Topics/Region concepts plus countries and wb regions.
+    Index references with Topics/Region concepts plus country-derived fields.
 
-    - doc 1: Botany, Africa;          KE; SSF
-    - doc 2: Botany, Africa;          KE; SSF
-    - doc 3: Zoology, Asia;           US; NAC
-    - doc 4: Microbiology, Europe;    UG; SSF
-    - doc 5: Botany, Zoology, Africa; KE; SSF   (multi-valued on Topics)
-    - doc 6: Botany, Zoology, Africa; KE; SSF   (multi-valued on Topics)
+    Country-derived fields are countries, wb regions and wb income groups.
+
+    - doc 1: Botany, Africa;          KE; SSF; LMC
+    - doc 2: Botany, Africa;          KE; SSF; LMC
+    - doc 3: Zoology, Asia;           US; NAC; HIC
+    - doc 4: Microbiology, Europe;    UG; SSF; LIC
+    - doc 5: Botany, Zoology, Africa; KE; SSF; LMC   (multi-valued on Topics)
+    - doc 6: Botany, Zoology, Africa; KE; SSF; LMC   (multi-valued on Topics)
     """
     docs = [
         ReferenceDocument(
@@ -126,6 +132,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[BOTANY, AFRICA],
             linked_data_countries=[COUNTRY_KE],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LMC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -135,6 +142,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[BOTANY, AFRICA],
             linked_data_countries=[COUNTRY_KE],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LMC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -144,6 +152,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[ZOOLOGY, ASIA],
             linked_data_countries=[COUNTRY_US],
             linked_data_country_wb_regions=[REGION_NAC],
+            linked_data_country_wb_income_groups=[INCOME_HIC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -153,6 +162,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[MICROBIOLOGY, EUROPE],
             linked_data_countries=[COUNTRY_UG],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LIC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -162,6 +172,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[BOTANY, ZOOLOGY, AFRICA],
             linked_data_countries=[COUNTRY_KE],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LMC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -171,6 +182,7 @@ async def cross_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[BOTANY, ZOOLOGY, AFRICA],
             linked_data_countries=[COUNTRY_KE],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LMC],
         ),
     ]
     for doc in docs:
@@ -279,6 +291,14 @@ async def test_scheme_by_scheme_cross_tab(
                 (COUNTRY_KE, REGION_SSF, 4),
                 (COUNTRY_US, REGION_NAC, 1),
                 (COUNTRY_UG, REGION_SSF, 1),
+            },
+        ),
+        (
+            {"axes": ["country_wb_regions", "country_wb_income_groups"]},
+            {
+                (REGION_SSF, INCOME_LMC, 4),
+                (REGION_NAC, INCOME_HIC, 1),
+                (REGION_SSF, INCOME_LIC, 1),
             },
         ),
         # identical axes -> diagonal co-occurrence matrix

@@ -366,6 +366,32 @@ class TestLinkedDataCountryWBRegionFilterFromQueryParameter:
             service.linked_data_country_wb_region_filter_from_query_parameter("XXX")
 
 
+class TestLinkedDataCountryWBIncomeGroupFilterFromQueryParameter:
+    """Tests for parsing WB income group filters from query parameter values."""
+
+    @pytest.fixture
+    def service(self) -> ReferenceAntiCorruptionService:
+        return ReferenceAntiCorruptionService(sign_url=AsyncMock())
+
+    def test_uppercases_and_splits(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        result = (
+            service.linked_data_country_wb_income_group_filter_from_query_parameter(
+                "lic, lmc"
+            )
+        )
+        assert result.income_group_ids == ["LIC", "LMC"]
+
+    def test_rejects_unknown_income_group_id(
+        self, service: ReferenceAntiCorruptionService
+    ) -> None:
+        with pytest.raises(ValueError, match=r"Input should be 'HIC'"):
+            service.linked_data_country_wb_income_group_filter_from_query_parameter(
+                "INX"
+            )
+
+
 class TestSearchEnhancementRequest:
     """Tests for the search-based enhancement request conversions."""
 

@@ -65,9 +65,6 @@ from app.domain.references.models.models import (
     FacetCounting,
     FacetType,
     GenericExternalIdentifier,
-    LinkedDataConceptFilter,
-    LinkedDataCountryFilter,
-    LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceSearchProjection,
@@ -320,6 +317,7 @@ class ReferenceESRepository(
         FacetType.CONCEPTS: "linked_data_concepts",
         FacetType.COUNTRIES: "linked_data_countries",
         FacetType.COUNTRY_WB_REGIONS: "linked_data_country_wb_regions",
+        FacetType.COUNTRY_WB_INCOME_GROUPS: "linked_data_country_wb_income_groups",
     }
     """Mapping from a facet type to the ES field its counts are aggregated on."""
 
@@ -347,27 +345,6 @@ class ReferenceESRepository(
         if not bounds:
             return None
         return Range(publication_year=bounds)
-
-    def _build_linked_data_concept_clause(
-        self,
-        concept_filter: LinkedDataConceptFilter,
-    ) -> Query:
-        """Terms clause matching any of the listed concept URIs (OR semantics)."""
-        return Terms(linked_data_concepts=concept_filter.concept_uris)
-
-    def _build_linked_data_country_clause(
-        self,
-        country_filter: LinkedDataCountryFilter,
-    ) -> Query:
-        """Terms clause matching any of the listed ISO codes (OR semantics)."""
-        return Terms(linked_data_countries=country_filter.country_codes)
-
-    def _build_linked_data_country_wb_region_clause(
-        self,
-        region_filter: LinkedDataCountryWBRegionFilter,
-    ) -> Query:
-        """Terms clause matching any of the listed WB region IDs (OR semantics)."""
-        return Terms(linked_data_country_wb_regions=region_filter.region_ids)
 
     def _build_annotation_clause(self, annotation: AnnotationFilter) -> Query:
         """
@@ -402,21 +379,12 @@ class ReferenceESRepository(
             self._build_annotation_clause(annotation)
             for annotation in query.annotation_filters
         )
-        if exclude_facet is not FacetType.CONCEPTS:
-            clauses.extend(
-                self._build_linked_data_concept_clause(concept_filter)
-                for concept_filter in query.linked_data_concept_filters
-            )
-        if exclude_facet is not FacetType.COUNTRIES:
-            clauses.extend(
-                self._build_linked_data_country_clause(country_filter)
-                for country_filter in query.linked_data_country_filters
-            )
-        if exclude_facet is not FacetType.COUNTRY_WB_REGIONS:
-            clauses.extend(
-                self._build_linked_data_country_wb_region_clause(region_filter)
-                for region_filter in query.linked_data_country_wb_region_filters
-            )
+        clauses.extend(
+            Terms(self._FACET_FIELDS[facet], values)
+            for facet, or_sets in query.term_filters.items()
+            if facet is not exclude_facet
+            for values in or_sets
+        )
         return clauses
 
     def _normalize_sort_key(self, key: str) -> str | dict[str, Any]:

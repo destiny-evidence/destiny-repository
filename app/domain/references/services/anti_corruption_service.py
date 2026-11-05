@@ -22,6 +22,7 @@ from app.domain.references.models.models import (
     IdentifierLookup,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
+    LinkedDataCountryWBIncomeGroupFilter,
     LinkedDataCountryWBRegionFilter,
     LinkedExternalIdentifier,
     PendingEnhancementStatus,
@@ -538,6 +539,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     )
                     for bucket in buckets
                 ]
+            elif facet is FacetType.COUNTRY_WB_INCOME_GROUPS:
+                fields["country_wb_income_groups"] = [
+                    destiny_sdk.references.CountryWBIncomeGroupFacetCount(
+                        country_wb_income_group=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
             else:
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
@@ -684,6 +692,14 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         """Parse a WB region filter (comma-separated region IDs)."""
         ids = [rid.strip().upper() for rid in region_filter_string.split(",")]
         return LinkedDataCountryWBRegionFilter(region_ids=ids)
+
+    def linked_data_country_wb_income_group_filter_from_query_parameter(
+        self,
+        income_group_filter_string: str,
+    ) -> LinkedDataCountryWBIncomeGroupFilter:
+        """Parse a WB income group filter (comma-separated income group IDs)."""
+        ids = [gid.strip().upper() for gid in income_group_filter_string.split(",")]
+        return LinkedDataCountryWBIncomeGroupFilter(income_group_ids=ids)
 
     def duplicate_decision_from_sdk_make(
         self,

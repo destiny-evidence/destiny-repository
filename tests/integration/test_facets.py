@@ -32,6 +32,9 @@ COUNTRY_UG = "UG"
 COUNTRY_US = "US"
 REGION_SSF = "SSF"
 REGION_NAC = "NAC"
+INCOME_HIC = "HIC"
+INCOME_LMC = "LMC"
+INCOME_LIC = "LIC"
 
 
 # ---- Sibling vocabulary fixture for #703 ------------------------------------------
@@ -130,10 +133,10 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
     projections) keeps the test focused on the aggregation behaviour.
 
     Layout:
-      - doc 1 (climate): A, B; KE, UG; SSF
-      - doc 2 (climate): A;    KE;     SSF
-      - doc 3 (medical): A, C; US;     NAC
-      - doc 4 (medical): B;    UG;     SSF
+      - doc 1 (climate): A, B; KE, UG; SSF; LMC, LIC
+      - doc 2 (climate): A;    KE;     SSF; LMC
+      - doc 3 (medical): A, C; US;     NAC; HIC
+      - doc 4 (medical): B;    UG;     SSF; LIC
       - doc 5 (medical): (no facet fields)
 
     Expected concept counts unrestricted: A=3, B=2, C=1
@@ -150,6 +153,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[CONCEPT_A, CONCEPT_B],
             linked_data_countries=[COUNTRY_KE, COUNTRY_UG],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LMC, INCOME_LIC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -159,6 +163,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[CONCEPT_A],
             linked_data_countries=[COUNTRY_KE],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LMC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -168,6 +173,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[CONCEPT_A, CONCEPT_C],
             linked_data_countries=[COUNTRY_US],
             linked_data_country_wb_regions=[REGION_NAC],
+            linked_data_country_wb_income_groups=[INCOME_HIC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -177,6 +183,7 @@ async def facet_references(es_client: AsyncElasticsearch) -> None:
             linked_data_concepts=[CONCEPT_B],
             linked_data_countries=[COUNTRY_UG],
             linked_data_country_wb_regions=[REGION_SSF],
+            linked_data_country_wb_income_groups=[INCOME_LIC],
         ),
         ReferenceDocument(
             meta={"id": uuid7()},
@@ -362,6 +369,33 @@ async def test_region_filter_with_facet_returns_sibling_aware_counts(
         {"country_wb_region": REGION_SSF, "count": 3},
         {"country_wb_region": REGION_NAC, "count": 1},
     ]
+
+
+async def test_income_group_filter_narrows_search_and_counts_sibling_aware(
+    client: AsyncClient,
+    facet_references: None,  # noqa: ARG001
+) -> None:
+    """The income group filter narrows other facets but not its own."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("country_wb_income_group", INCOME_LIC.lower()),
+            ("facet", "countries"),
+            ("facet", "country_wb_income_groups"),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    body = response.json()
+    # LIC matches docs 1 and 4.
+    assert {(b["country"], b["count"]) for b in body["countries"]} == {
+        (COUNTRY_KE, 1),
+        (COUNTRY_UG, 2),
+    }
+    assert {
+        (b["country_wb_income_group"], b["count"])
+        for b in body["country_wb_income_groups"]
+    } == {(INCOME_LMC, 2), (INCOME_LIC, 2), (INCOME_HIC, 1)}
 
 
 async def test_multiple_country_filters_with_country_facet_rejected(
