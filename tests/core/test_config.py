@@ -134,13 +134,13 @@ def test_candidate_selection_config_defaults_to_production_policy_and_k():
     assert config.retrieval_search_timeout_seconds == 4.0
 
 
-def test_dedup_assessment_recording_defaults_to_full_evidence_sample():
-    """Default recording keeps every sampled evidence payload."""
-    # Deliberately wide: a sample can be narrowed later, but evidence never written
-    # cannot be recovered. Environments set the rate that controls their own cost.
+def test_dedup_assessment_recording_defaults_to_one_in_64_evidence_sample():
+    """Default recording keeps evidence for one in 64 uninteresting assessments."""
+    # The default is the deployed rate, so an override that sets only another key
+    # (Terraform replaces the whole map) cannot silently widen the sample.
     config = DedupAssessmentRecordingConfig()
 
-    assert config.evidence_sample_rate_bits == 0
+    assert config.evidence_sample_rate_bits == 6
 
 
 @pytest.mark.parametrize(

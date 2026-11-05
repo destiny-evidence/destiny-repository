@@ -444,7 +444,7 @@ class DedupAssessmentRecordingConfig(BaseModel):
     """Configuration for recording deduplication assessment evidence."""
 
     evidence_sample_rate_bits: int | None = Field(
-        default=0,
+        default=6,
         ge=0,
         le=EVIDENCE_SAMPLE_DIGEST_BITS,
         description="Rate at which uninteresting assessments also keep their "
