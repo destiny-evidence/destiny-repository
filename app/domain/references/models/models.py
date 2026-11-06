@@ -1915,7 +1915,8 @@ class LinkedDataCountryWBIncomeGroupFilter(BaseModel):
     """
     A set of World Bank income group IDs.
 
-    OR within a filter; AND between filters.
+    Matched on ``linked_data_country_wb_income_groups``. OR within a filter; AND
+    between filters.
     """
 
     income_group_ids: list[WBIncomeGroupID] = Field(
