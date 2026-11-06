@@ -2,7 +2,7 @@
 add income group filters to search_export
 
 Revision ID: 04af6b0321f6
-Revises: 73cd641bc9e9
+Revises: 87deb9b657d7
 Create Date: 2026-11-06 00:00:00.000000+00:00
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '04af6b0321f6'
-down_revision: Union[str, None] = '73cd641bc9e9'
+down_revision: Union[str, None] = '87deb9b657d7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
