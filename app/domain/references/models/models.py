@@ -35,6 +35,7 @@ from app.domain.base import (
     SQLTimestampMixin,
     StateMachineMixin,
 )
+from app.domain.references.services.world_bank_income_groups import WBIncomeGroupID
 from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.es.persistence import ESSearchTotal
@@ -1910,6 +1911,22 @@ class LinkedDataCountryWBRegionFilter(BaseModel):
     )
 
 
+class LinkedDataCountryWBIncomeGroupFilter(BaseModel):
+    """
+    A set of World Bank income group IDs.
+
+    Matched on ``linked_data_country_wb_income_groups``. OR within a filter; AND
+    between filters.
+    """
+
+    income_group_ids: list[WBIncomeGroupID] = Field(
+        min_length=1,
+        description=(
+            "World Bank income group IDs. At least one must appear on the reference."
+        ),
+    )
+
+
 class FacetType(StrEnum):
     """A facet supported by the reference search facets endpoint."""
 
@@ -1919,6 +1936,8 @@ class FacetType(StrEnum):
     """Counts of references per ISO 3166-1 alpha-2 country code."""
     COUNTRY_WB_REGIONS = auto()
     """Counts of references per World Bank region ID."""
+    COUNTRY_WB_INCOME_GROUPS = auto()
+    """Counts of references per World Bank income group ID."""
 
 
 class SearchQuery(BaseModel):
@@ -1956,6 +1975,34 @@ class SearchQuery(BaseModel):
             ),
         )
     )
+    linked_data_country_wb_income_group_filters: list[
+        LinkedDataCountryWBIncomeGroupFilter
+    ] = Field(
+        default_factory=list,
+        description=(
+            "World Bank income group filters to AND with the query string. Each "
+            "filter is an OR-set of income group IDs."
+        ),
+    )
+
+    @property
+    def term_filters(self) -> dict[FacetType, list[list[str]]]:
+        """Each facet's filters as OR-sets of values, ANDed together."""
+        return {
+            FacetType.CONCEPTS: [
+                f.concept_uris for f in self.linked_data_concept_filters
+            ],
+            FacetType.COUNTRIES: [
+                f.country_codes for f in self.linked_data_country_filters
+            ],
+            FacetType.COUNTRY_WB_REGIONS: [
+                list(f.region_ids) for f in self.linked_data_country_wb_region_filters
+            ],
+            FacetType.COUNTRY_WB_INCOME_GROUPS: [
+                list(f.income_group_ids)
+                for f in self.linked_data_country_wb_income_group_filters
+            ],
+        }
 
 
 class SiblingGroup(BaseModel):

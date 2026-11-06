@@ -10,7 +10,7 @@
 
 import datetime
 from collections.abc import Awaitable, Callable
-from typing import Annotated, Any
+from typing import Annotated, Any, get_args
 
 import destiny_sdk
 from elasticsearch import AsyncElasticsearch
@@ -66,6 +66,7 @@ from app.domain.references.models.models import (
     ExportFormat,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
+    LinkedDataCountryWBIncomeGroupFilter,
     LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
@@ -85,6 +86,8 @@ from app.domain.references.services.export_service import (
     SearchExportService,
 )
 from app.domain.references.services.search_service import SearchService
+from app.domain.references.services.world_bank_income_groups import WBIncomeGroupID
+from app.domain.references.services.world_bank_regions import WBRegionID
 from app.domain.references.tasks import (
     run_reference_export_task,
     run_search_enhancement_request_task,
@@ -481,11 +484,16 @@ def parse_linked_data_country_wb_region_filters(
         Query(
             description=(
                 "A list of World Bank region filters to apply to the search.\n\n"
-                "- Each value matches references whose `linked_data_country_wb_"
-                "regions` contain at least one of the listed region IDs.\n"
-                "- Within a single value, separate multiple IDs with commas "
-                "(`,`). These are combined with OR logic.\n"
-                "- Multiple `country_wb_region` parameters are combined with AND."
+                "- Each value is one or more region IDs separated by commas "
+                "(`,`). A reference matches if any of its countries is in any of "
+                "those regions (OR).\n"
+                "- Multiple `country_wb_region` parameters are combined with AND.\n"
+                "- Accepted IDs: "
+                + ", ".join(f"`{region}`" for region in get_args(WBRegionID))
+                + ".\n"
+                "- Countries are grouped by the World Bank's current "
+                "classification, not their classification when the research was "
+                "published."
             ),
             examples=["EAS", "EAS,ECS"],
         ),
@@ -500,6 +508,45 @@ def parse_linked_data_country_wb_region_filters(
                 region_filter_string
             )
             for region_filter_string in country_wb_region
+        ]
+    except (ValueError, ValidationError) as exc:
+        raise ParseError(detail=str(exc)) from exc
+
+
+def parse_linked_data_country_wb_income_group_filters(
+    anti_corruption_service: Annotated[
+        ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
+    ],
+    country_wb_income_group: Annotated[
+        list[str],
+        Query(
+            description=(
+                "A list of World Bank income group filters to apply to the search.\n\n"
+                "- Each value is one or more income group IDs separated by commas "
+                "(`,`). A reference matches if any of its countries is in any of "
+                "those groups (OR).\n"
+                "- Multiple `country_wb_income_group` parameters are combined with "
+                "AND.\n"
+                "- Accepted IDs: "
+                + ", ".join(f"`{group}`" for group in get_args(WBIncomeGroupID))
+                + ".\n"
+                "- Countries are grouped by the World Bank's current "
+                "classification, not their classification when the research was "
+                "published."
+            ),
+            examples=["LIC", "LIC,LMC"],
+        ),
+    ] = None,
+) -> list[LinkedDataCountryWBIncomeGroupFilter]:
+    """Parse World Bank income group filters from query parameters."""
+    if not country_wb_income_group:
+        return []
+    try:
+        return [
+            anti_corruption_service.linked_data_country_wb_income_group_filter_from_query_parameter(
+                income_group_filter_string
+            )
+            for income_group_filter_string in country_wb_income_group
         ]
     except (ValueError, ValidationError) as exc:
         raise ParseError(detail=str(exc)) from exc
@@ -539,6 +586,10 @@ def parse_search_query(
         list[LinkedDataCountryWBRegionFilter],
         Depends(parse_linked_data_country_wb_region_filters),
     ],
+    linked_data_country_wb_income_group_filters: Annotated[
+        list[LinkedDataCountryWBIncomeGroupFilter],
+        Depends(parse_linked_data_country_wb_income_group_filters),
+    ],
 ) -> SearchQuery:
     """Bundle the shared search parameters into a domain SearchQuery."""
     return SearchQuery(
@@ -548,6 +599,9 @@ def parse_search_query(
         linked_data_concept_filters=linked_data_concept_filters,
         linked_data_country_filters=linked_data_country_filters,
         linked_data_country_wb_region_filters=linked_data_country_wb_region_filters,
+        linked_data_country_wb_income_group_filters=(
+            linked_data_country_wb_income_group_filters
+        ),
     )
 
 
@@ -677,7 +731,8 @@ async def search_reference_ids(
     description=(
         "Per-facet term counts over the references matching the search. "
         "Accepts the same filters as `/references/search/`; add one or more "
-        "`?facet=` values (`concepts`, `countries`, `country_wb_regions`).\n\n"
+        "`?facet=` values (`concepts`, `countries`, `country_wb_regions`, "
+        "`country_wb_income_groups`).\n\n"
         "**Sibling-aware counts.** When you filter on a field *and* request its "
         "facet, the counts show what you'd see if your selection were toggled — "
         "not the co-occurrence under your filter.\n\n"
@@ -787,7 +842,8 @@ async def cross_tabulate_facets(
                 "The two axes to cross-tabulate, in order. Each is one of:\n\n"
                 "- a concept-scheme URI\n"
                 "- the literal `countries`\n"
-                "- the literal `country_wb_regions`\n\n"
+                "- the literal `country_wb_regions`\n"
+                "- the literal `country_wb_income_groups`\n\n"
                 "Mixed types are allowed. Each cell reports its values in this same "
                 "axis order."
             ),

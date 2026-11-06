@@ -24,6 +24,9 @@ from app.domain.references.services.anti_corruption_service import (
 )
 from app.domain.references.services.search_service import SearchService
 from app.domain.references.services.search_service import settings as search_settings
+from app.domain.references.services.world_bank_income_groups import (
+    WORLD_BANK_INCOME_GROUPS,
+)
 from app.domain.references.services.world_bank_regions import WORLD_BANK_REGIONS
 from app.external.vocabulary.client import VocabularyArtifactClient
 from app.persistence.blob.repository import BlobRepository
@@ -511,6 +514,9 @@ def test_resolve_cross_facet_axis():
     """Literal axes carry a fixed size; a scheme axis is scoped to its members."""
     countries = SearchService._resolve_cross_facet_axis("countries", None, None)  # noqa: SLF001
     regions = SearchService._resolve_cross_facet_axis("country_wb_regions", None, None)  # noqa: SLF001
+    income_groups = SearchService._resolve_cross_facet_axis(  # noqa: SLF001
+        "country_wb_income_groups", None, None
+    )
     scheme = SearchService._resolve_cross_facet_axis(  # noqa: SLF001
         TOPICS_SCHEME, VOCAB_URI, MEMBERS_FIXTURE
     )
@@ -520,6 +526,10 @@ def test_resolve_cross_facet_axis():
         256,
     )
     assert regions.size == len(WORLD_BANK_REGIONS)
+    assert (income_groups.facet_type, income_groups.size) == (
+        FacetType.COUNTRY_WB_INCOME_GROUPS,
+        len(WORLD_BANK_INCOME_GROUPS),
+    )
     assert (scheme.facet_type, scheme.include, scheme.size) == (
         FacetType.CONCEPTS,
         _TOPICS,

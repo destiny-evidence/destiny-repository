@@ -114,14 +114,33 @@ The ``concept`` parameter filters results by their linked-data concept URIs (mat
     # Get references annotated with (C00001 OR C00002) AND a third concept:
     ?q=...&concept=https://vocab.evidence-repository.org/scheme/C00001,https://vocab.evidence-repository.org/scheme/C00002&concept=https://vocab.evidence-repository.org/scheme/C00003
 
-Countries
-__________________________
+Countries, World Bank Regions and Income Groups
+_______________________________________________
 
-The ``country`` parameter filters results by ISO 3166-1 alpha-2 country codes.
+These parameters filter results by country, or by the World Bank region or income group derived from each country.
 
-- Each ``country`` value is a single code, or a comma-separated list of codes.
-- Within a single value, codes are combined using ``OR``; multiple ``country`` parameters AND.
-- Codes are validated for shape only (two letters) and uppercased on input — e.g. ``us`` and ``US`` both pass through. Codes that don't match the ``[A-Z]{2}`` shape return ``400``.
+.. list-table::
+    :header-rows: 1
+
+    * - Parameter
+      - Matches on
+      - Accepted values
+    * - ``country``
+      - ``linked_data_countries``
+      - ISO 3166-1 alpha-2 codes. Validated for shape only (two letters).
+    * - ``country_wb_region``
+      - ``linked_data_country_wb_regions``
+      - ``EAS``, ``ECS``, ``LCN``, ``MEA``, ``NAC``, ``SAS``, ``SSF``
+    * - ``country_wb_income_group``
+      - ``linked_data_country_wb_income_groups``
+      - ``HIC``, ``UMC``, ``LMC``, ``LIC``
+
+All three behave the same way:
+
+- Each value is a single code, or a comma-separated list of codes.
+- Within a single value, codes are combined using ``OR``; multiple parameters AND, including across different parameters.
+- Codes are uppercased on input, so ``us`` and ``US`` both match. Codes outside the accepted values return ``400``.
+- Regions and income groups are the World Bank's current classification of each country, not the classification when the research was published.
 
 .. code-block::
 
@@ -134,22 +153,12 @@ The ``country`` parameter filters results by ISO 3166-1 alpha-2 country codes.
     # Get references tagged with (US OR GB) AND (FR OR DE):
     ?q=...&country=US,GB&country=FR,DE
 
-World Bank Regions
-__________________________
-
-The ``country_wb_region`` parameter filters results by World Bank region IDs.
-
-- Each value is a single region ID, or a comma-separated list of IDs.
-- Within a single value, IDs are combined using ``OR``; multiple parameters AND.
-- IDs come from a closed set: ``EAS``, ``ECS``, ``LCN``, ``MEA``, ``NAC``, ``SAS``, ``SSF``. Unknown IDs return ``400``.
-
-.. code-block::
-
-    # Get references tagged with North American countries:
-    ?q=...&country_wb_region=NAC
-
     # Get references tagged with North America or East Asia & Pacific:
     ?q=...&country_wb_region=NAC,EAS
+
+    # Get references tagged with Sub-Saharan Africa AND a low-income country
+    # (not necessarily the same country):
+    ?q=...&country_wb_region=SSF&country_wb_income_group=LIC
 
 Page
 _____________
@@ -257,7 +266,7 @@ Restrictions (400 on violation):
 2. Different ``concept=`` filters must be in different schemes.
 3. Every URI must resolve in the supplied vocabulary.
 
-**Countries and WB regions.** There's no vocabulary hierarchy here - the entire field is treated as one sibling family.
+**Countries, WB regions and WB income groups.** There's no vocabulary hierarchy here - the entire field is treated as one sibling family.
 
 .. code-block::
 
@@ -289,6 +298,7 @@ Each axis is one of:
 * a concept-scheme URI
 * the literal ``countries``
 * the literal ``country_wb_regions``
+* the literal ``country_wb_income_groups``
 
 Mixed types are allowed. When an axis is a concept-scheme URI, supply ``vocabulary=`` — its concepts scope that axis (via the SKOS membership of the scheme, at every depth). Cell values are reported in the same order the axes are given.
 
