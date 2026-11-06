@@ -948,10 +948,12 @@ class DeduplicationAssessmentRecord(
             "ix_deduplication_assessment_incoming_reference_id",
             "incoming_reference_id",
         ),
-        # A redelivered task must not write a second row and a second payload.
+        # A redelivered task must not write a second row and a second payload. The
+        # shadow and the acting assessment of one decision are separate deliveries.
         Index(
-            "uq_deduplication_assessment_idempotency_key",
+            "uq_deduplication_assessment_idempotency_key_purpose",
             "idempotency_key",
+            "purpose",
             unique=True,
         ),
         # The generic update_by_pk writes attributes without model validation, so the

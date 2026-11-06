@@ -161,15 +161,17 @@ class DeduplicationUnresolvedReason(StrEnum):
 
 
 class DeepDeduplicationOutcome(StrEnum):
-    """How a deep deduplication retrieval ended."""
+    """How a deep deduplication shadow assessment ended."""
 
     COMPLETED = auto()
-    """Retrieval returned. The result is discarded while the arm measures only."""
+    """The assessment was recorded. No decision is taken from it."""
     FAILED = auto()
-    """Retrieval raised; the caller logs it and the decision proceeds regardless."""
+    """The assessment raised; the caller logs it and the decision proceeds anyway."""
     TRUNCATED = auto()
     """Elasticsearch stopped the search at the document cap or server-side
     timeout, so no complete candidate set exists for this reference."""
+    UNSEARCHABLE = auto()
+    """The reference's own data could not be searched or scored."""
 
 
 class IdentifierCandidateOutcome(StrEnum):
@@ -1405,7 +1407,7 @@ class AssessmentPayloadState(StrEnum):
     """Whether the full evidence payload for an assessment was stored."""
 
     NOT_RETAINED = auto()
-    """Nothing cleared the threshold and every candidate scored, so none was kept."""
+    """Nothing came near the threshold and every candidate scored, so none was kept."""
     STORED = auto()
     """The payload was written and its location is on the record."""
     FAILED = auto()

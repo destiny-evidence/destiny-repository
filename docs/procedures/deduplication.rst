@@ -174,11 +174,13 @@ Deep Deduplication
 
 If candidate canonicals are found, each is compared in detail against the incoming reference to determine if they are true duplicates. This step prioritizes precision over recall, aiming to minimize false positives.
 
-Automatic decisions are switched on by :attr:`enable_automatic_deduplication_decisions <app.core.config.FeatureFlags.enable_automatic_deduplication_decisions>`, which defaults off. While it is off, the placeholder below decides instead and no assessment is recorded:
+Automatic decisions are switched on by :attr:`enable_automatic_deduplication_decisions <app.core.config.FeatureFlags.enable_automatic_deduplication_decisions>`, which defaults off. While it is off, the placeholder below decides instead:
 
 .. automethod:: app.domain.references.services.deduplication_service.DeduplicationService._placeholder_duplicate_determinator
 
-When it is on, the reference is scored against its candidates. The result is recorded as an assessment, and the acting policy turns it into a decision.
+While automatic decisions are off, :attr:`enable_deep_deduplication <app.core.config.FeatureFlags.enable_deep_deduplication>` runs the same assessment as a shadow before each decision and records it with purpose ``performance_shadow``. Nothing is decided from it. Every completed assessment keeps a summary row, and the full evidence is kept for near misses, unscorable candidates and a sample of the rest, as set by :class:`DedupAssessmentRecordingConfig <app.core.config.DedupAssessmentRecordingConfig>`. A shadow whose search was cut short, whose reference could not be searched or scored, or that failed, writes no row and is visible only in telemetry.
+
+When automatic decisions are on, the reference is scored against its candidates. The result is recorded as an assessment, and the acting policy turns it into a decision.
 
 The acting policy is a stand-in until the first automatic policy is agreed:
 

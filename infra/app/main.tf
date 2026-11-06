@@ -115,6 +115,10 @@ locals {
       value = jsonencode(var.feature_flags)
     },
     {
+      name  = "DEDUP_ASSESSMENT_RECORDING"
+      value = jsonencode(var.dedup_assessment_recording)
+    },
+    {
       name  = "DEFAULT_UPLOAD_FILE_CHUNK_SIZE",
       value = tostring(var.default_upload_file_chunk_size)
     },

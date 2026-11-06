@@ -469,6 +469,12 @@ variable "trusted_unique_identifier_types" {
   default     = []
 }
 
+variable "dedup_assessment_recording" {
+  description = "Overrides for deduplication assessment evidence retention: evidence_sample_rate_bits and near_miss_margin. Unset keys take the application defaults."
+  type        = map(number)
+  default     = {}
+}
+
 variable "allowed_import_domains" {
   description = "Allowed domain suffixes for import storage URLs. Empty list disables the check."
   type        = list(string)
