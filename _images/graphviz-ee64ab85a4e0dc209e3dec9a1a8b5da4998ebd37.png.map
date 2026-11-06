@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="libs.sdk.src.destiny_sdk.enhancements.TombstoneEnhancement
+
+An enhancement which withdraws the supersession chain it heads.
+
+It must supersede a chain head that is not a tombstone, and only an enhancement of
+the withdrawn type may supersede it. Import files cannot carry one.
+" alt="" coords="5,5,471,89"/>
+</map>

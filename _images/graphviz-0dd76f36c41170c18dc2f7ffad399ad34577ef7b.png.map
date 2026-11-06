@@ -1,0 +1,9 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.LinkedDataCountryWBIncomeGroupFilter
+
+A set of World Bank income group IDs.
+
+Matched on ``linked_data_country_wb_income_groups``. OR within a filter; AND
+between filters.
+" alt="" coords="5,5,448,61"/>
+</map>
