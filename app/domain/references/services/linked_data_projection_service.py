@@ -7,6 +7,9 @@ from rdflib import Graph, Literal, Namespace, URIRef
 from rdflib.namespace import RDF, SKOS
 
 from app.domain.references.models.models import LinkedDataProjection
+from app.domain.references.services.world_bank_income_groups import (
+    income_groups_for,
+)
 from app.domain.references.services.world_bank_regions import regions_for
 from app.external.vocabulary.client import VocabularyArtifactClient
 
@@ -98,6 +101,7 @@ class LinkedDataProjectionService:
             evaluated_properties=evaluated_properties,
             countries=countries,
             country_wb_regions=regions_for(countries),
+            country_wb_income_groups=income_groups_for(countries),
         )
 
     def _extract_countries(self, data_graph: Graph) -> set[str]:

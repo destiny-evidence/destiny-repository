@@ -957,6 +957,7 @@ class TestLinkedDataProjectionUnion:
             evaluated_properties={"p1"},
             countries={"GB"},
             country_wb_regions={"ECS"},
+            country_wb_income_groups={"HIC"},
         )
         second = LinkedDataProjection(
             concepts={"c2", "c3"},
@@ -964,6 +965,7 @@ class TestLinkedDataProjectionUnion:
             evaluated_properties={"p2"},
             countries={"GB", "KE"},
             country_wb_regions={"ECS", "SSF"},
+            country_wb_income_groups={"HIC", "LMC"},
         )
 
         result = LinkedDataProjection.union([first, second])
@@ -973,6 +975,7 @@ class TestLinkedDataProjectionUnion:
         assert result.evaluated_properties == {"p1", "p2"}
         assert result.countries == {"GB", "KE"}
         assert result.country_wb_regions == {"ECS", "SSF"}
+        assert result.country_wb_income_groups == {"HIC", "LMC"}
 
     def test_union_of_nothing_is_empty(self):
         assert LinkedDataProjection.union([]) == LinkedDataProjection()

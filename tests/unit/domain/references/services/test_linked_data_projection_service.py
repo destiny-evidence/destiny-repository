@@ -12,6 +12,9 @@ from app.core.config import get_settings
 from app.domain.references.services.linked_data_projection_service import (
     LinkedDataProjectionService,
 )
+from app.domain.references.services.world_bank_income_groups import (
+    LOWER_MIDDLE_INCOME,
+)
 from app.domain.references.services.world_bank_regions import (
     LATIN_AMERICA_CARIBBEAN,
     SOUTH_ASIA,
@@ -214,6 +217,7 @@ class TestLinkedDataProjectionService:
         assert result.evaluated_properties == set()
         assert result.countries == set()
         assert result.country_wb_regions == set()
+        assert result.country_wb_income_groups == set()
 
     @pytest.mark.asyncio
     async def test_extracts_country_codes(self, projector):
@@ -258,6 +262,7 @@ class TestLinkedDataProjectionService:
         assert result.countries == {"KE", "GH"}
         # Both KE and GH are Sub-Saharan Africa — regions deduplicate.
         assert result.country_wb_regions == {SUB_SAHARAN_AFRICA}
+        assert result.country_wb_income_groups == {LOWER_MIDDLE_INCOME}
 
     @pytest.mark.asyncio
     async def test_projects_distinct_regions_for_distinct_countries(self, projector):
@@ -351,9 +356,10 @@ class TestLinkedDataProjectionService:
         )
         result = await projector.project(enhancement)
 
-        # ZZ has no WB region; KE still resolves.
+        # ZZ has no WB region or income group; KE still resolves.
         assert result.countries == {"ZZ", "KE"}
         assert result.country_wb_regions == {SUB_SAHARAN_AFRICA}
+        assert result.country_wb_income_groups == {LOWER_MIDDLE_INCOME}
 
     @pytest.mark.asyncio
     async def test_normalises_country_codes_to_uppercase(self, projector):

@@ -12,6 +12,10 @@ from app.core.exceptions import ESError, ESQueryError
 from app.domain.references.models.es import ReferenceDocument
 from app.domain.references.models.models import SearchQuery, Visibility
 from app.domain.references.repository import ReferenceESRepository
+from app.domain.references.services.world_bank_income_groups import (
+    HIGH_INCOME,
+    LOWER_MIDDLE_INCOME,
+)
 from app.domain.references.services.world_bank_regions import (
     SOUTH_ASIA,
     SUB_SAHARAN_AFRICA,
@@ -753,6 +757,7 @@ async def linked_data_ref(
         ],
         linked_data_countries=["KE", "GH"],
         linked_data_country_wb_regions=[SUB_SAHARAN_AFRICA],
+        linked_data_country_wb_income_groups=[LOWER_MIDDLE_INCOME],
     )
     await doc.save(using=es_client)
     await es_client.indices.refresh(index=ReferenceDocument.Index.name)
@@ -789,6 +794,9 @@ ESEA_PROP = "https://vocab.esea.education/documentType"
         # World Bank region ID match (Keyword field)
         (f"linked_data_country_wb_regions:{SUB_SAHARAN_AFRICA}", True),
         (f"linked_data_country_wb_regions:{SOUTH_ASIA}", False),
+        # World Bank income group ID match (Keyword field)
+        (f"linked_data_country_wb_income_groups:{LOWER_MIDDLE_INCOME}", True),
+        (f"linked_data_country_wb_income_groups:{HIGH_INCOME}", False),
     ],
 )
 async def test_linked_data_field_search(
