@@ -696,3 +696,67 @@ async def test_repair_subset_with_missing_id_is_rejected(
     assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT
     assert str(missing_id) in response.json()["detail"]
     assert str(real_id) not in response.json()["detail"]
+
+
+async def test_repair_reference_index_by_search_repairs_every_match(
+    client: AsyncClient,
+    es_client: AsyncElasticsearch,
+    session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Search repair re-indexes every match across pages, and nothing else."""
+    index_manager = system_routes.reference_index_manager(es_client)
+    await index_manager.initialize_index()
+    index_name = index_manager.alias_name
+
+    references = {
+        title: SQLReference(id=uuid7(), visibility=Visibility.PUBLIC)
+        for title in ("Malaria in children", "Malaria in adults", "Influenza")
+    }
+    for title, reference in references.items():
+        session.add(reference)
+        session.add(
+            SQLEnhancement.from_domain(
+                EnhancementFactory.build(
+                    reference_id=reference.id,
+                    source="test_source",
+                    content=BibliographicMetadataEnhancementFactory.build(title=title),
+                )
+            )
+        )
+    await session.commit()
+    await client.post(
+        f"/system/indices/{index_name}/repair/",
+        json={"document_ids": [str(r.id) for r in references.values()]},
+    )
+    await wait_for_all_tasks()
+    await es_client.indices.refresh(index=index_name)
+
+    for reference in references.values():
+        reference.visibility = Visibility.RESTRICTED
+    await session.commit()
+
+    monkeypatch.setattr("app.domain.references.service.ES_MAX_PAGE_SIZE", 1)
+    response = await client.post(
+        f"/system/indices/{index_name}/repair/search/",
+        params={"q": "title:malaria"},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    assert "2 reference(s)" in response.json()["message"]
+
+    await wait_for_all_tasks()
+    await es_client.indices.refresh(index=index_name)
+
+    es_response = await es_client.search(
+        index=index_name, body={"query": {"match_all": {}}, "size": 100}
+    )
+    visibility = {
+        hit["_source"]["title"]: hit["_source"]["visibility"]
+        for hit in es_response["hits"]["hits"]
+    }
+    assert visibility == {
+        "Malaria in children": "restricted",
+        "Malaria in adults": "restricted",
+        "Influenza": "public",
+    }

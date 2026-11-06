@@ -6,7 +6,7 @@ import functools
 import resource
 import sys
 from collections import defaultdict
-from collections.abc import Collection, Iterable, Sequence
+from collections.abc import AsyncGenerator, Collection, Iterable, Sequence
 from uuid import UUID
 
 from opentelemetry.trace import get_tracer
@@ -113,7 +113,11 @@ from app.persistence.es.persistence import (
     ESSearchResult,
     ESSearchTotal,
 )
+from app.persistence.es.repository import ES_MAX_PAGE_SIZE
 from app.persistence.es.uow import AsyncESUnitOfWork
+from app.persistence.es.uow import (
+    generator_unit_of_work as es_generator_unit_of_work,
+)
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
@@ -818,6 +822,16 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     async def count_search_matches(self, search: SearchQuery) -> ESSearchTotal:
         """Count the references the search matches."""
         return await self._search_service.count(search)
+
+    @es_generator_unit_of_work
+    async def scan_search_reference_ids(
+        self, search: SearchQuery
+    ) -> AsyncGenerator[list[UUID], None]:
+        """Yield the IDs of every reference the search matches, a page at a time."""
+        async for page in self._search_service.scan(
+            search, page_size=ES_MAX_PAGE_SIZE, score=False
+        ):
+            yield [hit.id for hit in page.hits]
 
     async def register_search_enhancement_request(
         self, enhancement_request: EnhancementRequest
