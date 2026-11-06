@@ -1,0 +1,88 @@
+{
+  "enhancement_type": "linked_data",
+  "vocabulary_uri": "https://vocab.staging.destiny-evidence.org/published/geonames-test/2.0/vocabulary.ttl",
+  "data": {
+    "@context": "https://vocab.staging.destiny-evidence.org/published/geonames-test/2.0/context.jsonld",
+    "@type": "LinkedDataEnhancement",
+    "hasInvestigation": {
+      "@type": "Investigation",
+      "mentionedPlace": [
+        {
+          "@type": "LocationCodingAnnotation",
+          "status": "evrepo:coded",
+          "codedBy": "mordecai3/3.0.0",
+          "codedValue": {
+            "@id": "http://sws.geonames.org/1261481/",
+            "@type": "GeonamesFeature",
+            "geonamesID": "1261481",
+            "gn:name": "New Delhi",
+            "countryCode": "IN",
+            "lat": "28.63576",
+            "long": "77.22445",
+            "featureClass": {
+              "@id": "gn:P"
+            },
+            "featureCode": {
+              "@id": "gn:P.PPLC"
+            }
+          },
+          "supportingText": "We assessed heat-related mortality in New Delhi between 2010 and 2019.",
+          "mentionText": "New Delhi",
+          "startChar": 38,
+          "endChar": 47,
+          "codingScore": "0.98"
+        },
+        {
+          "@type": "LocationCodingAnnotation",
+          "status": "evrepo:coded",
+          "codedBy": "mordecai3/3.0.0",
+          "codedValue": {
+            "@id": "http://sws.geonames.org/1210997/",
+            "@type": "GeonamesFeature",
+            "geonamesID": "1210997",
+            "gn:name": "People's Republic of Bangladesh",
+            "countryCode": "BD",
+            "lat": "24.0",
+            "long": "90.0",
+            "featureClass": {
+              "@id": "gn:A"
+            },
+            "featureCode": {
+              "@id": "gn:A.PCLI"
+            }
+          },
+          "supportingText": "Comparable cohorts in Bangladesh were also analysed.",
+          "mentionText": "Bangladesh",
+          "startChar": 93,
+          "endChar": 103,
+          "codingScore": "0.91"
+        },
+        {
+          "@type": "LocationCodingAnnotation",
+          "status": "evrepo:coded",
+          "codedBy": "mordecai3/3.0.0",
+          "codedValue": {
+            "@id": "http://sws.geonames.org/1261481/",
+            "@type": "GeonamesFeature",
+            "geonamesID": "1261481",
+            "gn:name": "New Delhi",
+            "countryCode": "IN",
+            "lat": "28.63576",
+            "long": "77.22445",
+            "featureClass": {
+              "@id": "gn:P"
+            },
+            "featureCode": {
+              "@id": "gn:P.PPLC"
+            }
+          },
+          "supportingText": "Findings for New Delhi suggest adaptation is lagging.",
+          "mentionText": "New Delhi",
+          "startChar": 137,
+          "endChar": 146,
+          "codingScore": "0.95"
+        }
+      ]
+    }
+  }
+}
