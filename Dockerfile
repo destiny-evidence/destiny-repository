@@ -1,4 +1,4 @@
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+FROM ghcr.io/astral-sh/uv:python3.14-trixie-slim
 
 # Slim doesn't come with gcc but it's needed for uncached package installs
 RUN apt-get update && apt-get install -y \
