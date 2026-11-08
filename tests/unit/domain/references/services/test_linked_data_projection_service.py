@@ -30,8 +30,6 @@ from app.external.vocabulary.client import (
 
 ESEA_NS = "https://vocab.esea.education/"
 EVREPO_NS = "https://vocab.evidence-repository.org/"
-EVREPO_CONTEXT_URI = EVREPO_NS + "context.jsonld"
-EVREPO_VOCAB_URI = EVREPO_NS + "vocabulary.ttl"
 
 ESEA_VOCAB_URI = "https://vocab.esea.education/vocabulary/v1"
 ESEA_CONTEXT_URI = "https://vocab.esea.education/context/v1.jsonld"
@@ -41,6 +39,21 @@ _STATIC_ESEA_VOCAB_DIR = (
 )
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
+
+# Minimal location vocabulary for countryCode projections
+LOCATION_NS = "https://example.org/location"
+LOCATION_CONTEXT_URI = EVREPO_NS + "context.jsonld"
+LOCATION_VOCAB_URI = EVREPO_NS + "vocabulary.ttl"
+LOCATION_CONTEXT = {
+    "@context": {
+        "@vocab": LOCATION_NS,
+        "evrepo": EVREPO_NS,
+        "gn": "http://www.geonames.org/ontology#",
+        "codedValue": "evrepo:codedValue",
+        "status": {"@id": "evrepo:status", "@type": "@id"},
+        "countryCode": "gn:countryCode",
+    }
+}
 
 
 @pytest.fixture
@@ -103,25 +116,13 @@ def esea_enhancement(esea_test_data) -> LinkedDataEnhancement:
     )
 
 
-EVREPO_LOCATION_CONTEXT = {
-    "@context": {
-        "@vocab": "https://example.org/location",
-        "evrepo": EVREPO_NS,
-        "gn": "http://www.geonames.org/ontology#",
-        "codedValue": "evrepo:codedValue",
-        "status": {"@id": "evrepo:status", "@type": "@id"},
-        "countryCode": "gn:countryCode",
-    }
-}
-
-
 @pytest.fixture
 def projector_location() -> LinkedDataProjectionService:
     vocab_graph = Graph()
     vocab_graph.bind("evrepo", EVREPO_NS)
     client = MagicMock(spec=VocabularyArtifactClient)
     client.get_vocabulary = AsyncMock(return_value=vocab_graph)
-    client.get_context = AsyncMock(return_value=EVREPO_LOCATION_CONTEXT)
+    client.get_context = AsyncMock(return_value=LOCATION_CONTEXT)
     client.get_concept_labels = AsyncMock(return_value={})
     client.get_concept_schemes = AsyncMock(return_value={})
     return LinkedDataProjectionService(client)
@@ -133,39 +134,35 @@ def location_coding_annotation_enhancement() -> LinkedDataEnhancement:
     with (FIXTURES_DIR / "destiny-location-enhancement.json").open() as f:
         example = json.load(f)
     return LinkedDataEnhancement(
-        context_uri=EVREPO_CONTEXT_URI,
-        vocabulary_uri=EVREPO_VOCAB_URI,
+        context_uri=LOCATION_CONTEXT_URI,
+        vocabulary_uri=LOCATION_VOCAB_URI,
         data=example["data"],
     )
 
 
 def _location_coding_annotation(
-    geonames_id: str, country_code: str | None, status: str | None
+    geonames_id: str, country_code: str, status: str
 ) -> dict:
-    """Build a LocationCodingAnnotation; ``None`` omits the field."""
-    coded_value: dict = {
-        "@id": f"http://sws.geonames.org/{geonames_id}/",
-        "@type": "GeonamesFeature",
-        "geonamesID": geonames_id,
-    }
-    if country_code is not None:
-        coded_value["countryCode"] = country_code
-    annotation: dict = {
+    """Build a LocationCodingAnnotation"""
+    return {
         "@type": "LocationCodingAnnotation",
         "codedBy": "mordecai3/3.0.0",
-        "codedValue": coded_value,
+        "codedValue": {
+            "@id": f"http://sws.geonames.org/{geonames_id}/",
+            "@type": "GeonamesFeature",
+            "geonamesID": geonames_id,
+            "countryCode": country_code,
+        },
+        "status": status,
     }
-    if status is not None:
-        annotation["status"] = status
-    return annotation
 
 
 def _location_lde_enhancement(*annotations: dict) -> LinkedDataEnhancement:
     return LinkedDataEnhancement(
-        context_uri=EVREPO_CONTEXT_URI,
-        vocabulary_uri=EVREPO_VOCAB_URI,
+        context_uri=LOCATION_CONTEXT_URI,
+        vocabulary_uri=LOCATION_VOCAB_URI,
         data={
-            "@context": EVREPO_CONTEXT_URI,
+            "@context": LOCATION_CONTEXT_URI,
             "@type": "LinkedDataEnhancement",
             "hasInvestigation": {
                 "@type": "Investigation",
@@ -771,7 +768,17 @@ class TestLocationCodingAnnotationCountries:
     @pytest.mark.asyncio
     async def test_includes_mention_without_status(self, projector_location):
         enhancement = _location_lde_enhancement(
-            _location_coding_annotation("1261481", "IN", None),
+            # LocationCodingAnnotation with no status
+            {
+                "@type": "LocationCodingAnnotation",
+                "codedBy": "mordecai3/3.0.0",
+                "codedValue": {
+                    "@id": "http://sws.geonames.org/1261481/",
+                    "@type": "GeonamesFeature",
+                    "geonamesID": "1261481",
+                    "countryCode": "IN",
+                },
+            }
         )
 
         result = await projector_location.project(enhancement)
@@ -791,7 +798,17 @@ class TestLocationCodingAnnotationCountries:
     @pytest.mark.asyncio
     async def test_feature_without_country_code_is_skipped(self, projector_location):
         enhancement = _location_lde_enhancement(
-            _location_coding_annotation("6295630", None, "evrepo:coded"),
+            # LocationCodingAnnotation with no countryCode
+            {
+                "@type": "LocationCodingAnnotation",
+                "codedBy": "mordecai3/3.0.0",
+                "codedValue": {
+                    "@id": "http://sws.geonames.org/6295630/",
+                    "@type": "GeonamesFeature",
+                    "geonamesID": "6295630",
+                },
+                "status": "evrepo:coded",
+            }
         )
 
         result = await projector_location.project(enhancement)
