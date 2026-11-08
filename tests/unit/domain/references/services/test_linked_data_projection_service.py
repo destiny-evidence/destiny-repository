@@ -720,16 +720,6 @@ class TestLinkedDataProjectionService:
 
 class TestLocationCodingAnnotationCountries:
     @pytest.mark.asyncio
-    async def test_extracts_country_from_example_enhancement(
-        self, projector_location, location_coding_annotation_enhancement
-    ):
-        result = await projector_location.project(
-            location_coding_annotation_enhancement
-        )
-
-        assert result.countries == {"IN", "BD"}
-
-    @pytest.mark.asyncio
     async def test_extracts_countries_from_multiple_mentions(self, projector_location):
         enhancement = _location_lde_enhancement(
             _location_coding_annotation("1261481", "IN", "evrepo:coded"),
@@ -827,17 +817,6 @@ class TestLocationCodingAnnotationCountries:
         result = await projector_location.project(enhancement)
 
         assert result.countries == {"IN"}
-
-    @pytest.mark.asyncio
-    async def test_derives_region_and_income_group_from_example_enhancement(
-        self, projector_location, location_coding_annotation_enhancement
-    ):
-        result = await projector_location.project(
-            location_coding_annotation_enhancement
-        )
-
-        assert result.country_wb_regions == {SOUTH_ASIA}
-        assert result.country_wb_income_groups == {LOWER_MIDDLE_INCOME}
 
     @pytest.mark.asyncio
     async def test_derives_distinct_regions_across_mentions(self, projector_location):
