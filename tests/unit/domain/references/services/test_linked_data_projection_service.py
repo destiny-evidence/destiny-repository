@@ -719,6 +719,21 @@ class TestLocationCodingAnnotationCountries:
         assert result.countries == {"IN", "KE"}
 
     @pytest.mark.asyncio
+    async def test_minimal_enhancement_extracts_countries(self, projector_location):
+        enhancement = LinkedDataEnhancement(
+            context_uri=LOCATION_CONTEXT_URI,
+            vocabulary_uri=LOCATION_VOCAB_URI,
+            data={
+                "@context": LOCATION_CONTEXT_URI,
+                "codedValue": {"countryCode": "NZ"},
+            },
+        )
+
+        result = await projector_location.project(enhancement=enhancement)
+
+        assert result.countries == {"NZ"}
+
+    @pytest.mark.asyncio
     async def test_deduplicates_countries_across_mentions(self, projector_location):
         enhancement = _location_lde_enhancement(
             _location_coding_annotation("1261481", "IN", "evrepo:coded"),
