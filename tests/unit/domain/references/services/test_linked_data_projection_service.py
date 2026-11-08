@@ -128,18 +128,6 @@ def projector_location() -> LinkedDataProjectionService:
     return LinkedDataProjectionService(client)
 
 
-@pytest.fixture
-def location_coding_annotation_enhancement() -> LinkedDataEnhancement:
-    """Example LocationCodingAnnotation enhancement (New Delhi, IN; Bangladesh, BD)."""
-    with (FIXTURES_DIR / "destiny-location-enhancement.json").open() as f:
-        example = json.load(f)
-    return LinkedDataEnhancement(
-        context_uri=LOCATION_CONTEXT_URI,
-        vocabulary_uri=LOCATION_VOCAB_URI,
-        data=example["data"],
-    )
-
-
 def _location_coding_annotation(
     geonames_id: str, country_code: str, status: str
 ) -> dict:
@@ -847,11 +835,15 @@ class TestLocationCodingAnnotationCountries:
         assert result.country_wb_income_groups == {LOWER_MIDDLE_INCOME}
 
     @pytest.mark.asyncio
-    async def test_example_enhancement_populates_search_document_fields(
-        self, projector_location, location_coding_annotation_enhancement
+    async def test_enhancement_populates_search_document_fields(
+        self,
+        projector_location,
     ):
         projection = await projector_location.project(
-            location_coding_annotation_enhancement
+            _location_lde_enhancement(
+                _location_coding_annotation("1261481", "IN", "evrepo:coded"),
+                _location_coding_annotation("1210997", "BD", "evrepo:coded"),
+            )
         )
 
         fields = ReferenceSearchFieldsMixin.from_projections(
