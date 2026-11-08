@@ -18,11 +18,10 @@ EVREPO = Namespace("https://vocab.evidence-repository.org/")
 ESEA = Namespace("https://vocab.esea.education/")
 GN = Namespace("http://www.geonames.org/ontology#")
 
-# Vocabulary properties whose StringCodingAnnotation values are ISO 3166-1
-# alpha-2 country codes. New vocabularies that introduce a country property
-# Properties whose StringCodingAnnotation values are ISO 3166-1 alpha-2 codes.
-# String-coded country properties must be registered here.
-# GeoNames features are projected from any coded annotation.
+# Properties whose StringCodingAnnotation values are
+# ISO 3166-1 alpha-2 codes must be registered here.
+# GeoNames features with countryCode properties are projected from
+# any coded annotation.
 _COUNTRY_PROPERTIES: frozenset[URIRef] = frozenset({ESEA.country})
 
 
