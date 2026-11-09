@@ -1,4 +1,5 @@
-FROM ghcr.io/astral-sh/uv:python3.14-bookworm-slim
+FROM python:3.14-slim-bookworm
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /bin/
 
 # Slim doesn't come with gcc but it's needed for uncached package installs
 RUN apt-get update && apt-get install -y \
