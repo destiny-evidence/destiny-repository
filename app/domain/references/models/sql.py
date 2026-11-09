@@ -56,6 +56,7 @@ from app.domain.references.models.models import (
     ExternalIdentifierType,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
+    LinkedDataCountryWBIncomeGroupFilter,
     LinkedDataCountryWBRegionFilter,
     PendingEnhancementStatus,
     PublicationYearRange,
@@ -646,6 +647,9 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
     linked_data_country_wb_region_filters: Mapped[list[dict[str, Any]] | None] = (
         mapped_column(JSONB, nullable=True)
     )
+    linked_data_country_wb_income_group_filters: Mapped[list[dict[str, Any]] | None] = (
+        mapped_column(JSONB, nullable=True)
+    )
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
@@ -673,6 +677,11 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
             or None,
             linked_data_country_wb_region_filters=[
                 f.model_dump() for f in query.linked_data_country_wb_region_filters
+            ]
+            or None,
+            linked_data_country_wb_income_group_filters=[
+                f.model_dump()
+                for f in query.linked_data_country_wb_income_group_filters
             ]
             or None,
             start_year=year_range.start if year_range else None,
@@ -718,6 +727,10 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
                 linked_data_country_wb_region_filters=[
                     LinkedDataCountryWBRegionFilter.model_validate(f)
                     for f in (self.linked_data_country_wb_region_filters or [])
+                ],
+                linked_data_country_wb_income_group_filters=[
+                    LinkedDataCountryWBIncomeGroupFilter.model_validate(f)
+                    for f in (self.linked_data_country_wb_income_group_filters or [])
                 ],
             ),
             sort=self.sort,
@@ -935,10 +948,12 @@ class DeduplicationAssessmentRecord(
             "ix_deduplication_assessment_incoming_reference_id",
             "incoming_reference_id",
         ),
-        # A redelivered task must not write a second row and a second payload.
+        # A redelivered task must not write a second row and a second payload. The
+        # shadow and the acting assessment of one decision are separate deliveries.
         Index(
-            "uq_deduplication_assessment_idempotency_key",
+            "uq_deduplication_assessment_idempotency_key_purpose",
             "idempotency_key",
+            "purpose",
             unique=True,
         ),
         # The generic update_by_pk writes attributes without model validation, so the

@@ -78,7 +78,10 @@ class FakePayloadWriter:
         self.error: Exception | None = None
 
     async def write(
-        self, payload_id: UUID, assessment: DeduplicationAssessment
+        self,
+        payload_id: UUID,
+        purpose: DeduplicationAssessmentPurpose,
+        assessment: DeduplicationAssessment,
     ) -> StoredPayload:
         self.calls.append(payload_id)
         self.events.append("payload")
@@ -223,12 +226,14 @@ def make_recorder(
 
     def _make(
         sample_rate_bits: int | None = None,
+        near_miss_margin: float = 0.0,
     ) -> DeduplicationAssessmentRecorder:
         return DeduplicationAssessmentRecorder(
             record_store=record_store,
             payload_writer=payload_writer,
             recording_config=DedupAssessmentRecordingConfig(
-                evidence_sample_rate_bits=sample_rate_bits
+                evidence_sample_rate_bits=sample_rate_bits,
+                near_miss_margin=near_miss_margin,
             ),
         )
 
@@ -262,6 +267,7 @@ def test_evidence_sampling_applies_the_configured_rate():
         ),
         pytest.param([0.2], 0, AssessmentPayloadState.STORED, True, id="dull-sampled"),
         pytest.param([0.95], None, AssessmentPayloadState.STORED, False, id="cleared"),
+        pytest.param([], None, AssessmentPayloadState.NOT_RETAINED, False, id="empty"),
         pytest.param(
             [0.2, None], None, AssessmentPayloadState.STORED, False, id="unscorable"
         ),
@@ -298,6 +304,31 @@ async def test_payload_is_retained_when_interesting_or_sampled(
     assert payload_writer.calls == ([attempt] if retained else [])
     # Coverage is why every assessment gets a row, retained payload or not.
     assert len(record_store.added) == 1
+
+
+@pytest.mark.parametrize(
+    ("score", "near_miss_margin", "expected_state"),
+    [
+        pytest.param(0.35, 0.5, AssessmentPayloadState.STORED, id="within-margin"),
+        pytest.param(
+            0.35, 0.4, AssessmentPayloadState.NOT_RETAINED, id="beyond-margin"
+        ),
+        # 0.8 - 0.3 is exactly 0.5 in floating point, so this sits on the edge.
+        pytest.param(0.5, 0.3, AssessmentPayloadState.STORED, id="on-the-edge"),
+    ],
+)
+async def test_near_miss_payload_is_retained_within_the_configured_margin(
+    make_recorder: Callable[..., DeduplicationAssessmentRecorder],
+    score: float,
+    near_miss_margin: float,
+    expected_state: AssessmentPayloadState,
+) -> None:
+    recorder = make_recorder(near_miss_margin=near_miss_margin)
+
+    # Against the 0.8 threshold.
+    record = await record_assessment(recorder, assessment_scoring([score]))
+
+    assert record.payload_state == expected_state
 
 
 async def test_redelivered_attempt_writes_one_record_and_one_payload(

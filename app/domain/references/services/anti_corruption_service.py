@@ -22,6 +22,7 @@ from app.domain.references.models.models import (
     IdentifierLookup,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
+    LinkedDataCountryWBIncomeGroupFilter,
     LinkedDataCountryWBRegionFilter,
     LinkedExternalIdentifier,
     PendingEnhancementStatus,
@@ -538,6 +539,13 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                     )
                     for bucket in buckets
                 ]
+            elif facet is FacetType.COUNTRY_WB_INCOME_GROUPS:
+                fields["country_wb_income_groups"] = [
+                    destiny_sdk.references.CountryWBIncomeGroupFacetCount(
+                        country_wb_income_group=bucket.key, count=bucket.count
+                    )
+                    for bucket in buckets
+                ]
             else:
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
@@ -669,21 +677,37 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             raise ValueError(msg)
         return LinkedDataConceptFilter(concept_uris=concept_uris)
 
+    @staticmethod
+    def _split_codes(value: str) -> list[str]:
+        """Split comma-separated codes, normalised to upper case."""
+        return [code.strip().upper() for code in value.split(",")]
+
     def linked_data_country_filter_from_query_parameter(
         self,
         country_filter_string: str,
     ) -> LinkedDataCountryFilter:
         """Parse a country filter (comma-separated ISO 3166-1 alpha-2 codes)."""
-        codes = [code.strip().upper() for code in country_filter_string.split(",")]
-        return LinkedDataCountryFilter(country_codes=codes)
+        return LinkedDataCountryFilter(
+            country_codes=self._split_codes(country_filter_string)
+        )
 
     def linked_data_country_wb_region_filter_from_query_parameter(
         self,
         region_filter_string: str,
     ) -> LinkedDataCountryWBRegionFilter:
         """Parse a WB region filter (comma-separated region IDs)."""
-        ids = [rid.strip().upper() for rid in region_filter_string.split(",")]
-        return LinkedDataCountryWBRegionFilter(region_ids=ids)
+        return LinkedDataCountryWBRegionFilter(
+            region_ids=self._split_codes(region_filter_string)
+        )
+
+    def linked_data_country_wb_income_group_filter_from_query_parameter(
+        self,
+        income_group_filter_string: str,
+    ) -> LinkedDataCountryWBIncomeGroupFilter:
+        """Parse a WB income group filter (comma-separated income group IDs)."""
+        return LinkedDataCountryWBIncomeGroupFilter(
+            income_group_ids=self._split_codes(income_group_filter_string)
+        )
 
     def duplicate_decision_from_sdk_make(
         self,

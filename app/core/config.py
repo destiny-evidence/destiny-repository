@@ -444,14 +444,23 @@ class DedupAssessmentRecordingConfig(BaseModel):
     """Configuration for recording deduplication assessment evidence."""
 
     evidence_sample_rate_bits: int | None = Field(
-        default=0,
+        default=6,
         ge=0,
         le=EVIDENCE_SAMPLE_DIGEST_BITS,
         description="Rate at which uninteresting assessments also keep their "
-        "evidence, one in 2 ** N. An assessment that proposed a duplicate or failed "
-        "to score a candidate keeps its evidence regardless; this decides how many "
-        "of the rest join them. 0 keeps all of them, null keeps none of them. Every "
-        "assessment records whether it was in the sample, interesting or not.",
+        "evidence, one in 2 ** N. An assessment whose best score came within the "
+        "near-miss margin of the threshold, or that failed to score a candidate, "
+        "keeps its evidence regardless; this decides how many of the rest join them. "
+        "0 keeps all of them, null keeps none of them. Every assessment records "
+        "whether it was in the sample, interesting or not.",
+    )
+    # At the 0.85 threshold this reaches the 0.32 that a title, author and year
+    # match alone scores, the largest group of near misses.
+    near_miss_margin: float = Field(
+        default=0.55,
+        ge=0,
+        description="How far below the threshold a best score still keeps its "
+        "evidence, so reviewers can see what nearly matched as well as what did.",
     )
 
 

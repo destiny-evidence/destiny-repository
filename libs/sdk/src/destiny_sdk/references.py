@@ -101,6 +101,8 @@ class FacetType(StrEnum):
     """Counts of references per ISO 3166-1 alpha-2 country code."""
     COUNTRY_WB_REGIONS = auto()
     """Counts of references per World Bank region ID."""
+    COUNTRY_WB_INCOME_GROUPS = auto()
+    """Counts of references per World Bank income group ID."""
 
 
 class ConceptFacetCount(BaseModel):
@@ -130,6 +132,15 @@ class CountryWBRegionFacetCount(BaseModel):
     )
 
 
+class CountryWBIncomeGroupFacetCount(BaseModel):
+    """The count of matching references for a single World Bank income group."""
+
+    country_wb_income_group: str = Field(description="The World Bank income group ID.")
+    count: int = Field(
+        description="Number of matching references tagged with this income group.",
+    )
+
+
 class ReferenceFacetResult(BaseModel):
     """Facet counts for a reference search."""
 
@@ -147,6 +158,10 @@ class ReferenceFacetResult(BaseModel):
         default=None,
         description="Counts of matching references per World Bank region ID.",
     )
+    country_wb_income_groups: list[CountryWBIncomeGroupFacetCount] | None = Field(
+        default=None,
+        description="Counts of matching references per World Bank income group ID.",
+    )
 
 
 class CrossFacetCell(BaseModel):
@@ -156,7 +171,7 @@ class CrossFacetCell(BaseModel):
         description=(
             "The cell's value on each axis, in the same order as the requested "
             "`axes`. Each value is a concept URI (for a concept-scheme axis) or a "
-            "code (for a country/region axis)."
+            "code (for a country, region or income group axis)."
         ),
     )
     count: int = Field(

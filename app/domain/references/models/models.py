@@ -35,6 +35,7 @@ from app.domain.base import (
     SQLTimestampMixin,
     StateMachineMixin,
 )
+from app.domain.references.services.world_bank_income_groups import WBIncomeGroupID
 from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.es.persistence import ESSearchTotal
@@ -160,15 +161,17 @@ class DeduplicationUnresolvedReason(StrEnum):
 
 
 class DeepDeduplicationOutcome(StrEnum):
-    """How a deep deduplication retrieval ended."""
+    """How a deep deduplication shadow assessment ended."""
 
     COMPLETED = auto()
-    """Retrieval returned. The result is discarded while the arm measures only."""
+    """The assessment was recorded. No decision is taken from it."""
     FAILED = auto()
-    """Retrieval raised; the caller logs it and the decision proceeds regardless."""
+    """The assessment raised; the caller logs it and the decision proceeds anyway."""
     TRUNCATED = auto()
     """Elasticsearch stopped the search at the document cap or server-side
     timeout, so no complete candidate set exists for this reference."""
+    UNSEARCHABLE = auto()
+    """The reference's own data could not be searched or scored."""
 
 
 class IdentifierCandidateOutcome(StrEnum):
@@ -1404,7 +1407,7 @@ class AssessmentPayloadState(StrEnum):
     """Whether the full evidence payload for an assessment was stored."""
 
     NOT_RETAINED = auto()
-    """Nothing cleared the threshold and every candidate scored, so none was kept."""
+    """Nothing came near the threshold and every candidate scored, so none was kept."""
     STORED = auto()
     """The payload was written and its location is on the record."""
     FAILED = auto()
@@ -1475,6 +1478,7 @@ class LinkedDataProjection(ProjectedBaseModel):
     evaluated_properties: set[str] = Field(default_factory=set)
     countries: set[str] = Field(default_factory=set)
     country_wb_regions: set[str] = Field(default_factory=set)
+    country_wb_income_groups: set[str] = Field(default_factory=set)
 
     @classmethod
     def union(cls, projections: Iterable[Self]) -> Self:
@@ -1486,6 +1490,7 @@ class LinkedDataProjection(ProjectedBaseModel):
             merged.evaluated_properties |= projection.evaluated_properties
             merged.countries |= projection.countries
             merged.country_wb_regions |= projection.country_wb_regions
+            merged.country_wb_income_groups |= projection.country_wb_income_groups
         return merged
 
 
@@ -1906,6 +1911,22 @@ class LinkedDataCountryWBRegionFilter(BaseModel):
     )
 
 
+class LinkedDataCountryWBIncomeGroupFilter(BaseModel):
+    """
+    A set of World Bank income group IDs.
+
+    Matched on ``linked_data_country_wb_income_groups``. OR within a filter; AND
+    between filters.
+    """
+
+    income_group_ids: list[WBIncomeGroupID] = Field(
+        min_length=1,
+        description=(
+            "World Bank income group IDs. At least one must appear on the reference."
+        ),
+    )
+
+
 class FacetType(StrEnum):
     """A facet supported by the reference search facets endpoint."""
 
@@ -1915,6 +1936,8 @@ class FacetType(StrEnum):
     """Counts of references per ISO 3166-1 alpha-2 country code."""
     COUNTRY_WB_REGIONS = auto()
     """Counts of references per World Bank region ID."""
+    COUNTRY_WB_INCOME_GROUPS = auto()
+    """Counts of references per World Bank income group ID."""
 
 
 class SearchQuery(BaseModel):
@@ -1952,6 +1975,34 @@ class SearchQuery(BaseModel):
             ),
         )
     )
+    linked_data_country_wb_income_group_filters: list[
+        LinkedDataCountryWBIncomeGroupFilter
+    ] = Field(
+        default_factory=list,
+        description=(
+            "World Bank income group filters to AND with the query string. Each "
+            "filter is an OR-set of income group IDs."
+        ),
+    )
+
+    @property
+    def term_filters(self) -> dict[FacetType, list[list[str]]]:
+        """Each facet's filters as OR-sets of values, ANDed together."""
+        return {
+            FacetType.CONCEPTS: [
+                f.concept_uris for f in self.linked_data_concept_filters
+            ],
+            FacetType.COUNTRIES: [
+                f.country_codes for f in self.linked_data_country_filters
+            ],
+            FacetType.COUNTRY_WB_REGIONS: [
+                list(f.region_ids) for f in self.linked_data_country_wb_region_filters
+            ],
+            FacetType.COUNTRY_WB_INCOME_GROUPS: [
+                list(f.income_group_ids)
+                for f in self.linked_data_country_wb_income_group_filters
+            ],
+        }
 
 
 class SiblingGroup(BaseModel):

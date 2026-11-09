@@ -3,8 +3,8 @@ ISO 3166-1 alpha-2 country code to World Bank region lookup.
 
 Data source: World Bank country API
 (``https://api.worldbank.org/v2/country?format=json&per_page=400``),
-snapshotted 2026-05-25. Validate against the live API with
-``uv run python -m app.utils.refresh_world_bank_regions``.
+snapshotted 2026-11-06. Validate against the live API with
+``uv run python -m app.utils.refresh_world_bank_classifications``.
 """
 
 from typing import Literal, get_args
