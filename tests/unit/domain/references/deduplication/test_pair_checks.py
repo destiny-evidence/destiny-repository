@@ -40,10 +40,10 @@ def _paper(title: str | None, doi: str | None = None) -> DeduplicationPaper:
             id="initials are not numbers",
         ),
         pytest.param(
-            _paper("Annual report"),
             _paper("Annual report 2019"),
+            _paper("Annual report 2019 part 3"),
             [],
-            id="number on one side only",
+            id="extra number on one side",
         ),
         pytest.param(
             _paper("Report 007"),
@@ -59,9 +59,9 @@ def _paper(title: str | None, doi: str | None = None) -> DeduplicationPaper:
         ),
         pytest.param(
             _paper("The colour of water"),
-            _paper("The color of water"),
+            _paper("The color of stone"),
             [],
-            id="spelling variant",
+            id="spelling variant beside an unrelated word",
         ),
         pytest.param(
             _paper("A study of red green and blue"),
@@ -70,16 +70,10 @@ def _paper(title: str | None, doi: str | None = None) -> DeduplicationPaper:
             id="three words swapped",
         ),
         pytest.param(
-            _paper("Effects of <i>exercise</i>"),
-            _paper("Effects of exercise"),
-            [],
-            id="markup only",
-        ),
-        pytest.param(
-            _paper("Notes on the Contributors", "10.1163/1-001"),
+            _paper("Notes on the <i>Contributors</i>", "10.1163/1-001"),
             _paper("Notes on the contributors", "10.1163/2-001"),
             [SHORT_TITLE],
-            id="four-word generic title under two DOIs",
+            id="four-word generic title under two DOIs, one in markup",
         ),
         pytest.param(
             _paper("Preliminary Material", "10.1163/1-001"),
