@@ -19,8 +19,8 @@ _DIGITS = re.compile(r"\d+")
 _ROMAN = re.compile(
     r"^(?=[MDCLXVI])M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$"
 )
-# After one of these words a numeral counts in any case and at any length; elsewhere
-# "I" is usually a pronoun or an initial, and lowercase "mix" or "ml" a word.
+# Words marking a numbered place in a series, as "part" does in the Deduper's part
+# number rule. After one, any numeral counts; elsewhere "I", "mix" or "ml" is a word.
 _NUMBERING_WORDS = frozenset(
     {
         "band",
