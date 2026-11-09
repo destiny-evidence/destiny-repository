@@ -2131,10 +2131,10 @@ def test_decide_from_assessment(assessment, determination, detail):
         ),
         (
             _assessment(
-                DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE,
-                candidate_count=1,
-                clearing=1,
-                held=1,
+                DeduplicationAssessmentOutcome.NO_PROPOSAL,
+                candidate_count=2,
+                clearing=2,
+                held=2,
             ),
             DuplicateDetermination.UNSEARCHABLE,
             None,
@@ -2153,7 +2153,7 @@ def test_decide_from_assessment(assessment, determination, detail):
     ],
     ids=[
         "sole-match-held-searchable",
-        "sole-match-held-unsearchable",
+        "all-matches-held-unsearchable",
         "one-of-two-matches-held",
     ],
 )

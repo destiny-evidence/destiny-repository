@@ -1,15 +1,19 @@
-"""Checks that hold apart series items and generic titles the Deduper matches."""
+"""
+Checks that hold apart series items and generic titles the Deduper matches.
+
+Decisions depend on them: changing a check needs a new ACTING_POLICY_GENERATION.
+"""
 
 import re
 from collections import Counter
 from collections.abc import Callable
 
+from destiny_deduper.regexes import HTML_TAG_RE
 from destiny_deduper.utils import roman_to_int
 from rapidfuzz import fuzz
 
 from app.domain.references.models.models import DeduplicationPaper, PairCheck
 
-_TAG = re.compile(r"<[^>]+>")
 _WORD = re.compile(r"\w+")
 _DIGITS = re.compile(r"\d+")
 _ROMAN = re.compile(
@@ -41,12 +45,16 @@ _UNRELATED_WORD_RATIO = 60
 _MAX_SHORT_TITLE_WORDS = 4
 
 
+def _plain(title: str | None) -> str:
+    return HTML_TAG_RE.sub(" ", title or "")
+
+
 def _words(title: str | None) -> list[str]:
-    return [word.lower() for word in _WORD.findall(_TAG.sub(" ", title or ""))]
+    return [word.lower() for word in _WORD.findall(_plain(title))]
 
 
 def _numbers(title: str | None) -> Counter[str]:
-    text = _TAG.sub(" ", title or "")
+    text = _plain(title)
     # Compared as strings: int() refuses digit runs past Python's conversion limit.
     numbers = Counter(digits.lstrip("0") or "0" for digits in _DIGITS.findall(text))
     words = _WORD.findall(text)
