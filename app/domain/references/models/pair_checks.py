@@ -3,12 +3,11 @@
 import re
 from collections import Counter
 from collections.abc import Callable
-from enum import StrEnum, auto
 
 from destiny_deduper.utils import roman_to_int
 from rapidfuzz import fuzz
 
-from app.domain.references.models.models import DeduplicationPaper
+from app.domain.references.models.models import DeduplicationPaper, PairCheck
 
 _TAG = re.compile(r"<[^>]+>")
 _WORD = re.compile(r"\w+")
@@ -40,17 +39,6 @@ _MAX_SWAPPED_WORDS = 2
 # Below this rapidfuzz ratio two words are unrelated rather than spelt differently.
 _UNRELATED_WORD_RATIO = 60
 _MAX_SHORT_TITLE_WORDS = 4
-
-
-class PairCheck(StrEnum):
-    """A rule that holds apart a pair the Deduper scored at or above its threshold."""
-
-    NUMBERS_SWAPPED = auto()
-    """Each title carries a number the other lacks, as items in a numbered series do."""
-    WORDS_SWAPPED = auto()
-    """The titles differ by one or two unrelated words, as templated titles do."""
-    SHORT_TITLE_DOIS_DIFFER = auto()
-    """A short identical title under two different DOIs, as generic titles are."""
 
 
 def _words(title: str | None) -> list[str]:

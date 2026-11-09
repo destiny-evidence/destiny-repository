@@ -1246,12 +1246,24 @@ class DeduperMetadata(BaseModel):
     effective_configuration: dict[str, JsonValue] = Field(default_factory=dict)
 
 
+class PairCheck(StrEnum):
+    """A rule that holds apart a pair the Deduper scored at or above its threshold."""
+
+    NUMBERS_SWAPPED = auto()
+    """Each title carries a number the other lacks, as items in a numbered series do."""
+    WORDS_SWAPPED = auto()
+    """The titles differ by one or two unrelated words, as templated titles do."""
+    SHORT_TITLE_DOIS_DIFFER = auto()
+    """A short identical title under two different DOIs, as generic titles are."""
+
+
 class ScoredDeduplicationCandidate(BaseModel):
     """One retrieved candidate and the Deduper evidence for its pair."""
 
     candidate: Candidate
     pair_result: DeduplicationPairResult
     clears_threshold: bool | None
+    failed_pair_checks: list[PairCheck] = Field(default_factory=list)
 
 
 class DeduplicationAssessmentOutcome(StrEnum):
@@ -1356,6 +1368,7 @@ class AssessmentCandidateSummary(BaseModel):
     early_stop_reason: str | None = None
     doi_mismatch_adjusted: bool = False
     suggested_label: str | None = None
+    failed_pair_checks: list[PairCheck] = Field(default_factory=list)
     field_availability: dict[str, DeduplicationFieldStatus] = Field(
         default_factory=dict,
         description="Fields that could not be compared, and which side was absent. "
@@ -1386,6 +1399,7 @@ class AssessmentCandidateSummary(BaseModel):
             early_stop_reason=scored.pair_result.early_stop_reason,
             doi_mismatch_adjusted=scored.pair_result.doi_mismatch_adjusted,
             suggested_label=scored.pair_result.suggested_label,
+            failed_pair_checks=scored.failed_pair_checks,
             field_availability={
                 field: comparison.status
                 for field, comparison in scored.pair_result.field_comparisons.items()

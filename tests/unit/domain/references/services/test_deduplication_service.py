@@ -18,15 +18,18 @@ from app.domain.references.models.models import (
     DeduperMetadata,
     DeduplicationAssessment,
     DeduplicationAssessmentOutcome,
+    DeduplicationPairResult,
     DuplicateDecisionAuthority,
     DuplicateDecisionTrigger,
     DuplicateDetermination,
     ExternalIdentifierType,
     InputSearchability,
     LinkedExternalIdentifier,
+    PairCheck,
     Reference,
     ReferenceDuplicateDecision,
     RetrievalPolicyName,
+    ScoredDeduplicationCandidate,
 )
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
@@ -2002,6 +2005,8 @@ def _assessment(
     candidate_count: int = 0,
     clearing: int = 0,
     unscorable: int = 0,
+    held: int = 0,
+    searchable: bool = False,
 ) -> DeduplicationAssessment:
     candidates = [
         Candidate(reference_id=uuid7(), rank=rank, routes=[])
@@ -2015,7 +2020,7 @@ def _assessment(
             retrieval_policy=RetrievalPolicyName.CANDIDATE_SELECTION_V2,
             k_requested=10,
             input_searchability=InputSearchability(
-                searchable=False, reason="missing: title"
+                searchable=searchable, reason="missing: title"
             ),
             diagnostics=CandidateSelectionDiagnostics(candidate_count=candidate_count),
             candidates=candidates,
@@ -2023,6 +2028,16 @@ def _assessment(
         deduper=DeduperMetadata(
             package_version="0", configuration_hash="x", threshold=0.9
         ),
+        # The first `held` clearing candidates failed a pair check.
+        scored_candidates=[
+            ScoredDeduplicationCandidate(
+                candidate=candidate,
+                pair_result=DeduplicationPairResult(probability=0.95),
+                clears_threshold=True,
+                failed_pair_checks=[PairCheck.NUMBERS_SWAPPED] if i < held else [],
+            )
+            for i, candidate in enumerate(candidates[:clearing])
+        ],
         outcome=outcome,
         proposed_duplicate_of_id=(
             clearing_ids[0]
@@ -2038,7 +2053,9 @@ def _assessment(
     ("assessment", "determination", "detail"),
     [
         (
-            _assessment(DeduplicationAssessmentOutcome.PROPOSE_CANONICAL),
+            _assessment(
+                DeduplicationAssessmentOutcome.PROPOSE_CANONICAL, searchable=True
+            ),
             DuplicateDetermination.CANONICAL,
             None,
         ),
@@ -2096,3 +2113,58 @@ def test_decide_from_assessment(assessment, determination, detail):
     assert result.duplicate_determination == determination
     assert result.canonical_reference_id == assessment.proposed_duplicate_of_id
     assert result.detail == detail
+
+
+@pytest.mark.parametrize(
+    ("assessment", "determination", "canonical_rank"),
+    [
+        (
+            _assessment(
+                DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE,
+                candidate_count=1,
+                clearing=1,
+                held=1,
+                searchable=True,
+            ),
+            DuplicateDetermination.CANONICAL,
+            None,
+        ),
+        (
+            _assessment(
+                DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE,
+                candidate_count=1,
+                clearing=1,
+                held=1,
+            ),
+            DuplicateDetermination.UNSEARCHABLE,
+            None,
+        ),
+        (
+            _assessment(
+                DeduplicationAssessmentOutcome.NO_PROPOSAL,
+                candidate_count=2,
+                clearing=2,
+                held=1,
+                searchable=True,
+            ),
+            DuplicateDetermination.DUPLICATE,
+            2,
+        ),
+    ],
+    ids=[
+        "sole-match-held-searchable",
+        "sole-match-held-unsearchable",
+        "one-of-two-matches-held",
+    ],
+)
+def test_decide_from_assessment_drops_candidates_that_fail_a_pair_check(
+    assessment, determination, canonical_rank
+):
+    result = decide_from_assessment(assessment)
+
+    assert result.duplicate_determination == determination
+    assert result.canonical_reference_id == (
+        assessment.candidate_selection.candidates[canonical_rank - 1].reference_id
+        if canonical_rank
+        else None
+    )

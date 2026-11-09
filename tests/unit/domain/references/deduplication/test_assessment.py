@@ -30,6 +30,7 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierType,
     InputSearchability,
+    PairCheck,
     Reference,
     RetrievalPolicyName,
 )
@@ -67,12 +68,12 @@ def anti_corruption_service() -> ReferenceAntiCorruptionService:
     return ReferenceAntiCorruptionService(sign_url=AsyncMock())
 
 
-def _reference(*, community_bound: bool = False) -> Reference:
+def _reference(
+    *, community_bound: bool = False, title: str = "A complete reference"
+) -> Reference:
     enhancements = [
         EnhancementFactory.build(
-            content=BibliographicMetadataEnhancementFactory.build(
-                title="A complete reference",
-            )
+            content=BibliographicMetadataEnhancementFactory.build(title=title)
         )
     ]
     if community_bound:
@@ -409,6 +410,36 @@ async def test_evaluate_scores_all_candidates_and_retains_every_threshold_match(
     request_input = selector.await_args.args[0].input
     assert request_input.reference_id is None
     assert request_input.excluded_reference_id == incoming.id
+
+
+@pytest.mark.asyncio
+async def test_evaluate_records_the_pair_checks_each_candidate_fails():
+    incoming = _reference(title="Newsletter Issue 3")
+    candidates = [
+        _reference(title="Newsletter Issue 4"),
+        _reference(title="Newsletter Issue 3"),
+    ]
+    service, _, _, _ = _build_service(
+        _selection(
+            *(
+                Candidate(reference_id=candidate.id, rank=rank, routes=[])
+                for rank, candidate in enumerate(candidates, start=1)
+            )
+        ),
+        [incoming, *candidates],
+        {candidate.id: 0.95 for candidate in candidates},
+    )
+
+    assessment = await service.evaluate(incoming.id)
+
+    assert [scored.failed_pair_checks for scored in assessment.scored_candidates] == [
+        [PairCheck.NUMBERS_SWAPPED, PairCheck.WORDS_SWAPPED],
+        [],
+    ]
+    # Evidence only: the decision applies the checks, so both still clear.
+    assert assessment.threshold_clearing_candidate_ids == [
+        candidate.id for candidate in candidates
+    ]
 
 
 @pytest.mark.asyncio

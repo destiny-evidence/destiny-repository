@@ -1,8 +1,8 @@
 import pytest
 from destiny_sdk.identifiers import DOIIdentifier
 
-from app.domain.references.models.models import DeduplicationPaper
-from app.domain.references.models.pair_checks import PairCheck, failed_pair_checks
+from app.domain.references.models.models import DeduplicationPaper, PairCheck
+from app.domain.references.models.pair_checks import failed_pair_checks
 
 NUMBERS = PairCheck.NUMBERS_SWAPPED
 WORDS = PairCheck.WORDS_SWAPPED

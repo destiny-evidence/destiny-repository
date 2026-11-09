@@ -48,6 +48,9 @@ from app.domain.references.models.retrieval_policy import (
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
+from app.domain.references.services.deduplication_assessment_service import (
+    summarise_candidates,
+)
 from app.domain.service import GenericService
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
@@ -246,7 +249,7 @@ def _trace_candidate_selection(
 
 
 # Recorded with each assessment. Change it whenever decide_from_assessment changes.
-ACTING_POLICY_GENERATION = "stand-in"
+ACTING_POLICY_GENERATION = "stand-in-pair-checks"
 
 
 def decide_from_assessment(
@@ -255,9 +258,25 @@ def decide_from_assessment(
     """
     Turn an assessment into a decision.
 
-    A stand-in until an automatic policy is implemented.
+    A stand-in until an automatic policy is implemented, except that a candidate
+    which failed a pair check no longer counts as clearing the threshold.
     """
-    match assessment.outcome:
+    held = {
+        scored.candidate.reference_id
+        for scored in assessment.scored_candidates
+        if scored.failed_pair_checks
+    }
+    clearing = [
+        candidate_id
+        for candidate_id in assessment.threshold_clearing_candidate_ids
+        if candidate_id not in held
+    ]
+    outcome, proposed_duplicate_of_id = summarise_candidates(
+        clearing,
+        assessment.unscorable_candidate_ids,
+        input_searchable=assessment.candidate_selection.input_searchability.searchable,
+    )
+    match outcome:
         case DeduplicationAssessmentOutcome.PROPOSE_CANONICAL:
             return ReferenceDuplicateDeterminationResult(
                 duplicate_determination=DuplicateDetermination.CANONICAL,
@@ -265,12 +284,12 @@ def decide_from_assessment(
         case DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE:
             return ReferenceDuplicateDeterminationResult(
                 duplicate_determination=DuplicateDetermination.DUPLICATE,
-                canonical_reference_id=assessment.proposed_duplicate_of_id,
+                canonical_reference_id=proposed_duplicate_of_id,
             )
         case DeduplicationAssessmentOutcome.NO_PROPOSAL:
             if assessment.unscorable_candidate_ids:
                 reason = DeduplicationUnresolvedReason.UNSCORABLE_CANDIDATE
-            elif len(assessment.threshold_clearing_candidate_ids) > 1:
+            elif len(clearing) > 1:
                 reason = DeduplicationUnresolvedReason.MULTIPLE_CLEARING
             else:
                 # The input could not be searched, so the candidate set is incomplete.
@@ -283,7 +302,7 @@ def decide_from_assessment(
                 detail=f"Unresolved: {reason}",
             )
         case _:  # pragma: no cover - exhaustiveness guard
-            assert_never(assessment.outcome)
+            assert_never(outcome)
 
 
 class DeduplicationService(GenericService[ReferenceAntiCorruptionService]):
