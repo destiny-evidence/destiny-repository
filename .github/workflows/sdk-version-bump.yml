@@ -15,7 +15,7 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v6
         with:
-          version: "0.9.22"
+          version: "0.13.7"
 
       - name: Check version is bumped when SDK source changes
         env:
