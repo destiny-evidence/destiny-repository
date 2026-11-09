@@ -259,7 +259,7 @@ def decide_from_assessment(
     Turn an assessment into a decision.
 
     A stand-in until an automatic policy is implemented, except that a candidate
-    which failed a pair check no longer counts as clearing the threshold.
+    failing a pair check is never merged with, and never decides which one is.
     """
     vetoed = {
         scored.candidate.reference_id
@@ -271,6 +271,10 @@ def decide_from_assessment(
         for candidate_id in assessment.threshold_clearing_candidate_ids
         if candidate_id not in vetoed
     ]
+    # With some clearing candidates vetoed and others left, a veto would choose the
+    # merge, so the set stays as scored.
+    if clearing and len(clearing) < len(assessment.threshold_clearing_candidate_ids):
+        clearing = assessment.threshold_clearing_candidate_ids
     outcome, proposed_duplicate_of_id = summarise_candidates(
         clearing,
         assessment.unscorable_candidate_ids,

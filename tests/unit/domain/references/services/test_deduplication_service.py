@@ -2147,8 +2147,8 @@ def test_decide_from_assessment(assessment, determination, detail):
                 vetoed=1,
                 searchable=True,
             ),
-            DuplicateDetermination.DUPLICATE,
-            2,
+            DuplicateDetermination.UNRESOLVED,
+            None,
         ),
     ],
     ids=[
