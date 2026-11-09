@@ -48,8 +48,26 @@ def _paper(title: str | None, doi: str | None = None) -> DeduplicationPaper:
         pytest.param(
             _paper("Report 007"),
             _paper("Report VII"),
-            [WORDS],
+            [],
             id="same number written differently",
+        ),
+        pytest.param(
+            _paper("Scale Model T4"),
+            _paper("Scale Model R4"),
+            [WORDS],
+            id="words that only contain a number",
+        ),
+        pytest.param(
+            _paper("Results of the phase ii trial"),
+            _paper("Results of the phase iii trial"),
+            [NUMBERS],
+            id="lowercase numeral after a numbering word",
+        ),
+        pytest.param(
+            _paper("Rainfall in mm"),
+            _paper("Rainfall in ml"),
+            [WORDS],
+            id="lowercase words that spell numerals",
         ),
         pytest.param(
             _paper("Lineage of the Smith family in Kent"),
