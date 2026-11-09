@@ -13,7 +13,7 @@ import sys
 import time
 from uuid import UUID
 
-import httpx
+import httpx2
 from destiny_sdk.imports import (
     ImportBatchIn,
     ImportBatchRead,
@@ -27,7 +27,7 @@ from cli.get_import_batch_summary import check_import_batch_status
 
 
 def register_import_record(  # noqa: PLR0913
-    client: httpx.Client,
+    client: httpx2.Client,
     expected_reference_count: int,
     processor_name: str,
     processor_version: str,
@@ -53,7 +53,7 @@ def register_import_record(  # noqa: PLR0913
 
 
 def register_import_batch(
-    client: httpx.Client, import_record_id: UUID, file_url: str
+    client: httpx2.Client, import_record_id: UUID, file_url: str
 ) -> ImportBatchRead:
     """Register an import batch for the given file URL."""
     print(f"Registering import batch for file: {file_url}")
@@ -69,7 +69,7 @@ def register_import_batch(
     return import_batch
 
 
-def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None:
+def finalise_import_record(client: httpx2.Client, import_record_id: UUID) -> None:
     """Finalise the import record."""
     print("Finalising import record...")
     response = client.patch(
@@ -80,7 +80,7 @@ def finalise_import_record(client: httpx.Client, import_record_id: UUID) -> None
 
 
 def poll_and_summarise(
-    client: httpx.Client,
+    client: httpx2.Client,
     import_record_id: UUID,
     import_batch_id: UUID,
     poll_interval: float = 5,
@@ -112,7 +112,7 @@ def poll_and_summarise(
 
 
 def post_import_file(  # noqa: PLR0913
-    client: httpx.Client,
+    client: httpx2.Client,
     file_url: str,
     expected_reference_count: int,
     processor_name: str,
@@ -202,6 +202,6 @@ if __name__ == "__main__":
                 notes=args.notes,
                 poll_interval=args.poll_interval,
             )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         print(f"Import failed: {exc}")
         sys.exit(1)

@@ -4,7 +4,7 @@ import argparse
 from collections.abc import Sequence
 from typing import Literal, cast
 
-import httpx
+import httpx2
 from destiny_sdk.client import OAuthClient
 
 from app.core.config import Environment
@@ -15,16 +15,16 @@ LOCAL_REPOSITORY_URL = "http://127.0.0.1:8000"
 def get_oauth_client(env: Environment, url: str | None = None) -> OAuthClient:
     """Build an authenticated ``OAuthClient`` for the given environment."""
     if env in Environment.local_envs():
-        # No auth server locally; httpx.Auth is a no-op yielding unchanged.
-        return OAuthClient(base_url=url or LOCAL_REPOSITORY_URL, auth=httpx.Auth())
+        # No auth server locally; httpx2.Auth is a no-op yielding unchanged.
+        return OAuthClient(base_url=url or LOCAL_REPOSITORY_URL, auth=httpx2.Auth())
     return OAuthClient(
         env=cast(Literal["development", "staging", "production"], env.value),
         base_url=url,
     )
 
 
-def get_client(env: Environment, url: str | None = None) -> httpx.Client:
-    """Build an authenticated httpx client for the given environment."""
+def get_client(env: Environment, url: str | None = None) -> httpx2.Client:
+    """Build an authenticated httpx2 client for the given environment."""
     return get_oauth_client(env, url).get_client()
 
 
@@ -64,7 +64,7 @@ class ApiArgumentParser(argparse.ArgumentParser):
         Parse arguments and attach configured clients to the namespace.
 
         Both ``oauth_client`` (the SDK :class:`OAuthClient`) and ``client`` (its
-        underlying ``httpx.Client``) are attached; they share one session, so
+        underlying ``httpx2.Client``) are attached; they share one session, so
         scripts can use whichever fits.
         """
         parsed = super().parse_args(args, namespace)

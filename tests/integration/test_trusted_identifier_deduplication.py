@@ -13,7 +13,7 @@ from uuid import UUID
 import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tenacity import retry, stop_after_attempt, wait_fixed

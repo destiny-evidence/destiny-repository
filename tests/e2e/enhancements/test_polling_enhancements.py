@@ -6,7 +6,7 @@ from secrets import choice
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid7
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.client import RobotClient
 from destiny_sdk.enhancements import (
@@ -54,7 +54,7 @@ def _create_client(repo_url: HttpUrl) -> RobotClient:
 
 
 async def _create_enhancement_request(
-    repo_client: httpx.AsyncClient, robot_id: str, reference_ids: list[str]
+    repo_client: httpx2.AsyncClient, robot_id: str, reference_ids: list[str]
 ) -> str:
     """Create an enhancement request and return request ID."""
     request_in = EnhancementRequestIn(robot_id=robot_id, reference_ids=reference_ids)
@@ -68,8 +68,8 @@ async def _create_enhancement_request(
 
 
 async def _poll_robot_batches(  # noqa: PLR0913
-    repo_client: httpx.AsyncClient,
-    signed_url_client: httpx.AsyncClient,
+    repo_client: httpx2.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
     robot_id: str,
     reference_ids: list[str],
     request_id: str,
@@ -116,7 +116,7 @@ async def _poll_robot_batches(  # noqa: PLR0913
 
 
 async def _upload_robot_result(
-    signed_url_client: httpx.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
     result_storage_url: HttpUrl,
     batch_id: str,
     result_content: str,
@@ -141,7 +141,7 @@ async def _upload_robot_result(
 
 
 async def _submit_robot_results(
-    signed_url_client: httpx.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
     robot_enhancement_batch_ids: list[str],
     batch_references: list[list[str]],
     robot_requests: list[RobotEnhancementBatch],
@@ -181,7 +181,7 @@ async def _submit_robot_results(
 
 
 async def _wait_for_enhancement_request_status(
-    repo_client: httpx.AsyncClient,
+    repo_client: httpx2.AsyncClient,
     request_id: str,
     expected_status: EnhancementRequestStatus,
     max_attempts: int = 3,
@@ -203,9 +203,9 @@ async def _wait_for_enhancement_request_status(
 
 
 async def test_polling_pending_enhancements(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     robot: Robot,
-    signed_url_client: httpx.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
     add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
     """Test the happy path for a robot polling for pending enhancements."""
@@ -260,9 +260,9 @@ async def send_expiry_task(worker: DockerContainer) -> None:
 
 
 async def test_cannot_submit_expired_enhancement_results(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     robot: Robot,
-    signed_url_client: httpx.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
     worker: DockerContainer,
     add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
@@ -288,7 +288,7 @@ async def test_cannot_submit_expired_enhancement_results(
     await send_expiry_task(worker)
     await asyncio.sleep(3)  # Wait for worker to process task
 
-    with pytest.raises(httpx.HTTPStatusError) as exc_info:
+    with pytest.raises(httpx2.HTTPStatusError) as exc_info:
         await _submit_robot_results(
             signed_url_client, batch_ids, batch_refs, batches, repo_url
         )
@@ -301,9 +301,9 @@ async def test_cannot_submit_expired_enhancement_results(
 
 
 async def test_can_submit_results_after_renewing_lease(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     robot: Robot,
-    signed_url_client: httpx.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
     worker: DockerContainer,
     add_references: Callable[[int], Awaitable[set[UUID]]],
 ):
@@ -347,8 +347,8 @@ async def test_can_submit_results_after_renewing_lease(
 
 
 async def test_robot_withdraws_and_resurrects_chain(
-    destiny_client_v1: httpx.AsyncClient,
-    signed_url_client: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
+    signed_url_client: httpx2.AsyncClient,
     pg_session: AsyncSession,
 ):
     """A robot withdraws a chain with a tombstone and resurrects it as its own type."""

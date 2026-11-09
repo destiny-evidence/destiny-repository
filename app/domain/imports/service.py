@@ -2,11 +2,11 @@
 
 from uuid import UUID
 
-import httpx
+import httpx2
 import tenacity
 from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-untyped]
 from opentelemetry import trace
-from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
 from sqlalchemy.exc import DBAPIError
 
 from app.core.config import get_settings
@@ -270,7 +270,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         """Distribute an import batch, retrying on connection errors."""
         last_processed_line = 0
         async for attempt in tenacity.AsyncRetrying(
-            retry=tenacity.retry_if_exception_type(httpx.TransportError),
+            retry=tenacity.retry_if_exception_type(httpx2.TransportError),
             before_sleep=lambda rs: logger.warning(
                 "Retrying import batch stream",
                 extra={
@@ -285,10 +285,10 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             reraise=True,
         ):
             with attempt:
-                async with httpx.AsyncClient(
+                async with httpx2.AsyncClient(
                     follow_redirects=False,
                 ) as client:
-                    HTTPXClientInstrumentor().instrument_client(client)
+                    HTTPX2ClientInstrumentor().instrument_client(client)
                     async with client.stream(
                         "GET", str(import_batch.storage_url)
                     ) as response:
@@ -301,7 +301,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                                 f"Unexpected status {response.status_code} "
                                 f"fetching storage_url"
                             )
-                            raise httpx.HTTPStatusError(
+                            raise httpx2.HTTPStatusError(
                                 msg,
                                 request=response.request,
                                 response=response,

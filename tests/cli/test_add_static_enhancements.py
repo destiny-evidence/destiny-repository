@@ -5,7 +5,7 @@ import datetime
 from pathlib import Path
 from uuid import UUID, uuid7
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.client import RobotClient
 from destiny_sdk.enhancements import (
@@ -23,7 +23,7 @@ from destiny_sdk.robots import (
     RobotEntitlement,
 )
 from pydantic import HttpUrl
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 
 from app.core.config import Environment
 from cli.add_static_enhancements import (
@@ -140,10 +140,10 @@ def test_malformed_enhancement_json_fails_at_parse_time() -> None:
         enhancement_input('{"source": "x", "content": {"enhancement_type": "raw"}}')
 
 
-def test_robot_we_did_not_provision_is_refused(httpx_mock: HTTPXMock) -> None:
+def test_robot_we_did_not_provision_is_refused(httpx2_mock: HTTPXMock) -> None:
     """Another robot's secret is not ours to cycle, nor its queue ours to claim."""
     robot = _robot(owner="destiny")
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/robots/{robot.id}/",
         json=robot.model_dump(mode="json"),
@@ -156,10 +156,10 @@ def test_robot_we_did_not_provision_is_refused(httpx_mock: HTTPXMock) -> None:
         resolve_robot(client, robot.id, None, set())
 
 
-def test_robot_missing_an_entitlement_is_refused(httpx_mock: HTTPXMock) -> None:
+def test_robot_missing_an_entitlement_is_refused(httpx2_mock: HTTPXMock) -> None:
     """A robot of ours is still refused if it cannot write the given enhancements."""
     robot = _robot(owner=ROBOT_OWNER_MARKER)
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/robots/{robot.id}/",
         json=robot.model_dump(mode="json"),
@@ -172,18 +172,18 @@ def test_robot_missing_an_entitlement_is_refused(httpx_mock: HTTPXMock) -> None:
         resolve_robot(client, robot.id, None, {RobotEntitlement.RAW_ENHANCEMENT_WRITER})
 
 
-def test_our_own_robot_has_its_secret_cycled(httpx_mock: HTTPXMock) -> None:
+def test_our_own_robot_has_its_secret_cycled(httpx2_mock: HTTPXMock) -> None:
     """Reusing one of our robots takes a fresh secret rather than asking for one."""
     robot = _robot(
         owner=ROBOT_OWNER_MARKER,
         entitlements={RobotEntitlement.RAW_ENHANCEMENT_WRITER},
     )
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/robots/{robot.id}/",
         json=robot.model_dump(mode="json"),
     )
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="POST",
         url=f"http://127.0.0.1:8000/v1/robots/{robot.id}/secret/",
         json=ProvisionedRobot(
@@ -201,17 +201,17 @@ def test_our_own_robot_has_its_secret_cycled(httpx_mock: HTTPXMock) -> None:
 
 
 def test_dry_run_checks_the_robot_without_cycling_its_secret(
-    httpx_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
+    httpx2_mock: HTTPXMock, capsys: pytest.CaptureFixture[str]
 ) -> None:
     """A dry run resolves the robot for real but must not provision anything."""
     robot = _robot(owner=ROBOT_OWNER_MARKER)
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url=f"http://127.0.0.1:8000/v1/robots/{robot.id}/",
         json=robot.model_dump(mode="json"),
     )
 
-    # No secret cycle is registered, so httpx_mock fails the test if one is sent.
+    # No secret cycle is registered, so httpx2_mock fails the test if one is sent.
     with get_client(Environment.LOCAL) as client:
         describe_robot(client, robot.id, None, set())
 
@@ -219,11 +219,11 @@ def test_dry_run_checks_the_robot_without_cycling_its_secret(
 
 
 def test_batch_holding_another_requesters_reference_is_abandoned(
-    httpx_mock: HTTPXMock,
+    httpx2_mock: HTTPXMock,
 ) -> None:
     """Nothing is submitted for a shared queue, so the batch expires and re-queues."""
     ours, theirs = uuid7(), uuid7()
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         method="GET",
         url="https://blob.example.com/references.jsonl",
         text=f'{{"id": "{ours}"}}\n{{"id": "{theirs}"}}\n',
@@ -240,7 +240,7 @@ def test_batch_holding_another_requesters_reference_is_abandoned(
     )
 
     with (
-        httpx.Client() as blob_client,
+        httpx2.Client() as blob_client,
         pytest.raises(ValueError, match="were not requested"),
     ):
         _fulfil_batch(

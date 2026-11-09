@@ -3,7 +3,7 @@
 # ruff: noqa: T201
 from pathlib import Path
 
-import httpx
+import httpx2
 from fastapi import status
 
 from app.utils.lists import list_chunker
@@ -13,7 +13,7 @@ _REPAIR_PATH = "/system/indices/reference/repair/"
 
 
 def invoke_reference_repair(
-    client: httpx.Client,
+    client: httpx2.Client,
     reference_ids: list[str],
     batch_size: int = 1000,
     start_batch: int = 1,
@@ -50,7 +50,7 @@ def invoke_reference_repair(
         print(f"{response.status_code}")
         if response.status_code >= status.HTTP_400_BAD_REQUEST:
             msg = response.json().get("detail", response.text)
-            raise httpx.HTTPError(msg)
+            raise httpx2.HTTPError(msg)
 
     return len(reference_ids)
 
@@ -108,5 +108,5 @@ if __name__ == "__main__":
         verb = "Would queue" if args.dry_run else "Queued"
         print(f"{verb} repair for {len(reference_ids)} reference ids.")
 
-    except (httpx.HTTPError, FileNotFoundError) as exc:
+    except (httpx2.HTTPError, FileNotFoundError) as exc:
         print(f"Invoking repair failed: {exc}")

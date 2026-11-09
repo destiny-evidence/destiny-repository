@@ -11,7 +11,7 @@ import sys
 import time
 from uuid import UUID
 
-import httpx
+import httpx2
 from destiny_sdk.client import OAuthClient
 from destiny_sdk.robots import (
     EnhancementRequestSearchStatus,
@@ -144,6 +144,6 @@ if __name__ == "__main__":
                 dry_run=args.dry_run,
                 poll_interval=args.poll_interval,
             )
-    except httpx.HTTPError as exc:
+    except httpx2.HTTPError as exc:
         print(f"Enhancement request failed: {exc}")
         sys.exit(1)

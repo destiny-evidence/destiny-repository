@@ -21,7 +21,7 @@ import sys
 import time
 from typing import TYPE_CHECKING
 
-import httpx
+import httpx2
 from destiny_sdk.references import ExportStatus, ReferenceExportRead
 
 from app.core.config import Environment
@@ -41,7 +41,7 @@ _DEFAULT_EXPORT_CHUNK_SIZE = 10_000
 
 
 def request_export(
-    client: httpx.Client,
+    client: httpx2.Client,
     reference_ids: list[str],
     poll_interval: float,
     max_polls: int,
@@ -73,8 +73,8 @@ def request_export(
 
 
 def migrate_references(  # noqa: PLR0913
-    source_client: httpx.Client,
-    dest_client: httpx.Client,
+    source_client: httpx2.Client,
+    dest_client: httpx2.Client,
     source_env: Environment,
     reference_ids: list[str],
     notes: str,
@@ -209,6 +209,6 @@ if __name__ == "__main__":
                 dry_run=args.dry_run,
             )
 
-    except (httpx.HTTPError, OSError, RuntimeError, TimeoutError, ValueError) as exc:
+    except (httpx2.HTTPError, OSError, RuntimeError, TimeoutError, ValueError) as exc:
         print(f"Migration failed: {exc}")
         sys.exit(1)

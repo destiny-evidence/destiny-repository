@@ -3,7 +3,7 @@
 import base64
 import json
 
-import httpx
+import httpx2
 
 
 def _claims(token: str) -> dict:
@@ -17,7 +17,7 @@ class TestKeycloakAuth:
 
     async def test_unauthenticated_request_fails(
         self,
-        keycloak_api_client: httpx.AsyncClient,
+        keycloak_api_client: httpx2.AsyncClient,
     ):
         """Test that unauthenticated requests to protected endpoints fail."""
         # Use search endpoint with required params
@@ -26,7 +26,7 @@ class TestKeycloakAuth:
 
     async def test_authenticated_request_succeeds(
         self,
-        keycloak_api_client: httpx.AsyncClient,
+        keycloak_api_client: httpx2.AsyncClient,
         keycloak_token: str,
     ):
         """Test that authenticated requests with Keycloak token succeed."""
@@ -39,7 +39,7 @@ class TestKeycloakAuth:
 
     async def test_expired_token_fails(
         self,
-        keycloak_api_client: httpx.AsyncClient,
+        keycloak_api_client: httpx2.AsyncClient,
     ):
         """Test that an expired/invalid token fails."""
         # Use an obviously invalid token
@@ -51,7 +51,7 @@ class TestKeycloakAuth:
 
     async def test_client_role_grants_access(
         self,
-        keycloak_api_client: httpx.AsyncClient,
+        keycloak_api_client: httpx2.AsyncClient,
         keycloak_token: str,
     ):
         """
@@ -78,7 +78,7 @@ class TestKeycloakAuth:
 
     async def test_unheld_client_role_is_denied(
         self,
-        keycloak_api_client: httpx.AsyncClient,
+        keycloak_api_client: httpx2.AsyncClient,
         keycloak_restricted_token: str,
     ):
         """
@@ -99,7 +99,7 @@ class TestKeycloakAuth:
 
     async def test_realm_role_confers_no_access(
         self,
-        keycloak_api_client: httpx.AsyncClient,
+        keycloak_api_client: httpx2.AsyncClient,
         keycloak_legacy_realm_role_token: str,
     ):
         """
@@ -129,7 +129,7 @@ class TestKeycloakAuth:
 
     async def test_healthcheck_no_auth_required(
         self,
-        keycloak_api_client: httpx.AsyncClient,
+        keycloak_api_client: httpx2.AsyncClient,
     ):
         """Test that healthcheck endpoint works without auth."""
         response = await keycloak_api_client.get(

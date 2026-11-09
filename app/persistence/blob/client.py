@@ -119,7 +119,7 @@ class GenericBlobStorageClient(ABC):
         Release any async network resources held by this client.
 
         Default is a no-op for backends that hold no async state (e.g.
-        synchronous SDKs). Subclasses with aiohttp/httpx clients or
+        synchronous SDKs). Subclasses with aiohttp/httpx2 clients or
         async credentials override this to close them.
         """
         return

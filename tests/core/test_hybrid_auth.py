@@ -12,7 +12,7 @@ import destiny_sdk
 import pytest
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
-from httpx import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import AuthRole, AuthScope

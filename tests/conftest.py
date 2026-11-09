@@ -18,7 +18,7 @@ from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
     InMemorySpanExporter,
 )
-from pytest_httpx import HTTPXMock
+from pytest_httpx2 import HTTPXMock
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.auth import AuthRole, AuthScope
@@ -220,11 +220,11 @@ def generate_fake_token(
 
 
 @pytest.fixture
-def stubbed_jwks_response(httpx_mock: HTTPXMock, fake_public_key: dict) -> None:
+def stubbed_jwks_response(httpx2_mock: HTTPXMock, fake_public_key: dict) -> None:
     """Stub out the jwks response to return the standard fake public key."""
     # Escape the URL for use in regex
     escaped_url = re.escape(settings.azure_login_url)
-    httpx_mock.add_response(
+    httpx2_mock.add_response(
         url=re.compile(rf"{escaped_url}/"),
         json={"keys": [fake_public_key]},
     )

@@ -1,6 +1,6 @@
 """Tests for the CLI client factory and argument parser."""
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.client import OAuthMiddleware
 
@@ -29,10 +29,10 @@ def test_real_env_attaches_oauth() -> None:
 
 
 def test_parser_attaches_client_and_defaults_to_local() -> None:
-    """Parsing yields a ready httpx client, defaulting to local/no-auth."""
+    """Parsing yields a ready httpx2 client, defaulting to local/no-auth."""
     args = ApiArgumentParser().parse_args([])
     assert args.env == Environment.LOCAL
-    assert isinstance(args.client, httpx.Client)
+    assert isinstance(args.client, httpx2.Client)
     assert not isinstance(args.client.auth, OAuthMiddleware)
 
 

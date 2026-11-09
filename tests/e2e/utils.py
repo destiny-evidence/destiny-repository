@@ -7,7 +7,7 @@ from collections.abc import Callable, Mapping
 from contextlib import _AsyncGeneratorContextManager
 from uuid import UUID
 
-import httpx
+import httpx2
 from destiny_sdk.enhancements import EnhancementFileInput
 from destiny_sdk.references import ReferenceFileInput
 from elasticsearch import AsyncElasticsearch
@@ -51,7 +51,7 @@ async def refresh_robot_automation_index(es_client: AsyncElasticsearch) -> None:
 
 
 async def submit_happy_import_batch(
-    client: httpx.AsyncClient, storage_url: str, import_record_id: UUID | None = None
+    client: httpx2.AsyncClient, storage_url: str, import_record_id: UUID | None = None
 ) -> tuple[UUID, UUID]:
     """Submit a happy path import batch."""
     if not import_record_id:
@@ -89,7 +89,7 @@ async def submit_happy_import_batch(
 
 @retry(stop=stop_after_attempt(5), wait=wait_fixed(1), reraise=True)
 async def poll_batch_status(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     import_record_id: UUID,
     batch_id: UUID,
 ) -> dict:
@@ -165,7 +165,7 @@ async def poll_pending_enhancement(
 
 
 async def import_references(
-    client: httpx.AsyncClient,
+    client: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     references: list[Reference],

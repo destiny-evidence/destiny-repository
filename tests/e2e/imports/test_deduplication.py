@@ -6,7 +6,7 @@ from collections.abc import Callable
 from contextlib import _AsyncGeneratorContextManager
 from uuid import UUID, uuid7
 
-import httpx
+import httpx2
 import pytest
 from destiny_sdk.enhancements import (
     Authorship,
@@ -56,7 +56,7 @@ from tests.factories import (
 
 
 async def _make_unclassified_active_decision(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     *,
     reference_id: UUID,
@@ -215,7 +215,7 @@ def exact_duplicate_reference(canonical_reference: Reference) -> Reference:
 # ruff: noqa: E501
 @pytest.fixture
 async def robot_automation_on_specific_enhancement(
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     es_client: AsyncElasticsearch,
     robot: Robot,
     automation_triggering_annotation: BooleanAnnotation,
@@ -265,7 +265,7 @@ async def robot_automation_on_specific_enhancement(
 
 
 async def test_import_exact_duplicate(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -304,7 +304,7 @@ async def test_import_exact_duplicate(  # noqa: PLR0913
 
 
 async def test_import_duplicate(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -375,7 +375,7 @@ async def test_import_duplicate(  # noqa: PLR0913
 
 
 async def test_import_non_duplicate(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -434,7 +434,7 @@ async def test_import_non_duplicate(  # noqa: PLR0913
 # with new enhancements triggering the changes, but at time of writing the enhancement->dedup
 # trigger is not yet implemented.
 async def test_canonical_becomes_duplicate(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -514,7 +514,7 @@ async def test_canonical_becomes_duplicate(  # noqa: PLR0913
 
 
 async def test_duplicate_becomes_canonical(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -576,7 +576,7 @@ async def test_duplicate_becomes_canonical(  # noqa: PLR0913
 
 
 async def test_duplicate_change(  # noqa: PLR0913
-    destiny_client_v1: httpx.AsyncClient,
+    destiny_client_v1: httpx2.AsyncClient,
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
     get_import_file_signed_url: Callable[
@@ -707,7 +707,7 @@ async def test_duplicate_change(  # noqa: PLR0913
 
 async def test_deduplication_shortcut(  # noqa: PLR0913
     configured_repository_factory: Callable[
-        [dict], _AsyncGeneratorContextManager[httpx.AsyncClient]
+        [dict], _AsyncGeneratorContextManager[httpx2.AsyncClient]
     ],
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
@@ -823,7 +823,7 @@ async def test_deduplication_shortcut(  # noqa: PLR0913
 
 async def test_deduplication_shortcut_from_scratch(  # noqa: PLR0913
     configured_repository_factory: Callable[
-        [dict], _AsyncGeneratorContextManager[httpx.AsyncClient]
+        [dict], _AsyncGeneratorContextManager[httpx2.AsyncClient]
     ],
     pg_session: AsyncSession,
     es_client: AsyncElasticsearch,
