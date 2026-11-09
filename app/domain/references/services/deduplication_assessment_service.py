@@ -132,6 +132,11 @@ def _trace_assessment(
     """
     clearing_count = len(assessment.threshold_clearing_candidate_ids)
     unscorable_count = len(assessment.unscorable_candidate_ids)
+    vetoed_count = sum(
+        1
+        for scored in assessment.scored_candidates
+        if scored.clears_threshold and scored.failed_pair_checks
+    )
     best, best_non_winning = assessment.best_scores()
     identifier_candidates = [
         scored
@@ -177,6 +182,7 @@ def _trace_assessment(
     trace_attribute(
         Attributes.DEDUPLICATION_ASSESSMENT_UNSCORABLE_COUNT, unscorable_count
     )
+    trace_attribute(Attributes.DEDUPLICATION_ASSESSMENT_VETOED_COUNT, vetoed_count)
     trace_attribute(Attributes.DEDUPLICATION_ASSESSMENT_BEST_PROBABILITY, best)
     trace_attribute(
         Attributes.DEDUPLICATION_ASSESSMENT_BEST_NON_WINNING_PROBABILITY,
@@ -216,6 +222,7 @@ def _trace_assessment(
 
     if (
         clearing_count > 1
+        or vetoed_count
         or identifier_outcome == IdentifierCandidateOutcome.BEATEN
         # Below the threshold a different W-ID is just an unrelated OpenAlex record.
         or (openalex_relation == OpenAlexRelation.DIFFERENT and clearing_count > 0)

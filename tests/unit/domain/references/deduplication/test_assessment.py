@@ -965,6 +965,7 @@ async def test_assessment_span_reports_scorer_scores_and_early_stops(span_attrib
         "app.deduplication_assessment.scored_count": 4,
         "app.deduplication_assessment.clearing_count": 1,
         "app.deduplication_assessment.unscorable_count": 0,
+        "app.deduplication_assessment.vetoed_count": 0,
         "app.deduplication_assessment.best_probability": 0.9,
         "app.deduplication_assessment.best_non_winning_probability": 0.4,
         "app.deduplication_assessment.early_stop.partial_ratio_too_low": 2,
@@ -1127,6 +1128,30 @@ async def test_assessment_span_samples_conflicting_threshold_matches(span_attrib
 
     attributes = span_attributes(ASSESSMENT_SPAN)
     assert attributes["app.deduplication_assessment.clearing_count"] == 2
+    assert SAMPLED in attributes.items()
+
+
+@pytest.mark.asyncio
+async def test_assessment_span_counts_and_samples_vetoed_matches(span_attributes):
+    incoming = _without_openalex(_reference(title="Newsletter Issue 3"))
+    vetoed, below = (
+        _without_openalex(_reference(title=title))
+        for title in ("Newsletter Issue 4", "Newsletter Issue 5")
+    )
+    service, *_ = _build_service(
+        _selection(
+            Candidate(reference_id=vetoed.id, rank=1, routes=[]),
+            Candidate(reference_id=below.id, rank=2, routes=[]),
+        ),
+        [incoming, vetoed, below],
+        {vetoed.id: 0.95, below.id: 0.5},
+    )
+
+    await service.evaluate(incoming.id)
+
+    attributes = span_attributes(ASSESSMENT_SPAN)
+    # A veto below the threshold changes no decision, so it is not counted.
+    assert attributes["app.deduplication_assessment.vetoed_count"] == 1
     assert SAMPLED in attributes.items()
 
 
