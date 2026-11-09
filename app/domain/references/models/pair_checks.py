@@ -1,5 +1,5 @@
 """
-Checks that hold apart series items and generic titles the Deduper matches.
+Checks that veto Deduper matches between series items or generic titles.
 
 Decisions depend on them: changing a check needs a new ACTING_POLICY_GENERATION.
 """
@@ -119,5 +119,5 @@ _CHECKS: dict[PairCheck, Callable[[DeduplicationPaper, DeduplicationPaper], bool
 def failed_pair_checks(
     incoming: DeduplicationPaper, candidate: DeduplicationPaper
 ) -> list[PairCheck]:
-    """Return the checks a scored pair fails; failing any one holds the pair apart."""
+    """Return the checks a scored pair fails; failing any one vetoes the pair."""
     return [check for check, fails in _CHECKS.items() if fails(incoming, candidate)]

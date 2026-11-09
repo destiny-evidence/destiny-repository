@@ -261,7 +261,7 @@ def decide_from_assessment(
     A stand-in until an automatic policy is implemented, except that a candidate
     which failed a pair check no longer counts as clearing the threshold.
     """
-    held = {
+    vetoed = {
         scored.candidate.reference_id
         for scored in assessment.scored_candidates
         if scored.failed_pair_checks
@@ -269,7 +269,7 @@ def decide_from_assessment(
     clearing = [
         candidate_id
         for candidate_id in assessment.threshold_clearing_candidate_ids
-        if candidate_id not in held
+        if candidate_id not in vetoed
     ]
     outcome, proposed_duplicate_of_id = summarise_candidates(
         clearing,

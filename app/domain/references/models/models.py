@@ -1247,7 +1247,7 @@ class DeduperMetadata(BaseModel):
 
 
 class PairCheck(StrEnum):
-    """A rule that holds apart a pair the Deduper scored at or above its threshold."""
+    """A rule that vetoes a pair the Deduper scored at or above its threshold."""
 
     NUMBERS_SWAPPED = auto()
     """Each title carries a number the other lacks, as items in a numbered series do."""

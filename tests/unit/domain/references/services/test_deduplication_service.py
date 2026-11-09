@@ -2005,7 +2005,7 @@ def _assessment(
     candidate_count: int = 0,
     clearing: int = 0,
     unscorable: int = 0,
-    held: int = 0,
+    vetoed: int = 0,
     searchable: bool = False,
 ) -> DeduplicationAssessment:
     candidates = [
@@ -2028,13 +2028,13 @@ def _assessment(
         deduper=DeduperMetadata(
             package_version="0", configuration_hash="x", threshold=0.9
         ),
-        # The first `held` clearing candidates failed a pair check.
+        # The first `vetoed` clearing candidates failed a pair check.
         scored_candidates=[
             ScoredDeduplicationCandidate(
                 candidate=candidate,
                 pair_result=DeduplicationPairResult(probability=0.95),
                 clears_threshold=True,
-                failed_pair_checks=[PairCheck.NUMBERS_SWAPPED] if i < held else [],
+                failed_pair_checks=[PairCheck.NUMBERS_SWAPPED] if i < vetoed else [],
             )
             for i, candidate in enumerate(candidates[:clearing])
         ],
@@ -2123,7 +2123,7 @@ def test_decide_from_assessment(assessment, determination, detail):
                 DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE,
                 candidate_count=1,
                 clearing=1,
-                held=1,
+                vetoed=1,
                 searchable=True,
             ),
             DuplicateDetermination.CANONICAL,
@@ -2134,7 +2134,7 @@ def test_decide_from_assessment(assessment, determination, detail):
                 DeduplicationAssessmentOutcome.NO_PROPOSAL,
                 candidate_count=2,
                 clearing=2,
-                held=2,
+                vetoed=2,
             ),
             DuplicateDetermination.UNSEARCHABLE,
             None,
@@ -2144,7 +2144,7 @@ def test_decide_from_assessment(assessment, determination, detail):
                 DeduplicationAssessmentOutcome.NO_PROPOSAL,
                 candidate_count=2,
                 clearing=2,
-                held=1,
+                vetoed=1,
                 searchable=True,
             ),
             DuplicateDetermination.DUPLICATE,
@@ -2152,9 +2152,9 @@ def test_decide_from_assessment(assessment, determination, detail):
         ),
     ],
     ids=[
-        "sole-match-held-searchable",
-        "all-matches-held-unsearchable",
-        "one-of-two-matches-held",
+        "sole-match-vetoed-searchable",
+        "all-matches-vetoed-unsearchable",
+        "one-of-two-matches-vetoed",
     ],
 )
 def test_decide_from_assessment_drops_candidates_that_fail_a_pair_check(
