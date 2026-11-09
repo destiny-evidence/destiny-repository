@@ -26,6 +26,7 @@ from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     DuplicateDetermination,
     PendingEnhancementStatus,
+    SearchQuery,
 )
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.access_control_service import (
@@ -378,6 +379,29 @@ async def repair_reference_index_subset(reference_ids: list[UUID]) -> None:
             reference_anti_corruption_service, sql_uow, es_uow
         )
         await reference_service.index_references(reference_ids)
+
+
+@broker.task
+async def repair_reference_index_for_search(search: SearchQuery) -> None:
+    """Re-index the references matching a search, one subset repair task per page."""
+    name_span("Repair index for search")
+    trace_attribute(Attributes.DB_COLLECTION_ALIAS_NAME, "reference")
+    logger.info("Distributing reference index repair tasks for search")
+    async with get_sql_unit_of_work() as sql_uow, get_es_unit_of_work() as es_uow:
+        blob_repository = await get_blob_repository()
+        reference_anti_corruption_service = ReferenceAntiCorruptionService(
+            sign_url=blob_repository.get_signed_url
+        )
+        reference_service = await get_reference_service(
+            reference_anti_corruption_service, sql_uow, es_uow
+        )
+        async for reference_ids in reference_service.scan_search_reference_ids(search):
+            await queue_task_with_trace(
+                repair_reference_index_subset,
+                reference_ids,
+                long_running=True,
+                otel_enabled=settings.otel_enabled,
+            )
 
 
 @broker.task

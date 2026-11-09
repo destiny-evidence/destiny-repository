@@ -18,17 +18,22 @@ from app.api.auth import (
 from app.core.config import get_settings
 from app.core.exceptions import ESNotFoundError, InvalidPayloadError
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.es import (
     ReferenceDocument,
     RobotAutomationPercolationDocument,
 )
+from app.domain.references.models.models import SearchQuery
+from app.domain.references.routes import parse_search_query
 from app.domain.references.tasks import (
     repair_reference_index,
+    repair_reference_index_for_search,
     repair_reference_index_subset,
     repair_robot_automation_percolation_index,
 )
 from app.persistence.es.client import get_client
 from app.persistence.es.index_manager import IndexManager
+from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.sql.session import get_session
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.system.healthcheck import HealthCheckOptions, healthcheck
@@ -244,6 +249,36 @@ async def repair_elasticsearch_index(
         content={
             "status": "ok",
             "message": message,
+        },
+        status_code=status.HTTP_202_ACCEPTED,
+    )
+
+
+@router.post(
+    f"/indices/{ReferenceDocument.Index.name}/repair/search/",
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[Depends(system_utility_auth)],
+)
+async def repair_reference_index_by_search(
+    search: Annotated[SearchQuery, Depends(parse_search_query)],
+    es_client: Annotated[AsyncElasticsearch, Depends(get_client)],
+) -> JSONResponse:
+    """Re-index the references matching a search from their SQL counterparts."""
+    async with AsyncESUnitOfWork(client=es_client) as es_uow:
+        total = await es_uow.references.count(search)
+    await queue_task_with_trace(
+        repair_reference_index_for_search,
+        search,
+        long_running=True,
+        otel_enabled=settings.otel_enabled,
+    )
+    return JSONResponse(
+        content={
+            "status": "ok",
+            "message": (
+                f"Repair task for {total.value} reference(s) matching the search "
+                "has been initiated."
+            ),
         },
         status_code=status.HTTP_202_ACCEPTED,
     )
