@@ -72,7 +72,6 @@ dependencies = [
     "pydantic>=2.12.5",
     "pyld>=2.0.4,<3",
     "pyshacl>=0.30.0,<1",
-    "rapidfuzz>=3.14.5,<4",
     "rdflib>=7.0.0,<8",
     "sqlalchemy-utils>=0.41.2,<0.42",
     "structlog>=25.1.0,<26",

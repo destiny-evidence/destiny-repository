@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
 import pytest
+from destiny_sdk.enhancements import AuthorPosition, Authorship
 from opentelemetry.trace import StatusCode
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
@@ -71,9 +72,13 @@ def anti_corruption_service() -> ReferenceAntiCorruptionService:
 def _reference(
     *, community_bound: bool = False, title: str = "A complete reference"
 ) -> Reference:
+    # One first author throughout, since a pair check vetoes candidates without it.
+    author = Authorship(display_name="Ada Lovelace", position=AuthorPosition.FIRST)
     enhancements = [
         EnhancementFactory.build(
-            content=BibliographicMetadataEnhancementFactory.build(title=title)
+            content=BibliographicMetadataEnhancementFactory.build(
+                title=title, authorship=[author]
+            )
         )
     ]
     if community_bound:
@@ -433,7 +438,7 @@ async def test_evaluate_records_the_pair_checks_each_candidate_fails():
     assessment = await service.evaluate(incoming.id)
 
     assert [scored.failed_pair_checks for scored in assessment.scored_candidates] == [
-        [PairCheck.NUMBERS_SWAPPED, PairCheck.WORDS_SWAPPED],
+        [PairCheck.TITLES_DIFFER],
         [],
     ]
     # Evidence only: the decision applies the checks, so both still clear.

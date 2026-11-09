@@ -1,138 +1,97 @@
 """
-Checks that veto Deduper matches between series items or generic titles.
+Checks that veto a Deduper match its title and authors do not confirm.
 
 Decisions depend on them: changing a check needs a new ACTING_POLICY_GENERATION.
 """
 
 import re
-from collections import Counter
+from collections import defaultdict
 from collections.abc import Callable
 
 from destiny_deduper.regexes import HTML_TAG_RE
-from destiny_deduper.utils import roman_to_int
-from rapidfuzz import fuzz
 
 from app.domain.references.models.models import DeduplicationPaper, PairCheck
 
 _WORD = re.compile(r"\w+")
-_DIGITS = re.compile(r"\d+")
-_ROMAN = re.compile(
-    r"^(?=[MDCLXVI])M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})$"
-)
-# Words marking a numbered place in a series, as "part" does in the Deduper's part
-# number rule. After one, any numeral counts; elsewhere "I", "mix" or "ml" is a word.
-_NUMBERING_WORDS = frozenset(
-    {
-        "band",
-        "book",
-        "chapter",
-        "experiment",
-        "grade",
-        "issue",
-        "libro",
-        "livro",
-        "part",
-        "partie",
-        "phase",
-        "series",
-        "série",
-        "stage",
-        "study",
-        "teil",
-        "tome",
-        "type",
-        "vol",
-        "volume",
-        "wave",
-        "წიგნი",
-    }
-)
-_MAX_SWAPPED_WORDS = 2
-# Below this rapidfuzz ratio two words are unrelated rather than spelt differently.
-_UNRELATED_WORD_RATIO = 60
+_NOT_ALPHANUMERIC = re.compile(r"[\W_]+")
+# Initials are left out, so "D. Álvarez" and "Daniel Álvarez" agree.
+_NAME_PART = re.compile(r"\w{2,}")
+# Only separates names with ASCII Latin letters from names without, such as kanji.
+_LATIN = re.compile(r"[A-Za-z]")
 _MAX_SHORT_TITLE_WORDS = 4
 
 
 def _plain(title: str | None) -> str:
-    return HTML_TAG_RE.sub(" ", title or "")
+    return HTML_TAG_RE.sub(" ", title or "").lower()
 
 
-def _words(title: str | None) -> list[str]:
-    return [word.lower() for word in _WORD.findall(_plain(title))]
+def _titles_differ(incoming: DeduplicationPaper, candidate: DeduplicationPaper) -> bool:
+    # Spacing is ignored, so "Bi-Level" and "Bilevel" or "SiO_x_" and "SiOx" match.
+    return _NOT_ALPHANUMERIC.sub("", _plain(incoming.title)) != _NOT_ALPHANUMERIC.sub(
+        "", _plain(candidate.title)
+    )
 
 
-def _read(words: list[str], i: int) -> tuple[tuple[str, ...], str | None]:
-    """Return the numbers in a word, and its value when the whole word is a numeral."""
-    word = words[i]
-    after_numbering_word = i > 0 and words[i - 1].lower() in _NUMBERING_WORDS
-    if (
-        _ROMAN.match(word.upper() if after_numbering_word else word)
-        and (len(word) > 1 or i == len(words) - 1 or after_numbering_word)
-        and (value := roman_to_int(word))
-    ):
-        return (str(value),), str(value)
-    # Compared as strings: int() refuses digit runs past Python's conversion limit.
-    numbers = tuple(digits.lstrip("0") or "0" for digits in _DIGITS.findall(word))
-    return numbers, numbers[0] if word.isdecimal() else None
+def _names(paper: DeduplicationPaper) -> list[frozenset[str]]:
+    """Each author's name parts, leaving out names with none, such as "L." or "-"."""
+    names = (
+        frozenset(part.lower() for part in _NAME_PART.findall(author.display_name))
+        for author in paper.authors or []
+    )
+    return [name for name in names if name]
 
 
-def _tokens(title: str | None) -> list[tuple[str, tuple[str, ...], str | None]]:
-    words = _WORD.findall(_plain(title))
-    return [(word.lower(), *_read(words, i)) for i, word in enumerate(words)]
+def _latin(paper: DeduplicationPaper) -> set[bool]:
+    return {
+        bool(_LATIN.search(author.display_name))
+        for author in paper.authors or []
+        if _NAME_PART.search(author.display_name)
+    }
 
 
-def _numbers(title: str | None) -> Counter[str]:
-    return Counter(number for _, numbers, _ in _tokens(title) for number in numbers)
+def _any_name_within(names: list[frozenset[str]], others: list[frozenset[str]]) -> bool:
+    # Indexed by part, since a list can name thousands of authors. A name within
+    # another holds all its parts, so searching its rarest part's names is enough.
+    holders: defaultdict[str, list[frozenset[str]]] = defaultdict(list)
+    for other in others:
+        for part in other:
+            holders[part].append(other)
+    return any(
+        any(name <= other for other in min((holders[part] for part in name), key=len))
+        for name in names
+    )
 
 
-def _numbers_swapped(
+def _authors_disagree(
     incoming: DeduplicationPaper, candidate: DeduplicationPaper
 ) -> bool:
-    incoming_numbers, candidate_numbers = (
-        _numbers(incoming.title),
-        _numbers(candidate.title),
-    )
-    return bool(incoming_numbers - candidate_numbers) and bool(
-        candidate_numbers - incoming_numbers
-    )
-
-
-def _words_swapped(incoming: DeduplicationPaper, candidate: DeduplicationPaper) -> bool:
-    incoming_tokens, candidate_tokens = (
-        _tokens(incoming.title),
-        _tokens(candidate.title),
-    )
-    if len(incoming_tokens) != len(candidate_tokens):
+    incoming_names, candidate_names = _names(incoming), _names(candidate)
+    if not incoming_names or not candidate_names:
+        return True
+    # Names with and without Latin letters cannot be compared, so the authors are
+    # unknown rather than disagreeing.
+    if len(_latin(incoming) | _latin(candidate)) > 1:
         return False
-    swaps = [
-        (a, b)
-        for (a, _, a_numeral), (b, _, b_numeral) in zip(
-            incoming_tokens, candidate_tokens, strict=True
-        )
-        # The same number written two ways, such as "II" and "2", is not a swap.
-        if a != b and not (a_numeral is not None and a_numeral == b_numeral)
-    ]
-    return 0 < len(swaps) <= _MAX_SWAPPED_WORDS and all(
-        fuzz.ratio(a, b) < _UNRELATED_WORD_RATIO for a, b in swaps
+    return not (
+        _any_name_within(incoming_names, candidate_names)
+        or _any_name_within(candidate_names, incoming_names)
     )
 
 
 def _short_title_dois_differ(
     incoming: DeduplicationPaper, candidate: DeduplicationPaper
 ) -> bool:
-    words = _words(incoming.title)
     return (
         incoming.doi is not None
         and candidate.doi is not None
         and incoming.doi.identifier != candidate.doi.identifier
-        and words == _words(candidate.title)
-        and 0 < len(words) <= _MAX_SHORT_TITLE_WORDS
+        and len(_WORD.findall(_plain(incoming.title))) <= _MAX_SHORT_TITLE_WORDS
     )
 
 
 _CHECKS: dict[PairCheck, Callable[[DeduplicationPaper, DeduplicationPaper], bool]] = {
-    PairCheck.NUMBERS_SWAPPED: _numbers_swapped,
-    PairCheck.WORDS_SWAPPED: _words_swapped,
+    PairCheck.TITLES_DIFFER: _titles_differ,
+    PairCheck.AUTHORS_DISAGREE: _authors_disagree,
     PairCheck.SHORT_TITLE_DOIS_DIFFER: _short_title_dois_differ,
 }
 

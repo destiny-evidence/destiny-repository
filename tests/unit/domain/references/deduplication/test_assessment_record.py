@@ -542,8 +542,8 @@ async def test_failed_pair_checks_are_retained_on_the_record(
     recorder: DeduplicationAssessmentRecorder,
 ) -> None:
     assessment = build_assessment([scored_candidate(0.95)])
-    assessment.scored_candidates[0].failed_pair_checks = [PairCheck.NUMBERS_SWAPPED]
+    assessment.scored_candidates[0].failed_pair_checks = [PairCheck.TITLES_DIFFER]
 
     record = await record_assessment(recorder, assessment)
 
-    assert record.scored_candidates[0].failed_pair_checks == [PairCheck.NUMBERS_SWAPPED]
+    assert record.scored_candidates[0].failed_pair_checks == [PairCheck.TITLES_DIFFER]

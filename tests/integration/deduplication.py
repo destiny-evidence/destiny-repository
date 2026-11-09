@@ -3,6 +3,7 @@
 from unittest.mock import AsyncMock
 from uuid import UUID
 
+from destiny_sdk.enhancements import AuthorPosition, Authorship
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -59,13 +60,14 @@ async def add_reference(
     session: AsyncSession,
     identifiers: list[LinkedExternalIdentifier] | None = None,
 ) -> Reference:
-    """Store a reference with a title the scorer can compare."""
+    """Store a reference whose title and first author the pair checks accept."""
+    author = Authorship(display_name="Ada Lovelace", position=AuthorPosition.FIRST)
     reference = ReferenceFactory.build(
         visibility="public",
         enhancements=[
             EnhancementFactory.build(
                 content=BibliographicMetadataEnhancementFactory.build(
-                    title="A shared title"
+                    title="A shared title", authorship=[author]
                 )
             )
         ],

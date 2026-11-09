@@ -1,17 +1,31 @@
 import pytest
+from destiny_sdk.enhancements import AuthorPosition, Authorship
 from destiny_sdk.identifiers import DOIIdentifier
 
 from app.domain.references.models.models import DeduplicationPaper, PairCheck
 from app.domain.references.models.pair_checks import failed_pair_checks
 
-NUMBERS = PairCheck.NUMBERS_SWAPPED
-WORDS = PairCheck.WORDS_SWAPPED
+TITLE = PairCheck.TITLES_DIFFER
+AUTHOR = PairCheck.AUTHORS_DISAGREE
 SHORT_TITLE = PairCheck.SHORT_TITLE_DOIS_DIFFER
 
 
-def _paper(title: str | None, doi: str | None = None) -> DeduplicationPaper:
+def _paper(
+    title: str | None,
+    doi: str | None = None,
+    authors: tuple[str, ...] = ("Ada Lovelace",),
+) -> DeduplicationPaper:
     return DeduplicationPaper(
-        title=title, doi=DOIIdentifier(identifier=doi) if doi else None
+        title=title,
+        doi=DOIIdentifier(identifier=doi) if doi else None,
+        authors=[
+            Authorship(
+                display_name=name,
+                position=AuthorPosition.FIRST if i == 0 else AuthorPosition.MIDDLE,
+            )
+            for i, name in enumerate(authors)
+        ]
+        or None,
     )
 
 
@@ -21,77 +35,110 @@ def _paper(title: str | None, doi: str | None = None) -> DeduplicationPaper:
         pytest.param(
             _paper("Newsletter Issue 3"),
             _paper("Newsletter Issue 4"),
-            [NUMBERS, WORDS],
+            [TITLE],
             id="series number",
         ),
         pytest.param(
-            _paper("Part I: Methods"),
-            _paper("Part II: Methods"),
-            [NUMBERS],
-            id="numeral after a numbering word",
+            _paper(None),
+            _paper("Newsletter Issue 3"),
+            [TITLE],
+            id="incoming has no title",
         ),
         pytest.param(
-            _paper("Henry I"), _paper("Henry II"), [NUMBERS], id="numeral at the end"
-        ),
-        pytest.param(
-            _paper("Letter from C Lewis to D Jones"),
-            _paper("Letter from M Lewis to D Jones"),
-            [WORDS],
-            id="initials are not numbers",
-        ),
-        pytest.param(
-            _paper("Annual report 2019"),
-            _paper("Annual report 2019 part 3"),
+            _paper("Notes on the <i>Contributors</i>"),
+            _paper("Notes on the contributors."),
             [],
-            id="extra number on one side",
+            id="case, markup and punctuation",
         ),
         pytest.param(
-            _paper("Report 007"),
-            _paper("Report VII"),
+            _paper("Bi-Level Draft Guidance on SiO_x_"),
+            _paper("Bilevel DraftGuidance on SiOx"),
             [],
-            id="same number written differently",
+            id="spacing and underscores",
         ),
         pytest.param(
-            _paper("Scale Model T4"),
-            _paper("Scale Model R4"),
-            [WORDS],
-            id="words that only contain a number",
+            _paper("Señor Don Mariano Riva Palacio", authors=("Manuel Moral",)),
+            _paper("Señor Don Mariano Riva Palacio", authors=("Manuel Payno",)),
+            [AUTHOR],
+            id="same title, different writer",
         ),
         pytest.param(
-            _paper("Results of the phase ii trial"),
-            _paper("Results of the phase iii trial"),
-            [NUMBERS],
-            id="lowercase numeral after a numbering word",
-        ),
-        pytest.param(
-            _paper("Rainfall in mm"),
-            _paper("Rainfall in ml"),
-            [WORDS],
-            id="lowercase words that spell numerals",
-        ),
-        pytest.param(
-            _paper("Lineage of the Smith family in Kent"),
-            _paper("Lineage of the Jones family in Devon"),
-            [WORDS],
-            id="templated title, two words swapped",
-        ),
-        pytest.param(
-            _paper("The colour of water"),
-            _paper("The color of stone"),
+            _paper("Sleep apnoea screening", authors=("D. Álvarez González",)),
+            _paper("Sleep apnoea screening", authors=("Daniel Álvarez González",)),
             [],
-            id="spelling variant beside an unrelated word",
+            id="incoming first author abbreviated",
         ),
         pytest.param(
-            _paper("A study of red green and blue"),
-            _paper("A study of cats dogs and mice"),
+            _paper("Sleep apnoea screening", authors=("Daniel Álvarez González",)),
+            _paper("Sleep apnoea screening", authors=("Álvarez González",)),
             [],
-            id="three words swapped",
+            id="candidate first author shortened",
         ),
         pytest.param(
-            _paper("Notes on the <i>Contributors</i>", "10.1163/1-001"),
-            _paper("Notes on the contributors", "10.1163/2-001"),
+            _paper("Sleep apnoea screening", authors=("Ada Lovelace", "Alan Turing")),
+            _paper("Sleep apnoea screening", authors=("Alan Turing", "Ada Lovelace")),
+            [],
+            id="author order ignored",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("Ada Lovelace", "Alan Turing")),
+            _paper("Sleep apnoea screening", authors=("Grace Hopper", "Alan Turing")),
+            [],
+            id="a co-author agrees",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("Manuel Moral", "-")),
+            _paper("Sleep apnoea screening", authors=("Manuel Payno",)),
+            [AUTHOR],
+            id="a name without parts is left out",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("A. L.",)),
+            _paper("Sleep apnoea screening", authors=("Ada Lovelace",)),
+            [AUTHOR],
+            id="initials only",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=()),
+            _paper("Sleep apnoea screening", authors=("Ada Lovelace", "山田 太郎")),
+            [AUTHOR],
+            id="incoming has no authors",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("Ada Lovelace", "山田 太郎")),
+            _paper("Sleep apnoea screening", authors=()),
+            [AUTHOR],
+            id="candidate has no authors",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("Naofumi Kishimoto",)),
+            _paper("Sleep apnoea screening", authors=("直文 岸本",)),
+            [],
+            id="romanised name against kanji",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("直文 岸本",)),
+            _paper("Sleep apnoea screening", authors=("公章 森",)),
+            [AUTHOR],
+            id="different names in kanji",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("Hironori Midorikawa",)),
+            _paper("Sleep apnoea screening", authors=("裕紀 緑川", "Yusuke Suzuki")),
+            [],
+            id="conflict beside a name that cannot be compared",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("裕紀 緑川", "Ada Lovelace")),
+            _paper("Sleep apnoea screening", authors=("山田 太郎", "Alan Turing")),
+            [],
+            id="both lists mix scripts",
+        ),
+        pytest.param(
+            _paper("Preliminary Material", "10.1163/1-001"),
+            _paper("Preliminary Material", "10.1163/2-001"),
             [SHORT_TITLE],
-            id="four-word generic title under two DOIs, one in markup",
+            id="short title under two DOIs",
         ),
         pytest.param(
             _paper("Preliminary Material", "10.1163/1-001"),
@@ -116,30 +163,6 @@ def _paper(title: str | None, doi: str | None = None) -> DeduplicationPaper:
             _paper("Notes on the five sources", "10.1163/2-001"),
             [],
             id="title longer than four words",
-        ),
-        pytest.param(
-            _paper("Front matter", "10.1163/1-001"),
-            _paper("Back matter", "10.1163/2-001"),
-            [WORDS],
-            id="different short titles",
-        ),
-        pytest.param(
-            _paper(None, "10.1163/1-001"),
-            _paper("Newsletter Issue 3"),
-            [],
-            id="no title",
-        ),
-        pytest.param(
-            _paper(None, "10.1163/1-001"),
-            _paper(None, "10.1163/2-001"),
-            [],
-            id="no titles under two DOIs",
-        ),
-        pytest.param(
-            _paper("Table " + "1" * 4301),
-            _paper("Table " + "1" * 4301),
-            [],
-            id="number longer than int conversion allows",
         ),
     ],
 )

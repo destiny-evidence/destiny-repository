@@ -2034,7 +2034,7 @@ def _assessment(
                 candidate=candidate,
                 pair_result=DeduplicationPairResult(probability=0.95),
                 clears_threshold=True,
-                failed_pair_checks=[PairCheck.NUMBERS_SWAPPED] if i < vetoed else [],
+                failed_pair_checks=[PairCheck.TITLES_DIFFER] if i < vetoed else [],
             )
             for i, candidate in enumerate(candidates[:clearing])
         ],
