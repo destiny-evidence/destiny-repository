@@ -1716,10 +1716,7 @@ async def test_search_facets_concepts_happy_path(
         ESFacetBucket(key="http://example.org/concept/b", count=2),
     ]
     mock_aggregate = AsyncMock(
-        return_value=FacetResult(
-            buckets={FacetType.CONCEPTS: buckets},
-            totals=FacetTotals(search=ESSearchTotal(value=9, relation="eq")),
-        )
+        return_value=FacetResult(buckets={FacetType.CONCEPTS: buckets})
     )
     monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
 
@@ -1731,7 +1728,6 @@ async def test_search_facets_concepts_happy_path(
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body == {
-        "totals": {"search": {"count": 9, "is_lower_bound": False}},
         "concepts": [
             {"concept": "http://example.org/concept/a", "count": 5},
             {"concept": "http://example.org/concept/b", "count": 2},
@@ -1778,6 +1774,7 @@ async def test_search_facets_concepts_and_countries(
             ("facet", "concepts"),
             ("facet", "countries"),
             ("vocabulary", FACET_VOCAB_URI),
+            ("totals", "true"),
         ],
     )
 
@@ -1796,6 +1793,7 @@ async def test_search_facets_concepts_and_countries(
 
     _, facets = mock_aggregate.call_args.args
     assert list(facets) == [FacetType.CONCEPTS, FacetType.COUNTRIES]
+    assert mock_aggregate.call_args.kwargs["include_totals"] is True
 
 
 async def test_search_facets_unrequested_keys_omitted(
@@ -1806,10 +1804,7 @@ async def test_search_facets_unrequested_keys_omitted(
     from app.domain.references.models.models import FacetType
 
     mock_aggregate = AsyncMock(
-        return_value=FacetResult(
-            buckets={FacetType.CONCEPTS: []},
-            totals=FacetTotals(search=ESSearchTotal(value=0, relation="eq")),
-        )
+        return_value=FacetResult(buckets={FacetType.CONCEPTS: []})
     )
     monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
 
@@ -1818,10 +1813,7 @@ async def test_search_facets_unrequested_keys_omitted(
         params={"q": "climate", "facet": "concepts", "vocabulary": FACET_VOCAB_URI},
     )
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {
-        "totals": {"search": {"count": 0, "is_lower_bound": False}},
-        "concepts": [],
-    }
+    assert response.json() == {"concepts": []}
 
 
 async def test_search_facets_requires_facet_param(client: AsyncClient) -> None:

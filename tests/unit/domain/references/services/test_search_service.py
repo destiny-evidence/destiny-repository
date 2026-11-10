@@ -513,12 +513,34 @@ async def test_aggregate_facets_counts_totals_over_the_same_axes(
     query = SearchQuery(query_string="*")
 
     result = await service.aggregate_facets(
-        query, facets=(FacetType.COUNTRIES,), vocabulary_uri=None, axes=axes
+        query,
+        facets=(FacetType.COUNTRIES,),
+        vocabulary_uri=None,
+        axes=axes,
+        include_totals=True,
     )
 
     map_axes = repository.aggregate_facets.call_args.kwargs["map_axes"]
     repository.count_facet_totals.assert_awaited_once_with(query, map_axes)
     assert result.totals == repository.count_facet_totals.return_value
+
+
+async def test_aggregate_facets_skips_totals_unless_requested(
+    vocab_client_with_siblings: MagicMock,
+):
+    """Totals cost an extra query, so they are only counted on request."""
+    service = _service(vocab_client_with_siblings)
+    repository = _mock_facet_repository(service)
+
+    result = await service.aggregate_facets(
+        SearchQuery(query_string="*"),
+        facets=(FacetType.COUNTRIES,),
+        vocabulary_uri=None,
+        axes=("countries",),
+    )
+
+    repository.count_facet_totals.assert_not_awaited()
+    assert result.totals is None
 
 
 async def test_aggregate_facets_raises_es_errors_unwrapped(
@@ -534,6 +556,7 @@ async def test_aggregate_facets_raises_es_errors_unwrapped(
             SearchQuery(query_string="*"),
             facets=(FacetType.COUNTRIES,),
             vocabulary_uri=None,
+            include_totals=True,
         )
 
 

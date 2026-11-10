@@ -121,13 +121,16 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         facets: Sequence[FacetType],
         vocabulary_uri: str | None,
         axes: Sequence[str] | None = None,
+        *,
+        include_totals: bool = False,
     ) -> FacetResult:
         """
         Count facet terms with optional axis scoping and sibling-aware selections.
 
         Concept counts are limited to ``vocabulary_uri``'s concepts, so it is
         required for the concepts facet. ``axes`` limits the counts to references
-        with a value on every axis, and adds a mapped total.
+        with a value on every axis. ``include_totals`` adds the search total, and
+        the mapped total if ``axes`` are given.
         """
         max_buckets = settings.es_aggregation_max_buckets
         counting = dict.fromkeys(facets, FacetCounting())
@@ -162,6 +165,12 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                 )
         map_axes = await self._resolve_axes(axes, vocabulary_uri) if axes else None
         repository = self.es_uow.references
+        if not include_totals:
+            return FacetResult(
+                buckets=await repository.aggregate_facets(
+                    query, counting, map_axes=map_axes, max_buckets=max_buckets
+                )
+            )
         try:
             async with asyncio.TaskGroup() as group:
                 buckets = group.create_task(

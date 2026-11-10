@@ -160,7 +160,7 @@ class ReferenceFacetResult(BaseModel):
 
     totals: FacetTotals | None = Field(
         default=None,
-        description="Reference totals for the search.",
+        description="Reference totals for the search. Only returned with `totals`.",
     )
     concepts: list[ConceptFacetCount] | None = Field(
         default=None,

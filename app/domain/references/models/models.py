@@ -2110,8 +2110,9 @@ class FacetResult(BaseModel):
     buckets: dict[FacetType, list[ESFacetBucket]] = Field(
         description="Term buckets for each requested facet.",
     )
-    totals: FacetTotals = Field(
-        description="Reference totals for the search.",
+    totals: FacetTotals | None = Field(
+        default=None,
+        description="Reference totals for the search, if requested.",
     )
 
 

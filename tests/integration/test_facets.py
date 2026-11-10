@@ -210,7 +210,6 @@ async def test_concept_facet_counts_unrestricted(
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
     assert body == {
-        "totals": {"search": {"count": 5, "is_lower_bound": False}},
         "concepts": [
             {"concept": CONCEPT_A, "count": 3},
             {"concept": CONCEPT_B, "count": 2},
@@ -247,6 +246,7 @@ async def test_concept_facet_no_matches(
             "q": "title:nonexistent_term_xyz",
             "facet": "concepts",
             "vocabulary": VOCAB_URI,
+            "totals": "true",
         },
     )
     assert response.status_code == status.HTTP_200_OK
@@ -307,7 +307,7 @@ async def test_multiple_facets_returned_together(
     )
     assert response.status_code == status.HTTP_200_OK
     body = response.json()
-    assert set(body) == {"totals", "concepts", "countries"}
+    assert set(body) == {"concepts", "countries"}
     assert "country_wb_regions" not in body
 
 
@@ -339,7 +339,12 @@ async def test_country_filter_with_facet_returns_sibling_aware_counts(
     """Filtering on a country must not bias the country facet's counts."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params=[("q", "*"), ("country", COUNTRY_KE), ("facet", "countries")],
+        params=[
+            ("q", "*"),
+            ("country", COUNTRY_KE),
+            ("facet", "countries"),
+            ("totals", "true"),
+        ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     # Without sibling-aware counting we'd see only KE=2 + co-occurring UG=1 and
@@ -621,6 +626,7 @@ async def test_concept_counts_scoped_to_axes_drop_unmappable_references(
             ("facet", "concepts"),
             *MAP_AXIS_PARAMS,
             ("vocabulary", primed_vocab),
+            ("totals", "true"),
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
@@ -658,7 +664,12 @@ async def test_single_axis_mapped_total(
     """A single axis gives the number of references with a value on it."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params=[("q", "*"), ("facet", "countries"), ("axes", "countries")],
+        params=[
+            ("q", "*"),
+            ("facet", "countries"),
+            ("axes", "countries"),
+            ("totals", "true"),
+        ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     body = response.json()

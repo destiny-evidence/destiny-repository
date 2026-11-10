@@ -551,12 +551,11 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
         try:
-            return destiny_sdk.references.ReferenceFacetResult(
-                totals=self._facet_totals_to_sdk(
+            if result.totals is not None:
+                fields["totals"] = self._facet_totals_to_sdk(
                     result.totals, destiny_sdk.references.FacetTotals
-                ),
-                **fields,
-            )
+                )
+            return destiny_sdk.references.ReferenceFacetResult(**fields)
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 

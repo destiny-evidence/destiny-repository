@@ -743,8 +743,8 @@ async def search_reference_ids(
         "exceed `totals.mapped` because they ignore the facet's own selection. "
         "A concept-scheme axis needs `?vocabulary=` whether or not a `?concept=` "
         "filter is set.\n\n"
-        "**Totals.** `totals.search` counts the total number of references matching "
-        "the search. "
+        "**Totals.** Pass `totals=true` to include them. `totals.search` counts the "
+        "total number of references matching the search. "
         "`totals.mapped` is only returned with `axes`, and counts references with "
         "a value on every axis.\n\n"
         "For `concepts`, supply `?vocabulary=`. Only that vocabulary's concepts "
@@ -766,6 +766,7 @@ async def count_facets_for_search(
         ReferenceAntiCorruptionService, Depends(reference_anti_corruption_service)
     ],
     query: Annotated[SearchQuery, Depends(parse_search_query)],
+    *,
     facet: Annotated[
         list[destiny_sdk.references.FacetType],
         Query(
@@ -799,6 +800,10 @@ async def count_facets_for_search(
             ),
         ),
     ] = None,
+    totals: Annotated[
+        bool,
+        Query(description="Include reference totals in the response."),
+    ] = False,
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
     result = await reference_service.aggregate_facets(
@@ -806,6 +811,7 @@ async def count_facets_for_search(
         anti_corruption_service.facet_types_from_sdk(facet),
         vocabulary_uri=str(vocabulary) if vocabulary else None,
         axes=axes,
+        include_totals=totals,
     )
     return anti_corruption_service.facets_to_sdk(result)
 

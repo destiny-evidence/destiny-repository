@@ -1806,10 +1806,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         facets: Sequence[FacetType],
         vocabulary_uri: str | None = None,
         axes: Sequence[str] | None = None,
+        *,
+        include_totals: bool = False,
     ) -> FacetResult:
         """Count occurrences per facet across references matching the query."""
         return await self._search_service.aggregate_facets(
-            query, facets, vocabulary_uri, axes
+            query, facets, vocabulary_uri, axes, include_totals=include_totals
         )
 
     @es_unit_of_work
