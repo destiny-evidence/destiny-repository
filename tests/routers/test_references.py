@@ -38,6 +38,8 @@ from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequestSearchStatus,
     EnhancementRequestStatus,
+    FacetResult,
+    FacetTotals,
     PendingEnhancementStatus,
     Visibility,
 )
@@ -1713,7 +1715,9 @@ async def test_search_facets_concepts_happy_path(
         ESFacetBucket(key="http://example.org/concept/a", count=5),
         ESFacetBucket(key="http://example.org/concept/b", count=2),
     ]
-    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: buckets})
+    mock_aggregate = AsyncMock(
+        return_value=FacetResult(buckets={FacetType.CONCEPTS: buckets})
+    )
     monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
 
     response = await client.get(
@@ -1745,13 +1749,21 @@ async def test_search_facets_concepts_and_countries(
     from app.domain.references.models.models import FacetType
 
     mock_aggregate = AsyncMock(
-        return_value={
-            FacetType.CONCEPTS: [ESFacetBucket(key="http://example.org/c/a", count=7)],
-            FacetType.COUNTRIES: [
-                ESFacetBucket(key="KE", count=3),
-                ESFacetBucket(key="UG", count=1),
-            ],
-        }
+        return_value=FacetResult(
+            buckets={
+                FacetType.CONCEPTS: [
+                    ESFacetBucket(key="http://example.org/c/a", count=7)
+                ],
+                FacetType.COUNTRIES: [
+                    ESFacetBucket(key="KE", count=3),
+                    ESFacetBucket(key="UG", count=1),
+                ],
+            },
+            totals=FacetTotals(
+                search=ESSearchTotal(value=12, relation="eq"),
+                mapped=ESSearchTotal(value=4, relation="eq"),
+            ),
+        )
     )
     monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
 
@@ -1762,11 +1774,16 @@ async def test_search_facets_concepts_and_countries(
             ("facet", "concepts"),
             ("facet", "countries"),
             ("vocabulary", FACET_VOCAB_URI),
+            ("totals", "true"),
         ],
     )
 
     assert response.status_code == status.HTTP_200_OK
     assert response.json() == {
+        "totals": {
+            "search": {"count": 12, "is_lower_bound": False},
+            "mapped": {"count": 4, "is_lower_bound": False},
+        },
         "concepts": [{"concept": "http://example.org/c/a", "count": 7}],
         "countries": [
             {"country": "KE", "count": 3},
@@ -1776,6 +1793,7 @@ async def test_search_facets_concepts_and_countries(
 
     _, facets = mock_aggregate.call_args.args
     assert list(facets) == [FacetType.CONCEPTS, FacetType.COUNTRIES]
+    assert mock_aggregate.call_args.kwargs["include_totals"] is True
 
 
 async def test_search_facets_unrequested_keys_omitted(
@@ -1785,7 +1803,9 @@ async def test_search_facets_unrequested_keys_omitted(
     """Facet keys not asked for are stripped from the response (not set to null)."""
     from app.domain.references.models.models import FacetType
 
-    mock_aggregate = AsyncMock(return_value={FacetType.CONCEPTS: []})
+    mock_aggregate = AsyncMock(
+        return_value=FacetResult(buckets={FacetType.CONCEPTS: []})
+    )
     monkeypatch.setattr(ReferenceService, "aggregate_facets", mock_aggregate)
 
     response = await client.get(
