@@ -4,25 +4,31 @@ Checks that veto a Deduper match its title and authors do not confirm.
 Decisions depend on them: changing a check needs a new ACTING_POLICY_GENERATION.
 """
 
+import html
 import re
+import unicodedata
 from collections import defaultdict
 from collections.abc import Callable
-
-from destiny_deduper.regexes import HTML_TAG_RE
 
 from app.domain.references.models.models import DeduplicationPaper, PairCheck
 
 _WORD = re.compile(r"\w+")
+_ALPHANUMERIC = re.compile(r"[^\W_]+")
 _NOT_ALPHANUMERIC = re.compile(r"[\W_]+")
-# Initials are left out, so "D. Álvarez" and "Daniel Álvarez" agree.
-_NAME_PART = re.compile(r"\w{2,}")
-# Only separates names with ASCII Latin letters from names without, such as kanji.
-_LATIN = re.compile(r"[A-Za-z]")
+# Tags open with a letter or "/", so "aged <5 versus >10" keeps its numbers.
+_TAG = re.compile(r"</?[A-Za-z][^<>]*>")
+# Chinese, Japanese and Korean characters are whole name parts, not initials.
+_WHOLE_CHARACTER_SCRIPTS = ("CJK", "HIRAGANA", "KATAKANA", "HANGUL")
 _MAX_SHORT_TITLE_WORDS = 4
 
 
+def _text(value: str | None) -> str:
+    # Encodings of the same text match: "&amp;" and "&", or "é" composed or not.
+    return unicodedata.normalize("NFKC", html.unescape(value or "")).casefold()
+
+
 def _plain(title: str | None) -> str:
-    return HTML_TAG_RE.sub(" ", title or "").lower()
+    return _TAG.sub(" ", _text(title))
 
 
 def _titles_differ(incoming: DeduplicationPaper, candidate: DeduplicationPaper) -> bool:
@@ -32,20 +38,29 @@ def _titles_differ(incoming: DeduplicationPaper, candidate: DeduplicationPaper) 
     )
 
 
+def _parts(name: str) -> frozenset[str]:
+    # Initials are left out, so "D. Álvarez" and "Daniel Álvarez" agree.
+    return frozenset(
+        part
+        for part in _ALPHANUMERIC.findall(_text(name))
+        if len(part) > 1
+        or part.isdigit()
+        or unicodedata.name(part, "").startswith(_WHOLE_CHARACTER_SCRIPTS)
+    )
+
+
 def _names(paper: DeduplicationPaper) -> list[frozenset[str]]:
     """Each author's name parts, leaving out names with none, such as "L." or "-"."""
-    names = (
-        frozenset(part.lower() for part in _NAME_PART.findall(author.display_name))
-        for author in paper.authors or []
-    )
+    names = (_parts(author.display_name) for author in paper.authors or [])
     return [name for name in names if name]
 
 
 def _latin(paper: DeduplicationPaper) -> set[bool]:
+    # Whether each name's parts have Latin letters, accented ones such as "Đỗ"
+    # included; initials are not parts, so "É. 王" is not Latin.
     return {
-        bool(_LATIN.search(author.display_name))
-        for author in paper.authors or []
-        if _NAME_PART.search(author.display_name)
+        any("LATIN" in unicodedata.name(char, "") for char in "".join(name))
+        for name in _names(paper)
     }
 
 
@@ -85,7 +100,10 @@ def _short_title_dois_differ(
         incoming.doi is not None
         and candidate.doi is not None
         and incoming.doi.identifier != candidate.doi.identifier
-        and len(_WORD.findall(_plain(incoming.title))) <= _MAX_SHORT_TITLE_WORDS
+        and min(
+            len(_WORD.findall(_plain(paper.title))) for paper in (incoming, candidate)
+        )
+        <= _MAX_SHORT_TITLE_WORDS
     )
 
 

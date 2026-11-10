@@ -60,7 +60,7 @@ async def add_reference(
     session: AsyncSession,
     identifiers: list[LinkedExternalIdentifier] | None = None,
 ) -> Reference:
-    """Store a reference whose title and first author the pair checks accept."""
+    """Store a reference whose title and author the pair checks accept."""
     author = Authorship(display_name="Ada Lovelace", position=AuthorPosition.FIRST)
     reference = ReferenceFactory.build(
         visibility="public",

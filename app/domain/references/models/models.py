@@ -1250,14 +1250,17 @@ class PairCheck(StrEnum):
     """A rule that vetoes a pair the Deduper scored at or above its threshold."""
 
     TITLES_DIFFER = auto()
-    """The titles differ once case, markup, punctuation and spacing are ignored."""
+    """
+    The titles differ once case, encoding, markup, punctuation and spacing are
+    ignored.
+    """
     AUTHORS_DISAGREE = auto()
     """
     No author on one side matches one on the other and every pair could be
     compared, or a side has no authors.
     """
     SHORT_TITLE_DOIS_DIFFER = auto()
-    """A title of four words or fewer under two DOIs, as generic titles are."""
+    """Either title has four words or fewer under two DOIs, as generic titles do."""
 
 
 class ScoredDeduplicationCandidate(BaseModel):

@@ -2116,7 +2116,7 @@ def test_decide_from_assessment(assessment, determination, detail):
 
 
 @pytest.mark.parametrize(
-    ("assessment", "determination", "canonical_rank"),
+    ("assessment", "determination", "detail"),
     [
         (
             _assessment(
@@ -2137,7 +2137,7 @@ def test_decide_from_assessment(assessment, determination, detail):
                 vetoed=2,
             ),
             DuplicateDetermination.UNSEARCHABLE,
-            None,
+            "missing: title",
         ),
         (
             _assessment(
@@ -2148,23 +2148,33 @@ def test_decide_from_assessment(assessment, determination, detail):
                 searchable=True,
             ),
             DuplicateDetermination.UNRESOLVED,
-            None,
+            "Unresolved: multiple_clearing",
+        ),
+        (
+            _assessment(
+                DeduplicationAssessmentOutcome.NO_PROPOSAL,
+                candidate_count=2,
+                clearing=1,
+                unscorable=1,
+                vetoed=1,
+                searchable=True,
+            ),
+            DuplicateDetermination.UNRESOLVED,
+            "Unresolved: unscorable_candidate",
         ),
     ],
     ids=[
         "sole-match-vetoed-searchable",
         "all-matches-vetoed-unsearchable",
         "one-of-two-matches-vetoed",
+        "sole-match-vetoed-beside-unscorable",
     ],
 )
 def test_decide_from_assessment_drops_candidates_that_fail_a_pair_check(
-    assessment, determination, canonical_rank
+    assessment, determination, detail
 ):
     result = decide_from_assessment(assessment)
 
     assert result.duplicate_determination == determination
-    assert result.canonical_reference_id == (
-        assessment.candidate_selection.candidates[canonical_rank - 1].reference_id
-        if canonical_rank
-        else None
-    )
+    assert result.canonical_reference_id is None
+    assert result.detail == detail

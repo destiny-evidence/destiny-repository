@@ -72,7 +72,7 @@ def anti_corruption_service() -> ReferenceAntiCorruptionService:
 def _reference(
     *, community_bound: bool = False, title: str = "A complete reference"
 ) -> Reference:
-    # One first author throughout, since a pair check vetoes candidates without it.
+    # One author throughout, since pair checks veto candidates whose authors disagree.
     author = Authorship(display_name="Ada Lovelace", position=AuthorPosition.FIRST)
     enhancements = [
         EnhancementFactory.build(
@@ -423,6 +423,7 @@ async def test_evaluate_records_the_pair_checks_each_candidate_fails():
     candidates = [
         _reference(title="Newsletter Issue 4"),
         _reference(title="Newsletter Issue 3"),
+        _reference(title="Newsletter Issue 5"),
     ]
     service, _, _, _ = _build_service(
         _selection(
@@ -432,7 +433,10 @@ async def test_evaluate_records_the_pair_checks_each_candidate_fails():
             )
         ),
         [incoming, *candidates],
-        {candidate.id: 0.95 for candidate in candidates},
+        {
+            candidate.id: score
+            for candidate, score in zip(candidates, (0.95, 0.95, 0.5), strict=True)
+        },
     )
 
     assessment = await service.evaluate(incoming.id)
@@ -440,10 +444,11 @@ async def test_evaluate_records_the_pair_checks_each_candidate_fails():
     assert [scored.failed_pair_checks for scored in assessment.scored_candidates] == [
         [PairCheck.TITLES_DIFFER],
         [],
+        [PairCheck.TITLES_DIFFER],
     ]
-    # Evidence only: the decision applies the checks, so both still clear.
+    # Evidence only: the decision applies the checks, so both matches still clear.
     assert assessment.threshold_clearing_candidate_ids == [
-        candidate.id for candidate in candidates
+        candidate.id for candidate in candidates[:2]
     ]
 
 
