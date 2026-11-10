@@ -246,10 +246,14 @@ async def test_concept_facet_no_matches(
             "q": "title:nonexistent_term_xyz",
             "facet": "concepts",
             "vocabulary": VOCAB_URI,
+            "totals": "true",
         },
     )
     assert response.status_code == status.HTTP_200_OK
-    assert response.json() == {"concepts": []}
+    assert response.json() == {
+        "totals": {"search": {"count": 0, "is_lower_bound": False}},
+        "concepts": [],
+    }
 
 
 async def test_country_facet_counts_unrestricted(
@@ -335,7 +339,12 @@ async def test_country_filter_with_facet_returns_sibling_aware_counts(
     """Filtering on a country must not bias the country facet's counts."""
     response = await client.get(
         "/v1/references/search/facets/",
-        params=[("q", "*"), ("country", COUNTRY_KE), ("facet", "countries")],
+        params=[
+            ("q", "*"),
+            ("country", COUNTRY_KE),
+            ("facet", "countries"),
+            ("totals", "true"),
+        ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     # Without sibling-aware counting we'd see only KE=2 + co-occurring UG=1 and
@@ -345,6 +354,10 @@ async def test_country_filter_with_facet_returns_sibling_aware_counts(
         (COUNTRY_KE, 2),
         (COUNTRY_UG, 2),
         (COUNTRY_US, 1),
+    }
+    # The total applies the country filter, even though the buckets ignore it.
+    assert response.json()["totals"] == {
+        "search": {"count": 2, "is_lower_bound": False}
     }
 
 
@@ -613,10 +626,16 @@ async def test_concept_counts_scoped_to_axes_drop_unmappable_references(
             ("facet", "concepts"),
             *MAP_AXIS_PARAMS,
             ("vocabulary", primed_vocab),
+            ("totals", "true"),
         ],
     )
     assert response.status_code == status.HTTP_200_OK, response.text
     assert _counts_by_concept(response.json()) == {BOTANY: 1, ZOOLOGY: 1}
+    # 4 references match, but only 2 have both a topic and a country.
+    assert response.json()["totals"] == {
+        "search": {"count": 4, "is_lower_bound": False},
+        "mapped": {"count": 2, "is_lower_bound": False},
+    }
 
 
 async def test_literal_only_axes_scope_without_a_vocabulary(
@@ -636,6 +655,49 @@ async def test_literal_only_axes_scope_without_a_vocabulary(
     assert response.status_code == status.HTTP_200_OK, response.text
     # KE is on three references; only the two carrying a region can be plotted.
     assert response.json()["countries"] == [{"country": COUNTRY_KE, "count": 2}]
+
+
+async def test_single_axis_mapped_total(
+    client: AsyncClient,
+    facet_references: None,  # noqa: ARG001
+) -> None:
+    """A single axis gives the number of references with a value on it."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "countries"),
+            ("axes", "countries"),
+            ("totals", "true"),
+        ],
+    )
+    assert response.status_code == status.HTTP_200_OK, response.text
+    body = response.json()
+    # Doc 1 has KE and UG, so the buckets sum to 5 but only 4 references are mapped.
+    assert {(b["country"], b["count"]) for b in body["countries"]} == {
+        (COUNTRY_KE, 2),
+        (COUNTRY_UG, 2),
+        (COUNTRY_US, 1),
+    }
+    assert body["totals"] == {
+        "search": {"count": 5, "is_lower_bound": False},
+        "mapped": {"count": 4, "is_lower_bound": False},
+    }
+
+
+async def test_more_than_two_axes_rejected(client: AsyncClient) -> None:
+    """A map has at most two axes."""
+    response = await client.get(
+        "/v1/references/search/facets/",
+        params=[
+            ("q", "*"),
+            ("facet", "countries"),
+            ("axes", "countries"),
+            ("axes", "country_wb_regions"),
+            ("axes", "country_wb_income_groups"),
+        ],
+    )
+    assert response.status_code == status.HTTP_422_UNPROCESSABLE_CONTENT, response.text
 
 
 async def test_concept_counts_require_a_vocabulary(

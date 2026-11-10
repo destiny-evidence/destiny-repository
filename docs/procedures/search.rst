@@ -281,6 +281,18 @@ Returns
 
 Returns a :class:`ReferenceFacetResult <libs.sdk.src.destiny_sdk.references.ReferenceFacetResult>` object. Each bucket's count is "references matching if you toggled this value's selection state and left everything else alone."
 
+Pass ``totals=true`` to also get exact ``totals``:
+
+- ``totals.search`` is the number of references matching the search. Sibling-aware buckets can be larger, because they ignore the facet's own selection.
+- ``totals.mapped`` is only returned with ``axes``. It's the number of references with a value on every axis. With two axes it matches ``totals.mapped`` from ``/cross-facets/``.
+
+Pass two ``axes`` for an evidence map, in the same format as ``/cross-facets/``, or one for a single-axis map like a country heat map:
+
+.. code-block::
+
+    # Country counts, plus the number of references with any country.
+    ?q=*&facet=countries&axes=countries&totals=true
+
 Limitations
 """"""""""""
 

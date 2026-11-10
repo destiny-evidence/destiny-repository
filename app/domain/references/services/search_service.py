@@ -1,5 +1,6 @@
 """Service for searching references."""
 
+import asyncio
 from collections.abc import AsyncGenerator, Iterable, Sequence
 from typing import ClassVar
 
@@ -9,11 +10,12 @@ from app.core.config import get_settings
 from app.core.exceptions import ParseError, SiblingGroupingError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
-    CrossFacetAxis,
     CrossFacetResult,
     FacetCounting,
+    FacetResult,
     FacetType,
     LinkedDataConceptFilter,
+    MapAxis,
     SearchQuery,
     SiblingGroup,
 )
@@ -30,7 +32,6 @@ from app.external.vocabulary.client import (
     get_vocabulary_artifact_client,
 )
 from app.persistence.es.persistence import (
-    ESFacetBucket,
     ESSearchPage,
     ESSearchResult,
     ESSearchTotal,
@@ -119,13 +120,17 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         facets: Sequence[FacetType],
         vocabulary_uri: str | None,
-        axes: tuple[str, str] | None = None,
-    ) -> dict[FacetType, list[ESFacetBucket]]:
+        axes: Sequence[str] | None = None,
+        *,
+        include_totals: bool = False,
+    ) -> FacetResult:
         """
         Count facet terms with optional axis scoping and sibling-aware selections.
 
         Concept counts are limited to ``vocabulary_uri``'s concepts, so it is
-        required for the concepts facet.
+        required for the concepts facet. ``axes`` limits the counts to references
+        with a value on every axis. ``include_totals`` adds the search total, and
+        the mapped total if ``axes`` are given.
         """
         max_buckets = settings.es_aggregation_max_buckets
         counting = dict.fromkeys(facets, FacetCounting())
@@ -158,12 +163,28 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                         tuple(values) for values in or_sets
                     )
                 )
-        return await self.es_uow.references.aggregate_facets(
-            query,
-            counting,
-            map_axes=await self._resolve_axes(axes, vocabulary_uri) if axes else None,
-            max_buckets=max_buckets,
-        )
+        map_axes = await self._resolve_axes(axes, vocabulary_uri) if axes else None
+        repository = self.es_uow.references
+        if not include_totals:
+            return FacetResult(
+                buckets=await repository.aggregate_facets(
+                    query, counting, map_axes=map_axes, max_buckets=max_buckets
+                )
+            )
+        try:
+            async with asyncio.TaskGroup() as group:
+                buckets = group.create_task(
+                    repository.aggregate_facets(
+                        query, counting, map_axes=map_axes, max_buckets=max_buckets
+                    )
+                )
+                totals = group.create_task(
+                    repository.count_facet_totals(query, map_axes)
+                )
+        except ExceptionGroup as errors:
+            # Surface the error itself so the API's exception handlers still match.
+            raise errors.exceptions[0] from None
+        return FacetResult(buckets=buckets.result(), totals=totals.result())
 
     async def aggregate_cross_facet(
         self,
@@ -185,17 +206,16 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         return await self.es_uow.references.aggregate_cross_facet(query, resolved)
 
     async def _resolve_axes(
-        self, axes: tuple[str, str], vocabulary_uri: str | None
-    ) -> tuple[CrossFacetAxis, CrossFacetAxis]:
+        self, axes: Sequence[str], vocabulary_uri: str | None
+    ) -> tuple[MapAxis, ...]:
         """Resolve axis tokens to axes, scoping concept schemes to their members."""
         scheme_members: dict[str, frozenset[str]] | None = None
         if vocabulary_uri and any(self._is_concept_scheme(token) for token in axes):
             scheme_members = await self._vocab_client.get_scheme_members(vocabulary_uri)
-        first, second = (
-            self._resolve_cross_facet_axis(token, vocabulary_uri, scheme_members)
+        return tuple(
+            self._resolve_map_axis(token, vocabulary_uri, scheme_members)
             for token in axes
         )
-        return (first, second)
 
     @classmethod
     def _literal_axis_facet(cls, token: str) -> FacetType | None:
@@ -212,16 +232,16 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
         return cls._literal_axis_facet(token) is None
 
     @classmethod
-    def _resolve_cross_facet_axis(
+    def _resolve_map_axis(
         cls,
         token: str,
         vocabulary_uri: str | None,
         scheme_members: dict[str, frozenset[str]] | None,
-    ) -> CrossFacetAxis:
-        """Resolve an axis token into a ``CrossFacetAxis``, or raise ``ParseError``."""
+    ) -> MapAxis:
+        """Resolve an axis token into a ``MapAxis``, or raise ``ParseError``."""
         literal_facet = cls._literal_axis_facet(token)
         if literal_facet is not None:
-            return CrossFacetAxis(
+            return MapAxis(
                 token=token,
                 facet_type=literal_facet,
                 include=None,
@@ -241,7 +261,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
                 f"{vocabulary_uri!r}."
             )
             raise ParseError(msg)
-        return CrossFacetAxis(
+        return MapAxis(
             token=token,
             facet_type=FacetType.CONCEPTS,
             include=members,
@@ -250,7 +270,7 @@ class SearchService(GenericService[ReferenceAntiCorruptionService]):
 
     @staticmethod
     def _validate_cross_facet_cell_count(
-        axes: Sequence[CrossFacetAxis], max_cells: int
+        axes: Sequence[MapAxis], max_cells: int
     ) -> None:
         """Refuse a matrix that would materialise more than ``max_cells`` ES buckets."""
         buckets = 0
