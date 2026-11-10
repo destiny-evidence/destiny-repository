@@ -675,7 +675,7 @@ test = [
 
 [[package]]
 name = "destiny-sdk"
-version = "0.18.0"
+version = "0.18.1"
 source = { editable = "libs/sdk" }
 dependencies = [
     { name = "authlib" },

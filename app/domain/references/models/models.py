@@ -38,7 +38,7 @@ from app.domain.base import (
 from app.domain.references.services.world_bank_income_groups import WBIncomeGroupID
 from app.domain.references.services.world_bank_regions import WBRegionID
 from app.persistence.blob.models import BlobStorageFile
-from app.persistence.es.persistence import ESSearchTotal
+from app.persistence.es.persistence import ESFacetBucket, ESSearchTotal
 from app.utils.time_and_date import apply_positive_timedelta
 
 logger = get_logger(__name__)
@@ -2041,8 +2041,8 @@ class FacetCounting(BaseModel):
     )
 
 
-class CrossFacetAxis(BaseModel):
-    """One resolved axis of a cross-facet aggregation."""
+class MapAxis(BaseModel):
+    """A resolved map axis. References need a value on every axis to be mapped."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -2059,7 +2059,7 @@ class CrossFacetAxis(BaseModel):
         ),
     )
     size: int = Field(
-        description="The terms ``size`` to request for this axis's bucket count.",
+        description="The terms ``size`` to request when cross-tabulating this axis.",
         gt=0,
     )
 
@@ -2073,15 +2073,45 @@ class CrossFacetCell(BaseModel):
     count: int = Field(description="References matching both axis values together.")
 
 
+class FacetTotals(BaseModel):
+    """Reference totals for a set of facet counts."""
+
+    search: ESSearchTotal = Field(
+        description="References matching the query string and all filters.",
+    )
+    mapped: ESSearchTotal | None = Field(
+        default=None,
+        description=(
+            "References with a value on every axis. None if axes are not specified."
+        ),
+    )
+
+
+class CrossFacetTotals(FacetTotals):
+    """Totals for a cross-facet matrix, where ``mapped`` is always set."""
+
+    mapped: ESSearchTotal = Field(
+        description="References with a value on both axes.",
+    )
+
+
 class CrossFacetResult(BaseModel):
     """The cells of a cross-facet matrix and the two totals that bound it."""
 
     cells: list[CrossFacetCell] = Field(description="The non-zero cells of the matrix.")
-    search_total: ESSearchTotal = Field(
-        description="References matching the query string and all filters.",
+    totals: CrossFacetTotals = Field(
+        description="The search and mapped totals.",
     )
-    mapped_total: ESSearchTotal = Field(
-        description="The subset of those with a value on both axes, counted once each.",
+
+
+class FacetResult(BaseModel):
+    """Per-facet term counts with their totals."""
+
+    buckets: dict[FacetType, list[ESFacetBucket]] = Field(
+        description="Term buckets for each requested facet.",
+    )
+    totals: FacetTotals = Field(
+        description="Reference totals for the search.",
     )
 
 

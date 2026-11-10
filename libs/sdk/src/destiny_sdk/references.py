@@ -141,9 +141,27 @@ class CountryWBIncomeGroupFacetCount(BaseModel):
     )
 
 
+class FacetTotals(BaseModel):
+    """Reference totals for a set of facet counts."""
+
+    search: SearchResultTotal = Field(
+        description="References matching the search criteria.",
+    )
+    mapped: SearchResultTotal | None = Field(
+        default=None,
+        description=(
+            "References with a value on every axis. None if `axes` are not specified."
+        ),
+    )
+
+
 class ReferenceFacetResult(BaseModel):
     """Facet counts for a reference search."""
 
+    totals: FacetTotals | None = Field(
+        default=None,
+        description="Reference totals for the search.",
+    )
     concepts: list[ConceptFacetCount] | None = Field(
         default=None,
         description="Counts of matching references per linked-data concept URI.",
@@ -182,12 +200,9 @@ class CrossFacetCell(BaseModel):
     )
 
 
-class CrossFacetTotals(BaseModel):
+class CrossFacetTotals(FacetTotals):
     """The reference counts describing a cross-facet result."""
 
-    search: SearchResultTotal = Field(
-        description="References matching the search criteria.",
-    )
     mapped: SearchResultTotal = Field(
         description=(
             "The subset with a value on both axes, so appearing in the matrix. Counts "

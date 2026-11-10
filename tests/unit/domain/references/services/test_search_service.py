@@ -6,15 +6,17 @@ import pytest
 from elasticsearch import AsyncElasticsearch
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ParseError, SiblingGroupingError
+from app.core.exceptions import ESQueryError, ParseError, SiblingGroupingError
 from app.domain.references.models.models import (
     AnnotationFilter,
-    CrossFacetAxis,
     CrossFacetResult,
+    CrossFacetTotals,
     FacetCounting,
+    FacetTotals,
     FacetType,
     LinkedDataConceptFilter,
     LinkedDataCountryFilter,
+    MapAxis,
     PublicationYearRange,
     SearchQuery,
 )
@@ -340,13 +342,22 @@ async def test_resolve_concept_sibling_groups_rejects_overlapping_filters(
         )
 
 
+def _mock_facet_repository(service: SearchService) -> MagicMock:
+    repository = MagicMock()
+    repository.aggregate_facets = AsyncMock(return_value={})
+    repository.count_facet_totals = AsyncMock(
+        return_value=FacetTotals(search=ESSearchTotal(value=0, relation="eq"))
+    )
+    service.es_uow.references = repository  # type: ignore[union-attr]
+    return repository
+
+
 async def test_aggregate_facets_naive_when_concepts_not_requested(
     vocab_client_with_siblings: MagicMock,
 ):
     """No concepts facet → no groups, no include; vocab untouched."""
     service = _service(vocab_client_with_siblings)
-    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    repository = _mock_facet_repository(service)
     await service.aggregate_facets(
         SearchQuery(
             query_string="*",
@@ -359,7 +370,7 @@ async def test_aggregate_facets_naive_when_concepts_not_requested(
     )
     vocab_client_with_siblings.get_concepts.assert_not_called()
     vocab_client_with_siblings.get_concept_scheme_members.assert_not_called()
-    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    (_, counting), _ = repository.aggregate_facets.call_args
     assert counting == {FacetType.COUNTRIES: FacetCounting()}
 
 
@@ -378,15 +389,14 @@ async def test_aggregate_facets_scopes_concepts_to_vocabulary(
 ):
     """The concepts facet only counts the vocabulary's concepts."""
     service = _service(vocab_client_with_siblings)
-    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    repository = _mock_facet_repository(service)
     await service.aggregate_facets(
         SearchQuery(query_string="*", linked_data_concept_filters=concept_filters),
         facets=(FacetType.CONCEPTS, FacetType.COUNTRIES),
         vocabulary_uri=VOCAB_URI,
     )
     vocab_client_with_siblings.get_concepts.assert_awaited_once_with(VOCAB_URI)
-    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    (_, counting), _ = repository.aggregate_facets.call_args
     assert counting[FacetType.CONCEPTS].include == _TOPICS | _REGIONS
     assert counting[FacetType.COUNTRIES] == FacetCounting()
 
@@ -427,8 +437,7 @@ async def test_aggregate_facets_builds_universal_groups_for_countries(
 ):
     """Country filter + countries facet → universal sibling group on the repo call."""
     service = _service(vocab_client_with_siblings)
-    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    repository = _mock_facet_repository(service)
     await service.aggregate_facets(
         SearchQuery(
             query_string="*",
@@ -439,7 +448,7 @@ async def test_aggregate_facets_builds_universal_groups_for_countries(
         facets=(FacetType.COUNTRIES,),
         vocabulary_uri=None,
     )
-    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    (_, counting), _ = repository.aggregate_facets.call_args
     groups = counting[FacetType.COUNTRIES].sibling_groups
     assert len(groups) == 1
     assert groups[0].selected == ("US", "GB")
@@ -451,8 +460,7 @@ async def test_aggregate_facets_skips_country_groups_when_facet_not_requested(
 ):
     """Country filter without the countries facet → no sibling groups built."""
     service = _service(vocab_client_with_siblings)
-    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    repository = _mock_facet_repository(service)
     await service.aggregate_facets(
         SearchQuery(
             query_string="*",
@@ -463,7 +471,7 @@ async def test_aggregate_facets_skips_country_groups_when_facet_not_requested(
         facets=(),
         vocabulary_uri=None,
     )
-    (_, counting), _ = service.es_uow.references.aggregate_facets.call_args  # type: ignore[union-attr]
+    (_, counting), _ = repository.aggregate_facets.call_args
     assert counting == {}
 
 
@@ -472,8 +480,7 @@ async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
 ):
     """Two AND'd country filters with the countries facet → SiblingGroupingError."""
     service = _service(vocab_client_with_siblings)
-    service.es_uow.references = MagicMock()  # type: ignore[union-attr]
-    service.es_uow.references.aggregate_facets = AsyncMock(return_value={})  # type: ignore[union-attr]
+    _mock_facet_repository(service)
     with pytest.raises(SiblingGroupingError, match="single OR'd filter"):
         await service.aggregate_facets(
             SearchQuery(
@@ -483,6 +490,48 @@ async def test_aggregate_facets_rejects_multiple_country_filters_with_facet(
                     LinkedDataCountryFilter(country_codes=["GB"]),
                 ],
             ),
+            facets=(FacetType.COUNTRIES,),
+            vocabulary_uri=None,
+        )
+
+
+@pytest.mark.parametrize(
+    "axes",
+    [
+        pytest.param(None, id="no-axes"),
+        pytest.param(("countries",), id="one-axis"),
+        pytest.param(("countries", "country_wb_regions"), id="two-axes"),
+    ],
+)
+async def test_aggregate_facets_counts_totals_over_the_same_axes(
+    vocab_client_with_siblings: MagicMock,
+    axes: tuple[str, ...] | None,
+):
+    """Totals are counted over the same resolved axes as the facet counts."""
+    service = _service(vocab_client_with_siblings)
+    repository = _mock_facet_repository(service)
+    query = SearchQuery(query_string="*")
+
+    result = await service.aggregate_facets(
+        query, facets=(FacetType.COUNTRIES,), vocabulary_uri=None, axes=axes
+    )
+
+    map_axes = repository.aggregate_facets.call_args.kwargs["map_axes"]
+    repository.count_facet_totals.assert_awaited_once_with(query, map_axes)
+    assert result.totals == repository.count_facet_totals.return_value
+
+
+async def test_aggregate_facets_raises_es_errors_unwrapped(
+    vocab_client_with_siblings: MagicMock,
+):
+    """An ES error reaches the API's exception handlers as itself."""
+    service = _service(vocab_client_with_siblings)
+    repository = _mock_facet_repository(service)
+    repository.aggregate_facets.side_effect = ESQueryError("bad query")
+
+    with pytest.raises(ESQueryError, match="bad query"):
+        await service.aggregate_facets(
+            SearchQuery(query_string="*"),
             facets=(FacetType.COUNTRIES,),
             vocabulary_uri=None,
         )
@@ -498,8 +547,10 @@ MEMBERS_FIXTURE: dict[str, frozenset[str]] = {
 }
 _EMPTY_CROSS_FACET_RESULT = CrossFacetResult(
     cells=[],
-    search_total=ESSearchTotal(value=0, relation="eq"),
-    mapped_total=ESSearchTotal(value=0, relation="eq"),
+    totals=CrossFacetTotals(
+        search=ESSearchTotal(value=0, relation="eq"),
+        mapped=ESSearchTotal(value=0, relation="eq"),
+    ),
 )
 
 
@@ -510,14 +561,14 @@ def vocab_client_with_members() -> MagicMock:
     return client
 
 
-def test_resolve_cross_facet_axis():
+def test_resolve_map_axis():
     """Literal axes carry a fixed size; a scheme axis is scoped to its members."""
-    countries = SearchService._resolve_cross_facet_axis("countries", None, None)  # noqa: SLF001
-    regions = SearchService._resolve_cross_facet_axis("country_wb_regions", None, None)  # noqa: SLF001
-    income_groups = SearchService._resolve_cross_facet_axis(  # noqa: SLF001
+    countries = SearchService._resolve_map_axis("countries", None, None)  # noqa: SLF001
+    regions = SearchService._resolve_map_axis("country_wb_regions", None, None)  # noqa: SLF001
+    income_groups = SearchService._resolve_map_axis(  # noqa: SLF001
         "country_wb_income_groups", None, None
     )
-    scheme = SearchService._resolve_cross_facet_axis(  # noqa: SLF001
+    scheme = SearchService._resolve_map_axis(  # noqa: SLF001
         TOPICS_SCHEME, VOCAB_URI, MEMBERS_FIXTURE
     )
     assert (countries.facet_type, countries.include, countries.size) == (
@@ -544,15 +595,15 @@ def test_resolve_cross_facet_axis():
         ("https://vocab.example.org/Missing", VOCAB_URI, MEMBERS_FIXTURE, "no members"),
     ],
 )
-def test_resolve_cross_facet_axis_rejects(token, vocab, members, match):
+def test_resolve_map_axis_rejects(token, vocab, members, match):
     """A scheme axis without a vocabulary, or absent from it, raises ParseError."""
     with pytest.raises(ParseError, match=match):
-        SearchService._resolve_cross_facet_axis(token, vocab, members)  # noqa: SLF001
+        SearchService._resolve_map_axis(token, vocab, members)  # noqa: SLF001
 
 
 def test_validate_cross_facet_cell_count():
     """The guard counts parent buckets too: axes (100, 100) -> 100 + 100*100 buckets."""
-    axis = CrossFacetAxis(
+    axis = MapAxis(
         token="countries", facet_type=FacetType.COUNTRIES, include=None, size=100
     )
     SearchService._validate_cross_facet_cell_count((axis, axis), max_cells=10_100)  # noqa: SLF001

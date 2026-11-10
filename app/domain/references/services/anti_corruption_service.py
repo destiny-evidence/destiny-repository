@@ -17,6 +17,8 @@ from app.domain.references.models.models import (
     EnhancementRequestSearchStatus,
     EnhancementType,
     ExternalIdentifierAdapter,
+    FacetResult,
+    FacetTotals,
     FacetType,
     FullTextEnhancement,
     IdentifierLookup,
@@ -41,7 +43,6 @@ from app.domain.service import GenericAntiCorruptionService
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
 from app.persistence.blob.repository import URLSigner
 from app.persistence.es.persistence import (
-    ESFacetBucket,
     ESSearchPage,
     ESSearchResult,
     ESSearchTotal,
@@ -513,11 +514,11 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
 
     def facets_to_sdk(
         self,
-        buckets_by_facet: dict[FacetType, list[ESFacetBucket]],
+        result: FacetResult,
     ) -> destiny_sdk.references.ReferenceFacetResult:
         """Convert domain facet counts into the SDK response model."""
         fields: dict[str, object] = {}
-        for facet, buckets in buckets_by_facet.items():
+        for facet, buckets in result.buckets.items():
             if facet is FacetType.CONCEPTS:
                 fields["concepts"] = [
                     destiny_sdk.references.ConceptFacetCount(
@@ -550,7 +551,12 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
                 msg = f"facets_to_sdk has no SDK mapping for FacetType.{facet.name}"
                 raise NotImplementedError(msg)
         try:
-            return destiny_sdk.references.ReferenceFacetResult(**fields)
+            return destiny_sdk.references.ReferenceFacetResult(
+                totals=self._facet_totals_to_sdk(
+                    result.totals, destiny_sdk.references.FacetTotals
+                ),
+                **fields,
+            )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
 
@@ -561,9 +567,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         """Convert a cross-facet result into the SDK response model."""
         try:
             return destiny_sdk.references.ReferenceCrossFacetResult(
-                totals=destiny_sdk.references.CrossFacetTotals(
-                    search=self._search_total_to_sdk(result.search_total),
-                    mapped=self._search_total_to_sdk(result.mapped_total),
+                totals=self._facet_totals_to_sdk(
+                    result.totals, destiny_sdk.references.CrossFacetTotals
                 ),
                 cells=[
                     destiny_sdk.references.CrossFacetCell(
@@ -575,6 +580,20 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
+
+    @classmethod
+    def _facet_totals_to_sdk[T: destiny_sdk.references.FacetTotals](
+        cls, totals: FacetTotals, model: type[T]
+    ) -> T:
+        """Convert domain facet totals into the given SDK totals model."""
+        return model(
+            search=cls._search_total_to_sdk(totals.search),
+            mapped=(
+                cls._search_total_to_sdk(totals.mapped)
+                if totals.mapped is not None
+                else None
+            ),
+        )
 
     @staticmethod
     def _search_total_to_sdk(

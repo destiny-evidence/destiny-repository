@@ -1,9 +1,9 @@
 """Functions for tracing repository functionality."""
 
 import functools
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable, Coroutine
 from contextlib import AbstractContextManager
-from typing import TYPE_CHECKING, ParamSpec, TypeVar, cast
+from typing import TYPE_CHECKING, Any, ParamSpec, TypeVar, cast
 
 from opentelemetry import trace
 from opentelemetry.trace import Span
@@ -44,10 +44,12 @@ def _span_context(
 
 def trace_repository_method(
     tracer: trace.Tracer,
-) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Awaitable[T]]]:
+) -> Callable[[Callable[P, Awaitable[T]]], Callable[P, Coroutine[Any, Any, T]]]:
     """Decorate an async repository method with a given tracer."""
 
-    def decorator(func: Callable[P, Awaitable[T]]) -> Callable[P, Awaitable[T]]:
+    def decorator(
+        func: Callable[P, Awaitable[T]],
+    ) -> Callable[P, Coroutine[Any, Any, T]]:
         @functools.wraps(func)
         async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
             with _span_context(tracer, func, args):

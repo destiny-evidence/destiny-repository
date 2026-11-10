@@ -48,6 +48,7 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExportFormat,
     ExternalIdentifier,
+    FacetResult,
     FacetType,
     IdentifierLookup,
     LinkedExternalIdentifier,
@@ -110,7 +111,6 @@ from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
 from app.persistence.blob.stream import FileStream
 from app.persistence.es.persistence import (
-    ESFacetBucket,
     ESSearchResult,
     ESSearchTotal,
 )
@@ -1805,8 +1805,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         query: SearchQuery,
         facets: Sequence[FacetType],
         vocabulary_uri: str | None = None,
-        axes: tuple[str, str] | None = None,
-    ) -> dict[FacetType, list[ESFacetBucket]]:
+        axes: Sequence[str] | None = None,
+    ) -> FacetResult:
         """Count occurrences per facet across references matching the query."""
         return await self._search_service.aggregate_facets(
             query, facets, vocabulary_uri, axes

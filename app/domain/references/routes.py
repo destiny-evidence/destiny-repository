@@ -736,14 +736,17 @@ async def search_reference_ids(
         "**Sibling-aware counts.** When you filter on a field *and* request its "
         "facet, the counts show what you'd see if your selection were toggled — "
         "not the co-occurrence under your filter.\n\n"
-        "**Map-scoped counts.** Supply an evidence map's two `axes`, in the form "
-        "`/cross-facets/` takes them, to count only references carrying a value on "
-        "both — the references that map can plot. The scope applies to every "
-        "requested facet and to the sibling-aware counts above, so an individual "
-        "count can still exceed that map's `totals.mapped`, because counting "
-        "relaxes the facet's own selection. Omit `axes` for search-scoped counts. "
+        "**Map-scoped counts.** Pass `axes` to only count references with a value "
+        "on every axis, i.e. the ones a map can plot. Use two axes for an evidence "
+        "map (same format as `/cross-facets/`), or one for a single-axis map like a "
+        "country heat map. Sibling-aware counts are scoped too, but can still "
+        "exceed `totals.mapped` because they ignore the facet's own selection. "
         "A concept-scheme axis needs `?vocabulary=` whether or not a `?concept=` "
         "filter is set.\n\n"
+        "**Totals.** `totals.search` counts the total number of references matching "
+        "the search. "
+        "`totals.mapped` is only returned with `axes`, and counts references with "
+        "a value on every axis.\n\n"
         "For `concepts`, supply `?vocabulary=`. Only that vocabulary's concepts "
         "are counted. A concept's siblings are every "
         "member of its scheme, regardless of hierarchical depth, so each `?concept=` "
@@ -785,23 +788,26 @@ async def count_facets_for_search(
         ),
     ] = None,
     axes: Annotated[
-        tuple[str, str] | None,
+        list[str] | None,
         Query(
+            min_length=1,
+            max_length=2,
             description=(
-                "Optional. Evidence map axes, matching `/cross-facets/`, to scope "
-                "facet counts. Pass `?vocabulary=` for concept-scheme axes."
+                "Optional. One or two map axes to scope the counts to, in the same "
+                "format as `/cross-facets/`. Concept-scheme axes need "
+                "`?vocabulary=`."
             ),
         ),
     ] = None,
 ) -> destiny_sdk.references.ReferenceFacetResult:
     """Return per-facet term counts for references matching the query."""
-    buckets_by_facet = await reference_service.aggregate_facets(
+    result = await reference_service.aggregate_facets(
         query,
         anti_corruption_service.facet_types_from_sdk(facet),
         vocabulary_uri=str(vocabulary) if vocabulary else None,
         axes=axes,
     )
-    return anti_corruption_service.facets_to_sdk(buckets_by_facet)
+    return anti_corruption_service.facets_to_sdk(result)
 
 
 @search_router.get(

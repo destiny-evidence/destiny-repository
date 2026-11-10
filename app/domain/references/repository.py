@@ -9,6 +9,7 @@ from uuid import UUID
 import elastic_transport
 from elasticsearch import ApiError, AsyncElasticsearch
 from elasticsearch.dsl import AsyncSearch, Q
+from elasticsearch.dsl.aggs import Agg
 from elasticsearch.dsl.query import (
     Bool,
     Exists,
@@ -57,14 +58,16 @@ from app.domain.references.models.es import (
 from app.domain.references.models.models import (
     AnnotationFilter,
     CandidateCanonicalSearchQuery,
-    CrossFacetAxis,
     CrossFacetCell,
     CrossFacetResult,
+    CrossFacetTotals,
     DuplicateDetermination,
     EnhancementRequestSearchStatus,
     FacetCounting,
+    FacetTotals,
     FacetType,
     GenericExternalIdentifier,
+    MapAxis,
     PendingEnhancementStatus,
     PublicationYearRange,
     ReferenceSearchProjection,
@@ -474,12 +477,32 @@ class ReferenceESRepository(
         )
 
     @trace_repository_method(tracer)
+    async def count_facet_totals(
+        self,
+        query: SearchQuery,
+        map_axes: Sequence[MapAxis] | None = None,
+    ) -> FacetTotals:
+        """
+        Count references matching ``query``.
+
+        With ``map_axes``, also count those with a value on every axis.
+        """
+        search = self._build_totals_search(query)
+        if map_axes:
+            self._attach_in_map_agg(search, map_axes)
+        response = await self._execute_search(search)
+        return FacetTotals(
+            search=self._extract_total(response),
+            mapped=self._extract_mapped_total(response) if map_axes else None,
+        )
+
+    @trace_repository_method(tracer)
     async def aggregate_facets(
         self,
         query: SearchQuery,
         facets: Mapping[FacetType, FacetCounting],
         *,
-        map_axes: Sequence[CrossFacetAxis] | None = None,
+        map_axes: Sequence[MapAxis] | None = None,
         max_buckets: int,
     ) -> dict[FacetType, list[ESFacetBucket]]:
         """Count facet terms matching ``query`` and optional ``map_axes`` presence."""
@@ -659,7 +682,7 @@ class ReferenceESRepository(
     async def aggregate_cross_facet(
         self,
         query: SearchQuery,
-        axes: Sequence[CrossFacetAxis],
+        axes: Sequence[MapAxis],
     ) -> CrossFacetResult:
         """
         Cross-tabulate two axes over references matching ``query``.
@@ -668,39 +691,51 @@ class ReferenceESRepository(
         query, and the ``in_map`` subset with a value on both axes.
         """
         axis_0, axis_1 = axes
-        search = self._build_aggregation_search(
-            query.query_string,
-            self.default_search_fields,
-            self._build_filter_clauses(query),
-        ).extra(track_total_hits=True)
-        in_map = search.aggs.bucket(
-            "in_map",
-            "filter",
-            filter=Bool(filter=[self._axis_presence_clause(axis) for axis in axes]),
-        )
+        search = self._build_totals_search(query)
+        in_map = self._attach_in_map_agg(search, axes)
         outer = in_map.bucket("axis_0", "terms", **self._facet_agg_params(axis_0))
         outer.bucket("axis_1", "terms", **self._facet_agg_params(axis_1))
 
         response = await self._execute_search(search)
         return CrossFacetResult(
             cells=self._parse_cross_facet_cells(response),
-            search_total=ESSearchTotal(
-                value=response.hits.total.value,  # type: ignore[attr-defined]
-                relation=response.hits.total.relation,  # type: ignore[attr-defined]
-            ),
-            mapped_total=ESSearchTotal(
-                value=response.aggregations.in_map.doc_count, relation="eq"
+            totals=CrossFacetTotals(
+                search=self._extract_total(response),
+                mapped=self._extract_mapped_total(response),
             ),
         )
 
-    def _axis_presence_clause(self, axis: CrossFacetAxis) -> Query:
+    def _build_totals_search(self, query: SearchQuery) -> AsyncSearch:
+        """Build an aggregation search over ``query`` that tracks exact totals."""
+        return self._build_aggregation_search(
+            query.query_string,
+            self.default_search_fields,
+            self._build_filter_clauses(query),
+        ).extra(track_total_hits=True)
+
+    def _attach_in_map_agg(self, search: AsyncSearch, axes: Sequence[MapAxis]) -> Agg:
+        """Attach the ``in_map`` agg: references with a value on every axis."""
+        return search.aggs.bucket(
+            "in_map",
+            "filter",
+            filter=Bool(filter=[self._axis_presence_clause(axis) for axis in axes]),
+        )
+
+    @staticmethod
+    def _extract_mapped_total(response: Response) -> ESSearchTotal:
+        """Read the ``in_map`` agg's count as an exact total."""
+        return ESSearchTotal(
+            value=response.aggregations.in_map.doc_count, relation="eq"
+        )
+
+    def _axis_presence_clause(self, axis: MapAxis) -> Query:
         """Match references with a value on ``axis``, in scope of its ``include``."""
         field = self._FACET_FIELDS[axis.facet_type]
         if axis.include:
             return Terms(**{field: sorted(axis.include)})
         return Exists(field=field)
 
-    def _facet_agg_params(self, axis: CrossFacetAxis) -> dict[str, object]:
+    def _facet_agg_params(self, axis: MapAxis) -> dict[str, object]:
         """``terms`` agg params for an axis: field, size, and (for schemes) include."""
         params: dict[str, object] = {
             "field": self._FACET_FIELDS[axis.facet_type],
