@@ -1,0 +1,46 @@
+name: UI Tests
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "ui/**"
+      - ".github/workflows/ui-tests.yml"
+  pull_request:
+    paths:
+      - "ui/**"
+      - ".github/workflows/ui-tests.yml"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./ui
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test -- --run
+
+      - name: Build
+        env:
+          # Placeholders: the build refuses to run without its configuration.
+          VITE_API_BASE: https://api.example.org/v1
+          VITE_KEYCLOAK_URL: https://auth.example.org
+          VITE_KEYCLOAK_REALM: destiny
+          VITE_KEYCLOAK_CLIENT_ID: ui-client
+        run: npm run build

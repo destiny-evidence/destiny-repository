@@ -108,8 +108,56 @@ jobs:
           # We reset the command to empty as the azure portal has a poor manual command update UI.
           # So we want the default container command to be something that doesn't trigger a migration.
 
+  build-ui:
+    # Always rebuilds: Vite bakes environment-specific values (API URL, Keycloak
+    # config) into the bundle at build time, so unlike the API image a staging
+    # build can't be promoted to production.
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Full history: image_tag is a short sha, which a shallow clone can't
+          # resolve.
+          fetch-depth: 0
+          sparse-checkout: ui
+
+      # Build from the commit being deployed rather than the workflow's ref, so
+      # a rollback takes the UI back along with the API.
+      - name: Check out the commit being deployed
+        env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: git checkout --detach "$IMAGE_TAG"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: ui/package-lock.json
+
+      - name: Install dependencies
+        working-directory: ./ui
+        run: npm ci
+
+      - name: Build UI
+        working-directory: ./ui
+        env:
+          VITE_API_BASE: ${{ vars.UI_API_BASE }}
+          VITE_KEYCLOAK_URL: ${{ vars.UI_KEYCLOAK_URL }}
+          VITE_KEYCLOAK_REALM: ${{ vars.UI_KEYCLOAK_REALM }}
+          VITE_KEYCLOAK_CLIENT_ID: ${{ vars.UI_KEYCLOAK_CLIENT_ID }}
+        run: npm run build
+
+      - name: Upload UI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-dist
+          path: ui/dist
+          retention-days: 1
+
   deploy-ui:
     runs-on: ubuntu-latest
+    needs: build-ui
     environment: ${{ inputs.environment }}
     steps:
       - name: "Az CLI login"
@@ -119,20 +167,38 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy built UI image to UI container app
-        uses: Azure/container-apps-deploy-action@v1
+      - name: Download UI artifacts
+        uses: actions/download-artifact@v4
         with:
-          acrName: ${{vars.REGISTRY_NAME}}
-          containerAppName: ${{vars.CONTAINER_APP_UI_NAME}}
-          resourceGroup: ${{vars.RESOURCE_GROUP}}
-          containerAppEnvironment: ${{vars.CONTAINER_APP_ENV}}
-          imageToDeploy: ${{vars.REGISTRY_NAME}}.azurecr.io/${{vars.APP_NAME}}-ui:${{ inputs.image_tag }}
+          name: ui-dist
+          path: dist
+
+      - name: Deploy UI to blob storage
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            az storage blob upload-batch \
+              --account-name ${{ vars.UI_STORAGE_ACCOUNT_NAME }} \
+              --destination '$web' \
+              --source ./dist \
+              --overwrite true
+
+      - name: Purge Front Door cache for the UI
+        uses: Azure/cli@v2.0.0
+        with:
+          inlineScript: |
+            az afd endpoint purge \
+              --resource-group ${{ vars.FRONTDOOR_RESOURCE_GROUP }} \
+              --profile-name ${{ vars.FRONTDOOR_PROFILE_NAME }} \
+              --endpoint-name ${{ vars.FRONTDOOR_ENDPOINT_NAME }} \
+              --domains ${{ vars.UI_CUSTOM_DOMAIN }} \
+              --content-paths "/*" \
+              --no-wait
 
   verify-deployment:
     runs-on: ubuntu-latest
     needs:
       - deploy-application
-      - deploy-ui
     environment: ${{ inputs.environment }}
     strategy:
       # Report every unhealthy app, not just the first.
@@ -142,7 +208,6 @@ jobs:
         app_var:
           - CONTAINER_APP_NAME
           - CONTAINER_APP_TASKS_NAME
-          - CONTAINER_APP_UI_NAME
     steps:
       - name: "Az CLI login"
         uses: azure/login@v2.1.0
@@ -210,6 +275,7 @@ jobs:
     if: ${{ always() && inputs.environment == 'production' }}
     needs:
       - verify-deployment
+      - deploy-ui
       - migrate-database
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}

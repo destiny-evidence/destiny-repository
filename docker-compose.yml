@@ -186,27 +186,24 @@ services:
 
   ui:
     profiles: ["ui"]
-    build:
-      context: ./ui
-      target: runner # or use a dedicated dev target
+    image: node:24-alpine
+    working_dir: /app
     depends_on:
       app:
         condition: service_started
     ports:
       - "3000:3000"
     environment:
-      NEXT_PUBLIC_API_URL: "http://localhost:8000/v1/"
-      ENV: local
-      NODE_ENV: development
+      VITE_API_BASE: "http://localhost:8000/v1"
+      # The app service runs with ENV=local, which bypasses auth.
+      VITE_AUTH_DISABLED: "true"
       CHOKIDAR_USEPOLLING: "true"
-      WATCHPACK_POLLING: "true"
     volumes:
       - ./ui:/app
       - /app/node_modules
     networks:
       - default
-    entrypoint: /entrypoint.sh
-    command: ["npm", "run", "dev", "--", "-H", "0.0.0.0"]
+    command: sh -c "npm ci && npm run dev -- --host 0.0.0.0"
   es_setup:
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTIC_STACK_VERSION}
     volumes:
