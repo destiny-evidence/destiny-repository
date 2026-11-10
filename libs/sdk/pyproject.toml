@@ -25,6 +25,7 @@ authors = [
 dependencies = [
     "authlib>=1.9.2,<2",
     "cachetools>=5.5.2,<6",
+    "certifi>=2026.10.19",
     "fastapi>=0.119.1",
     "httpx2>=2.16.0,<3",
     "msal>=1.34.0",
