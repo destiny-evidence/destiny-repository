@@ -91,22 +91,3 @@ resource "azurerm_subnet" "tasks" {
   #   }
   # }
 }
-
-resource "azurerm_subnet" "ui" {
-  name                 = "sn-${local.name}-ui"
-  resource_group_name  = azurerm_resource_group.this.name
-  virtual_network_name = azurerm_virtual_network.this.name
-  address_prefixes     = ["10.0.8.0/23"]
-
-  # If spinning up a new environment you will need to uncomment this block
-  # https://github.com/destiny-evidence/destiny-repository/issues/925
-  # delegation {
-  #   name = "ui"
-  #   service_delegation {
-  #     name = "Microsoft.App/environments"
-  #     actions = [
-  #       "Microsoft.Network/virtualNetworks/subnets/join/action",
-  #     ]
-  #   }
-  # }
-}

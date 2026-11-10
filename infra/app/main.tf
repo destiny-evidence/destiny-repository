@@ -22,12 +22,6 @@ resource "azurerm_user_assigned_identity" "container_apps_tasks_identity" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
-resource "azurerm_user_assigned_identity" "container_apps_ui_identity" {
-  name                = "${local.name}-ui"
-  location            = azurerm_resource_group.this.location
-  resource_group_name = azurerm_resource_group.this.name
-}
-
 resource "azurerm_user_assigned_identity" "es_index_migrator" {
   name                = local.es_index_migrator_name
   location            = azurerm_resource_group.this.location
@@ -219,11 +213,6 @@ data "azurerm_container_app" "api" {
   resource_group_name = azurerm_resource_group.this.name
 }
 
-data "azurerm_container_app" "ui" {
-  name                = module.container_app_ui.container_app_name
-  resource_group_name = azurerm_resource_group.this.name
-}
-
 module "container_app" {
   source                          = "app.terraform.io/destiny-evidence/container-app/azure"
   version                         = "2.0.1"
@@ -338,57 +327,6 @@ module "container_app_tasks" {
       }
     },
   ]
-}
-
-module "container_app_ui" {
-  source                          = "app.terraform.io/destiny-evidence/container-app/azure"
-  version                         = "2.0.1"
-  app_name                        = "${var.app_name}-ui"
-  environment                     = var.environment
-  container_registry_id           = data.azurerm_container_registry.this.id
-  container_registry_login_server = data.azurerm_container_registry.this.login_server
-  container_app_environment_id    = module.container_app.container_app_env_id
-  infrastructure_subnet_id        = azurerm_subnet.ui.id
-  resource_group_name             = azurerm_resource_group.this.name
-  region                          = azurerm_resource_group.this.location
-  tags                            = local.minimum_resource_tags
-
-  identity = {
-    id           = azurerm_user_assigned_identity.container_apps_ui_identity.id
-    principal_id = azurerm_user_assigned_identity.container_apps_ui_identity.principal_id
-    client_id    = azurerm_user_assigned_identity.container_apps_ui_identity.client_id
-  }
-
-  env_vars = [
-    {
-      name  = "NEXT_PUBLIC_API_URL"
-      value = "https://${local.api_hostname}/v1/"
-    },
-    {
-      name = "AUTH_PROVIDER"
-      # UI drives a single login flow; map "both" to keycloak as the default.
-      value = var.auth_provider == "both" ? "keycloak" : var.auth_provider
-    },
-    {
-      name  = "KEYCLOAK_URL"
-      value = var.auth_provider != "azure" ? var.shared_keycloak_url : ""
-    },
-    {
-      name  = "KEYCLOAK_CLIENT_ID"
-      value = var.auth_provider != "azure" ? "destiny-auth-ui-client-${var.environment}" : ""
-    },
-  ]
-
-  ingress = {
-    external_enabled           = true
-    allow_insecure_connections = false
-    target_port                = 3000
-    transport                  = "auto"
-    traffic_weight = {
-      latest_revision = true
-      percentage      = 100
-    }
-  }
 }
 
 locals {

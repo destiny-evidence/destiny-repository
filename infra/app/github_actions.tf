@@ -86,11 +86,71 @@ resource "github_actions_environment_variable" "container_app_tasks_name" {
   value         = module.container_app_tasks.container_app_name
 }
 
-resource "github_actions_environment_variable" "container_app_ui_name" {
+# --- UI ---
+# The UI is a static bundle: Vite inlines the UI_* values at build time, and
+# the rest tell the deploy where to upload it and which cache to purge.
+
+resource "github_actions_environment_variable" "ui_storage_account_name" {
   repository    = github_repository_environment.environment.repository
   environment   = github_repository_environment.environment.environment
-  variable_name = "CONTAINER_APP_UI_NAME"
-  value         = module.container_app_ui.container_app_name
+  variable_name = "UI_STORAGE_ACCOUNT_NAME"
+  value         = azurerm_storage_account.ui.name
+}
+
+resource "github_actions_environment_variable" "ui_api_base" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "UI_API_BASE"
+  value         = "https://${local.api_hostname}/v1"
+}
+
+resource "github_actions_environment_variable" "ui_keycloak_url" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "UI_KEYCLOAK_URL"
+  value         = var.shared_keycloak_url
+}
+
+resource "github_actions_environment_variable" "ui_keycloak_realm" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "UI_KEYCLOAK_REALM"
+  value         = "destiny"
+}
+
+resource "github_actions_environment_variable" "ui_keycloak_client_id" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "UI_KEYCLOAK_CLIENT_ID"
+  value         = "destiny-auth-ui-client-${var.environment}"
+}
+
+resource "github_actions_environment_variable" "ui_custom_domain" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "UI_CUSTOM_DOMAIN"
+  value         = local.ui_hostname
+}
+
+resource "github_actions_environment_variable" "frontdoor_resource_group" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "FRONTDOOR_RESOURCE_GROUP"
+  value         = var.shared_resource_group_name
+}
+
+resource "github_actions_environment_variable" "frontdoor_profile_name" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "FRONTDOOR_PROFILE_NAME"
+  value         = data.azurerm_cdn_frontdoor_profile.shared.name
+}
+
+resource "github_actions_environment_variable" "frontdoor_endpoint_name" {
+  repository    = github_repository_environment.environment.repository
+  environment   = github_repository_environment.environment.environment
+  variable_name = "FRONTDOOR_ENDPOINT_NAME"
+  value         = local.frontdoor_endpoint.name
 }
 
 resource "github_actions_environment_variable" "container_app_env" {

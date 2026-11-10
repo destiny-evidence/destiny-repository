@@ -57,10 +57,31 @@ resource "azurerm_role_assignment" "gha-container-app-tasks-contributor" {
   principal_id         = azuread_service_principal.github_actions.object_id
 }
 
-resource "azurerm_role_assignment" "gha-container-app-ui-contributor" {
-  role_definition_name = "Contributor"
-  scope                = module.container_app_ui.container_app_id
+# GitHub Actions deploys the UI by uploading the built bundle to blob storage
+resource "azurerm_role_assignment" "gha-ui-storage-blob-contributor" {
+  role_definition_name = "Storage Blob Data Contributor"
+  scope                = azurerm_storage_account.ui.id
   principal_id         = azuread_service_principal.github_actions.object_id
+}
+
+# Needed for listing keys during the blob upload
+resource "azurerm_role_assignment" "gha-ui-storage-account-contributor" {
+  role_definition_name = "Storage Account Contributor"
+  scope                = azurerm_storage_account.ui.id
+  principal_id         = azuread_service_principal.github_actions.object_id
+}
+
+# Role "CDN Front Door Purge" is created manually at the subscription level
+data "azurerm_role_definition" "cdn_purge" {
+  name  = "CDN Front Door Purge"
+  scope = data.azurerm_subscription.current.id
+}
+
+# GitHub Actions purges the Front Door cache after deploying the UI
+resource "azurerm_role_assignment" "gha-cdn-purger" {
+  role_definition_id = data.azurerm_role_definition.cdn_purge.role_definition_id
+  scope              = data.azurerm_cdn_frontdoor_profile.shared.id
+  principal_id       = azuread_service_principal.github_actions.object_id
 }
 
 resource "azurerm_role_assignment" "gha-resource-group-reader" {

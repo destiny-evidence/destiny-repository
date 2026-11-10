@@ -5,9 +5,11 @@ locals {
   # Only the attributes both endpoint types share, so the conditional types match
   frontdoor_endpoint = local.is_production ? {
     id        = azurerm_cdn_frontdoor_endpoint.this[0].id
+    name      = azurerm_cdn_frontdoor_endpoint.this[0].name
     host_name = azurerm_cdn_frontdoor_endpoint.this[0].host_name
     } : {
     id        = data.azurerm_cdn_frontdoor_endpoint.shared[0].id
+    name      = data.azurerm_cdn_frontdoor_endpoint.shared[0].name
     host_name = data.azurerm_cdn_frontdoor_endpoint.shared[0].host_name
   }
 }
@@ -116,6 +118,7 @@ resource "dnsimple_zone_record" "api" {
 }
 
 # --- UI ---
+# A static bundle served from blob storage; see storage.tf.
 
 resource "azurerm_cdn_frontdoor_origin_group" "ui" {
   name                     = "og-ui-${local.name}"
@@ -134,8 +137,8 @@ resource "azurerm_cdn_frontdoor_origin" "ui" {
   cdn_frontdoor_origin_group_id  = azurerm_cdn_frontdoor_origin_group.ui.id
   enabled                        = true
   certificate_name_check_enabled = true
-  host_name                      = data.azurerm_container_app.ui.ingress[0].fqdn
-  origin_host_header             = data.azurerm_container_app.ui.ingress[0].fqdn
+  host_name                      = azurerm_storage_account.ui.primary_web_host
+  origin_host_header             = azurerm_storage_account.ui.primary_web_host
   http_port                      = 80
   https_port                     = 443
   priority                       = 1
@@ -162,12 +165,123 @@ resource "azurerm_cdn_frontdoor_route" "ui" {
   cdn_frontdoor_origin_group_id   = azurerm_cdn_frontdoor_origin_group.ui.id
   cdn_frontdoor_origin_ids        = [azurerm_cdn_frontdoor_origin.ui.id]
   cdn_frontdoor_custom_domain_ids = [azurerm_cdn_frontdoor_custom_domain.ui.id]
+  cdn_frontdoor_rule_set_ids      = [azurerm_cdn_frontdoor_rule_set.ui_cache.id]
   enabled                         = true
   forwarding_protocol             = "HttpsOnly"
   https_redirect_enabled          = true
   patterns_to_match               = ["/*"]
   supported_protocols             = ["Http", "Https"]
   link_to_default_domain          = false
+
+  cache {
+    query_string_caching_behavior = "UseQueryString"
+    compression_enabled           = true
+    content_types_to_compress     = ["text/html", "application/javascript", "text/css", "application/json"]
+  }
+}
+
+# Cache rules: hashed assets cached aggressively, HTML revalidates every time
+resource "azurerm_cdn_frontdoor_rule_set" "ui_cache" {
+  name                     = "cacheui${replace(local.name, "-", "")}"
+  cdn_frontdoor_profile_id = data.azurerm_cdn_frontdoor_profile.shared.id
+}
+
+# Hashed static assets (JS, CSS, fonts, images): long-lived cache
+resource "azurerm_cdn_frontdoor_rule" "ui_cache_assets" {
+  name                      = "CacheAssets"
+  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.ui_cache.id
+  order                     = 1
+  behavior_on_match         = "Stop"
+
+  conditions {
+    url_file_extension_condition {
+      operator     = "Equal"
+      match_values = ["js", "css", "woff", "woff2", "png", "jpg", "svg", "ico"]
+    }
+  }
+
+  actions {
+    route_configuration_override_action {
+      cache_behavior                = "OverrideAlways"
+      cache_duration                = "30.00:00:00"
+      compression_enabled           = true
+      query_string_caching_behavior = "UseQueryString"
+    }
+    response_header_action {
+      header_action = "Overwrite"
+      header_name   = "Cache-Control"
+      value         = "public, max-age=2592000, immutable"
+    }
+  }
+}
+
+# HTML files: browser revalidates with Front Door each time
+resource "azurerm_cdn_frontdoor_rule" "ui_html_no_cache" {
+  name                      = "HtmlNoCache"
+  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.ui_cache.id
+  order                     = 2
+  behavior_on_match         = "Stop"
+
+  conditions {
+    url_file_extension_condition {
+      operator     = "Equal"
+      match_values = ["html"]
+    }
+  }
+
+  actions {
+    response_header_action {
+      header_action = "Overwrite"
+      header_name   = "Cache-Control"
+      value         = "no-cache"
+    }
+  }
+}
+
+# SPA fallback: rewrite extensionless paths to /index.html so the origin
+# returns 200 instead of 404 (blob storage error_404_document preserves the
+# 404 status code, which breaks client-side routing).
+resource "azurerm_cdn_frontdoor_rule" "ui_spa_rewrite" {
+  name                      = "SpaRewrite"
+  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.ui_cache.id
+  order                     = 3
+  behavior_on_match         = "Continue"
+
+  conditions {
+    url_file_extension_condition {
+      operator         = "LessThan"
+      match_values     = ["1"]
+      negate_condition = false
+    }
+  }
+
+  actions {
+    url_rewrite_action {
+      source_pattern          = "/"
+      destination             = "/index.html"
+      preserve_unmatched_path = false
+    }
+    response_header_action {
+      header_action = "Overwrite"
+      header_name   = "Cache-Control"
+      value         = "no-cache"
+    }
+  }
+}
+
+# Catch-all: everything not matched above revalidates on every request
+resource "azurerm_cdn_frontdoor_rule" "ui_default_no_cache" {
+  name                      = "DefaultNoCache"
+  cdn_frontdoor_rule_set_id = azurerm_cdn_frontdoor_rule_set.ui_cache.id
+  order                     = 4
+
+  actions {
+    response_header_action {
+      header_action = "Overwrite"
+      header_name   = "Cache-Control"
+      value         = "no-cache"
+    }
+  }
 }
 
 resource "azurerm_cdn_frontdoor_custom_domain_association" "ui" {

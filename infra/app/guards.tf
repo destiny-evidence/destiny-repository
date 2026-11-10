@@ -12,10 +12,6 @@ locals {
   # apps can transiently request up to 2x their steady-state cores.
   rollout_factor = 2
 
-  # The UI app's replicas/CPU live in the remote container-app module and aren't
-  # exposed as root variables; reserve a rollout-inclusive allowance.
-  ui_reserved_cores = 4
-
   scalable_app_cores = (
     var.app_max_replicas * var.container_app_cpu +
     var.tasks_max_replicas * var.container_app_tasks_cpu
@@ -40,8 +36,7 @@ locals {
 
   worst_case_deploy_cores = (
     local.rollout_factor * local.scalable_app_cores +
-    local.job_cores +
-    local.ui_reserved_cores
+    local.job_cores
   )
 }
 
@@ -53,12 +48,11 @@ locals {
     consumption_cpu_budget = {
       condition = local.worst_case_deploy_cores <= local.consumption_core_quota
       error_message = format(
-        "Worst-case deploy draw is %g cores (%dx scalable apps = %g, jobs = %g, UI reserve = %g) but the Consumption quota is %d. Lower tasks_max_replicas / app_max_replicas or per-replica CPU.",
+        "Worst-case deploy draw is %g cores (%dx scalable apps = %g, jobs = %g) but the Consumption quota is %d. Lower tasks_max_replicas / app_max_replicas or per-replica CPU.",
         local.worst_case_deploy_cores,
         local.rollout_factor,
         local.rollout_factor * local.scalable_app_cores,
         local.job_cores,
-        local.ui_reserved_cores,
         local.consumption_core_quota,
       )
     }
