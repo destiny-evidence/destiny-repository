@@ -69,6 +69,36 @@ def _paper(
             id="spacing and underscores",
         ),
         pytest.param(
+            _paper("काल", authors=("राम कुमार",)),
+            _paper("काल", authors=("राम कुमार",)),
+            [],
+            id="vowel signs belong to their letters",
+        ),
+        pytest.param(
+            _paper("कल"),
+            _paper("काल"),
+            [TITLE],
+            id="titles differing by a vowel sign",
+        ),
+        pytest.param(
+            _paper("Let's not forget them"),
+            _paper("Let\u00b4s not forget them"),
+            [],
+            id="spacing accent as an apostrophe",
+        ),
+        pytest.param(
+            _paper("Fenomenología e Historia", authors=("William R. Darós",)),
+            _paper("Fenomenologia e historia", authors=("W. R. Daros",)),
+            [],
+            id="accents on Latin letters",
+        ),
+        pytest.param(
+            _paper("Мой"),
+            _paper("Мои"),
+            [TITLE],
+            id="a mark that makes another letter",
+        ),
+        pytest.param(
             _paper("Señor Don Mariano Riva Palacio", authors=("Manuel Moral",)),
             _paper("Señor Don Mariano Riva Palacio", authors=("Manuel Payno",)),
             [AUTHOR],
@@ -87,8 +117,8 @@ def _paper(
             id="incoming first author abbreviated",
         ),
         pytest.param(
-            _paper("Sleep apnoea screening", authors=("Л. Смірнова",)),
-            _paper("Sleep apnoea screening", authors=("Людмила Смірнова",)),
+            _paper("Sleep apnoea screening", authors=("Й. Смірнова",)),
+            _paper("Sleep apnoea screening", authors=("Йосип Смірнова",)),
             [],
             id="Cyrillic initial",
         ),
@@ -97,6 +127,18 @@ def _paper(
             _paper("Sleep apnoea screening", authors=("משה כהן",)),
             [],
             id="Hebrew initial",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("J. Smith",)),
+            _paper("Sleep apnoea screening", authors=("A. Smith",)),
+            [AUTHOR],
+            id="initials that differ",
+        ),
+        pytest.param(
+            _paper("Sleep apnoea screening", authors=("J. A. Smith",)),
+            _paper("Sleep apnoea screening", authors=("John Smith",)),
+            [],
+            id="the shorter name has another initial",
         ),
         pytest.param(
             _paper("Sleep apnoea screening", authors=("Daniel Álvarez González",)),
