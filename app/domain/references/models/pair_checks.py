@@ -113,9 +113,9 @@ def _authors_disagree(
     incoming_names, candidate_names = _names(incoming), _names(candidate)
     if not incoming_names or not candidate_names:
         return True
-    # Names with and without Latin letters cannot be compared, so the authors are
-    # unknown rather than disagreeing.
-    if len(_latin(incoming) | _latin(candidate)) > 1:
+    # Names with and without Latin letters cannot be compared, so with no alphabet
+    # in common the authors are unknown rather than disagreeing.
+    if not _latin(incoming) & _latin(candidate):
         return False
     return not (
         _any_name_within(incoming_names, candidate_names)

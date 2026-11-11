@@ -218,14 +218,8 @@ def _paper(
         pytest.param(
             _paper("Sleep apnoea screening", authors=("Hironori Midorikawa",)),
             _paper("Sleep apnoea screening", authors=("裕紀 緑川", "Yusuke Suzuki")),
-            [],
-            id="conflict beside a name that cannot be compared",
-        ),
-        pytest.param(
-            _paper("Sleep apnoea screening", authors=("裕紀 緑川", "Ada Lovelace")),
-            _paper("Sleep apnoea screening", authors=("山田 太郎", "Alan Turing")),
-            [],
-            id="both lists mix scripts",
+            [AUTHOR],
+            id="conflict beside a name in another alphabet",
         ),
         pytest.param(
             _paper("Notes on the Contributors", "10.1163/1-001"),
