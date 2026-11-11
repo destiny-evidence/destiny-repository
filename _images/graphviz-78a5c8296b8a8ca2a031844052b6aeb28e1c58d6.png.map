@@ -1,0 +1,30 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="destiny_sdk.search.SearchResultTotal
+
+Information about the total number of search results.
+" alt="" coords="1180,51,1344,141"/>
+<area shape="rect" id="node2" title="libs.sdk.src.destiny_sdk.references.ConceptFacetCount
+
+The count of matching references for a single concept.
+" alt="" coords="803,144,965,234"/>
+<area shape="rect" id="node3" title="libs.sdk.src.destiny_sdk.references.CountryFacetCount
+
+The count of matching references for a single country.
+" alt="" coords="803,283,966,373"/>
+<area shape="rect" id="node4" title="libs.sdk.src.destiny_sdk.references.CountryWBIncomeGroupFacetCount
+
+The count of matching references for a single World Bank income group.
+" alt="" coords="732,560,1036,650"/>
+<area shape="rect" id="node5" title="libs.sdk.src.destiny_sdk.references.CountryWBRegionFacetCount
+
+The count of matching references for a single World Bank region.
+" alt="" coords="760,421,1008,511"/>
+<area shape="rect" id="node6" title="libs.sdk.src.destiny_sdk.references.FacetTotals
+
+Reference totals for a set of facet counts.
+" alt="" coords="755,5,1014,95"/>
+<area shape="rect" id="node7" title="libs.sdk.src.destiny_sdk.references.ReferenceFacetResult
+
+Facet counts for a reference search.
+" alt="" coords="5,194,588,374"/>
+</map>

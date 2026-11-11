@@ -1,0 +1,6 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.MapAxis
+
+A resolved map axis. References need a value on every axis to be mapped.
+" alt="" coords="5,5,245,155"/>
+</map>

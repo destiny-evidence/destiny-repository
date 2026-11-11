@@ -1,0 +1,37 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.Candidate
+
+A candidate canonical reference with route provenance.
+" alt="" coords="478,168,1026,318"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.CandidateElasticsearchRoute
+
+Provenance for a candidate surfaced by the Elasticsearch query.
+" alt="" coords="1255,5,1491,155"/>
+<area shape="rect" id="node3" title="app.domain.references.models.models.CandidateIdentifierRoute
+
+Provenance for a candidate surfaced by an exact identifier match.
+" alt="" coords="1206,203,1540,293"/>
+<area shape="rect" id="node4" title="app.domain.references.models.models.CandidateReference
+
+Hydrated bibliographic fields of a candidate reference.
+" alt="" coords="1218,341,1529,491"/>
+<area shape="rect" id="node5" title="app.domain.references.models.models.CandidateIdentifier
+
+An external identifier used as candidate&#45;search input and match provenance.
+
+Narrows :class:`GenericExternalIdentifier` to require an explicit type;
+candidate search does not accept database&#45;id (untyped) lookups.
+" alt="" coords="1720,362,2061,482"/>
+<area shape="rect" id="node6" title="app.domain.references.models.models.DeduplicationFieldComparison
+
+Compared values, availability and score for one Deduper field.
+" alt="" coords="1170,539,1576,749"/>
+<area shape="rect" id="node7" title="app.domain.references.models.models.DeduplicationPairResult
+
+Structured evidence returned by a Deduper adapter for one pair.
+" alt="" coords="511,395,994,605"/>
+<area shape="rect" id="node8" title="app.domain.references.models.models.ScoredDeduplicationCandidate
+
+One retrieved candidate and the Deduper evidence for its pair.
+" alt="" coords="5,237,334,387"/>
+</map>
