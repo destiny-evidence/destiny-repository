@@ -35,6 +35,7 @@ from app.domain.references.models.models import (
     RetrievalPolicyName,
     ScoredDeduplicationCandidate,
 )
+from app.domain.references.models.pair_checks import failed_pair_checks
 from app.domain.references.models.projections import (
     CandidateReferenceProjection,
     DeduplicationPaperProjection,
@@ -100,6 +101,25 @@ def _openalex_relation(
     return OpenAlexRelation.DIFFERENT
 
 
+def summarise_candidates(
+    threshold_clearing_ids: list[UUID],
+    unscorable_ids: list[UUID],
+    *,
+    input_searchable: bool,
+) -> tuple[DeduplicationAssessmentOutcome, UUID | None]:
+    """Summarise the candidate set without applying acting-policy guards."""
+    if unscorable_ids or len(threshold_clearing_ids) > 1:
+        return DeduplicationAssessmentOutcome.NO_PROPOSAL, None
+    if threshold_clearing_ids:
+        return (
+            DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE,
+            threshold_clearing_ids[0],
+        )
+    if not input_searchable:
+        return DeduplicationAssessmentOutcome.NO_PROPOSAL, None
+    return DeduplicationAssessmentOutcome.PROPOSE_CANONICAL, None
+
+
 def _trace_assessment(
     assessment: DeduplicationAssessment,
     incoming: DeduplicationPaper,
@@ -112,6 +132,11 @@ def _trace_assessment(
     """
     clearing_count = len(assessment.threshold_clearing_candidate_ids)
     unscorable_count = len(assessment.unscorable_candidate_ids)
+    vetoed_count = sum(
+        1
+        for scored in assessment.scored_candidates
+        if scored.clears_threshold and scored.failed_pair_checks
+    )
     best, best_non_winning = assessment.best_scores()
     identifier_candidates = [
         scored
@@ -157,6 +182,7 @@ def _trace_assessment(
     trace_attribute(
         Attributes.DEDUPLICATION_ASSESSMENT_UNSCORABLE_COUNT, unscorable_count
     )
+    trace_attribute(Attributes.DEDUPLICATION_ASSESSMENT_VETOED_COUNT, vetoed_count)
     trace_attribute(Attributes.DEDUPLICATION_ASSESSMENT_BEST_PROBABILITY, best)
     trace_attribute(
         Attributes.DEDUPLICATION_ASSESSMENT_BEST_NON_WINNING_PROBABILITY,
@@ -196,6 +222,7 @@ def _trace_assessment(
 
     if (
         clearing_count > 1
+        or vetoed_count
         or identifier_outcome == IdentifierCandidateOutcome.BEATEN
         # Below the threshold a different W-ID is just an unrelated OpenAlex record.
         or (openalex_relation == OpenAlexRelation.DIFFERENT and clearing_count > 0)
@@ -432,6 +459,13 @@ class DeduplicationAssessmentService:
                     candidate=candidate,
                     pair_result=pair_result,
                     clears_threshold=clears_threshold,
+                    failed_pair_checks=(
+                        failed_pair_checks(
+                            scored_incoming, candidate_papers[candidate.reference_id]
+                        )
+                        if candidate.reference_id in candidate_papers
+                        else []
+                    ),
                 )
             )
             if clears_threshold is True:
@@ -439,7 +473,7 @@ class DeduplicationAssessmentService:
             elif clears_threshold is None:
                 unscorable_ids.append(candidate.reference_id)
 
-        outcome, proposed_duplicate_of_id = self._summarise(
+        outcome, proposed_duplicate_of_id = summarise_candidates(
             threshold_clearing_ids,
             unscorable_ids,
             input_searchable=candidate_selection.input_searchability.searchable,
@@ -456,22 +490,3 @@ class DeduplicationAssessmentService:
         )
         _trace_assessment(assessment, scored_incoming, candidate_papers)
         return assessment
-
-    @staticmethod
-    def _summarise(
-        threshold_clearing_ids: list[UUID],
-        unscorable_ids: list[UUID],
-        *,
-        input_searchable: bool,
-    ) -> tuple[DeduplicationAssessmentOutcome, UUID | None]:
-        """Summarise the candidate set without applying acting-policy guards."""
-        if unscorable_ids or len(threshold_clearing_ids) > 1:
-            return DeduplicationAssessmentOutcome.NO_PROPOSAL, None
-        if threshold_clearing_ids:
-            return (
-                DeduplicationAssessmentOutcome.PROPOSE_DUPLICATE,
-                threshold_clearing_ids[0],
-            )
-        if not input_searchable:
-            return DeduplicationAssessmentOutcome.NO_PROPOSAL, None
-        return DeduplicationAssessmentOutcome.PROPOSE_CANONICAL, None

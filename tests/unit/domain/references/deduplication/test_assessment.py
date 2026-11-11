@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
 import pytest
+from destiny_sdk.enhancements import AuthorPosition, Authorship
 from opentelemetry.trace import StatusCode
 from sqlalchemy.exc import OperationalError, ProgrammingError
 
@@ -30,6 +31,7 @@ from app.domain.references.models.models import (
     EnhancementType,
     ExternalIdentifierType,
     InputSearchability,
+    PairCheck,
     Reference,
     RetrievalPolicyName,
 )
@@ -67,11 +69,15 @@ def anti_corruption_service() -> ReferenceAntiCorruptionService:
     return ReferenceAntiCorruptionService(sign_url=AsyncMock())
 
 
-def _reference(*, community_bound: bool = False) -> Reference:
+def _reference(
+    *, community_bound: bool = False, title: str = "A complete reference"
+) -> Reference:
+    # One author throughout, since pair checks veto candidates whose authors disagree.
+    author = Authorship(display_name="Ada Lovelace", position=AuthorPosition.FIRST)
     enhancements = [
         EnhancementFactory.build(
             content=BibliographicMetadataEnhancementFactory.build(
-                title="A complete reference",
+                title=title, authorship=[author]
             )
         )
     ]
@@ -409,6 +415,41 @@ async def test_evaluate_scores_all_candidates_and_retains_every_threshold_match(
     request_input = selector.await_args.args[0].input
     assert request_input.reference_id is None
     assert request_input.excluded_reference_id == incoming.id
+
+
+@pytest.mark.asyncio
+async def test_evaluate_records_the_pair_checks_each_candidate_fails():
+    incoming = _reference(title="Newsletter Issue 3")
+    candidates = [
+        _reference(title="Newsletter Issue 4"),
+        _reference(title="Newsletter Issue 3"),
+        _reference(title="Newsletter Issue 5"),
+    ]
+    service, _, _, _ = _build_service(
+        _selection(
+            *(
+                Candidate(reference_id=candidate.id, rank=rank, routes=[])
+                for rank, candidate in enumerate(candidates, start=1)
+            )
+        ),
+        [incoming, *candidates],
+        {
+            candidate.id: score
+            for candidate, score in zip(candidates, (0.95, 0.95, 0.5), strict=True)
+        },
+    )
+
+    assessment = await service.evaluate(incoming.id)
+
+    assert [scored.failed_pair_checks for scored in assessment.scored_candidates] == [
+        [PairCheck.TITLES_DIFFER],
+        [],
+        [PairCheck.TITLES_DIFFER],
+    ]
+    # Evidence only: the decision applies the checks, so both matches still clear.
+    assert assessment.threshold_clearing_candidate_ids == [
+        candidate.id for candidate in candidates[:2]
+    ]
 
 
 @pytest.mark.asyncio
@@ -934,6 +975,7 @@ async def test_assessment_span_reports_scorer_scores_and_early_stops(span_attrib
         "app.deduplication_assessment.scored_count": 4,
         "app.deduplication_assessment.clearing_count": 1,
         "app.deduplication_assessment.unscorable_count": 0,
+        "app.deduplication_assessment.vetoed_count": 0,
         "app.deduplication_assessment.best_probability": 0.9,
         "app.deduplication_assessment.best_non_winning_probability": 0.4,
         "app.deduplication_assessment.early_stop.partial_ratio_too_low": 2,
@@ -1096,6 +1138,30 @@ async def test_assessment_span_samples_conflicting_threshold_matches(span_attrib
 
     attributes = span_attributes(ASSESSMENT_SPAN)
     assert attributes["app.deduplication_assessment.clearing_count"] == 2
+    assert SAMPLED in attributes.items()
+
+
+@pytest.mark.asyncio
+async def test_assessment_span_counts_and_samples_vetoed_matches(span_attributes):
+    incoming = _without_openalex(_reference(title="Newsletter Issue 3"))
+    vetoed, below = (
+        _without_openalex(_reference(title=title))
+        for title in ("Newsletter Issue 4", "Newsletter Issue 5")
+    )
+    service, *_ = _build_service(
+        _selection(
+            Candidate(reference_id=vetoed.id, rank=1, routes=[]),
+            Candidate(reference_id=below.id, rank=2, routes=[]),
+        ),
+        [incoming, vetoed, below],
+        {vetoed.id: 0.95, below.id: 0.5},
+    )
+
+    await service.evaluate(incoming.id)
+
+    attributes = span_attributes(ASSESSMENT_SPAN)
+    # A veto below the threshold changes no decision, so it is not counted.
+    assert attributes["app.deduplication_assessment.vetoed_count"] == 1
     assert SAMPLED in attributes.items()
 
 

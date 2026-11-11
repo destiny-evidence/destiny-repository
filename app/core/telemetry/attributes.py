@@ -148,6 +148,8 @@ class Attributes(StrEnum):
     DEDUPLICATION_ASSESSMENT_UNSCORABLE_COUNT = (
         "app.deduplication_assessment.unscorable_count"
     )
+    # Threshold-clearing candidates that a pair check vetoes.
+    DEDUPLICATION_ASSESSMENT_VETOED_COUNT = "app.deduplication_assessment.vetoed_count"
     DEDUPLICATION_ASSESSMENT_BEST_PROBABILITY = (
         "app.deduplication_assessment.best_probability"
     )

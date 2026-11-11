@@ -19,6 +19,7 @@ from app.domain.references.models.models import (
     DeduplicationFieldComparison,
     DeduplicationPairResult,
     InputSearchability,
+    PairCheck,
     RetrievalPolicyName,
     ScoredDeduplicationCandidate,
 )
@@ -535,3 +536,14 @@ async def test_scored_candidates_are_retained_on_the_record(
         s.candidate.reference_id for s in assessment.scored_candidates
     ]
     assert record.proposed_duplicate_of_id == assessment.proposed_duplicate_of_id
+
+
+async def test_failed_pair_checks_are_retained_on_the_record(
+    recorder: DeduplicationAssessmentRecorder,
+) -> None:
+    assessment = build_assessment([scored_candidate(0.95)])
+    assessment.scored_candidates[0].failed_pair_checks = [PairCheck.TITLES_DIFFER]
+
+    record = await record_assessment(recorder, assessment)
+
+    assert record.scored_candidates[0].failed_pair_checks == [PairCheck.TITLES_DIFFER]
