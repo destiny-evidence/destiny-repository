@@ -47,6 +47,12 @@ Once confirmed by the repository, the robot owner will receive a :class:`Robot <
 
 The robot owner can check the robot details by calling the ``GET /robots/<robot_id>/`` endpoint, and will receive a :class:`Robot <libs.sdk.src.destiny_sdk.robots.Robot>` object containing the robot id and robot details.
 
+Entitlements
+~~~~~~~~~~~~
+Some robot capabilities are off by default and are granted through the ``entitlements`` field of :class:`RobotIn <libs.sdk.src.destiny_sdk.robots.RobotIn>` and :class:`Robot <libs.sdk.src.destiny_sdk.robots.Robot>`. The available entitlements are listed in :class:`RobotEntitlement <libs.sdk.src.destiny_sdk.robots.RobotEntitlement>`. For example, a robot needs ``enhancement_supersession_writer`` to :ref:`supersede enhancements <enhancement-supersession>`.
+
+Setting or changing entitlements requires the ``robot.entitlement.writer`` role or the ``robot.entitlement.writer.all`` scope. Without it, a request that changes a robot's entitlements is rejected with an HTTP 403 Forbidden error.
+
 For Robots
 ----------
 Robots must be configured witht the robot_id and client_secret provided by destiny repository, and use these with the Client in :class:`RobotClient <libs.sdk.src.destiny_sdk.client.RobotClient>` to authenticate against the destiny repository.
