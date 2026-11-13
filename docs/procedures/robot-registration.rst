@@ -51,7 +51,7 @@ Entitlements
 ~~~~~~~~~~~~
 Some robot capabilities are off by default and are granted through the ``entitlements`` field of :class:`RobotIn <libs.sdk.src.destiny_sdk.robots.RobotIn>` and :class:`Robot <libs.sdk.src.destiny_sdk.robots.Robot>`. The available entitlements are listed in :class:`RobotEntitlement <libs.sdk.src.destiny_sdk.robots.RobotEntitlement>`. For example, a robot needs ``enhancement_supersession_writer`` to :ref:`supersede enhancements <enhancement-supersession>`.
 
-Setting or changing entitlements requires the ``robot.entitlement.writer`` scope or role. Without it, a request that changes a robot's entitlements is rejected with an HTTP 403 Forbidden error.
+Setting or changing entitlements requires the ``robot.entitlement.writer`` role or the ``robot.entitlement.writer.all`` scope. Without it, a request that changes a robot's entitlements is rejected with an HTTP 403 Forbidden error.
 
 For Robots
 ----------

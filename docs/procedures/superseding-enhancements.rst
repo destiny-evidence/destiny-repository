@@ -34,7 +34,7 @@ Who Can Supersede
 
 Only robots with the :attr:`enhancement_supersession_writer <libs.sdk.src.destiny_sdk.robots.RobotEntitlement.ENHANCEMENT_SUPERSESSION_WRITER>` entitlement can supersede enhancements.
 
-Entitlements are set in the ``entitlements`` field when :doc:`registering or updating a robot <robot-registration>`. Changing them requires the ``robot.entitlement.writer`` scope or role. If you do not hold it, ask a repository administrator to grant the entitlement to your robot.
+Entitlements are set in the ``entitlements`` field when :doc:`registering or updating a robot <robot-registration>`. Changing them requires the ``robot.entitlement.writer`` role or the ``robot.entitlement.writer.all`` scope. If you do not hold it, ask a repository administrator to grant the entitlement to your robot.
 
 A robot should only supersede its own enhancements.
 
@@ -47,7 +47,7 @@ The enhancement named in :attr:`supersedes <libs.sdk.src.destiny_sdk.enhancement
 - **On the same reference.** The new enhancement's ``reference_id`` must equal the ``reference_id`` of the enhancement it supersedes.
 - **Of the same enhancement type**, unless the new enhancement is a :ref:`tombstone <enhancement-tombstones>`. An annotation can replace an annotation, but not an abstract.
 
-Every enhancement on a reference a robot receives is the latest in its chain, so any of them can be named in ``supersedes`` provided the other two rules hold.
+Every enhancement on a reference a robot receives was the latest in its chain when the batch was created, so any of them can be named in ``supersedes`` provided the other two rules hold.
 
 .. note::
 
@@ -58,7 +58,7 @@ How to Supersede
 
 Supersession happens in the result file a robot uploads for a robot enhancement batch. The steps in :doc:`Requesting Enhancements <requesting-batch-enhancements>` are unchanged, apart from how the enhancement is built:
 
-1. **Find the enhancement to replace** in the ``enhancements`` of the :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` being processed. A robot will usually look for an enhancement with its own ``source``, the reference's own ``reference_id`` and the enhancement type it is about to return. If the robot keeps several enhancements of the same type on a reference, it needs its own way to tell them apart, such as the annotation scheme.
+1. **Find the enhancement to replace** in the ``enhancements`` of the :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` being processed. A robot will usually look for an enhancement with its own ``source``, the reference's own ``reference_id`` and the enhancement type it is about to return. If the robot keeps several enhancements of the same type on a reference, it needs its own way to tell them apart, such as the annotation scheme. Full-text enhancements are only included for robots with the ``full_text`` entitlement, so a robot without it cannot find or supersede them.
 
 2. **Set** ``supersedes`` to that enhancement's ``id`` on the new :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>`. If there is no enhancement to replace, leave ``supersedes`` unset and the enhancement starts a new chain.
 
@@ -120,7 +120,7 @@ The ``supersedes`` field is available from version 0.17.4 of the SDK.
 
     A result file can hold one entry per reference, so a robot can supersede or withdraw one enhancement per reference in each batch.
 
-If the new enhancement is identical to the one it supersedes, it is discarded as an exact duplicate and the existing enhancement stays in place.
+If the new enhancement is identical to the one it supersedes, it is discarded as an exact duplicate and the existing enhancement stays in place. Enhancements are identical when their ``source``, ``visibility``, ``robot_version``, ``derived_from`` and ``content`` all match, so a new ``robot_version`` is enough for the new enhancement to be kept.
 
 .. _enhancement-tombstones:
 
@@ -162,7 +162,7 @@ A superseding enhancement is checked against :doc:`robot automations <robot-auto
 Errors
 ------
 
-Results are checked when the repository imports them, after the robot has submitted the batch, so a broken rule is not reported in the response to the submission. The entry is not imported and the other entries in the batch are unaffected. The enhancement request finishes as ``PARTIAL_FAILED``, or ``FAILED`` if no entry was imported.
+Results are checked when the repository imports them, after the robot has submitted the batch, so a broken rule is not reported in the response to the submission. The entry is not imported and the other entries in the batch are unaffected. The enhancement request finishes as ``PARTIAL_FAILED``, or ``FAILED`` if every entry in the request failed.
 
 The repository records the reason against the entry's ``reference_id`` in the batch's validation result file. That file is not currently returned to robots, so ask a repository administrator if you need the reason for a failed entry. The reasons are:
 
