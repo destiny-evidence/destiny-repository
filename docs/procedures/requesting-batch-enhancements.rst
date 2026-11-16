@@ -117,7 +117,7 @@ To implement a polling-based robot:
 
 2. **Process references**: Download the references from the :attr:`reference_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.reference_storage_url>`. Each line in the file is a JSON-serialized :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, which can be parsed using :meth:`Reference.from_jsonl() <libs.sdk.src.destiny_sdk.references.Reference.from_jsonl>`. These references will be in the :ref:`deduplicated form <deduplicated-projection>`, giving robots full access to the reference's data.
 
-3. **Create enhancements**: Process each reference and create :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` objects or :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>` objects for failed references.
+3. **Create enhancements**: Process each reference and create :class:`Enhancement <libs.sdk.src.destiny_sdk.enhancements.Enhancement>` objects or :class:`LinkedRobotError <libs.sdk.src.destiny_sdk.robots.LinkedRobotError>` objects for failed references. To replace or withdraw an enhancement the robot added previously, see :ref:`enhancement-supersession`.
 
 4. **Upload results**: Upload the results as a JSONL file to the :attr:`result_storage_url <libs.sdk.src.destiny_sdk.robots.RobotEnhancementBatch.result_storage_url>`. Each line should be either an enhancement or an error entry.
 
