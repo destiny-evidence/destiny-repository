@@ -26,8 +26,7 @@ An enhancement and the enhancements that have replaced it form a chain. Referenc
 
     flowchart RL
         B["Enhancement B<br>supersedes A"] -->|replaces| A["Enhancement A"]
-        C["Enhancement C<br>supersedes B"] -->|replaces| B
-        C -.- N(["Shown on the reference"])
+        C["Enhancement C<br>supersedes B<br>(shown on the reference)"] -->|replaces| B
 
 Who Can Supersede
 -----------------
@@ -185,4 +184,4 @@ The repository records the reason against the entry's ``reference_id`` in the ba
     * - ``A tombstone must supersede the enhancement it withdraws.``
       - A tombstone was returned without ``supersedes``.
     * - ``Exact duplicate enhancement already exists on reference.``
-      - The new enhancement is identical to the one it supersedes. The entry is discarded rather than failed.
+      - The new enhancement is identical to the one it supersedes. The entry is discarded rather than failed, but the request still finishes as ``PARTIAL_FAILED``, even if every entry was discarded.
