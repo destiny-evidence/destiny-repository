@@ -267,6 +267,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         """
         Stream deduplicated, redacted references to blob storage in the given format.
 
+        References are written in the order of ``reference_ids``.
+
         Rides the caller's active SQL unit of work (the per-chunk fetch is
         undecorated), so the caller's ``@sql_unit_of_work`` method owns the
         transaction spanning the whole stream.
@@ -295,10 +297,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         export_format: ExportFormat,
         access_control_service: ReferenceAccessControlService,
     ) -> list[str]:
-        """Fetch, redact and serialize one chunk of references."""
+        """Fetch, redact and serialize one chunk of references, in the given order."""
         references = await self._get_deduplicated_references(
             reference_ids=reference_ids
         )
+        position = {reference_id: i for i, reference_id in enumerate(reference_ids)}
+        references.sort(key=lambda reference: position[reference.id])
         return [
             await self._serialize_reference(
                 access_control_service.redact_reference(reference), export_format

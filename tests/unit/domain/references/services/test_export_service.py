@@ -111,7 +111,7 @@ def _reference_service_with(references, anti_corruption_service):
     return service
 
 
-async def _capture_uploaded_body(reference_service, export_format, reference):
+async def _capture_uploaded_body(reference_service, export_format, *references):
     """Run an export and return the bytes streamed to blob storage, decoded."""
     captured = {}
 
@@ -124,12 +124,12 @@ async def _capture_uploaded_body(reference_service, export_format, reference):
     blob_repository.upload_file_to_blob_storage = AsyncMock(side_effect=_capture)
 
     result_file, count = await reference_service.stream_references_to_blob(
-        reference_ids=[reference.id],
+        reference_ids=[reference.id for reference in references],
         export_format=export_format,
         access_control_service=_identity_access_control(),
         blob_repository=blob_repository,
         path="search_exports",
-        filename=f"{reference.id}.{export_format.extension}",
+        filename=f"{references[0].id}.{export_format.extension}",
         chunk_size=100,
     )
     body = b"".join([chunk async for chunk in captured["content"].stream()]).decode()
@@ -150,6 +150,18 @@ async def test_stream_references_to_blob_serializes_ris() -> None:
     assert body.startswith("TY  - ")
     assert "TI  - A Title" in body
     assert "ER  - " in body
+
+
+async def test_stream_references_to_blob_preserves_requested_order() -> None:
+    """References are written in the order requested, not the order fetched."""
+    references = [_reference_with_title(title) for title in ("First", "Second")]
+    reference_service = _reference_service_with(references[::-1], AsyncMock())
+
+    body, _, _ = await _capture_uploaded_body(
+        reference_service, ExportFormat.RIS, *references
+    )
+
+    assert body.index("TI  - First") < body.index("TI  - Second")
 
 
 async def test_stream_references_to_blob_serializes_jsonl() -> None:
