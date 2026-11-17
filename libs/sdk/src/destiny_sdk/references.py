@@ -295,9 +295,28 @@ class ExportReadBase(BaseModel):
     )
 
 
+class ReferenceExportRead(ExportReadBase):
+    """A reference (id-list) export job, used to poll for status and a signed URL."""
+
+
+class SearchExportChunkRead(ReferenceExportRead):
+    """A chunk of a search export."""
+
+    chunk_index: int = Field(
+        description="The position of this chunk within the search export."
+    )
+
+
 class SearchExportRead(ExportReadBase):
     """A search export job, used to poll for status and a signed URL."""
 
+    result_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            "Signed download URL for the full export as a single file, if one "
+            "exists. Otherwise, download each of ``chunks``."
+        ),
+    )
     truncated: bool = Field(
         default=False,
         description=(
@@ -306,7 +325,10 @@ class SearchExportRead(ExportReadBase):
             "matches."
         ),
     )
-
-
-class ReferenceExportRead(ExportReadBase):
-    """A reference (id-list) export job, used to poll for status and a signed URL."""
+    chunks: list[SearchExportChunkRead] = Field(
+        default_factory=list,
+        description=(
+            "The chunks of the export, in order. Each chunk's file is available "
+            "once that chunk completes."
+        ),
+    )
