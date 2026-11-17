@@ -1229,7 +1229,7 @@ class SearchExportRepositoryBase(
 
 
 class SearchExportSQLRepository(
-    GenericAsyncSqlRepository[DomainSearchExport, SQLSearchExport, Literal["__none__"]],
+    GenericAsyncSqlRepository[DomainSearchExport, SQLSearchExport, Literal["chunks"]],
     SearchExportRepositoryBase,
 ):
     """Concrete implementation of a repository for search exports using SQL."""

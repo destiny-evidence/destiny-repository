@@ -1,5 +1,6 @@
 """Integration tests for the reference export endpoints."""
 
+import json
 from collections.abc import AsyncGenerator
 from uuid import uuid7
 
@@ -19,8 +20,10 @@ from app.api.exception_handlers import (
 )
 from app.core.exceptions import ESQueryError, NotFoundError, ParseError
 from app.domain.references import routes as references
+from app.domain.references.models.models import Reference
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.repository import ReferenceESRepository
+from app.domain.references.services.search_service import SearchService
 from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
@@ -172,6 +175,8 @@ async def test_search_export_end_to_end(
     assert body["truncated"] is False
     assert body["result_url"] is not None
     assert body["error"] is None
+    [chunk] = body["chunks"]
+    assert chunk["result_url"] == body["result_url"]
 
     lines = [line for line in captured.decode("utf-8").splitlines() if line]
     assert len(lines) == 2
@@ -179,6 +184,86 @@ async def test_search_export_end_to_end(
         destiny_sdk.references.Reference.from_jsonl(line).id for line in lines
     }
     assert parsed_ids == {matching_one.id, matching_two.id}
+
+
+async def _add_references(
+    session: AsyncSession,
+    es_reference_repository: ReferenceESRepository,
+    references: list[Reference],
+) -> None:
+    session.add_all([SQLReference.from_domain(r) for r in references])
+    await session.commit()
+    for reference in references:
+        await es_reference_repository.add(to_indexable(reference))
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
+    )
+
+
+async def test_search_export_sorts_and_truncates(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_reference_repository: ReferenceESRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The file follows the requested sort and stops at the cap."""
+    references = [
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="Climate", publication_year=year
+                    )
+                )
+            ]
+        )
+        for year in (2004, 2001, 2003, 2002)
+    ]
+    await _add_references(session, es_reference_repository, references)
+    captured = _patch_blob_storage(monkeypatch)
+    monkeypatch.setattr(SearchService, "MAX_RESULT_WINDOW", 3)
+
+    post_response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "Climate", "sort": "-publication_year"},
+    )
+    export_id = post_response.json()["id"]
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    body = (await client.get(f"/v1/references/search/exports/{export_id}/")).json()
+    assert body["status"] == "completed"
+    assert body["truncated"] is True
+    assert body["n_references"] == 3
+
+    years = [
+        json.loads(line)["enhancements"][0]["content"]["publication_year"]
+        for line in captured.decode("utf-8").splitlines()
+        if line
+    ]
+    assert years == [2004, 2003, 2002]
+
+
+async def test_search_export_with_no_matches_completes_empty(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A search with no matches produces an empty file rather than failing."""
+    captured = _patch_blob_storage(monkeypatch)
+
+    post_response = await client.post(
+        "/v1/references/search/exports/", params={"q": "nothingmatchesthis"}
+    )
+    export_id = post_response.json()["id"]
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    body = (await client.get(f"/v1/references/search/exports/{export_id}/")).json()
+    assert body["status"] == "completed"
+    assert body["n_references"] == 0
+    assert body["result_url"] is not None
+    assert len(body["chunks"]) == 1
+    assert captured == b""
 
 
 async def test_search_export_ris_end_to_end(

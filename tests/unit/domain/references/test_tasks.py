@@ -24,13 +24,17 @@ from app.domain.references.models.models import (
     RobotAutomationPercolationResult,
     RobotEnhancementBatch,
 )
+from app.domain.references.models.sql import ReferenceExport as SQLReferenceExport
 from app.domain.references.models.sql import SearchExport as SQLSearchExport
 from app.domain.references.service import ReferenceService
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
 from app.domain.references.services.enhancement_service import ProcessedResults
-from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.export_service import (
+    ReferenceExportService,
+    SearchExportService,
+)
 from app.domain.references.tasks import (
     process_reference_duplicate_decision,
     repair_reference_index_subset,
@@ -603,19 +607,28 @@ async def test_run_search_export_task_skips_non_pending_row(
     )
     export = SQLSearchExport(
         query="climate",
-        status="completed",
         result_file=existing_file.to_uri(),
         n_references=42,
         truncated=False,
     )
     session.add(export)
+    await session.flush()
+    session.add(
+        SQLReferenceExport(
+            search_export_id=export.id,
+            chunk_index=0,
+            status="completed",
+            result_file=existing_file.to_uri(),
+            n_references=42,
+        )
+    )
     await session.commit()
     export_id = export.id
 
     collect_mock = AsyncMock()
     stream_mock = AsyncMock()
     monkeypatch.setattr(SearchExportService, "_collect_search_export_ids", collect_mock)
-    monkeypatch.setattr(SearchExportService, "stream_export_file", stream_mock)
+    monkeypatch.setattr(ReferenceExportService, "stream_export_file", stream_mock)
 
     assert isinstance(broker, InMemoryBroker)
     await run_search_export_task.kiq(search_export_id=export_id, entitlements=[])
@@ -625,7 +638,6 @@ async def test_run_search_export_task_skips_non_pending_row(
     stream_mock.assert_not_awaited()
 
     await session.refresh(export)
-    assert export.status == "completed"
     assert export.result_file == existing_file.to_uri()
     assert export.n_references == 42
 

@@ -62,7 +62,10 @@ from app.domain.references.models.sql import (
     SearchExport as SQLSearchExport,
 )
 from app.domain.references.service import ReferenceService
-from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.export_service import (
+    ReferenceExportService,
+    SearchExportService,
+)
 from app.domain.references.services.search_service import SearchService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
@@ -1216,7 +1219,7 @@ async def test_request_search_export_happy_path(
         AsyncMock(return_value=([fake_reference_id], False)),
     )
     monkeypatch.setattr(
-        SearchExportService,
+        ReferenceExportService,
         "stream_export_file",
         AsyncMock(return_value=(fake_result_file, 1)),
     )
@@ -1231,6 +1234,7 @@ async def test_request_search_export_happy_path(
     assert body["status"] == "pending"
     assert body["result_url"] is None
     assert body["truncated"] is False
+    assert body["chunks"] == []
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
@@ -1243,6 +1247,11 @@ async def test_request_search_export_happy_path(
     assert status_body["truncated"] is False
     assert status_body["result_url"] is not None
     assert status_body["error"] is None
+    [chunk] = status_body["chunks"]
+    assert chunk["status"] == "completed"
+    assert chunk["chunk_index"] == 0
+    assert chunk["n_references"] == 1
+    assert chunk["result_url"] is not None
 
 
 async def test_request_search_export_marks_failed_on_error(
@@ -1272,6 +1281,40 @@ async def test_request_search_export_marks_failed_on_error(
     assert status_body["status"] == "failed"
     assert status_body["result_url"] is None
     assert "kaboom" in status_body["error"]
+
+
+async def test_search_export_chunk_failure_points_to_chunks(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test that a failed chunk fails the export and carries the real error."""
+    monkeypatch.setattr(
+        SearchExportService,
+        "_collect_search_export_ids",
+        AsyncMock(return_value=([], False)),
+    )
+    monkeypatch.setattr(
+        ReferenceExportService,
+        "stream_export_file",
+        AsyncMock(side_effect=RuntimeError("kaboom")),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+    export_id = response.json()["id"]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_body = (
+        await client.get(f"/v1/references/search/exports/{export_id}/")
+    ).json()
+    assert status_body["status"] == "failed"
+    assert "see chunks" in status_body["error"]
+    assert "kaboom" in status_body["chunks"][0]["error"]
 
 
 async def test_request_search_export_rejects_empty_query(
@@ -1354,7 +1397,6 @@ async def test_request_search_export_marks_failed_when_enqueue_fails(
 
     rows = (await session.execute(select(SQLSearchExport))).scalars().all()
     assert len(rows) == 1
-    assert rows[0].status == "failed"
     assert "broker down" in rows[0].error
 
 
@@ -1364,10 +1406,7 @@ async def test_get_search_export_pending_has_no_url(
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """A pending export exposes no signed URL until the file is ready."""
-    export = SQLSearchExport(
-        query="climate",
-        status="pending",
-    )
+    export = SQLSearchExport(query="climate")
     session.add(export)
     await session.commit()
 
@@ -1377,6 +1416,7 @@ async def test_get_search_export_pending_has_no_url(
     assert body["status"] == "pending"
     assert body["result_url"] is None
     assert body["n_references"] is None
+    assert body["chunks"] == []
 
 
 async def test_make_duplicate_decisions_mark_canonical_and_duplicate(
