@@ -197,7 +197,7 @@ async def test_stream_export_file_uses_format_extension_and_path() -> None:
     kwargs = reference_service.stream_references_to_blob.await_args.kwargs
     assert kwargs["filename"] == f"{export_id}.ris"
     assert kwargs["export_format"] == ExportFormat.RIS
-    assert kwargs["path"] == "reference_exports"
+    assert kwargs["path"] == "exports"
 
 
 async def test_request_reference_export_rejects_unknown_ids() -> None:

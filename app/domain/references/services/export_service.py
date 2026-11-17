@@ -117,7 +117,7 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
             export_format=export_format,
             access_control_service=self._access_control_service,
             blob_repository=blob_repository,
-            path="reference_exports",
+            path="exports",
             filename=f"{export_id}.{export_format.extension}",
             chunk_size=chunk_size,
         )
