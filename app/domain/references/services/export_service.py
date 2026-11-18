@@ -90,12 +90,22 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         n_references: int,
     ) -> ReferenceExport:
         """Mark a reference export as completed."""
-        return await self.sql_uow.reference_exports.update_by_pk(
+        completed = await self.sql_uow.reference_exports.update_by_pk(
             pk=export_id,
             status=ExportStatus.COMPLETED,
             result_file=result_file.to_uri(),
             n_references=n_references,
         )
+        if completed.search_export_id is not None:
+            chunks = await self.sql_uow.reference_exports.find(
+                search_export_id=completed.search_export_id, limit=2
+            )
+            # A sole chunk is the whole search export.
+            if len(chunks) == 1:
+                await self.sql_uow.search_exports.update_by_pk(
+                    pk=completed.search_export_id, result_file=result_file.to_uri()
+                )
+        return completed
 
     @sql_unit_of_work
     async def stream_export_file(
@@ -267,14 +277,6 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         )
         return chunk
 
-    @sql_unit_of_work
-    async def _attach_result_file(
-        self, export_id: UUID, result_file: BlobStorageFile
-    ) -> SearchExport:
-        return await self.sql_uow.search_exports.update_by_pk(
-            pk=export_id, result_file=result_file.to_uri()
-        )
-
     async def run(self, export_id: UUID, blob_repository: BlobRepository) -> None:
         """Run a queued search export end-to-end."""
         search_export = await self.get(export_id)
@@ -291,11 +293,9 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             chunk = await self._add_chunk(
                 search_export, len(reference_ids), truncated=truncated
             )
-            finished = await self._reference_export_service.run(
+            await self._reference_export_service.run(
                 chunk.id, blob_repository, reference_ids=reference_ids
             )
-            if finished and finished.result_file:
-                await self._attach_result_file(export_id, finished.result_file)
         except Exception as exc:
             logger.exception("Search export failed", search_export_id=str(export_id))
             await self.fail(export_id, f"Failed to run export task: {exc}")

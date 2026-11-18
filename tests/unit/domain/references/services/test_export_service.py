@@ -371,20 +371,16 @@ def _search_export_service(search_export: SearchExport) -> Any:
     service._add_chunk = AsyncMock(  # type: ignore[method-assign] # noqa: SLF001
         return_value=_chunk(ExportStatus.PENDING)
     )
-    service._attach_result_file = AsyncMock()  # type: ignore[method-assign] # noqa: SLF001
     service.fail = AsyncMock()  # type: ignore[method-assign]
     service._reference_export_service = MagicMock()  # noqa: SLF001
     service._reference_export_service.run = AsyncMock()  # noqa: SLF001
     return service
 
 
-async def test_run_search_export_runs_single_chunk_and_attaches_file() -> None:
-    """The search's ids are exported as one chunk whose file the export adopts."""
+async def test_run_search_export_runs_single_chunk() -> None:
+    """The search's ids are exported as one chunk."""
     search_export = SearchExport(query=SearchQuery(query_string="x"), chunks=[])
     service = _search_export_service(search_export)
-    completed = _chunk(ExportStatus.COMPLETED)
-    completed.result_file = BlobStorageFileFactory.build()
-    service._reference_export_service.run.return_value = completed  # noqa: SLF001
     blob_repository = MagicMock()
 
     await service.run(search_export.id, blob_repository)
@@ -393,9 +389,6 @@ async def test_run_search_export_runs_single_chunk_and_attaches_file() -> None:
     chunk = service._add_chunk.return_value  # noqa: SLF001
     service._reference_export_service.run.assert_awaited_once_with(  # noqa: SLF001
         chunk.id, blob_repository, reference_ids=reference_ids
-    )
-    service._attach_result_file.assert_awaited_once_with(  # noqa: SLF001
-        search_export.id, completed.result_file
     )
     service.fail.assert_not_awaited()
 
