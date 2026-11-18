@@ -802,3 +802,76 @@ async def test_lowercase_pending_enhancement_index_migration(
 
     assert entries_downgraded == 0
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["3031d2ef42c9"])
+async def test_lowercase_pending_enhancement_statuses_migration(
+    db_at_migration: str,
+) -> None:
+    """Legacy uppercase statuses are lowercased, or failed if non-terminal."""
+    engine = create_async_engine(db_at_migration, future=True)
+    now = datetime.datetime.now(datetime.UTC)
+    reference_id, robot_id = str(uuid7()), str(uuid7())
+    # (pending enhancement id, status)
+    pending_enhancements = (
+        (legacy_pending := str(uuid7()), "PENDING"),
+        (legacy_processing := str(uuid7()), "PROCESSING"),
+        (legacy_completed := str(uuid7()), "COMPLETED"),
+        (legacy_failed := str(uuid7()), "FAILED"),
+        (legacy_indexing_failed := str(uuid7()), "INDEXING_FAILED"),
+        (current_processing := str(uuid7()), "processing"),
+        (current_pending := str(uuid7()), "pending"),
+    )
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO reference (id, visibility, created_at, updated_at) "
+                "VALUES (:id, 'public', :now, :now)"
+            ),
+            {"id": reference_id, "now": now},
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO robot (id, name, description, owner, client_secret, "
+                "created_at, updated_at) "
+                "VALUES (:id, 'R', 'd', 'o@e.com', 's', :now, :now)"
+            ),
+            {"id": robot_id, "now": now},
+        )
+        for pending_enhancement_id, status in pending_enhancements:
+            await conn.execute(
+                sa.text(
+                    "INSERT INTO pending_enhancement (id, reference_id, robot_id, "
+                    "status, expires_at, created_at, updated_at) "
+                    "VALUES (:id, :reference_id, :robot_id, :status, :now, :now, "
+                    ":now)"
+                ),
+                {
+                    "id": pending_enhancement_id,
+                    "reference_id": reference_id,
+                    "robot_id": robot_id,
+                    "status": status,
+                    "now": now,
+                },
+            )
+
+    await run_migration(db_at_migration, "5215ff42a003")
+
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            sa.text("SELECT id, status FROM pending_enhancement")
+        )
+        stored = {str(row.id): row.status for row in result}
+
+    assert stored == {
+        legacy_pending: "failed",
+        legacy_processing: "failed",
+        legacy_completed: "completed",
+        legacy_failed: "failed",
+        legacy_indexing_failed: "indexing_failed",
+        current_processing: "processing",
+        current_pending: "pending",
+    }
+    await engine.dispose()
