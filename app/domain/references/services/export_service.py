@@ -245,7 +245,6 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             sort=search_export.sort,
             limit=cap,
             page_size=ES_MAX_PAGE_SIZE,
-            score=not search_export.sort,
         ):
             total = page.total.value
             reference_ids.extend(hit.id for hit in page.hits)
