@@ -738,3 +738,67 @@ async def test_lowercase_community_imported_dois_migration(
         unimported_doi: "10.1234/UNIMPORTED-DOI",
     }
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["04af6b0321f6"])
+async def test_lowercase_pending_enhancement_index_migration(
+    db_at_migration: str,
+) -> None:
+    """The processing index only contains processing rows after the migration."""
+    engine = create_async_engine(db_at_migration, future=True)
+    now = datetime.datetime.now(datetime.UTC)
+    reference_id, robot_id = str(uuid7()), str(uuid7())
+    index_entries = sa.text(
+        "SELECT tuple_count FROM pgstattuple('ix_pending_enhancement_processing')"
+    )
+
+    async with engine.begin() as conn:
+        await conn.execute(sa.text("CREATE EXTENSION pgstattuple"))
+        await conn.execute(
+            sa.text(
+                "INSERT INTO reference (id, visibility, created_at, updated_at) "
+                "VALUES (:id, 'public', :now, :now)"
+            ),
+            {"id": reference_id, "now": now},
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO robot (id, name, description, owner, client_secret, "
+                "created_at, updated_at) "
+                "VALUES (:id, 'R', 'd', 'o@e.com', 's', :now, :now)"
+            ),
+            {"id": robot_id, "now": now},
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO pending_enhancement (id, reference_id, robot_id, "
+                "status, expires_at, created_at, updated_at) "
+                "VALUES (:id, :reference_id, :robot_id, 'processing', :now, :now, "
+                ":now)"
+            ),
+            {
+                "id": str(uuid7()),
+                "reference_id": reference_id,
+                "robot_id": robot_id,
+                "now": now,
+            },
+        )
+        entries_before = (await conn.execute(index_entries)).scalar_one()
+
+    assert entries_before == 0
+
+    await run_migration(db_at_migration, "3031d2ef42c9")
+
+    async with engine.begin() as conn:
+        entries_after = (await conn.execute(index_entries)).scalar_one()
+
+    assert entries_after == 1
+
+    await run_downgrade(db_at_migration, "04af6b0321f6")
+
+    async with engine.begin() as conn:
+        entries_downgraded = (await conn.execute(index_entries)).scalar_one()
+
+    assert entries_downgraded == 0
+    await engine.dispose()
