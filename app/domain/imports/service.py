@@ -302,7 +302,11 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         if not await self._record_distribution(
             import_batch.id,
             ImportDistributionStatus.STARTED,
-            (None, ImportDistributionStatus.STARTED),
+            (
+                None,
+                ImportDistributionStatus.STARTED,
+                ImportDistributionStatus.FAILED,
+            ),
         ):
             return
         progress = _DistributionProgress()

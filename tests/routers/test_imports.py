@@ -458,7 +458,7 @@ async def test_download_failure_fails_the_batch_with_its_status_code(
         (None, ImportDistributionStatus.COMPLETED, 1),
         (ImportDistributionStatus.STARTED, ImportDistributionStatus.COMPLETED, 1),
         (ImportDistributionStatus.COMPLETED, ImportDistributionStatus.COMPLETED, 0),
-        (ImportDistributionStatus.FAILED, ImportDistributionStatus.FAILED, 0),
+        (ImportDistributionStatus.FAILED, ImportDistributionStatus.COMPLETED, 1),
     ],
 )
 async def test_a_delivery_distributes_only_an_unfinished_batch(  # noqa: PLR0913
@@ -470,7 +470,7 @@ async def test_a_delivery_distributes_only_an_unfinished_batch(  # noqa: PLR0913
     after: ImportDistributionStatus,
     fetches: int,
 ) -> None:
-    """A redelivery resumes a started batch; a finished one keeps its outcome."""
+    """A redelivery replays a started or failed batch, never a completed one."""
     registered_batch.distribution_status = before
     await session.commit()
     httpx2_mock.add_response(
