@@ -37,6 +37,12 @@ def import_result():
     )
 
 
+@pytest.fixture
+def unrecorded_distribution(monkeypatch):
+    """These tests cover queuing; the router tests cover the recorded status."""
+    monkeypatch.setattr(ImportService, "_record_distribution", AsyncMock())
+
+
 @pytest.mark.asyncio
 async def test_register_import(fake_repository, fake_uow):
     repo_imports = fake_repository()
@@ -186,6 +192,7 @@ async def test_import_reference_sql_integrity_error(
     assert result.status == ImportResultStatus.RETRYING
 
 
+@pytest.mark.usefixtures("unrecorded_distribution")
 class TestDistributeImportBatch:
     """Tests for distribute_import_batch method."""
 
@@ -377,6 +384,7 @@ class TestDistributeImportBatch:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("unrecorded_distribution")
 async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
     """A 3xx response from storage is rejected (redirect prevention)."""
     batch_id = uuid7()

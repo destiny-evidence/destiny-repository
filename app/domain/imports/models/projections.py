@@ -5,6 +5,7 @@ from app.domain.base import GenericProjection
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchStatus,
+    ImportDistributionStatus,
     ImportResultStatus,
 )
 
@@ -18,11 +19,25 @@ class ImportBatchStatusProjection(GenericProjection[ImportBatch]):
         import_batch: ImportBatch,
         import_result_status_set: set[ImportResultStatus],
     ) -> ImportBatch:
-        """Project the import batch status from a set of import result statuses."""
-        # No results or nothing begun processing -> created
-        if not import_result_status_set or import_result_status_set == {
-            ImportResultStatus.CREATED
-        }:
+        """Project the import batch status from its distribution and result statuses."""
+        # Distribution still running or stopped short -> results can't complete it
+        if import_batch.distribution_status == ImportDistributionStatus.STARTED:
+            import_batch.status = ImportBatchStatus.STARTED
+        elif import_batch.distribution_status == ImportDistributionStatus.FAILED:
+            import_batch.status = ImportBatchStatus.FAILED
+
+        # Distributed to EOF with nothing to import -> completed
+        elif (
+            import_batch.distribution_status == ImportDistributionStatus.COMPLETED
+            and not import_result_status_set
+        ):
+            import_batch.status = ImportBatchStatus.COMPLETED
+
+        # No results or nothing begun processing -> created, until distributed to EOF
+        elif not import_result_status_set or (
+            import_result_status_set == {ImportResultStatus.CREATED}
+            and import_batch.distribution_status != ImportDistributionStatus.COMPLETED
+        ):
             import_batch.status = ImportBatchStatus.CREATED
 
         # Something in progress -> started

@@ -20,6 +20,7 @@ from app.core.exceptions import (
 )
 from app.domain.imports.models.models import (
     ImportBatchStatus,
+    ImportDistributionStatus,
     ImportResultStatus,
 )
 from app.domain.imports.models.sql import (
@@ -931,12 +932,13 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
 
 
 @pytest.mark.parametrize(
-    ("result_statuses", "expected_status"),
+    ("distribution_status", "result_statuses", "expected_status"),
     [
-        ([], ImportBatchStatus.CREATED),
-        ([ImportResultStatus.CREATED], ImportBatchStatus.CREATED),
-        ([ImportResultStatus.STARTED], ImportBatchStatus.STARTED),
+        (None, [], ImportBatchStatus.CREATED),
+        (None, [ImportResultStatus.CREATED], ImportBatchStatus.CREATED),
+        (None, [ImportResultStatus.STARTED], ImportBatchStatus.STARTED),
         (
+            None,
             [
                 ImportResultStatus.FAILED,
                 ImportResultStatus.FAILED,
@@ -948,23 +950,48 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
             ],
             ImportBatchStatus.FAILED,
         ),
-        ([ImportResultStatus.COMPLETED], ImportBatchStatus.COMPLETED),
+        (None, [ImportResultStatus.COMPLETED], ImportBatchStatus.COMPLETED),
         (
+            None,
             [ImportResultStatus.STARTED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.STARTED,
         ),
         (
+            None,
             [ImportResultStatus.FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,
         ),
         (
+            None,
             [ImportResultStatus.PARTIALLY_FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,
+        ),
+        (
+            ImportDistributionStatus.STARTED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.STARTED,
+        ),
+        (
+            ImportDistributionStatus.FAILED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.FAILED,
+        ),
+        (ImportDistributionStatus.COMPLETED, [], ImportBatchStatus.COMPLETED),
+        (
+            ImportDistributionStatus.COMPLETED,
+            [ImportResultStatus.CREATED],
+            ImportBatchStatus.STARTED,
+        ),
+        (
+            ImportDistributionStatus.COMPLETED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.COMPLETED,
         ),
     ],
 )
 async def test_import_batch_status_projection(
     session: AsyncSession,
+    distribution_status: ImportDistributionStatus | None,
     result_statuses: list[ImportResultStatus],
     expected_status: ImportBatchStatus,
 ):
@@ -985,6 +1012,7 @@ async def test_import_batch_status_projection(
         id=batch_id,
         import_record_id=record_id,
         storage_url="https://example.com/bucket",
+        distribution_status=distribution_status,
     )
     session.add(batch)
     for status in result_statuses:

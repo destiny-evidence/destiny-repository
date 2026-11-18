@@ -6,20 +6,25 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid7
 
 import pytest
+import tenacity
+from azure.servicebus.exceptions import ServiceBusServerBusyError
 from elasticsearch import AsyncElasticsearch
 from fastapi import FastAPI, status
-from httpx2 import ASGITransport, AsyncClient
-from sqlalchemy import select
+from httpx2 import ASGITransport, AsyncClient, HTTPStatusError
+from pytest_httpx2 import HTTPXMock
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-from taskiq import InMemoryBroker
+from taskiq import BrokerMessage, InMemoryBroker, SendTaskError
 
 from app.api.exception_handlers import not_found_exception_handler
 from app.core.config import Environment
 from app.core.exceptions import NotFoundError
 from app.domain.imports import routes as imports
+from app.domain.imports import tasks as import_tasks
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchStatus,
+    ImportDistributionStatus,
     ImportRecordStatus,
     ImportResultStatus,
 )
@@ -312,6 +317,241 @@ async def test_get_import_batch_summary(
         "Some failure details.",
         "Some other failure details.",
     ]
+
+
+@pytest.fixture
+async def registered_batch(
+    session: AsyncSession, valid_import: SQLImportRecord
+) -> SQLImportBatch:
+    """Register a batch whose file each test serves."""
+    session.add(valid_import)
+    await session.commit()
+    batch = SQLImportBatch(
+        import_record_id=valid_import.id,
+        storage_url="https://example.org/batch.jsonl",
+    )
+    session.add(batch)
+    await session.commit()
+    return batch
+
+
+@pytest.fixture
+def thirty_line_batch(
+    registered_batch: SQLImportBatch,
+    httpx2_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> SQLImportBatch:
+    """Serve a 30-line file for the batch, and retry without waiting."""
+    httpx2_mock.add_response(
+        url=registered_batch.storage_url,
+        text="".join(f"line {n}\n" for n in range(1, 31)),
+        is_reusable=True,
+    )
+    monkeypatch.setattr(
+        tenacity, "wait_exponential", lambda **_kwargs: tenacity.wait_none()
+    )
+    return registered_batch
+
+
+def summary_url(batch: SQLImportBatch) -> str:
+    """Build the batch summary path an importer polls."""
+    return f"/v1/imports/records/{batch.import_record_id}/batches/{batch.id}/summary/"
+
+
+async def complete_results(session: AsyncSession, batch: SQLImportBatch) -> None:
+    """Stand in for the import_reference tasks the stubbed broker never runs."""
+    await session.execute(
+        update(SQLImportResult)
+        .where(SQLImportResult.import_batch_id == batch.id)
+        .values(status=ImportResultStatus.COMPLETED)
+    )
+    await session.commit()
+
+
+async def test_throttled_distribution_fails_after_its_last_committed_line(
+    client: AsyncClient,
+    session: AsyncSession,
+    thirty_line_batch: SQLImportBatch,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Line 27 is throttled on every attempt: started while retrying, then failed."""
+    batch = thirty_line_batch
+    kicks = 0
+    status_while_retrying = None
+
+    async def kick(_message: BrokerMessage) -> None:
+        nonlocal kicks, status_while_retrying
+        kicks += 1
+        if kicks == 28:
+            await complete_results(session, batch)
+            response = await client.get(summary_url(batch))
+            status_while_retrying = response.json()["import_batch_status"]
+        if kicks > 26:
+            raise ServiceBusServerBusyError
+
+    monkeypatch.setattr(broker, "kick", kick)
+
+    with pytest.raises(SendTaskError):
+        await import_tasks.distribute_import_batch(batch.import_record_id, batch.id)
+
+    summary = (await client.get(summary_url(batch))).json()
+    assert status_while_retrying == ImportBatchStatus.STARTED
+    assert summary["import_batch_status"] == ImportBatchStatus.FAILED
+    assert summary["results"][ImportResultStatus.COMPLETED] == 26
+    assert summary["failure_details"] == [
+        "Distribution stopped after line 26 (ServiceBusServerBusyError)."
+    ]
+
+
+async def test_throttled_distribution_completes_when_a_retry_succeeds(
+    client: AsyncClient,
+    session: AsyncSession,
+    thirty_line_batch: SQLImportBatch,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The retry resumes at line 27, so every line is queued exactly once."""
+    batch = thirty_line_batch
+    kicks = 0
+
+    async def kick(_message: BrokerMessage) -> None:
+        nonlocal kicks
+        kicks += 1
+        if kicks == 27:
+            raise ServiceBusServerBusyError
+
+    monkeypatch.setattr(broker, "kick", kick)
+
+    await import_tasks.distribute_import_batch(batch.import_record_id, batch.id)
+    queued = (await client.get(summary_url(batch))).json()
+    await complete_results(session, batch)
+
+    summary = (await client.get(summary_url(batch))).json()
+    assert kicks == 31
+    assert queued["import_batch_status"] == ImportBatchStatus.STARTED
+    assert summary["import_batch_status"] == ImportBatchStatus.COMPLETED
+    assert summary["results"][ImportResultStatus.COMPLETED] == 30
+
+
+async def test_download_failure_fails_the_batch_with_its_status_code(
+    client: AsyncClient,
+    registered_batch: SQLImportBatch,
+    httpx2_mock: HTTPXMock,
+) -> None:
+    """An expired link reads as failed, naming the status code but not the URL."""
+    httpx2_mock.add_response(url=registered_batch.storage_url, status_code=403)
+
+    with pytest.raises(HTTPStatusError):
+        await import_tasks.distribute_import_batch(
+            registered_batch.import_record_id, registered_batch.id
+        )
+
+    summary = (await client.get(summary_url(registered_batch))).json()
+    assert summary["import_batch_status"] == ImportBatchStatus.FAILED
+    assert summary["failure_details"] == [
+        "Distribution stopped after line 0 (HTTP 403)."
+    ]
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "fetches"),
+    [
+        (None, ImportDistributionStatus.COMPLETED, 1),
+        (ImportDistributionStatus.STARTED, ImportDistributionStatus.COMPLETED, 1),
+        (ImportDistributionStatus.COMPLETED, ImportDistributionStatus.COMPLETED, 0),
+        (ImportDistributionStatus.FAILED, ImportDistributionStatus.FAILED, 0),
+    ],
+)
+async def test_a_delivery_distributes_only_an_unfinished_batch(  # noqa: PLR0913
+    session: AsyncSession,
+    registered_batch: SQLImportBatch,
+    httpx2_mock: HTTPXMock,
+    monkeypatch: pytest.MonkeyPatch,
+    before: ImportDistributionStatus | None,
+    after: ImportDistributionStatus,
+    fetches: int,
+) -> None:
+    """A redelivery resumes a started batch; a finished one keeps its outcome."""
+    registered_batch.distribution_status = before
+    await session.commit()
+    httpx2_mock.add_response(
+        url=registered_batch.storage_url, text="line 1\n", is_optional=True
+    )
+    monkeypatch.setattr(broker, "kick", AsyncMock())
+
+    await import_tasks.distribute_import_batch(
+        registered_batch.import_record_id, registered_batch.id
+    )
+
+    await session.refresh(registered_batch)
+    assert registered_batch.distribution_status == after
+    assert len(httpx2_mock.get_requests()) == fetches
+
+
+async def test_a_failure_does_not_overwrite_an_overlapping_completion(
+    session: AsyncSession,
+    thirty_line_batch: SQLImportBatch,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another delivery reaches EOF while this one is throttled out."""
+    batch = thirty_line_batch
+    kicks = 0
+
+    async def kick(_message: BrokerMessage) -> None:
+        nonlocal kicks
+        kicks += 1
+        if kicks == 27:
+            batch.distribution_status = ImportDistributionStatus.COMPLETED
+            await session.commit()
+        if kicks >= 27:
+            raise ServiceBusServerBusyError
+
+    monkeypatch.setattr(broker, "kick", kick)
+
+    with pytest.raises(SendTaskError):
+        await import_tasks.distribute_import_batch(batch.import_record_id, batch.id)
+
+    await session.refresh(batch)
+    assert batch.distribution_status == ImportDistributionStatus.COMPLETED
+
+
+async def test_reaching_eof_overrides_an_overlapping_failure(
+    session: AsyncSession,
+    thirty_line_batch: SQLImportBatch,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Another delivery fails while this one queues every line."""
+    batch = thirty_line_batch
+    kicks = 0
+
+    async def kick(_message: BrokerMessage) -> None:
+        nonlocal kicks
+        kicks += 1
+        if kicks == 10:
+            batch.distribution_status = ImportDistributionStatus.FAILED
+            await session.commit()
+
+    monkeypatch.setattr(broker, "kick", kick)
+
+    await import_tasks.distribute_import_batch(batch.import_record_id, batch.id)
+
+    await session.refresh(batch)
+    assert batch.distribution_status == ImportDistributionStatus.COMPLETED
+
+
+async def test_an_empty_file_completes(
+    client: AsyncClient,
+    registered_batch: SQLImportBatch,
+    httpx2_mock: HTTPXMock,
+) -> None:
+    """A file with only blank lines has nothing to import, so the batch is done."""
+    httpx2_mock.add_response(url=registered_batch.storage_url, text="\n \n")
+
+    await import_tasks.distribute_import_batch(
+        registered_batch.import_record_id, registered_batch.id
+    )
+
+    summary = (await client.get(summary_url(registered_batch))).json()
+    assert summary["import_batch_status"] == ImportBatchStatus.COMPLETED
 
 
 async def test_get_import_results(
