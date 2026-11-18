@@ -1,6 +1,7 @@
 """Test Alembic migration from 1d8078bc0a95 to 41a6980bb04e."""
 
 import datetime
+from collections.abc import Sequence
 from uuid import uuid7
 
 import pytest
@@ -9,7 +10,7 @@ import sqlalchemy as sa
 from alembic.command import downgrade, upgrade
 from destiny_sdk.enhancements import EnhancementType
 from destiny_sdk.identifiers import ExternalIdentifierType
-from sqlalchemy.ext.asyncio import create_async_engine
+from sqlalchemy.ext.asyncio import AsyncConnection, create_async_engine
 
 from tests import conftest
 from tests.db_utils import alembic_config_from_url, tmp_database
@@ -34,6 +35,66 @@ async def run_downgrade(db_url: str, target_revision: str) -> None:
         await conftest.MIGRATION_TASK
 
 
+async def insert_reference(conn: AsyncConnection) -> str:
+    """Insert a public reference, returning its id."""
+    reference_id = str(uuid7())
+    await conn.execute(
+        sa.text(
+            "INSERT INTO reference (id, visibility, created_at, updated_at) "
+            "VALUES (:id, 'public', :now, :now)"
+        ),
+        {"id": reference_id, "now": datetime.datetime.now(datetime.UTC)},
+    )
+    return reference_id
+
+
+async def insert_robot(conn: AsyncConnection) -> str:
+    """Insert a robot, returning its id."""
+    robot_id = str(uuid7())
+    await conn.execute(
+        sa.text(
+            "INSERT INTO robot (id, name, description, owner, client_secret, "
+            "created_at, updated_at) "
+            "VALUES (:id, 'R', 'd', 'o@e.com', 's', :now, :now)"
+        ),
+        {"id": robot_id, "now": datetime.datetime.now(datetime.UTC)},
+    )
+    return robot_id
+
+
+async def insert_pending_enhancements(
+    conn: AsyncConnection,
+    reference_id: str,
+    robot_id: str,
+    statuses: Sequence[str],
+    enhancement_request_id: str | None = None,
+) -> list[str]:
+    """Insert a pending enhancement per status, returning their ids in order."""
+    now = datetime.datetime.now(datetime.UTC)
+    pending_enhancement_ids = [str(uuid7()) for _ in statuses]
+    for pending_enhancement_id, status in zip(
+        pending_enhancement_ids, statuses, strict=True
+    ):
+        await conn.execute(
+            sa.text(
+                "INSERT INTO pending_enhancement (id, reference_id, robot_id, "
+                "enhancement_request_id, status, expires_at, created_at, "
+                "updated_at) "
+                "VALUES (:id, :reference_id, :robot_id, :enhancement_request_id, "
+                ":status, :now, :now, :now)"
+            ),
+            {
+                "id": pending_enhancement_id,
+                "reference_id": reference_id,
+                "robot_id": robot_id,
+                "enhancement_request_id": enhancement_request_id,
+                "status": status,
+                "now": now,
+            },
+        )
+    return pending_enhancement_ids
+
+
 @pytest_asyncio.fixture
 async def db_at_migration(migration_id: str):
     """Create temporary database and applies migrations up to the migration id."""
@@ -51,36 +112,9 @@ async def test_migrate_1d80_to_41a69(db_at_migration: str) -> None:
 
     # Insert a pending_enhancement row with status 'ACCEPTED'
     async with engine.begin() as conn:
-        # Insert minimal required reference and robot for FKs
         now = datetime.datetime.now(datetime.UTC)
-        await conn.execute(
-            sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) VALUES "
-                "(:id, :visibility, :created_at, :updated_at)"
-            ),
-            {
-                "id": (ref_id := str(uuid7())),
-                "visibility": "public",
-                "created_at": now,
-                "updated_at": now,
-            },
-        )
-        await conn.execute(
-            sa.text(
-                "INSERT INTO robot "
-                "(id, name, description, owner, client_secret, created_at, updated_at) "
-                "VALUES (:id, :name, :desc, :owner, :secret, :created_at, :updated_at)"
-            ),
-            {
-                "id": (rob_id := str(uuid7())),
-                "name": "Test Robot",
-                "desc": "desc",
-                "owner": "owner@example.com",
-                "secret": "secret",
-                "created_at": now,
-                "updated_at": now,
-            },
-        )
+        ref_id = await insert_reference(conn)
+        rob_id = await insert_robot(conn)
 
         # Insert pending_enhancement with status 'ACCEPTED'
         await conn.execute(
@@ -140,20 +174,7 @@ async def test_migrate_41a69_to_1a717(db_at_migration: str) -> None:
 
     async with engine.begin() as conn:
         now = datetime.datetime.now(datetime.UTC)
-
-        # Insert a reference
-        await conn.execute(
-            sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) "
-                "VALUES (:id, :visibility, :created_at, :updated_at)"
-            ),
-            {
-                "id": (ref_id := str(uuid7())),
-                "visibility": "public",
-                "created_at": now,
-                "updated_at": now,
-            },
-        )
+        ref_id = await insert_reference(conn)
 
         # Insert an external identifier
         await conn.execute(
@@ -242,24 +263,11 @@ async def test_pending_enhancement_unique_index_fails_fast_on_duplicates(
     db_url = db_at_migration
     engine = create_async_engine(db_url, future=True)
     now = datetime.datetime.now(datetime.UTC)
-    ref_id, rob_id, req_id = str(uuid7()), str(uuid7()), str(uuid7())
+    req_id = str(uuid7())
 
     async with engine.begin() as conn:
-        await conn.execute(
-            sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) "
-                "VALUES (:id, 'public', :now, :now)"
-            ),
-            {"id": ref_id, "now": now},
-        )
-        await conn.execute(
-            sa.text(
-                "INSERT INTO robot (id, name, description, owner, client_secret, "
-                "created_at, updated_at) "
-                "VALUES (:id, 'R', 'd', 'o@e.com', 's', :now, :now)"
-            ),
-            {"id": rob_id, "now": now},
-        )
+        ref_id = await insert_reference(conn)
+        rob_id = await insert_robot(conn)
         await conn.execute(
             sa.text(
                 "INSERT INTO enhancement_request (id, reference_ids, robot_id, "
@@ -270,22 +278,9 @@ async def test_pending_enhancement_unique_index_fails_fast_on_duplicates(
         )
         # Two original (retry_of NULL) pending enhancements for the same
         # (request, reference): exactly what the new index forbids.
-        for _ in range(2):
-            await conn.execute(
-                sa.text(
-                    "INSERT INTO pending_enhancement (id, reference_id, robot_id, "
-                    "enhancement_request_id, status, expires_at, created_at, "
-                    "updated_at) "
-                    "VALUES (:id, :ref, :rob, :req, 'pending', :now, :now, :now)"
-                ),
-                {
-                    "id": str(uuid7()),
-                    "ref": ref_id,
-                    "rob": rob_id,
-                    "req": req_id,
-                    "now": now,
-                },
-            )
+        await insert_pending_enhancements(
+            conn, ref_id, rob_id, ["pending", "pending"], enhancement_request_id=req_id
+        )
 
     with pytest.raises(RuntimeError, match="multiple original pending enhancements"):
         await run_migration(db_url, "9b2f1c4d7e83")
@@ -303,7 +298,6 @@ async def test_duplicate_decision_provenance_migration_classifies_known_manual_e
     now = datetime.datetime.now(datetime.UTC)
     eef_record_id, other_record_id = str(uuid7()), str(uuid7())
     eef_batch_id, other_batch_id = str(uuid7()), str(uuid7())
-    canonical_target_id = str(uuid7())
     (
         manual_eef_canonical_id,
         manual_eef_duplicate_id,
@@ -314,13 +308,7 @@ async def test_duplicate_decision_provenance_migration_classifies_known_manual_e
     ) = (str(uuid7()) for _ in range(6))
 
     async with engine.begin() as conn:
-        await conn.execute(
-            sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) "
-                "VALUES (:id, 'public', :now, :now)"
-            ),
-            {"id": canonical_target_id, "now": now},
-        )
+        canonical_target_id = await insert_reference(conn)
         for record_id, source_name in (
             (eef_record_id, "eef-eppi-review-export-2026"),
             (other_record_id, "openalex"),
@@ -487,7 +475,6 @@ async def test_enhancement_supersession_columns_migration(db_at_migration: str) 
     """Existing rows skip validation; inserts and updates require a root_id."""
     engine = create_async_engine(db_at_migration, future=True)
     now = datetime.datetime.now(datetime.UTC)
-    reference_id = str(uuid7())
     existing_id = str(uuid7())
     insert_enhancement = sa.text(
         "INSERT INTO enhancement "
@@ -496,13 +483,7 @@ async def test_enhancement_supersession_columns_migration(db_at_migration: str) 
         "VALUES (:id, :reference_id, 'public', 'test', 'abstract', '{}', :now, :now)"
     )
     async with engine.begin() as conn:
-        await conn.execute(
-            sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) "
-                "VALUES (:id, 'public', :now, :now)"
-            ),
-            {"id": reference_id, "now": now},
-        )
+        reference_id = await insert_reference(conn)
         await conn.execute(
             insert_enhancement,
             {"id": existing_id, "reference_id": reference_id, "now": now},
@@ -634,31 +615,22 @@ async def test_lowercase_community_imported_dois_migration(
 
     async with engine.begin() as conn:
 
-        async def insert_reference(batch_id: str | None) -> str:
-            reference_id = str(uuid7())
+        async def insert_imported_reference(batch_id: str) -> str:
+            reference_id = await insert_reference(conn)
             await conn.execute(
                 sa.text(
-                    "INSERT INTO reference (id, visibility, created_at, updated_at) "
-                    "VALUES (:id, 'public', :now, :now)"
+                    "INSERT INTO import_result "
+                    "(id, import_batch_id, status, reference_id, created_at, "
+                    "updated_at) "
+                    "VALUES (:id, :batch_id, 'imported', :reference_id, :now, :now)"
                 ),
-                {"id": reference_id, "now": now},
+                {
+                    "id": str(uuid7()),
+                    "batch_id": batch_id,
+                    "reference_id": reference_id,
+                    "now": now,
+                },
             )
-            if batch_id:
-                await conn.execute(
-                    sa.text(
-                        "INSERT INTO import_result "
-                        "(id, import_batch_id, status, reference_id, created_at, "
-                        "updated_at) "
-                        "VALUES (:id, :batch_id, 'imported', :reference_id, "
-                        ":now, :now)"
-                    ),
-                    {
-                        "id": str(uuid7()),
-                        "batch_id": batch_id,
-                        "reference_id": reference_id,
-                        "now": now,
-                    },
-                )
             return reference_id
 
         batch_ids = {}
@@ -688,20 +660,22 @@ async def test_lowercase_community_imported_dois_migration(
                 },
             )
 
-        community_reference_id = await insert_reference(batch_ids["community-export"])
+        community_reference_id = await insert_imported_reference(
+            batch_ids["community-export"]
+        )
         # (identifier id, reference, type, identifier)
         identifiers = (
             (community_doi, community_reference_id, "doi", "10.1234/COMMUNITY-DOI"),
             (community_eric, community_reference_id, "eric", "ED123456"),
             (
                 openalex_doi,
-                await insert_reference(batch_ids["openalex"]),
+                await insert_imported_reference(batch_ids["openalex"]),
                 "doi",
                 "10.1234/OPENALEX-DOI",
             ),
             (
                 unimported_doi,
-                await insert_reference(None),
+                await insert_reference(conn),
                 "doi",
                 "10.1234/UNIMPORTED-DOI",
             ),
@@ -747,43 +721,15 @@ async def test_lowercase_pending_enhancement_index_migration(
 ) -> None:
     """The processing index only contains processing rows after the migration."""
     engine = create_async_engine(db_at_migration, future=True)
-    now = datetime.datetime.now(datetime.UTC)
-    reference_id, robot_id = str(uuid7()), str(uuid7())
     index_entries = sa.text(
         "SELECT tuple_count FROM pgstattuple('ix_pending_enhancement_processing')"
     )
 
     async with engine.begin() as conn:
         await conn.execute(sa.text("CREATE EXTENSION pgstattuple"))
-        await conn.execute(
-            sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) "
-                "VALUES (:id, 'public', :now, :now)"
-            ),
-            {"id": reference_id, "now": now},
-        )
-        await conn.execute(
-            sa.text(
-                "INSERT INTO robot (id, name, description, owner, client_secret, "
-                "created_at, updated_at) "
-                "VALUES (:id, 'R', 'd', 'o@e.com', 's', :now, :now)"
-            ),
-            {"id": robot_id, "now": now},
-        )
-        await conn.execute(
-            sa.text(
-                "INSERT INTO pending_enhancement (id, reference_id, robot_id, "
-                "status, expires_at, created_at, updated_at) "
-                "VALUES (:id, :reference_id, :robot_id, 'processing', :now, :now, "
-                ":now)"
-            ),
-            {
-                "id": str(uuid7()),
-                "reference_id": reference_id,
-                "robot_id": robot_id,
-                "now": now,
-            },
-        )
+        reference_id = await insert_reference(conn)
+        robot_id = await insert_robot(conn)
+        await insert_pending_enhancements(conn, reference_id, robot_id, ["processing"])
         entries_before = (await conn.execute(index_entries)).scalar_one()
 
     assert entries_before == 0
@@ -811,51 +757,32 @@ async def test_lowercase_pending_enhancement_statuses_migration(
 ) -> None:
     """Legacy uppercase statuses are lowercased, or failed if non-terminal."""
     engine = create_async_engine(db_at_migration, future=True)
-    now = datetime.datetime.now(datetime.UTC)
-    reference_id, robot_id = str(uuid7()), str(uuid7())
-    # (pending enhancement id, status)
-    pending_enhancements = (
-        (legacy_pending := str(uuid7()), "PENDING"),
-        (legacy_processing := str(uuid7()), "PROCESSING"),
-        (legacy_completed := str(uuid7()), "COMPLETED"),
-        (legacy_failed := str(uuid7()), "FAILED"),
-        (legacy_indexing_failed := str(uuid7()), "INDEXING_FAILED"),
-        (current_processing := str(uuid7()), "processing"),
-        (current_pending := str(uuid7()), "pending"),
-    )
 
     async with engine.begin() as conn:
-        await conn.execute(
-            sa.text(
-                "INSERT INTO reference (id, visibility, created_at, updated_at) "
-                "VALUES (:id, 'public', :now, :now)"
-            ),
-            {"id": reference_id, "now": now},
+        reference_id = await insert_reference(conn)
+        robot_id = await insert_robot(conn)
+        (
+            legacy_pending,
+            legacy_processing,
+            legacy_completed,
+            legacy_failed,
+            legacy_indexing_failed,
+            current_processing,
+            current_pending,
+        ) = await insert_pending_enhancements(
+            conn,
+            reference_id,
+            robot_id,
+            [
+                "PENDING",
+                "PROCESSING",
+                "COMPLETED",
+                "FAILED",
+                "INDEXING_FAILED",
+                "processing",
+                "pending",
+            ],
         )
-        await conn.execute(
-            sa.text(
-                "INSERT INTO robot (id, name, description, owner, client_secret, "
-                "created_at, updated_at) "
-                "VALUES (:id, 'R', 'd', 'o@e.com', 's', :now, :now)"
-            ),
-            {"id": robot_id, "now": now},
-        )
-        for pending_enhancement_id, status in pending_enhancements:
-            await conn.execute(
-                sa.text(
-                    "INSERT INTO pending_enhancement (id, reference_id, robot_id, "
-                    "status, expires_at, created_at, updated_at) "
-                    "VALUES (:id, :reference_id, :robot_id, :status, :now, :now, "
-                    ":now)"
-                ),
-                {
-                    "id": pending_enhancement_id,
-                    "reference_id": reference_id,
-                    "robot_id": robot_id,
-                    "status": status,
-                    "now": now,
-                },
-            )
 
     await run_migration(db_at_migration, "5215ff42a003")
 
