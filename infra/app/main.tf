@@ -409,10 +409,10 @@ module "container_app_ui" {
 }
 
 locals {
-  servicebus_is_premium            = var.prod_servicebus_is_premium && local.is_production
-  active_servicebus_ns             = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
-  active_servicebus_queue          = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
-  active_servicebus_priority_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_priority_premium[0] : azurerm_servicebus_queue.taskiq_priority
+  servicebus_is_premium                = var.prod_servicebus_is_premium && local.is_production
+  active_servicebus_ns                 = local.servicebus_is_premium ? azurerm_servicebus_namespace.premium[0] : azurerm_servicebus_namespace.this
+  active_servicebus_queue              = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
+  active_servicebus_priority_queue     = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_priority_premium[0] : azurerm_servicebus_queue.taskiq_priority
   active_servicebus_low_priority_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_low_priority_premium[0] : azurerm_servicebus_queue.taskiq_low_priority
 }
 
