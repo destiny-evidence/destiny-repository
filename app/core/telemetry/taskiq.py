@@ -38,6 +38,24 @@ class TaskPriority(IntEnum):
     HIGH = 5
 
 
+class DefaultTaskPriorityMiddleware(TaskiqMiddleware):
+    """Set the ``priority`` label to ``TaskPriority.NORMAL`` when it is missing."""
+
+    async def pre_send(self, message: TaskiqMessage) -> TaskiqMessage:
+        """
+        Set a missing priority label before the broker sends the message.
+
+        Args:
+            message: The outgoing TaskIQ message
+
+        Returns:
+            The message with a ``priority`` label.
+
+        """
+        message.labels.setdefault("priority", TaskPriority.NORMAL.value)
+        return message
+
+
 async def queue_task_with_trace(
     task: AsyncTaskiqDecoratedTask | tuple[str, str],
     *args: object,

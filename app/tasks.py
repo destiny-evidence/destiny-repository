@@ -8,7 +8,10 @@ from app.core.azure_service_bus_broker import AzureServiceBusBroker
 from app.core.config import Environment, get_settings
 from app.core.telemetry.logger import logger_configurer
 from app.core.telemetry.otel import configure_otel
-from app.core.telemetry.taskiq import TaskiqTracingMiddleware
+from app.core.telemetry.taskiq import (
+    DefaultTaskPriorityMiddleware,
+    TaskiqTracingMiddleware,
+)
 from app.persistence.blob.repository import close_blob_clients
 from app.persistence.es.client import es_manager
 from app.persistence.sql.session import db_manager
@@ -37,6 +40,9 @@ if settings.env == Environment.LOCAL or settings.tests_use_rabbitmq:
 
 elif settings.env == "test":
     broker = InMemoryBroker()
+
+if not isinstance(broker, InMemoryBroker):
+    broker.add_middlewares(DefaultTaskPriorityMiddleware())
 
 
 # Add OpenTelemetry middleware to all brokers
