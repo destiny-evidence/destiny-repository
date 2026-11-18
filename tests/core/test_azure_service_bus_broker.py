@@ -160,10 +160,7 @@ async def test_kick_success(
 
     await broker.kick(sent)
 
-    # listen() drains the priority queue first (max_wait_time default is 1s)
-    # before falling through to the default queue.
-    # So allow >1s for the message to land here even when nothing is in priority.
-    message = await asyncio.wait_for(get_first_task(broker), timeout=3.0)
+    message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
 
     assert message.data == sent.message
     await maybe_awaitable(message.ack())
@@ -510,7 +507,7 @@ async def test_large_message_is_compressed_and_decompressed(
     assert len(wire_body) < len(original_body)
 
     # Confirm the received data is transparently decompressed back to the original
-    message = await asyncio.wait_for(get_first_task(broker), timeout=3.0)
+    message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
     assert message.data == original_body
     await maybe_awaitable(message.ack())
 
@@ -545,7 +542,7 @@ async def test_small_message_is_not_compressed(
 
     assert isinstance(sent_message, AmqpAnnotatedMessage)
     assert sent_message.application_properties.get("compressed") is False
-    message = await asyncio.wait_for(get_first_task(broker), timeout=3.0)
+    message = await asyncio.wait_for(get_first_task(broker), timeout=1.0)
     assert message.data == small_body
     await maybe_awaitable(message.ack())
 
@@ -579,7 +576,7 @@ async def test_only_renew_lock_when_specified(
         msg.labels["renew_lock"] = renew_lock
 
     await broker.kick(msg)
-    await asyncio.wait_for(get_first_task(broker), timeout=3.0)
+    await asyncio.wait_for(get_first_task(broker), timeout=1.0)
     if renew_lock:
         mock_lock_renewer.register.assert_called_once()
     else:
