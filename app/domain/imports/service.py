@@ -268,12 +268,15 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 settings.import_reference_retry_count,
                 otel_enabled=settings.otel_enabled,
             )
-        except MessageTooLargeError as exc:
+        except SendTaskError as exc:
+            # taskiq wraps every broker error, so the cause says which one this is
+            if not isinstance(exc.__cause__, MessageTooLargeError):
+                raise
             sample_trace()
             await self._update_import_result(
                 import_result_id=import_result.id,
                 status=ImportResultStatus.FAILED,
-                failure_details=exc.detail,
+                failure_details=exc.__cause__.detail,
             )
 
     @sql_unit_of_work

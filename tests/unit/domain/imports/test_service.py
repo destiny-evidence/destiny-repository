@@ -6,6 +6,7 @@ from uuid import uuid7
 import destiny_sdk
 import httpx2
 import pytest
+from taskiq import SendTaskError
 
 from app.core.exceptions import MessageTooLargeError
 from app.domain.imports.models.models import (
@@ -357,7 +358,10 @@ class TestDistributeImportBatch:
 
         async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
             if args[2] == real_big_reference:
-                raise MessageTooLargeError(detail="message size limit exceeded.")
+                # taskiq wraps every broker error in SendTaskError
+                raise SendTaskError from MessageTooLargeError(
+                    detail="message size limit exceeded."
+                )
             queued_lines.append(args[2])
 
         service = ImportService(
