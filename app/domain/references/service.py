@@ -195,14 +195,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _get_deduplicated_references(
         self,
-        reference_ids: Collection[UUID] | None = None,
+        reference_ids: Sequence[UUID] | None = None,
         references: Collection[Reference] | None = None,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
-        :type reference_ids: Collection[UUID] | None
+        :type reference_ids: Sequence[UUID] | None
         :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
@@ -234,14 +234,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def get_deduplicated_references(
         self,
-        reference_ids: Collection[UUID] | None = None,
+        reference_ids: Sequence[UUID] | None = None,
         references: Collection[Reference] | None = None,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
-        :type reference_ids: Collection[UUID] | None
+        :type reference_ids: Sequence[UUID] | None
         :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
@@ -301,8 +301,6 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         references = await self._get_deduplicated_references(
             reference_ids=reference_ids
         )
-        position = {reference_id: i for i, reference_id in enumerate(reference_ids)}
-        references.sort(key=lambda reference: position[reference.id])
         return [
             await self._serialize_reference(
                 access_control_service.redact_reference(reference), export_format

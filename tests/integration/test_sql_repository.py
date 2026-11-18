@@ -141,6 +141,20 @@ async def test_partition_and_retrieve_all_ids(
     assert retrieved_ids == all_record_ids
 
 
+async def test_get_by_pks_preserves_order(
+    repository: SimpleSQLRepository, session: AsyncSession
+) -> None:
+    """Test get_by_pks returns records in the order of the given pks."""
+    records = [SimpleSQLModel(title=f"test_{i}") for i in range(5)]
+    session.add_all(records)
+    await session.commit()
+
+    pks = [record.id for record in reversed(records)]
+    found = await repository.get_by_pks(pks)
+
+    assert [record.id for record in found] == pks
+
+
 @pytest.mark.parametrize(
     "method",
     ["get_by_pks", "verify_pk_existence", "bulk_update"],
