@@ -7,7 +7,7 @@ from uuid import uuid7
 
 import pytest
 
-from app.core.exceptions import SQLIntegrityError, SQLNotFoundError
+from app.core.exceptions import SQLNotFoundError
 from app.domain.references.models.models import (
     ExportFormat,
     ExportStatus,
@@ -410,20 +410,6 @@ async def test_run_search_export_skips_export_with_chunks() -> None:
     await service.run(search_export.id, MagicMock())
 
     service._collect_search_export_ids.assert_not_awaited()  # noqa: SLF001
-
-
-async def test_run_search_export_skips_when_chunk_already_added() -> None:
-    """Losing the race to add the chunk leaves the export to the other run."""
-    search_export = SearchExport(query=SearchQuery(query_string="x"), chunks=[])
-    service = _search_export_service(search_export)
-    service._add_chunk.side_effect = SQLIntegrityError(  # noqa: SLF001
-        detail="duplicate", lookup_model="ReferenceExport", collision="chunk"
-    )
-
-    await service.run(search_export.id, MagicMock())
-
-    service._reference_export_service.run.assert_not_awaited()  # noqa: SLF001
-    service.fail.assert_not_awaited()
 
 
 async def test_run_search_export_fails_on_search_error() -> None:

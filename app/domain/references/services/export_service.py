@@ -5,7 +5,6 @@ from uuid import UUID
 from opentelemetry import trace
 
 from app.core.config import UploadFile, get_settings
-from app.core.exceptions import SQLIntegrityError
 from app.core.telemetry.logger import get_logger
 from app.domain.references.models.models import (
     ExportFormat,
@@ -137,7 +136,7 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         export = await self._claim(export_id)
         if export is None:
             logger.info(
-                "Skipping reference export — not in pending state",
+                "Skipping reference export, not in pending state",
                 reference_export_id=str(export_id),
             )
             return None
@@ -246,6 +245,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             sort=search_export.sort,
             limit=cap,
             page_size=ES_MAX_PAGE_SIZE,
+            score=not search_export.sort,
         ):
             total = page.total.value
             reference_ids.extend(hit.id for hit in page.hits)
@@ -281,7 +281,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         search_export = await self.get(export_id)
         if search_export.chunks or search_export.error is not None:
             logger.info(
-                "Skipping search export — already run",
+                "Skipping search export, already run",
                 search_export_id=str(export_id),
             )
             return
@@ -297,11 +297,6 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             )
             if finished and finished.result_file:
                 await self._attach_result_file(export_id, finished.result_file)
-        except SQLIntegrityError:
-            logger.info(
-                "Skipping search export — already being run",
-                search_export_id=str(export_id),
-            )
         except Exception as exc:
             logger.exception("Search export failed", search_export_id=str(export_id))
             await self.fail(export_id, f"Failed to run export task: {exc}")

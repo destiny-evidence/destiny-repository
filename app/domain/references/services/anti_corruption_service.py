@@ -17,7 +17,6 @@ from app.domain.references.models.models import (
     EnhancementRequestSearchStatus,
     EnhancementType,
     Export,
-    ExportStatus,
     ExternalIdentifierAdapter,
     FacetResult,
     FacetTotals,
@@ -343,23 +342,15 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         search_export: SearchExport,
     ) -> destiny_sdk.references.SearchExportRead:
         """Convert the search export to the SDK model."""
-        chunks = search_export.chunks or []
-        chunk_error = (
-            "One or more chunks failed; see chunks for details."
-            if any(chunk.status == ExportStatus.FAILED for chunk in chunks)
-            else None
-        )
         try:
             return destiny_sdk.references.SearchExportRead.model_validate(
                 search_export.model_dump(exclude={"chunks"})
                 | {
-                    "status": search_export.status,
-                    "error": search_export.error or chunk_error,
                     "result_url": await self._export_result_url(search_export),
                     "chunks": [
                         chunk.model_dump()
                         | {"result_url": await self._export_result_url(chunk)}
-                        for chunk in chunks
+                        for chunk in search_export.chunks or []
                     ],
                 },
             )

@@ -23,6 +23,8 @@ from pydantic import (
     PositiveInt,
     StringConstraints,
     TypeAdapter,
+    computed_field,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -768,6 +770,7 @@ class SearchExport(Export):
         description="The chunks of this export, in order.",
     )
 
+    @computed_field  # type: ignore[prop-decorator]
     @property
     def status(self) -> ExportStatus:
         """The status of the export, derived from its chunks."""
@@ -784,6 +787,14 @@ class SearchExport(Export):
         if chunk_statuses & {ExportStatus.PENDING, ExportStatus.RUNNING}:
             return ExportStatus.RUNNING
         return ExportStatus.COMPLETED
+
+    @field_serializer("error")
+    def _serialize_error(self, error: str | None) -> str | None:
+        if error is None and any(
+            chunk.status == ExportStatus.FAILED for chunk in self.chunks or []
+        ):
+            return "One or more chunks failed; see chunks for details."
+        return error
 
 
 class RobotResultValidationEntry(DomainBaseModel):
