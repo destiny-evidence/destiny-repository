@@ -24,6 +24,11 @@ class GenericAccessControlService:
         """Initialise with the principal's entitlements."""
         self._entitlements = entitlements
 
+    @property
+    def entitlements(self) -> frozenset[Entitlement]:
+        """The principal's entitlements."""
+        return self._entitlements
+
 
 GenericAntiCorruptionServiceType = TypeVar(
     "GenericAntiCorruptionServiceType", bound=GenericAntiCorruptionService

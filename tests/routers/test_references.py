@@ -2,7 +2,7 @@
 
 import datetime
 from collections.abc import AsyncGenerator
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import UUID, uuid7
 
 import pytest
@@ -1198,6 +1198,14 @@ async def test_search_references_with_annotation_filters(
     assert search_query.annotation_filters[3].score is None
 
 
+def _patch_search_scan(monkeypatch: pytest.MonkeyPatch, *pages: ESSearchResult) -> None:
+    async def scan(*_: object, **__: object) -> AsyncGenerator[ESSearchResult, None]:
+        for page in pages:
+            yield page
+
+    monkeypatch.setattr(SearchService, "scan", scan)
+
+
 async def test_request_search_export_happy_path(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
@@ -1213,15 +1221,19 @@ async def test_request_search_export_happy_path(
         filename="fake.jsonl",
     )
 
-    monkeypatch.setattr(
-        SearchExportService,
-        "_collect_search_export_ids",
-        AsyncMock(return_value=([fake_reference_id], False)),
+    _patch_search_scan(
+        monkeypatch,
+        ESSearchResult(
+            hits=[ESHit(id=fake_reference_id, score=1.0)],
+            total=ESSearchTotal(value=1, relation="eq"),
+            page=1,
+        ),
     )
+    monkeypatch.setattr(SearchExportService, "count", AsyncMock(return_value=1))
     monkeypatch.setattr(
         ReferenceExportService,
         "stream_export_file",
-        AsyncMock(return_value=(fake_result_file, 1)),
+        AsyncMock(return_value=fake_result_file),
     )
 
     response = await client.post(
@@ -1232,6 +1244,7 @@ async def test_request_search_export_happy_path(
     body = response.json()
     export_id = body["id"]
     assert body["status"] == "pending"
+    assert body["n_references"] == 1
     assert body["result_url"] is None
     assert body["truncated"] is False
     assert body["chunks"] == []
@@ -1262,9 +1275,7 @@ async def test_request_search_export_marks_failed_on_error(
 ) -> None:
     """Test that a failure during the export job is reflected via the status API."""
     monkeypatch.setattr(
-        SearchExportService,
-        "_collect_search_export_ids",
-        AsyncMock(side_effect=RuntimeError("kaboom")),
+        SearchService, "scan", MagicMock(side_effect=RuntimeError("kaboom"))
     )
 
     response = await client.post(
@@ -1290,11 +1301,7 @@ async def test_search_export_chunk_failure_points_to_chunks(
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """Test that a failed chunk fails the export and carries the real error."""
-    monkeypatch.setattr(
-        SearchExportService,
-        "_collect_search_export_ids",
-        AsyncMock(return_value=([], False)),
-    )
+    _patch_search_scan(monkeypatch)
     monkeypatch.setattr(
         ReferenceExportService,
         "stream_export_file",

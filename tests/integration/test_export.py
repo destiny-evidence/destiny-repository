@@ -18,12 +18,12 @@ from app.api.exception_handlers import (
     not_found_exception_handler,
     parse_error_exception_handler,
 )
+from app.core.config import get_settings
 from app.core.exceptions import ESQueryError, NotFoundError, ParseError
 from app.domain.references import routes as references
 from app.domain.references.models.models import Reference
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.repository import ReferenceESRepository
-from app.domain.references.services.search_service import SearchService
 from app.persistence.blob.models import (
     BlobSignedUrlType,
     BlobStorageFile,
@@ -200,13 +200,13 @@ async def _add_references(
     )
 
 
-async def test_search_export_sorts_and_truncates(
+async def test_search_export_distributes_sorted_chunks(
     session: AsyncSession,
     client: AsyncClient,
     es_reference_repository: ReferenceESRepository,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The file follows the requested sort and stops at the cap."""
+    """Beyond the single file size, the sorted matches are exported in chunks."""
     references = [
         ReferenceFactory.build(
             enhancements=[
@@ -217,31 +217,36 @@ async def test_search_export_sorts_and_truncates(
                 )
             ]
         )
-        for year in (2004, 2001, 2003, 2002)
+        for year in (2004, 2001, 2003, 2002, 2005)
     ]
     await _add_references(session, es_reference_repository, references)
-    captured = _patch_blob_storage(monkeypatch)
-    monkeypatch.setattr(SearchService, "MAX_RESULT_WINDOW", 3)
+    files = _patch_blob_storage_files(monkeypatch)
+    monkeypatch.setattr(get_settings(), "max_single_file_search_export_size", 3)
+    monkeypatch.setattr(get_settings(), "search_export_chunk_size", 2)
 
     post_response = await client.post(
         "/v1/references/search/exports/",
         params={"q": "Climate", "sort": "-publication_year"},
     )
+    assert post_response.status_code == status.HTTP_202_ACCEPTED
     export_id = post_response.json()["id"]
     assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+    # Chunk tasks are queued by the search export task.
     await broker.wait_all()
 
     body = (await client.get(f"/v1/references/search/exports/{export_id}/")).json()
     assert body["status"] == "completed"
-    assert body["truncated"] is True
-    assert body["n_references"] == 3
+    assert body["n_references"] == 5
+    assert body["result_url"] is None
+    assert [chunk["n_references"] for chunk in body["chunks"]] == [2, 2, 1]
 
     years = [
         json.loads(line)["enhancements"][0]["content"]["publication_year"]
-        for line in captured.decode("utf-8").splitlines()
-        if line
+        for chunk in body["chunks"]
+        for line in files[f"{chunk['id']}.jsonl"].decode().splitlines()
     ]
-    assert years == [2004, 2003, 2002]
+    assert years == [2005, 2004, 2003, 2002, 2001]
 
 
 async def test_search_export_with_no_matches_completes_empty(
@@ -396,6 +401,30 @@ def _patch_blob_storage(monkeypatch: pytest.MonkeyPatch) -> bytearray:
     monkeypatch.setattr(BlobRepository, "upload_file_to_blob_storage", fake_upload)
     monkeypatch.setattr(BlobRepository, "get_signed_url", fake_signed_url)
     return captured
+
+
+def _patch_blob_storage_files(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
+    """Capture each file streamed to blob storage, keyed by filename."""
+    _patch_blob_storage(monkeypatch)
+    files: dict[str, bytes] = {}
+
+    async def fake_upload(
+        self: BlobRepository,  # noqa: ARG001
+        content: FileStream,
+        path: str,
+        filename: str,
+        **_: object,
+    ) -> BlobStorageFile:
+        files[filename] = b"".join([chunk async for chunk in content.stream()])
+        return BlobStorageFile(
+            location="azure",
+            container="destiny-repository",
+            path=path,
+            filename=filename,
+        )
+
+    monkeypatch.setattr(BlobRepository, "upload_file_to_blob_storage", fake_upload)
+    return files
 
 
 async def test_reference_export_end_to_end(

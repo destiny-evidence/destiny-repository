@@ -626,16 +626,16 @@ async def test_run_search_export_task_skips_non_pending_row(
     await session.commit()
     export_id = export.id
 
-    collect_mock = AsyncMock()
+    plan_mock = AsyncMock()
     stream_mock = AsyncMock()
-    monkeypatch.setattr(SearchExportService, "_collect_search_export_ids", collect_mock)
+    monkeypatch.setattr(SearchExportService, "_plan", plan_mock)
     monkeypatch.setattr(ReferenceExportService, "stream_export_file", stream_mock)
 
     assert isinstance(broker, InMemoryBroker)
     await run_search_export_task.kiq(search_export_id=export_id, entitlements=[])
     await broker.wait_all()
 
-    collect_mock.assert_not_awaited()
+    plan_mock.assert_not_awaited()
     stream_mock.assert_not_awaited()
 
     await session.refresh(export)
@@ -665,14 +665,11 @@ async def test_run_reference_export_task_claims_unfinished_exports(
     await session.commit()
 
     stream_mock = AsyncMock(
-        return_value=(
-            BlobStorageFile(
-                location="azure",
-                container="destiny-repository",
-                path="exports",
-                filename=f"{export.id}.jsonl",
-            ),
-            1,
+        return_value=BlobStorageFile(
+            location="azure",
+            container="destiny-repository",
+            path="exports",
+            filename=f"{export.id}.jsonl",
         )
     )
     monkeypatch.setattr(ReferenceExportService, "stream_export_file", stream_mock)

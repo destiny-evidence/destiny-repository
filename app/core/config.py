@@ -612,6 +612,16 @@ class Settings(BaseSettings):
         ),
     )
 
+    search_export_chunk_size: int = Field(
+        default=1000,
+        gt=0,
+        le=10_000,
+        description=(
+            "Number of references in each chunk of a search export too large to "
+            "export as one file."
+        ),
+    )
+
     default_es_indexing_chunk_size: int = Field(
         default=1000,
         description=(

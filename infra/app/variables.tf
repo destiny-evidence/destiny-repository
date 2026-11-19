@@ -404,6 +404,12 @@ variable "max_search_export_size" {
   default     = 1000000
 }
 
+variable "search_export_chunk_size" {
+  description = "Number of references in each chunk of a search export too large to produce as a single file"
+  type        = number
+  default     = 1000
+}
+
 variable "expire_pending_enhancements_batch_size" {
   description = "Maximum number of stale pending enhancements expired and replaced by a single run of the expire_pending_enhancements job"
   type        = number

@@ -143,6 +143,10 @@ locals {
       value = var.max_search_export_size
     },
     {
+      name  = "SEARCH_EXPORT_CHUNK_SIZE",
+      value = var.search_export_chunk_size
+    },
+    {
       name  = "SEARCH_ENHANCEMENT_SCAN_PAGE_SIZE",
       value = var.search_enhancement_scan_page_size
     },

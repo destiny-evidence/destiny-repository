@@ -977,6 +977,7 @@ async def request_search_export(
     search_export = await search_export_service.request_search_export(
         query,
         sort=sort,
+        n_references=n_references,
         export_format=export_format,
     )
     await _enqueue_export_task(
@@ -994,14 +995,11 @@ async def request_search_export(
 @search_exports_router.get(
     "/{search_export_id}/",
     description=(
-        "Get the status of a search export job. Once `status` is "
-        "`completed`, the response includes a signed `result_url` for the "
-        "produced export file, signed URLs for each of its `chunks`, and "
-        "`truncated: true` if the matching set "
-        f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
-        f"file contains only the first {SearchService.MAX_RESULT_WINDOW:,} "
-        "matches). The URL is re-signed on each call, so an expired URL can "
-        "be refreshed by polling again."
+        "Get the status of a search export job. Each of its `chunks` includes a "
+        "signed `result_url` once that chunk completes. Exports of up to "
+        f"{settings.max_single_file_search_export_size:,} references are a single "
+        "chunk, whose file is also given as the export's `result_url`. URLs are "
+        "re-signed on each call, so an expired URL can be refreshed by polling again."
     ),
 )
 async def get_search_export(
