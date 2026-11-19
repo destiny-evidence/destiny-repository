@@ -29,11 +29,31 @@ class TaskPriority(IntEnum):
     Priority levels for queued tasks.
 
     May be used to set on-wire priority header, or to route to different
-    queues depending on broker implementation.
+    queues depending on broker implementation. Values must be non-negative
+    to be valid AMQP priorities.
     """
 
-    NORMAL = 0
+    LOW = 0
+    NORMAL = 1
     HIGH = 5
+
+
+class DefaultTaskPriorityMiddleware(TaskiqMiddleware):
+    """Set the ``priority`` label to ``TaskPriority.NORMAL`` when it is missing."""
+
+    async def pre_send(self, message: TaskiqMessage) -> TaskiqMessage:
+        """
+        Set a missing priority label before the broker sends the message.
+
+        Args:
+            message: The outgoing TaskIQ message
+
+        Returns:
+            The message with a ``priority`` label.
+
+        """
+        message.labels.setdefault("priority", TaskPriority.NORMAL.value)
+        return message
 
 
 async def queue_task_with_trace(
