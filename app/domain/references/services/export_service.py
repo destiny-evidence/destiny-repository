@@ -68,14 +68,19 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def _claim(self, export_id: UUID) -> ReferenceExport | None:
         """
-        Atomically transition pending → running, returning the claimed row.
+        Atomically transition an unfinished export to running, returning it.
 
-        Returns ``None`` if the row was not in `pending`. The fetch happens in
-        the same UoW as the update so the caller can't see a row that has
-        since been mutated by another transaction.
+        Running exports can be reclaimed so a redelivered task can finish an
+        export whose worker went away. Returns ``None`` if the export has
+        finished. The fetch happens in the same UoW as the update so the
+        caller can't see a row that has since been mutated by another
+        transaction.
         """
         updated = await self.sql_uow.reference_exports.bulk_update_by_filter(
-            filter_conditions={"id": export_id, "status": ExportStatus.PENDING},
+            filter_conditions={
+                "id": export_id,
+                "status": {ExportStatus.PENDING, ExportStatus.RUNNING},
+            },
             status=ExportStatus.RUNNING,
         )
         if updated == 0:
@@ -141,12 +146,12 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         Run a queued reference export end-to-end.
 
         ``reference_ids`` overrides the ids stored on the export. Returns the
-        finished export, or ``None`` if it was not pending.
+        finished export, or ``None`` if it had already finished.
         """
         export = await self._claim(export_id)
         if export is None:
             logger.info(
-                "Skipping reference export, not in pending state",
+                "Skipping reference export, already finished",
                 reference_export_id=str(export_id),
             )
             return None
