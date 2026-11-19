@@ -2,7 +2,7 @@
 add search export chunks
 
 Revision ID: 2a40c90eb734
-Revises: 04af6b0321f6
+Revises: 5215ff42a003
 Create Date: 2026-11-17 00:00:00.000000+00:00
 
 """
@@ -15,7 +15,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '2a40c90eb734'
-down_revision: Union[str, None] = '04af6b0321f6'
+down_revision: Union[str, None] = '5215ff42a003'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
