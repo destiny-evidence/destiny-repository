@@ -34,7 +34,7 @@ from tests.factories import (
     ReferenceFactory,
 )
 
-# Undecorated bodies — tests drive the implementation with mocks instead of a UoW.
+# Unwrapped from their UoW so tests can drive them with mocks.
 _collect = SearchExportService._collect.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
 _distribute = SearchExportService._distribute.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
 
@@ -47,8 +47,8 @@ def _page(n_hits: int, total: int) -> ESSearchResult:
     )
 
 
-def _planning_service(monkeypatch: pytest.MonkeyPatch, *pages: ESSearchResult) -> Any:
-    """Plan over ``pages``, with chunks of 2."""
+def _scanning_service(monkeypatch: pytest.MonkeyPatch, *pages: ESSearchResult) -> Any:
+    """A service whose scan yields ``pages``, with chunks of 2."""
     monkeypatch.setattr(export_service.settings, "search_export_chunk_size", 2)
     service = SearchExportService.__new__(SearchExportService)
     service._search_service = MagicMock()  # noqa: SLF001
@@ -68,7 +68,7 @@ async def test_collect_returns_one_chunk_of_every_id(
 ) -> None:
     """A single file export is one chunk sized to every matching id."""
     pages = (_page(2, total=3), _page(1, total=3))
-    service = _planning_service(monkeypatch, *pages)
+    service = _scanning_service(monkeypatch, *pages)
     search_export = SearchExport(
         query=SearchQuery(query_string="climate"), sort=["-publication_year"]
     )
@@ -87,7 +87,7 @@ async def test_collect_returns_empty_chunk_without_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A search with no matches is still one (empty) chunk."""
-    service = _planning_service(monkeypatch)
+    service = _scanning_service(monkeypatch)
     search_export = SearchExport(query=SearchQuery(query_string="climate"))
 
     _, reference_ids = await _collect(service, search_export)
@@ -101,7 +101,7 @@ async def test_distribute_dispatches_a_chunk_per_page(
 ) -> None:
     """Chunks are allocated from the scan's total and each page dispatched."""
     pages = (_page(2, total=5), _page(2, total=5), _page(1, total=5))
-    service = _planning_service(monkeypatch, *pages)
+    service = _scanning_service(monkeypatch, *pages)
     search_export = SearchExport(query=SearchQuery(query_string="climate"))
 
     await _distribute(service, search_export)

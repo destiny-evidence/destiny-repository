@@ -72,13 +72,10 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def _claim(self, export_id: UUID) -> ReferenceExport | None:
         """
-        Atomically transition an unfinished export to running, returning it.
+        Mark an unfinished export as running and return it, or ``None`` if finished.
 
-        Running exports can be reclaimed so a redelivered task can finish an
-        export whose worker went away. Returns ``None`` if the export has
-        finished. The fetch happens in the same UoW as the update so the
-        caller can't see a row that has since been mutated by another
-        transaction.
+        Running exports can be claimed again so a redelivered task can finish one
+        whose worker died.
         """
         updated = await self.sql_uow.reference_exports.bulk_update_by_filter(
             filter_conditions={
