@@ -626,16 +626,16 @@ async def test_run_search_export_task_skips_non_pending_row(
     await session.commit()
     export_id = export.id
 
-    plan_mock = AsyncMock()
+    collect_mock = AsyncMock()
     stream_mock = AsyncMock()
-    monkeypatch.setattr(SearchExportService, "_plan", plan_mock)
+    monkeypatch.setattr(SearchExportService, "_collect", collect_mock)
     monkeypatch.setattr(ReferenceExportService, "stream_export_file", stream_mock)
 
     assert isinstance(broker, InMemoryBroker)
     await run_search_export_task.kiq(search_export_id=export_id, entitlements=[])
     await broker.wait_all()
 
-    plan_mock.assert_not_awaited()
+    collect_mock.assert_not_awaited()
     stream_mock.assert_not_awaited()
 
     await session.refresh(export)

@@ -285,39 +285,38 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         )
 
     @es_unit_of_work
-    async def _plan(
+    async def _collect(
         self, search_export: SearchExport
-    ) -> tuple[ReferenceExport, list[UUID]] | None:
-        """
-        Allocate the export's chunks and queue a task for each.
+    ) -> tuple[ReferenceExport, list[UUID]]:
+        """Allocate the export's single chunk, returning it with the ids to export."""
+        reference_ids = [
+            hit.id
+            async for page in self._search_service.scan(
+                search_export.query,
+                sort=search_export.sort,
+                page_size=ES_MAX_PAGE_SIZE,
+            )
+            for hit in page.hits
+        ]
+        (chunk,) = await self._add_chunks(search_export, [len(reference_ids)])
+        return chunk, reference_ids
 
-        An export whose search was small enough for a single file when requested
-        is not queued; its chunk and ids are returned to be run inline instead.
-        """
-        single_file = (
-            search_export.n_references or 0
-        ) <= settings.max_single_file_search_export_size
+    @es_unit_of_work
+    async def _distribute(self, search_export: SearchExport) -> None:
+        """Allocate the export's chunks and queue a task for each."""
         chunk_size = settings.search_export_chunk_size
-        # When chunked, each scan page becomes one chunk, so pages are sized to match.
+        # Each scan page becomes one chunk, so pages are sized to match.
         async with contextlib.aclosing(
             prefetch(
                 self._search_service.scan(
                     search_export.query,
                     sort=search_export.sort,
-                    page_size=ES_MAX_PAGE_SIZE if single_file else chunk_size,
+                    page_size=chunk_size,
                 )
             )
         ) as pages:
-            first_page = await anext(pages, None)
-            first_hits = first_page.hits if first_page else []
-            n_references = first_page.total.value if first_page else 0
-
-            if single_file:
-                reference_ids = [hit.id for hit in first_hits]
-                reference_ids += [hit.id async for page in pages for hit in page.hits]
-                (chunk,) = await self._add_chunks(search_export, [n_references])
-                return chunk, reference_ids
-
+            first_page = await anext(pages)
+            n_references = first_page.total.value
             chunks = iter(
                 await self._add_chunks(
                     search_export,
@@ -327,10 +326,9 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
                     ],
                 )
             )
-            await self._dispatch(next(chunks), first_hits)
+            await self._dispatch(next(chunks), first_page.hits)
             async for page in pages:
                 await self._dispatch(next(chunks), page.hits)
-        return None
 
     async def run(self, export_id: UUID, blob_repository: BlobRepository) -> None:
         """Run a queued search export end-to-end."""
@@ -341,14 +339,17 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
                 search_export_id=str(export_id),
             )
             return
+        single_file = (
+            search_export.n_references or 0
+        ) <= settings.max_single_file_search_export_size
         try:
-            single_chunk = await self._plan(search_export)
-            if single_chunk is None:
-                return
-            chunk, reference_ids = single_chunk
-            await self._reference_export_service.run(
-                chunk.id, blob_repository, reference_ids=reference_ids
-            )
+            if single_file:
+                chunk, reference_ids = await self._collect(search_export)
+                await self._reference_export_service.run(
+                    chunk.id, blob_repository, reference_ids=reference_ids
+                )
+            else:
+                await self._distribute(search_export)
         except Exception as exc:
             logger.exception("Search export failed", search_export_id=str(export_id))
             await self.fail(export_id, f"Failed to run export task: {exc}")

@@ -34,8 +34,9 @@ from tests.factories import (
     ReferenceFactory,
 )
 
-# Undecorated body — tests drive the implementation with mocks instead of a UoW.
-_plan = SearchExportService._plan.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
+# Undecorated bodies — tests drive the implementation with mocks instead of a UoW.
+_collect = SearchExportService._collect.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
+_distribute = SearchExportService._distribute.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
 
 
 def _page(n_hits: int, total: int) -> ESSearchResult:
@@ -47,10 +48,7 @@ def _page(n_hits: int, total: int) -> ESSearchResult:
 
 
 def _planning_service(monkeypatch: pytest.MonkeyPatch, *pages: ESSearchResult) -> Any:
-    """Plan over ``pages``, with single files of 3 and chunks of 2."""
-    monkeypatch.setattr(
-        export_service.settings, "max_single_file_search_export_size", 3
-    )
+    """Plan over ``pages``, with chunks of 2."""
     monkeypatch.setattr(export_service.settings, "search_export_chunk_size", 2)
     service = SearchExportService.__new__(SearchExportService)
     service._search_service = MagicMock()  # noqa: SLF001
@@ -65,55 +63,48 @@ def _planning_service(monkeypatch: pytest.MonkeyPatch, *pages: ESSearchResult) -
     return service
 
 
-async def test_plan_returns_single_chunk_up_to_single_file_size(
+async def test_collect_returns_one_chunk_of_every_id(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """An export up to the single file size is one chunk of every id, run inline."""
+    """A single file export is one chunk sized to every matching id."""
     pages = (_page(2, total=3), _page(1, total=3))
     service = _planning_service(monkeypatch, *pages)
     search_export = SearchExport(
-        query=SearchQuery(query_string="climate"),
-        sort=["-publication_year"],
-        n_references=3,
+        query=SearchQuery(query_string="climate"), sort=["-publication_year"]
     )
 
-    chunk, reference_ids = await _plan(service, search_export)
+    chunk, reference_ids = await _collect(service, search_export)
 
     assert reference_ids == [hit.id for page in pages for hit in page.hits]
     service._add_chunks.assert_awaited_once_with(search_export, [3])  # noqa: SLF001
     assert chunk.chunk_index == 0
-    service._dispatch.assert_not_awaited()  # noqa: SLF001
     scan_kwargs = service._search_service.scan.call_args.kwargs  # noqa: SLF001
     assert scan_kwargs["sort"] == ["-publication_year"]
     assert scan_kwargs["page_size"] == ES_MAX_PAGE_SIZE
 
 
-async def test_plan_returns_empty_chunk_without_matches(
+async def test_collect_returns_empty_chunk_without_matches(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A search with no matches is still one (empty) chunk."""
     service = _planning_service(monkeypatch)
-    search_export = SearchExport(
-        query=SearchQuery(query_string="climate"), n_references=0
-    )
+    search_export = SearchExport(query=SearchQuery(query_string="climate"))
 
-    _, reference_ids = await _plan(service, search_export)
+    _, reference_ids = await _collect(service, search_export)
 
     assert reference_ids == []
     service._add_chunks.assert_awaited_once_with(search_export, [0])  # noqa: SLF001
 
 
-async def test_plan_dispatches_a_chunk_per_page_beyond_single_file_size(
+async def test_distribute_dispatches_a_chunk_per_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Beyond the single file size, chunks are allocated and each page dispatched."""
+    """Chunks are allocated from the scan's total and each page dispatched."""
     pages = (_page(2, total=5), _page(2, total=5), _page(1, total=5))
     service = _planning_service(monkeypatch, *pages)
-    search_export = SearchExport(
-        query=SearchQuery(query_string="climate"), n_references=5
-    )
+    search_export = SearchExport(query=SearchQuery(query_string="climate"))
 
-    assert await _plan(service, search_export) is None
+    await _distribute(service, search_export)
 
     service._add_chunks.assert_awaited_once_with(search_export, [2, 2, 1])  # noqa: SLF001
     scan_kwargs = service._search_service.scan.call_args.kwargs  # noqa: SLF001
@@ -122,23 +113,6 @@ async def test_plan_dispatches_a_chunk_per_page_beyond_single_file_size(
         (call.args[0].chunk_index, call.args[1])
         for call in service._dispatch.await_args_list  # noqa: SLF001
     ] == [(chunk_index, page.hits) for chunk_index, page in enumerate(pages)]
-
-
-async def test_plan_keeps_requested_single_file_when_matches_grow(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A search that was a single file when requested stays one, whatever it matches."""
-    pages = (_page(2, total=5), _page(2, total=5), _page(1, total=5))
-    service = _planning_service(monkeypatch, *pages)
-    search_export = SearchExport(
-        query=SearchQuery(query_string="climate"), n_references=3
-    )
-
-    _, reference_ids = await _plan(service, search_export)
-
-    assert len(reference_ids) == 5
-    service._add_chunks.assert_awaited_once_with(search_export, [5])  # noqa: SLF001
-    service._dispatch.assert_not_awaited()  # noqa: SLF001
 
 
 async def _aiter(items):
@@ -423,38 +397,49 @@ def test_search_export_status_is_derived_from_chunks(
 def _search_export_service(search_export: SearchExport) -> Any:
     service = SearchExportService.__new__(SearchExportService)
     service.get = AsyncMock(return_value=search_export)  # type: ignore[method-assign]
-    service._plan = AsyncMock(  # type: ignore[method-assign] # noqa: SLF001
+    service._collect = AsyncMock(  # type: ignore[method-assign] # noqa: SLF001
         return_value=(_chunk(ExportStatus.PENDING), [uuid7(), uuid7()])
     )
+    service._distribute = AsyncMock()  # type: ignore[method-assign] # noqa: SLF001
     service.fail = AsyncMock()  # type: ignore[method-assign]
     service._reference_export_service = MagicMock()  # noqa: SLF001
     service._reference_export_service.run = AsyncMock()  # noqa: SLF001
     return service
 
 
-async def test_run_search_export_runs_single_chunk() -> None:
-    """The search's ids are exported as one chunk."""
-    search_export = SearchExport(query=SearchQuery(query_string="x"), chunks=[])
+async def test_run_search_export_runs_single_file_inline() -> None:
+    """An export requested within the single file size runs as one chunk, inline."""
+    search_export = SearchExport(
+        query=SearchQuery(query_string="x"),
+        n_references=export_service.settings.max_single_file_search_export_size,
+        chunks=[],
+    )
     service = _search_export_service(search_export)
     blob_repository = MagicMock()
 
     await service.run(search_export.id, blob_repository)
 
-    chunk, reference_ids = service._plan.return_value  # noqa: SLF001
+    chunk, reference_ids = service._collect.return_value  # noqa: SLF001
     service._reference_export_service.run.assert_awaited_once_with(  # noqa: SLF001
         chunk.id, blob_repository, reference_ids=reference_ids
     )
+    service._distribute.assert_not_awaited()  # noqa: SLF001
     service.fail.assert_not_awaited()
 
 
-async def test_run_search_export_leaves_distributed_chunks_to_their_tasks() -> None:
-    """When the chunks were dispatched, nothing is run inline."""
-    search_export = SearchExport(query=SearchQuery(query_string="x"), chunks=[])
+async def test_run_search_export_distributes_beyond_single_file_size() -> None:
+    """An export requested beyond the single file size is left to chunk tasks."""
+    search_export = SearchExport(
+        query=SearchQuery(query_string="x"),
+        n_references=export_service.settings.max_single_file_search_export_size + 1,
+        chunks=[],
+    )
     service = _search_export_service(search_export)
-    service._plan.return_value = None  # noqa: SLF001
 
     await service.run(search_export.id, MagicMock())
 
+    service._distribute.assert_awaited_once_with(search_export)  # noqa: SLF001
+    service._collect.assert_not_awaited()  # noqa: SLF001
     service._reference_export_service.run.assert_not_awaited()  # noqa: SLF001
     service.fail.assert_not_awaited()
 
@@ -468,14 +453,15 @@ async def test_run_search_export_skips_export_with_chunks() -> None:
 
     await service.run(search_export.id, MagicMock())
 
-    service._plan.assert_not_awaited()  # noqa: SLF001
+    service._collect.assert_not_awaited()  # noqa: SLF001
+    service._distribute.assert_not_awaited()  # noqa: SLF001
 
 
 async def test_run_search_export_fails_on_search_error() -> None:
     """A failure before the chunk runs fails the search export."""
     search_export = SearchExport(query=SearchQuery(query_string="x"), chunks=[])
     service = _search_export_service(search_export)
-    service._plan.side_effect = RuntimeError("kaboom")  # noqa: SLF001
+    service._collect.side_effect = RuntimeError("kaboom")  # noqa: SLF001
 
     await service.run(search_export.id, MagicMock())
 
