@@ -35,6 +35,17 @@ class ImportBatchStatus(StrEnum):
     """Processing has been completed."""
 
 
+class ImportDistributionStatus(StrEnum):
+    """How far a batch's distributor got through its file."""
+
+    STARTED = auto()
+    """A distributor is queuing the file's lines."""
+    COMPLETED = auto()
+    """A distributor reached the end of the file."""
+    FAILED = auto()
+    """Distribution stopped before the end of the file."""
+
+
 class ImportResultStatus(StrEnum):
     """Describes the status of an import result."""
 
@@ -123,6 +134,13 @@ The URL at which the set of references for this batch are stored.
     )
     import_results: list["ImportResult"] | None = Field(
         default=None, description="The results from processing the batch."
+    )
+    distribution_status: ImportDistributionStatus | None = Field(
+        default=None,
+        description="Null until a distributor starts, and for batches that predate it.",
+    )
+    distribution_failure_details: str | None = Field(
+        default=None, description="Where and why distribution stopped."
     )
 
 

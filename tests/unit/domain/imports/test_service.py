@@ -6,6 +6,7 @@ from uuid import uuid7
 import destiny_sdk
 import httpx2
 import pytest
+from taskiq import SendTaskError
 
 from app.core.exceptions import MessageTooLargeError
 from app.domain.imports.models.models import (
@@ -35,6 +36,12 @@ def import_result():
         import_batch_id=BATCH_ID,
         status=ImportResultStatus.CREATED,
     )
+
+
+@pytest.fixture
+def unrecorded_distribution(monkeypatch):
+    """These tests cover queuing; the router tests cover the recorded status."""
+    monkeypatch.setattr(ImportService, "_record_distribution", AsyncMock())
 
 
 @pytest.mark.asyncio
@@ -186,6 +193,7 @@ async def test_import_reference_sql_integrity_error(
     assert result.status == ImportResultStatus.RETRYING
 
 
+@pytest.mark.usefixtures("unrecorded_distribution")
 class TestDistributeImportBatch:
     """Tests for distribute_import_batch method."""
 
@@ -350,7 +358,10 @@ class TestDistributeImportBatch:
 
         async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
             if args[2] == real_big_reference:
-                raise MessageTooLargeError(detail="message size limit exceeded.")
+                # taskiq wraps every broker error in SendTaskError
+                raise SendTaskError from MessageTooLargeError(
+                    detail="message size limit exceeded."
+                )
             queued_lines.append(args[2])
 
         service = ImportService(
@@ -377,6 +388,7 @@ class TestDistributeImportBatch:
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("unrecorded_distribution")
 async def test_distribute_import_batch_rejects_redirect(monkeypatch, fake_uow):
     """A 3xx response from storage is rejected (redirect prevention)."""
     batch_id = uuid7()

@@ -64,7 +64,11 @@ class ImportAntiCorruptionService(GenericAntiCorruptionService):
             result_summary: dict[ImportResultStatus, int] = dict.fromkeys(
                 ImportResultStatus, 0
             )
-            failure_details: list[str] = []
+            failure_details: list[str] = (
+                [import_batch.distribution_failure_details]
+                if import_batch.distribution_failure_details
+                else []
+            )
             for result in import_batch.import_results or []:
                 result_summary[result.status] += 1
                 if (
