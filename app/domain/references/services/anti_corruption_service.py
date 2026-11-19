@@ -613,11 +613,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert a search result and retrieved references to the SDK model."""
         try:
-            hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
             sdk_references = [
-                await self.reference_to_sdk(reference)
-                # Sort references according to search order
-                for reference in sorted(references, key=lambda r: hit_order[r.id])
+                await self.reference_to_sdk(reference) for reference in references
             ]
             return destiny_sdk.references.ReferenceSearchResult(
                 total={

@@ -195,14 +195,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _get_deduplicated_references(
         self,
-        reference_ids: Collection[UUID] | None = None,
+        reference_ids: Sequence[UUID] | None = None,
         references: Collection[Reference] | None = None,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
-        :type reference_ids: Collection[UUID] | None
+        :type reference_ids: Sequence[UUID] | None
         :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
@@ -234,14 +234,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def get_deduplicated_references(
         self,
-        reference_ids: Collection[UUID] | None = None,
+        reference_ids: Sequence[UUID] | None = None,
         references: Collection[Reference] | None = None,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
-        :type reference_ids: Collection[UUID] | None
+        :type reference_ids: Sequence[UUID] | None
         :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
@@ -266,6 +266,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     ) -> tuple[BlobStorageFile, int]:
         """
         Stream deduplicated, redacted references to blob storage in the given format.
+
+        References are written in the order of ``reference_ids``.
 
         Rides the caller's active SQL unit of work (the per-chunk fetch is
         undecorated), so the caller's ``@sql_unit_of_work`` method owns the
@@ -295,7 +297,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         export_format: ExportFormat,
         access_control_service: ReferenceAccessControlService,
     ) -> list[str]:
-        """Fetch, redact and serialize one chunk of references."""
+        """Fetch, redact and serialize one chunk of references, in the given order."""
         references = await self._get_deduplicated_references(
             reference_ids=reference_ids
         )

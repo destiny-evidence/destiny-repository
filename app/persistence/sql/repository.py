@@ -338,6 +338,9 @@ class GenericAsyncSqlRepository(
                 lookup_value=missing_pks,
             )
 
+        position = {pk: i for i, pk in enumerate(pks)}
+        db_references = sorted(db_references, key=lambda ref: position[ref.id])
+
         return [ref.to_domain(preload=preload) for ref in db_references]
 
     @trace_repository_method(tracer)
