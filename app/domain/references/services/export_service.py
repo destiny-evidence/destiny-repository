@@ -1,11 +1,13 @@
 """Services for the lifecycle of reference export jobs."""
 
+import contextlib
 from uuid import UUID
 
 from opentelemetry import trace
 
 from app.core.config import UploadFile, get_settings
 from app.core.telemetry.logger import get_logger
+from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
     ExportFormat,
     ExportStatus,
@@ -24,11 +26,13 @@ from app.domain.references.services.search_service import SearchService
 from app.domain.service import GenericService
 from app.persistence.blob.models import BlobStorageFile
 from app.persistence.blob.repository import BlobRepository
+from app.persistence.es.persistence import ESHit
 from app.persistence.es.repository import ES_MAX_PAGE_SIZE
 from app.persistence.es.uow import AsyncESUnitOfWork
 from app.persistence.es.uow import unit_of_work as es_unit_of_work
 from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
+from app.utils.aio import prefetch
 
 logger = get_logger(__name__)
 settings = get_settings()
@@ -68,14 +72,16 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def _claim(self, export_id: UUID) -> ReferenceExport | None:
         """
-        Atomically transition pending → running, returning the claimed row.
+        Mark an unfinished export as running and return it, or ``None`` if finished.
 
-        Returns ``None`` if the row was not in `pending`. The fetch happens in
-        the same UoW as the update so the caller can't see a row that has
-        since been mutated by another transaction.
+        Running exports can be claimed again so a redelivered task can finish one
+        whose worker died.
         """
         updated = await self.sql_uow.reference_exports.bulk_update_by_filter(
-            filter_conditions={"id": export_id, "status": ExportStatus.PENDING},
+            filter_conditions={
+                "id": export_id,
+                "status": {ExportStatus.PENDING, ExportStatus.RUNNING},
+            },
             status=ExportStatus.RUNNING,
         )
         if updated == 0:
@@ -87,14 +93,12 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         self,
         export_id: UUID,
         result_file: BlobStorageFile,
-        n_references: int,
     ) -> ReferenceExport:
         """Mark a reference export as completed."""
         completed = await self.sql_uow.reference_exports.update_by_pk(
             pk=export_id,
             status=ExportStatus.COMPLETED,
             result_file=result_file.to_uri(),
-            n_references=n_references,
         )
         if completed.search_export_id is not None:
             chunks = await self.sql_uow.reference_exports.find(
@@ -115,7 +119,7 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids: list[UUID],
         export_format: ExportFormat,
         blob_repository: BlobRepository,
-    ) -> tuple[BlobStorageFile, int]:
+    ) -> BlobStorageFile:
         """Stream references to blob storage in the given format, returning the file."""
         chunk_size = settings.upload_file_chunk_size_override.get(
             UploadFile.SEARCH_EXPORT,
@@ -141,12 +145,12 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         Run a queued reference export end-to-end.
 
         ``reference_ids`` overrides the ids stored on the export. Returns the
-        finished export, or ``None`` if it was not pending.
+        finished export, or ``None`` if it had already finished.
         """
         export = await self._claim(export_id)
         if export is None:
             logger.info(
-                "Skipping reference export, not in pending state",
+                "Skipping reference export, already finished",
                 reference_export_id=str(export_id),
             )
             return None
@@ -155,13 +159,13 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         if reference_ids is None:
             return await self.fail(export_id, "No reference ids to export.")
         try:
-            result_file, n_references = await self.stream_export_file(
+            result_file = await self.stream_export_file(
                 export_id=export.id,
                 reference_ids=reference_ids,
                 export_format=export.export_format,
                 blob_repository=blob_repository,
             )
-            completed = await self._complete(export_id, result_file, n_references)
+            completed = await self._complete(export_id, result_file)
         except Exception as exc:
             logger.exception(
                 "Reference export failed", reference_export_id=str(export_id)
@@ -184,7 +188,9 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids = list(dict.fromkeys(reference_ids))
         await self.sql_uow.references.verify_pk_existence(reference_ids)
         reference_export = ReferenceExport(
-            reference_ids=reference_ids, export_format=export_format
+            reference_ids=reference_ids,
+            export_format=export_format,
+            n_references=len(reference_ids),
         )
         await self.sql_uow.reference_exports.add(reference_export)
         return reference_export
@@ -203,6 +209,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
     ) -> None:
         """Initialize the service."""
         super().__init__(anti_corruption_service, sql_uow, es_uow)
+        self._access_control_service = access_control_service
         self._search_service = SearchService(anti_corruption_service, sql_uow, es_uow)
         self._reference_export_service = ReferenceExportService(
             anti_corruption_service,
@@ -224,58 +231,101 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         """Mark a search export as failed with the given error message."""
         return await self.sql_uow.search_exports.update_by_pk(pk=export_id, error=error)
 
+    @es_unit_of_work
+    async def count(self, query: SearchQuery) -> int:
+        """Count the references a search export of the query would contain."""
+        return (await self._search_service.count(query)).value
+
     @sql_unit_of_work
     async def request_search_export(
         self,
         query: SearchQuery,
         sort: list[str] | None,
+        n_references: int,
         export_format: ExportFormat = ExportFormat.JSONL,
     ) -> SearchExport:
-        """Create a pending search export job."""
+        """Create a pending search export job for a query matching ``n_references``."""
         search_export = SearchExport(
-            query=query, sort=sort, export_format=export_format, chunks=[]
+            query=query,
+            sort=sort,
+            n_references=n_references,
+            export_format=export_format,
+            chunks=[],
         )
         await self.sql_uow.search_exports.add(search_export)
         return search_export
 
-    @es_unit_of_work
-    async def _collect_search_export_ids(
-        self, search_export: SearchExport
-    ) -> tuple[list[UUID], bool]:
-        """
-        Scan the search for up to the result-window cap of reference ids.
-
-        Returns the ids and whether the matching set exceeded the cap.
-        """
-        cap = SearchService.MAX_RESULT_WINDOW
-        reference_ids: list[UUID] = []
-        total = 0
-        async for page in self._search_service.scan(
-            search_export.query,
-            sort=search_export.sort,
-            limit=cap,
-            page_size=ES_MAX_PAGE_SIZE,
-        ):
-            total = page.total.value
-            reference_ids.extend(hit.id for hit in page.hits)
-        return reference_ids, total > cap
-
     @sql_unit_of_work
-    async def _add_chunk(
-        self, search_export: SearchExport, n_references: int, *, truncated: bool
-    ) -> ReferenceExport:
-        """Add the export's chunk, raising if it already has one."""
-        chunk = await self.sql_uow.reference_exports.add(
-            ReferenceExport(
-                search_export_id=search_export.id,
-                chunk_index=0,
-                export_format=search_export.export_format,
+    async def _add_chunks(
+        self, search_export: SearchExport, chunk_sizes: list[int]
+    ) -> list[ReferenceExport]:
+        """Add chunks of the given sizes, raising if the export already has them."""
+        return await self.sql_uow.reference_exports.add_bulk(
+            [
+                ReferenceExport(
+                    search_export_id=search_export.id,
+                    chunk_index=chunk_index,
+                    export_format=search_export.export_format,
+                    n_references=chunk_size,
+                )
+                for chunk_index, chunk_size in enumerate(chunk_sizes)
+            ]
+        )
+
+    async def _dispatch(self, chunk: ReferenceExport, hits: list[ESHit]) -> None:
+        await queue_task_with_trace(
+            ("app.domain.references.tasks", "run_reference_export_task"),
+            reference_export_id=chunk.id,
+            reference_ids=[hit.id for hit in hits],
+            entitlements=self._access_control_service.entitlements,
+            otel_enabled=settings.otel_enabled,
+        )
+
+    @es_unit_of_work
+    async def _collect(
+        self, search_export: SearchExport
+    ) -> tuple[ReferenceExport, list[UUID]]:
+        """Allocate the export's single chunk, returning it with the ids to export."""
+        reference_ids = [
+            hit.id
+            async for page in self._search_service.scan(
+                search_export.query,
+                sort=search_export.sort,
+                page_size=ES_MAX_PAGE_SIZE,
             )
-        )
-        await self.sql_uow.search_exports.update_by_pk(
-            pk=search_export.id, n_references=n_references, truncated=truncated
-        )
-        return chunk
+            for hit in page.hits
+        ]
+        (chunk,) = await self._add_chunks(search_export, [len(reference_ids)])
+        return chunk, reference_ids
+
+    @es_unit_of_work
+    async def _distribute(self, search_export: SearchExport) -> None:
+        """Allocate the export's chunks and queue a task for each."""
+        chunk_size = settings.search_export_chunk_size
+        # Each scan page becomes one chunk, so pages are sized to match.
+        async with contextlib.aclosing(
+            prefetch(
+                self._search_service.scan(
+                    search_export.query,
+                    sort=search_export.sort,
+                    page_size=chunk_size,
+                )
+            )
+        ) as pages:
+            first_page = await anext(pages)
+            n_references = first_page.total.value
+            chunks = iter(
+                await self._add_chunks(
+                    search_export,
+                    [
+                        min(chunk_size, n_references - start)
+                        for start in range(0, n_references, chunk_size)
+                    ],
+                )
+            )
+            await self._dispatch(next(chunks), first_page.hits)
+            async for page in pages:
+                await self._dispatch(next(chunks), page.hits)
 
     async def run(self, export_id: UUID, blob_repository: BlobRepository) -> None:
         """Run a queued search export end-to-end."""
@@ -286,16 +336,17 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
                 search_export_id=str(export_id),
             )
             return
+        single_file = (
+            search_export.n_references or 0
+        ) <= settings.max_single_file_search_export_size
         try:
-            reference_ids, truncated = await self._collect_search_export_ids(
-                search_export
-            )
-            chunk = await self._add_chunk(
-                search_export, len(reference_ids), truncated=truncated
-            )
-            await self._reference_export_service.run(
-                chunk.id, blob_repository, reference_ids=reference_ids
-            )
+            if single_file:
+                chunk, reference_ids = await self._collect(search_export)
+                await self._reference_export_service.run(
+                    chunk.id, blob_repository, reference_ids=reference_ids
+                )
+            else:
+                await self._distribute(search_export)
         except Exception as exc:
             logger.exception("Search export failed", search_export_id=str(export_id))
             await self.fail(export_id, f"Failed to run export task: {exc}")

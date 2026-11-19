@@ -317,14 +317,6 @@ class SearchExportRead(ExportReadBase):
             "exists. Otherwise, download each of ``chunks``."
         ),
     )
-    truncated: bool = Field(
-        default=False,
-        description=(
-            "Whether the matching result set exceeded the server's result-window "
-            "cap. When true, the JSONL contains only the first window's worth of "
-            "matches."
-        ),
-    )
     chunks: list[SearchExportChunkRead] = Field(
         default_factory=list,
         description=(

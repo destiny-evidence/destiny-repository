@@ -17,6 +17,7 @@ from app.domain.references.models.models import (
 )
 from app.domain.references.models.sql import ReferenceExport as SQLReferenceExport
 from app.domain.references.service import ReferenceService
+from app.domain.references.services import export_service
 from app.domain.references.services.anti_corruption_service import (
     ReferenceAntiCorruptionService,
 )
@@ -24,8 +25,8 @@ from app.domain.references.services.export_service import (
     ReferenceExportService,
     SearchExportService,
 )
-from app.domain.references.services.search_service import SearchService
 from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
+from app.persistence.es.repository import ES_MAX_PAGE_SIZE
 from tests.factories import (
     BibliographicMetadataEnhancementFactory,
     BlobStorageFileFactory,
@@ -33,54 +34,85 @@ from tests.factories import (
     ReferenceFactory,
 )
 
-# Undecorated body — tests drive the implementation with mocks instead of a UoW.
-_collect_export_ids = SearchExportService._collect_search_export_ids.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
+# Unwrapped from their UoW so tests can drive them with mocks.
+_collect = SearchExportService._collect.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
+_distribute = SearchExportService._distribute.__wrapped__  # type: ignore[attr-defined]  # noqa: SLF001
 
 
-def _make_service() -> SearchExportService:
-    """Build a minimally-initialised SearchExportService for body-level tests."""
+def _page(n_hits: int, total: int) -> ESSearchResult:
+    return ESSearchResult(
+        hits=[ESHit(id=uuid7(), score=1.0) for _ in range(n_hits)],
+        total=ESSearchTotal(value=total, relation="eq"),
+        page=1,
+    )
+
+
+def _scanning_service(monkeypatch: pytest.MonkeyPatch, *pages: ESSearchResult) -> Any:
+    """A service whose scan yields ``pages``, with chunks of 2."""
+    monkeypatch.setattr(export_service.settings, "search_export_chunk_size", 2)
     service = SearchExportService.__new__(SearchExportService)
-    service._search_service = SearchService.__new__(SearchService)  # noqa: SLF001
+    service._search_service = MagicMock()  # noqa: SLF001
+    service._search_service.scan = MagicMock(side_effect=lambda *_, **__: _aiter(pages))  # noqa: SLF001
+    service._add_chunks = AsyncMock(  # type: ignore[method-assign] # noqa: SLF001
+        side_effect=lambda export, chunk_sizes: [
+            ReferenceExport(search_export_id=export.id, chunk_index=chunk_index)
+            for chunk_index in range(len(chunk_sizes))
+        ]
+    )
+    service._dispatch = AsyncMock()  # type: ignore[method-assign] # noqa: SLF001
     return service
 
 
-@pytest.mark.parametrize(
-    ("total", "expected_truncated"),
-    [
-        pytest.param(25_000, True, id="above_cap"),
-        pytest.param(10_000, False, id="at_cap"),
-        pytest.param(0, False, id="empty"),
-    ],
-)
-async def test_collect_search_export_ids_truncation(
+async def test_collect_returns_one_chunk_of_every_id(
     monkeypatch: pytest.MonkeyPatch,
-    total: int,
-    expected_truncated: bool,  # noqa: FBT001
 ) -> None:
-    """`truncated` is set iff the match set exceeded the result-window cap."""
-    n_hits = min(total, SearchService.MAX_RESULT_WINDOW)
-    pages = (
-        [
-            ESSearchResult(
-                hits=[ESHit(id=uuid7(), score=1.0) for _ in range(n_hits)],
-                total=ESSearchTotal(value=total, relation="eq"),
-                page=1,
-            )
-        ]
-        if n_hits
-        else []
-    )
-    scan = MagicMock(side_effect=lambda *_, **__: _aiter(pages))
-    monkeypatch.setattr(SearchService, "scan", scan)
+    """A single file export is one chunk sized to every matching id."""
+    pages = (_page(2, total=3), _page(1, total=3))
+    service = _scanning_service(monkeypatch, *pages)
     search_export = SearchExport(
         query=SearchQuery(query_string="climate"), sort=["-publication_year"]
     )
 
-    ids, truncated = await _collect_export_ids(_make_service(), search_export)
+    chunk, reference_ids = await _collect(service, search_export)
 
-    assert len(ids) == n_hits
-    assert truncated is expected_truncated
-    assert scan.call_args.kwargs["sort"] == ["-publication_year"]
+    assert reference_ids == [hit.id for page in pages for hit in page.hits]
+    service._add_chunks.assert_awaited_once_with(search_export, [3])  # noqa: SLF001
+    assert chunk.chunk_index == 0
+    scan_kwargs = service._search_service.scan.call_args.kwargs  # noqa: SLF001
+    assert scan_kwargs["sort"] == ["-publication_year"]
+    assert scan_kwargs["page_size"] == ES_MAX_PAGE_SIZE
+
+
+async def test_collect_returns_empty_chunk_without_matches(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A search with no matches is still one (empty) chunk."""
+    service = _scanning_service(monkeypatch)
+    search_export = SearchExport(query=SearchQuery(query_string="climate"))
+
+    _, reference_ids = await _collect(service, search_export)
+
+    assert reference_ids == []
+    service._add_chunks.assert_awaited_once_with(search_export, [0])  # noqa: SLF001
+
+
+async def test_distribute_dispatches_a_chunk_per_page(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Chunks are allocated from the scan's total and each page dispatched."""
+    pages = (_page(2, total=5), _page(2, total=5), _page(1, total=5))
+    service = _scanning_service(monkeypatch, *pages)
+    search_export = SearchExport(query=SearchQuery(query_string="climate"))
+
+    await _distribute(service, search_export)
+
+    service._add_chunks.assert_awaited_once_with(search_export, [2, 2, 1])  # noqa: SLF001
+    scan_kwargs = service._search_service.scan.call_args.kwargs  # noqa: SLF001
+    assert scan_kwargs["page_size"] == 2
+    assert [
+        (call.args[0].chunk_index, call.args[1])
+        for call in service._dispatch.await_args_list  # noqa: SLF001
+    ] == [(chunk_index, page.hits) for chunk_index, page in enumerate(pages)]
 
 
 async def _aiter(items):
@@ -127,7 +159,7 @@ async def _capture_uploaded_body(reference_service, export_format, reference):
     blob_repository = MagicMock()
     blob_repository.upload_file_to_blob_storage = AsyncMock(side_effect=_capture)
 
-    result_file, count = await reference_service.stream_references_to_blob(
+    await reference_service.stream_references_to_blob(
         reference_ids=[reference.id],
         export_format=export_format,
         access_control_service=_identity_access_control(),
@@ -137,7 +169,7 @@ async def _capture_uploaded_body(reference_service, export_format, reference):
         chunk_size=100,
     )
     body = b"".join([chunk async for chunk in captured["content"].stream()]).decode()
-    return body, count, captured["filename"]
+    return body, captured["filename"]
 
 
 async def test_stream_references_to_blob_serializes_ris() -> None:
@@ -145,11 +177,10 @@ async def test_stream_references_to_blob_serializes_ris() -> None:
     reference = _reference_with_title("A Title")
     reference_service = _reference_service_with([reference], AsyncMock())
 
-    body, count, filename = await _capture_uploaded_body(
+    body, filename = await _capture_uploaded_body(
         reference_service, ExportFormat.RIS, reference
     )
 
-    assert count == 1
     assert filename.endswith(".ris")
     assert body.startswith("TY  - ")
     assert "TI  - A Title" in body
@@ -166,7 +197,7 @@ async def test_stream_references_to_blob_serializes_jsonl() -> None:
     anti_corruption.reference_to_sdk = AsyncMock(return_value=sdk_reference)
     reference_service = _reference_service_with([reference], anti_corruption)
 
-    body, _, filename = await _capture_uploaded_body(
+    body, filename = await _capture_uploaded_body(
         reference_service, ExportFormat.JSONL, reference
     )
 
@@ -179,7 +210,7 @@ async def test_stream_export_file_uses_format_extension_and_path() -> None:
     """The primitive names the file by export id + format, and uses the blob path."""
     reference_service = MagicMock()
     reference_service.stream_references_to_blob = AsyncMock(
-        return_value=(BlobStorageFileFactory.build(), 2)
+        return_value=BlobStorageFileFactory.build()
     )
     service = ReferenceExportService.__new__(ReferenceExportService)
     service._reference_service = reference_service  # noqa: SLF001
@@ -237,6 +268,7 @@ async def test_request_reference_export_deduplicates_ids() -> None:
     )
 
     assert reference_export.reference_ids == [first, second]
+    assert reference_export.n_references == 2
     sql_uow.references.verify_pk_existence.assert_awaited_once_with([first, second])
 
 
@@ -269,7 +301,7 @@ async def test_run_reference_export_streams_stored_ids_without_search() -> None:
 
     service = ReferenceExportService.__new__(ReferenceExportService)
     service._claim = AsyncMock(return_value=export)  # type: ignore[method-assign] # noqa: SLF001
-    service.stream_export_file = AsyncMock(return_value=(blob, 2))  # type: ignore[method-assign]
+    service.stream_export_file = AsyncMock(return_value=blob)  # type: ignore[method-assign]
     service._complete = AsyncMock()  # type: ignore[method-assign] # noqa: SLF001
 
     blob_repository = MagicMock()
@@ -280,14 +312,14 @@ async def test_run_reference_export_streams_stored_ids_without_search() -> None:
     stream_kwargs = stream_call.kwargs
     assert stream_kwargs["reference_ids"] == reference_ids
     assert stream_kwargs["export_id"] == export.id
-    service._complete.assert_awaited_once_with(export.id, blob, 2)  # noqa: SLF001
+    service._complete.assert_awaited_once_with(export.id, blob)  # noqa: SLF001
 
 
 def _reference_export_service_claiming(export: ReferenceExport):
     service = ReferenceExportService.__new__(ReferenceExportService)
     service._claim = AsyncMock(return_value=export)  # type: ignore[method-assign] # noqa: SLF001
     service.stream_export_file = AsyncMock(  # type: ignore[method-assign]
-        return_value=(BlobStorageFileFactory.build(), 0)
+        return_value=BlobStorageFileFactory.build()
     )
     service._complete = AsyncMock()  # type: ignore[method-assign] # noqa: SLF001
     service.fail = AsyncMock()  # type: ignore[method-assign]
@@ -365,31 +397,50 @@ def test_search_export_status_is_derived_from_chunks(
 def _search_export_service(search_export: SearchExport) -> Any:
     service = SearchExportService.__new__(SearchExportService)
     service.get = AsyncMock(return_value=search_export)  # type: ignore[method-assign]
-    service._collect_search_export_ids = AsyncMock(  # type: ignore[method-assign] # noqa: SLF001
-        return_value=([uuid7(), uuid7()], False)
+    service._collect = AsyncMock(  # type: ignore[method-assign] # noqa: SLF001
+        return_value=(_chunk(ExportStatus.PENDING), [uuid7(), uuid7()])
     )
-    service._add_chunk = AsyncMock(  # type: ignore[method-assign] # noqa: SLF001
-        return_value=_chunk(ExportStatus.PENDING)
-    )
+    service._distribute = AsyncMock()  # type: ignore[method-assign] # noqa: SLF001
     service.fail = AsyncMock()  # type: ignore[method-assign]
     service._reference_export_service = MagicMock()  # noqa: SLF001
     service._reference_export_service.run = AsyncMock()  # noqa: SLF001
     return service
 
 
-async def test_run_search_export_runs_single_chunk() -> None:
-    """The search's ids are exported as one chunk."""
-    search_export = SearchExport(query=SearchQuery(query_string="x"), chunks=[])
+async def test_run_search_export_runs_single_file_inline() -> None:
+    """An export requested within the single file size runs as one chunk, inline."""
+    search_export = SearchExport(
+        query=SearchQuery(query_string="x"),
+        n_references=export_service.settings.max_single_file_search_export_size,
+        chunks=[],
+    )
     service = _search_export_service(search_export)
     blob_repository = MagicMock()
 
     await service.run(search_export.id, blob_repository)
 
-    reference_ids, _ = service._collect_search_export_ids.return_value  # noqa: SLF001
-    chunk = service._add_chunk.return_value  # noqa: SLF001
+    chunk, reference_ids = service._collect.return_value  # noqa: SLF001
     service._reference_export_service.run.assert_awaited_once_with(  # noqa: SLF001
         chunk.id, blob_repository, reference_ids=reference_ids
     )
+    service._distribute.assert_not_awaited()  # noqa: SLF001
+    service.fail.assert_not_awaited()
+
+
+async def test_run_search_export_distributes_beyond_single_file_size() -> None:
+    """An export requested beyond the single file size is left to chunk tasks."""
+    search_export = SearchExport(
+        query=SearchQuery(query_string="x"),
+        n_references=export_service.settings.max_single_file_search_export_size + 1,
+        chunks=[],
+    )
+    service = _search_export_service(search_export)
+
+    await service.run(search_export.id, MagicMock())
+
+    service._distribute.assert_awaited_once_with(search_export)  # noqa: SLF001
+    service._collect.assert_not_awaited()  # noqa: SLF001
+    service._reference_export_service.run.assert_not_awaited()  # noqa: SLF001
     service.fail.assert_not_awaited()
 
 
@@ -402,14 +453,15 @@ async def test_run_search_export_skips_export_with_chunks() -> None:
 
     await service.run(search_export.id, MagicMock())
 
-    service._collect_search_export_ids.assert_not_awaited()  # noqa: SLF001
+    service._collect.assert_not_awaited()  # noqa: SLF001
+    service._distribute.assert_not_awaited()  # noqa: SLF001
 
 
 async def test_run_search_export_fails_on_search_error() -> None:
     """A failure before the chunk runs fails the search export."""
     search_export = SearchExport(query=SearchQuery(query_string="x"), chunks=[])
     service = _search_export_service(search_export)
-    service._collect_search_export_ids.side_effect = RuntimeError("kaboom")  # noqa: SLF001
+    service._collect.side_effect = RuntimeError("kaboom")  # noqa: SLF001
 
     await service.run(search_export.id, MagicMock())
 
@@ -429,7 +481,7 @@ async def test_stream_references_to_blob_jsonl_flattens_duplicates(
         fake_uow(),
     )
 
-    body, _, _ = await _capture_uploaded_body(
+    body, _ = await _capture_uploaded_body(
         reference_service, ExportFormat.JSONL, canonical_ref
     )
     data = json.loads(body.strip())

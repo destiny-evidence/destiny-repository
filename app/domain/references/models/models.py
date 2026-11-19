@@ -757,14 +757,6 @@ class SearchExport(Export):
         default=None,
         description="Sort fields, in the same form `/references/search/` accepts.",
     )
-    truncated: bool = Field(
-        default=False,
-        description=(
-            "Whether the matching result set was larger than the server's "
-            "result-window cap. When true, the JSONL contains only the first "
-            "window's worth of matches."
-        ),
-    )
     chunks: list[ReferenceExport] | None = Field(
         default=None,
         description="The chunks of this export, in order.",

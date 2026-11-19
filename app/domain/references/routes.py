@@ -931,8 +931,13 @@ async def _enqueue_export_task(
         "Queue an export job that produces a file of references matching the given "
         "search, in JSONL (default) or RIS via the `export_format` parameter. "
         "Accepts the same filter parameters as `/references/search/` without "
-        "pagination. Returns the job id with `status: pending`; poll "
-        "`GET /references/search/exports/{id}/` until the job completes."
+        "pagination. Searches matching more than "
+        f"{settings.max_single_file_search_export_size:,} "
+        "references are rejected unless the caller holds the "
+        "`reference.large_export.requester` role or scope, which raises the limit to "
+        f"{settings.max_search_export_size:,}. Returns the job id with "
+        "`status: pending`; poll `GET /references/search/exports/{id}/` until the "
+        "job completes."
     ),
 )
 async def request_search_export(
@@ -948,9 +953,31 @@ async def request_search_export(
     export_format: ExportFormat = ExportFormat.JSONL,
 ) -> destiny_sdk.references.SearchExportRead:
     """Queue a search export job and return its id and pending status."""
+    n_references = await search_export_service.count(query)
+    if (
+        n_references > settings.max_single_file_search_export_size
+        and Entitlement.LARGE_EXPORT_REQUESTER not in entitlements
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                f"Search matches {n_references:,} references. Exporting more than "
+                f"{settings.max_single_file_search_export_size:,} requires the "
+                "reference.large_export.requester role or scope."
+            ),
+        )
+    if n_references > settings.max_search_export_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                f"Search matches {n_references:,} references, more than the "
+                f"{settings.max_search_export_size:,} that can be exported."
+            ),
+        )
     search_export = await search_export_service.request_search_export(
         query,
         sort=sort,
+        n_references=n_references,
         export_format=export_format,
     )
     await _enqueue_export_task(
@@ -968,14 +995,11 @@ async def request_search_export(
 @search_exports_router.get(
     "/{search_export_id}/",
     description=(
-        "Get the status of a search export job. Once `status` is "
-        "`completed`, the response includes a signed `result_url` for the "
-        "produced export file, signed URLs for each of its `chunks`, and "
-        "`truncated: true` if the matching set "
-        f"exceeded the {SearchService.MAX_RESULT_WINDOW:,}-result cap (the "
-        f"file contains only the first {SearchService.MAX_RESULT_WINDOW:,} "
-        "matches). The URL is re-signed on each call, so an expired URL can "
-        "be refreshed by polling again."
+        "Get the status of a search export job. Each of its `chunks` includes a "
+        "signed `result_url` once that chunk completes. Exports of up to "
+        f"{settings.max_single_file_search_export_size:,} references are a single "
+        "chunk, whose file is also given as the export's `result_url`. URLs are "
+        "re-signed on each call, so an expired URL can be refreshed by polling again."
     ),
 )
 async def get_search_export(

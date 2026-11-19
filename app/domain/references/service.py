@@ -263,7 +263,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         path: str,
         filename: str,
         chunk_size: int,
-    ) -> tuple[BlobStorageFile, int]:
+    ) -> BlobStorageFile:
         """
         Stream deduplicated, redacted references to blob storage in the given format.
 
@@ -284,12 +284,11 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 for chunk in list_chunker(reference_ids, chunk_size)
             ],
         )
-        result_file = await blob_repository.upload_file_to_blob_storage(
+        return await blob_repository.upload_file_to_blob_storage(
             content=file_stream,
             path=path,
             filename=filename,
         )
-        return result_file, len(reference_ids)
 
     async def _serialize_references(
         self,
@@ -1709,7 +1708,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 expires_at=apply_positive_timedelta(lease_duration),
             )
 
-        reference_data_file, _ = await self.stream_references_to_blob(
+        reference_data_file = await self.stream_references_to_blob(
             reference_ids=[pe.reference_id for pe in pending_enhancements],
             export_format=ExportFormat.JSONL,
             access_control_service=access_control_service,
