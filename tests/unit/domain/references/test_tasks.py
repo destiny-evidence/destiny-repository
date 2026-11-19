@@ -610,7 +610,6 @@ async def test_run_search_export_task_skips_non_pending_row(
         query="climate",
         result_file=existing_file.to_uri(),
         n_references=42,
-        truncated=False,
     )
     session.add(export)
     await session.flush()

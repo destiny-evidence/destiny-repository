@@ -1246,7 +1246,6 @@ async def test_request_search_export_happy_path(
     assert body["status"] == "pending"
     assert body["n_references"] == 1
     assert body["result_url"] is None
-    assert body["truncated"] is False
     assert body["chunks"] == []
 
     assert isinstance(broker, InMemoryBroker)
@@ -1257,7 +1256,6 @@ async def test_request_search_export_happy_path(
     status_body = status_response.json()
     assert status_body["status"] == "completed"
     assert status_body["n_references"] == 1
-    assert status_body["truncated"] is False
     assert status_body["result_url"] is not None
     assert status_body["error"] is None
     [chunk] = status_body["chunks"]

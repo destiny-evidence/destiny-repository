@@ -172,7 +172,6 @@ async def test_search_export_end_to_end(
     body = get_response.json()
     assert body["status"] == "completed"
     assert body["n_references"] == 2
-    assert body["truncated"] is False
     assert body["result_url"] is not None
     assert body["error"] is None
     [chunk] = body["chunks"]
@@ -455,8 +454,6 @@ async def test_reference_export_end_to_end(
     assert post_response.status_code == status.HTTP_202_ACCEPTED
     body = post_response.json()
     export_id = body["id"]
-    # Reference exports never truncate.
-    assert "truncated" not in body
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
