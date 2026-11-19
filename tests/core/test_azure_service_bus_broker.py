@@ -620,7 +620,7 @@ async def test_message_lifecycle_logs_at_debug(
     ]
 
     for expected in (
-        "Yielding message",
+        "Yielding normal priority message",
         "Attempting to complete message",
         "Completing message",
         "Completed message",

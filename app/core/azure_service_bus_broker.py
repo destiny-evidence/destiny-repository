@@ -387,38 +387,35 @@ class AzureServiceBusBroker(AsyncBroker):
         ):
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
+        queues = (
+            (
+                self.priority_receiver,
+                settings.message_broker_priority_queue_max_wait,
+                "high",
+            ),
+            (
+                self.receiver,
+                settings.message_broker_queue_max_wait,
+                "normal",
+            ),
+            (
+                self.low_priority_receiver,
+                settings.message_broker_low_priority_queue_max_wait,
+                "low",
+            ),
+        )
+
         while True:
             try:
-                async with self._receive_lock:
-                    priority_batch = await self.priority_receiver.receive_messages(
-                        max_wait_time=settings.message_broker_priority_queue_max_wait
-                    )
-                for sb_message in priority_batch:
-                    logger.debug("Yielding priority message")
-                    yield self._build_ackable(sb_message, self.priority_receiver)
-                if priority_batch:
-                    # Keep draining priority before touching the default queue
-                    continue
-
-                async with self._receive_lock:
-                    normal_batch = await self.receiver.receive_messages(
-                        max_wait_time=settings.message_broker_queue_max_wait
-                    )
-                for sb_message in normal_batch:
-                    logger.debug("Yielding message")
-                    yield self._build_ackable(sb_message, self.receiver)
-                if normal_batch:
-                    # Keep draining default before touching the low priority queue
-                    continue
-
-                low_receiver = self.low_priority_receiver
-                async with self._receive_lock:
-                    low_priority_batch = await low_receiver.receive_messages(
-                        max_wait_time=settings.message_broker_low_priority_queue_max_wait
-                    )
-                for sb_message in low_priority_batch:
-                    logger.debug("Yielding low priority message")
-                    yield self._build_ackable(sb_message, low_receiver)
+                for receiver, max_wait, priority in queues:
+                    async with self._receive_lock:
+                        batch = await receiver.receive_messages(max_wait_time=max_wait)
+                    for sb_message in batch:
+                        logger.debug("Yielding %s priority message", priority)
+                        yield self._build_ackable(sb_message, receiver)
+                    if batch:
+                        # Restart from the highest priority queue
+                        break
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying
