@@ -135,6 +135,14 @@ locals {
       value = var.max_reference_export_size
     },
     {
+      name  = "MAX_SINGLE_FILE_SEARCH_EXPORT_SIZE",
+      value = var.max_single_file_search_export_size
+    },
+    {
+      name  = "MAX_SEARCH_EXPORT_SIZE",
+      value = var.max_search_export_size
+    },
+    {
       name  = "SEARCH_ENHANCEMENT_SCAN_PAGE_SIZE",
       value = var.search_enhancement_scan_page_size
     },

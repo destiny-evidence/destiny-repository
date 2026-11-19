@@ -595,6 +595,23 @@ class Settings(BaseSettings):
         ),
     )
 
+    max_single_file_search_export_size: int = Field(
+        default=10_000,
+        description=(
+            "Maximum number of references a search export may match to be produced "
+            "as a single file. Also the most a caller not entitled to large exports "
+            "may export."
+        ),
+    )
+
+    max_search_export_size: int = Field(
+        default=1_000_000,
+        description=(
+            "Maximum number of references a search export may match, for callers "
+            "entitled to large exports. Requests exceeding this are rejected."
+        ),
+    )
+
     default_es_indexing_chunk_size: int = Field(
         default=1000,
         description=(

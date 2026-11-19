@@ -392,6 +392,18 @@ variable "max_reference_export_size" {
   default     = 10000
 }
 
+variable "max_single_file_search_export_size" {
+  description = "Maximum number of references a search export may match to be produced as a single file, and the most a caller without the large export entitlement may export"
+  type        = number
+  default     = 10000
+}
+
+variable "max_search_export_size" {
+  description = "Maximum number of references a search export may match, for callers with the large export entitlement"
+  type        = number
+  default     = 1000000
+}
+
 variable "expire_pending_enhancements_batch_size" {
   description = "Maximum number of stale pending enhancements expired and replaced by a single run of the expire_pending_enhancements job"
   type        = number

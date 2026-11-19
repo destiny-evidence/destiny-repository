@@ -229,6 +229,11 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
         """Mark a search export as failed with the given error message."""
         return await self.sql_uow.search_exports.update_by_pk(pk=export_id, error=error)
 
+    @es_unit_of_work
+    async def count(self, query: SearchQuery) -> int:
+        """Count the references a search export of the query would contain."""
+        return (await self._search_service.count(query)).value
+
     @sql_unit_of_work
     async def request_search_export(
         self,

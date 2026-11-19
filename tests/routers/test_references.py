@@ -1317,6 +1317,50 @@ async def test_search_export_chunk_failure_points_to_chunks(
     assert "kaboom" in status_body["chunks"][0]["error"]
 
 
+async def test_request_search_export_over_single_file_requires_entitlement(
+    session: AsyncSession,
+    app: FastAPI,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers without the entitlement can't export more than a single file."""
+    app.dependency_overrides[references.reference_reader_auth] = lambda: frozenset()
+    monkeypatch.setattr(
+        SearchExportService,
+        "count",
+        AsyncMock(
+            return_value=references.settings.max_single_file_search_export_size + 1
+        ),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert not (await session.execute(select(SQLSearchExport))).scalars().all()
+
+
+async def test_request_search_export_rejects_over_max_size(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Entitled callers still can't export more than the configured maximum."""
+    monkeypatch.setattr(
+        SearchExportService,
+        "count",
+        AsyncMock(return_value=references.settings.max_search_export_size + 1),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert not (await session.execute(select(SQLSearchExport))).scalars().all()
+
+
 async def test_request_search_export_rejects_empty_query(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
