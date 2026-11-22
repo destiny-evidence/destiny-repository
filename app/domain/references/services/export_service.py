@@ -6,6 +6,7 @@ from uuid import UUID
 from opentelemetry import trace
 
 from app.core.config import UploadFile, get_settings
+from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.taskiq import queue_task_with_trace
 from app.domain.references.models.models import (
@@ -158,6 +159,9 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
                 reference_export_id=str(export_id),
             )
             return None
+        if export.search_export_id is not None:
+            trace_attribute(Attributes.SEARCH_EXPORT_ID, str(export.search_export_id))
+            trace_attribute(Attributes.REFERENCE_EXPORT_CHUNK_INDEX, export.chunk_index)
         if reference_ids is None:
             reference_ids = export.reference_ids
         if reference_ids is None:
