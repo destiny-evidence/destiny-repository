@@ -289,7 +289,7 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
     async def _collect(
         self, search_export: SearchExport
     ) -> tuple[ReferenceExport, list[UUID]]:
-        """Allocate the export's single chunk, returning it with the ids to export."""
+        """Get or allocate the export's single chunk, returning it with its ids."""
         reference_ids = [
             hit.id
             async for page in self._search_service.scan(
@@ -299,7 +299,9 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
             )
             for hit in page.hits
         ]
-        (chunk,) = await self._add_chunks(search_export, [len(reference_ids)])
+        (chunk,) = search_export.chunks or await self._add_chunks(
+            search_export, [len(reference_ids)]
+        )
         return chunk, reference_ids
 
     @es_unit_of_work
@@ -334,15 +336,18 @@ class SearchExportService(GenericService[ReferenceAntiCorruptionService]):
     async def run(self, export_id: UUID, blob_repository: BlobRepository) -> None:
         """Run a queued search export end-to-end."""
         search_export = await self.get(export_id)
-        if search_export.chunks or search_export.error is not None:
+        if search_export.status in ExportStatus.get_terminal_statuses():
             logger.info(
-                "Skipping search export, already run",
+                "Skipping search export, already finished",
                 search_export_id=str(export_id),
             )
             return
         single_file = (
             search_export.n_references or 0
         ) <= settings.max_single_file_search_export_size
+        if search_export.chunks and not single_file:
+            await self.fail(export_id, "Export was interrupted, please retry.")
+            return
         try:
             if single_file:
                 chunk, reference_ids = await self._collect(search_export)

@@ -98,6 +98,22 @@ async def test_collect_returns_empty_chunk_without_matches(
     service._add_chunks.assert_awaited_once_with(search_export, [0])  # noqa: SLF001
 
 
+async def test_collect_reuses_an_existing_chunk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A rerun single file export reuses its chunk rather than adding another."""
+    service = _scanning_service(monkeypatch, _page(1, total=1))
+    chunk = _chunk(ExportStatus.RUNNING)
+    search_export = SearchExport(
+        query=SearchQuery(query_string="climate"), chunks=[chunk]
+    )
+
+    collected, _ = await _collect(service, search_export)
+
+    assert collected is chunk
+    service._add_chunks.assert_not_awaited()  # noqa: SLF001
+
+
 async def test_distribute_dispatches_a_chunk_per_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -432,12 +448,21 @@ def _search_export_service(search_export: SearchExport) -> Any:
     return service
 
 
-async def test_run_search_export_runs_single_file_inline() -> None:
+@pytest.mark.parametrize(
+    "chunks",
+    [
+        pytest.param([], id="fresh"),
+        pytest.param([_chunk(ExportStatus.RUNNING)], id="redelivered"),
+    ],
+)
+async def test_run_search_export_runs_single_file_inline(
+    chunks: list[ReferenceExport],
+) -> None:
     """An export requested within the single file size runs as one chunk, inline."""
     search_export = SearchExport(
         query=SearchQuery(query_string="x"),
         n_references=export_service.settings.max_single_file_search_export_size,
-        chunks=[],
+        chunks=chunks,
     )
     service = _search_export_service(search_export)
     blob_repository = MagicMock()
@@ -469,10 +494,19 @@ async def test_run_search_export_distributes_beyond_single_file_size() -> None:
     service.fail.assert_not_awaited()
 
 
-async def test_run_search_export_skips_export_with_chunks() -> None:
-    """A redelivered task does not redo an export that already has chunks."""
+@pytest.mark.parametrize(
+    ("error", "chunks"),
+    [
+        pytest.param("boom", [], id="failed"),
+        pytest.param(None, [_chunk(ExportStatus.COMPLETED)], id="completed"),
+    ],
+)
+async def test_run_search_export_skips_finished_export(
+    error: str | None, chunks: list[ReferenceExport]
+) -> None:
+    """A redelivered task leaves a finished export alone."""
     search_export = SearchExport(
-        query=SearchQuery(query_string="x"), chunks=[_chunk(ExportStatus.RUNNING)]
+        query=SearchQuery(query_string="x"), error=error, chunks=chunks
     )
     service = _search_export_service(search_export)
 
@@ -480,6 +514,24 @@ async def test_run_search_export_skips_export_with_chunks() -> None:
 
     service._collect.assert_not_awaited()  # noqa: SLF001
     service._distribute.assert_not_awaited()  # noqa: SLF001
+    service.fail.assert_not_awaited()
+
+
+async def test_run_search_export_fails_interrupted_distribution() -> None:
+    """A redelivered chunked export can't safely resume, so it fails."""
+    search_export = SearchExport(
+        query=SearchQuery(query_string="x"),
+        n_references=export_service.settings.max_single_file_search_export_size + 1,
+        chunks=[_chunk(ExportStatus.COMPLETED), _chunk(ExportStatus.PENDING)],
+    )
+    service = _search_export_service(search_export)
+
+    await service.run(search_export.id, MagicMock())
+
+    service._distribute.assert_not_awaited()  # noqa: SLF001
+    service.fail.assert_awaited_once_with(
+        search_export.id, "Export was interrupted, please retry."
+    )
 
 
 async def test_run_search_export_fails_on_search_error() -> None:
