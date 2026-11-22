@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid7
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import SQLNotFoundError
 from app.domain.references.models.models import (
@@ -27,6 +28,7 @@ from app.domain.references.services.export_service import (
 )
 from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.persistence.es.repository import ES_MAX_PAGE_SIZE
+from app.persistence.sql.uow import AsyncSqlUnitOfWork
 from tests.factories import (
     BibliographicMetadataEnhancementFactory,
     BlobStorageFileFactory,
@@ -346,6 +348,29 @@ async def test_run_reference_export_fails_without_ids() -> None:
 
     service.stream_export_file.assert_not_awaited()
     service.fail.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        pytest.param(ExportStatus.RUNNING, ExportStatus.FAILED, id="running"),
+        pytest.param(ExportStatus.COMPLETED, ExportStatus.COMPLETED, id="completed"),
+    ],
+)
+async def test_fail_reference_export_leaves_finished_exports(
+    session: AsyncSession, status: ExportStatus, expected: ExportStatus
+) -> None:
+    """A late failure can't overwrite an export that has since finished."""
+    export = SQLReferenceExport(reference_ids=[uuid7()], status=status)
+    session.add(export)
+    await session.commit()
+    service = ReferenceExportService(
+        MagicMock(), AsyncSqlUnitOfWork(session), MagicMock(), MagicMock(), MagicMock()
+    )
+
+    failed = await service.fail(export.id, "late")
+
+    assert failed.status == expected
 
 
 def _chunk(status: ExportStatus, error: str | None = None) -> ReferenceExport:

@@ -62,12 +62,16 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
 
     @sql_unit_of_work
     async def fail(self, export_id: UUID, error: str) -> ReferenceExport:
-        """Mark a reference export as failed with the given error message."""
-        return await self.sql_uow.reference_exports.update_by_pk(
-            pk=export_id,
+        """Mark an unfinished reference export as failed with the given error."""
+        await self.sql_uow.reference_exports.bulk_update_by_filter(
+            filter_conditions={
+                "id": export_id,
+                "status": ExportStatus.sources_of(ExportStatus.FAILED),
+            },
             status=ExportStatus.FAILED,
             error=error,
         )
+        return await self.sql_uow.reference_exports.get_by_pk(export_id)
 
     @sql_unit_of_work
     async def _claim(self, export_id: UUID) -> ReferenceExport | None:
@@ -80,7 +84,7 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         updated = await self.sql_uow.reference_exports.bulk_update_by_filter(
             filter_conditions={
                 "id": export_id,
-                "status": {ExportStatus.PENDING, ExportStatus.RUNNING},
+                "status": ExportStatus.sources_of(ExportStatus.RUNNING),
             },
             status=ExportStatus.RUNNING,
         )
