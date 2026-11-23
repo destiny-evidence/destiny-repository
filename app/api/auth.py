@@ -54,6 +54,7 @@ class AuthRole(StrEnum):
     IMPORT_WRITER = "import.writer"
     REFERENCE_READER = "reference.reader"
     REFERENCE_FULL_TEXT_READER = "reference.full_text.reader"
+    REFERENCE_LARGE_EXPORT_REQUESTER = "reference.large_export.requester"
     REFERENCE_DEDUPLICATOR = "reference.deduplicator"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer"
     ROBOT_WRITER = "robot.writer"
@@ -67,6 +68,7 @@ class AuthScope(StrEnum):
     IMPORT_WRITER = "import.writer.all"
     REFERENCE_READER = "reference.reader.all"
     REFERENCE_FULL_TEXT_READER = "reference.full_text.reader.all"
+    REFERENCE_LARGE_EXPORT_REQUESTER = "reference.large_export.requester.all"
     REFERENCE_DEDUPLICATOR = "reference.deduplicator.all"
     ENHANCEMENT_REQUEST_WRITER = "enhancement_request.writer.all"
     ROBOT_WRITER = "robot.writer.all"
@@ -103,6 +105,12 @@ _ENTITLEMENT_TO_GRANTS: dict[Entitlement, frozenset[str]] = {
         {
             AuthScope.ROBOT_ENTITLEMENT_WRITER.value,
             AuthRole.ROBOT_ENTITLEMENT_WRITER.value,
+        }
+    ),
+    Entitlement.LARGE_EXPORT_REQUESTER: frozenset(
+        {
+            AuthScope.REFERENCE_LARGE_EXPORT_REQUESTER.value,
+            AuthRole.REFERENCE_LARGE_EXPORT_REQUESTER.value,
         }
     ),
 }

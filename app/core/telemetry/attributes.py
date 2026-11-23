@@ -93,6 +93,7 @@ class Attributes(StrEnum):
     REFERENCE_DUPLICATE_DECISION_ID = "app.reference_duplicate_decision.id"
     SEARCH_EXPORT_ID = "app.search_export.id"
     REFERENCE_EXPORT_ID = "app.reference_export.id"
+    REFERENCE_EXPORT_CHUNK_INDEX = "app.reference_export.chunk_index"
 
     # Robot automation detection (percolation)
     PERCOLATION_DOCUMENT_COUNT = "app.percolation.document_count"

@@ -671,9 +671,6 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-    truncated: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
-    )
 
     chunks: Mapped[list[ReferenceExport]] = relationship(
         ReferenceExport, order_by=ReferenceExport.chunk_index
@@ -714,7 +711,6 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
             if domain_obj.result_file
             else None,
             n_references=domain_obj.n_references,
-            truncated=domain_obj.truncated,
             error=domain_obj.error,
         )
 
@@ -760,7 +756,6 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
             if self.result_file
             else None,
             n_references=self.n_references,
-            truncated=self.truncated,
             error=self.error,
             chunks=[chunk.to_domain() for chunk in self.chunks]
             if "chunks" in (preload or [])

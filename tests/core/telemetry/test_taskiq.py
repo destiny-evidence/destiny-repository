@@ -1,7 +1,7 @@
 """Tests for the Taskiq tracing middleware."""
 
 import asyncio
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from opentelemetry.trace import Link, SpanContext, SpanKind
@@ -11,6 +11,7 @@ from app.core.telemetry.taskiq import (
     DefaultTaskPriorityMiddleware,
     TaskiqTracingMiddleware,
     TaskPriority,
+    queue_task_with_trace,
 )
 
 
@@ -200,3 +201,18 @@ async def test_context_isolation_between_tasks():
         # Verify both spans were properly cleaned up
         span_a.end.assert_called_once()
         span_b.end.assert_called_once()
+
+
+async def test_queue_task_logs_list_kwargs_as_counts():
+    """List payloads are logged by size rather than content."""
+    task = MagicMock(labels={}, kiq=AsyncMock())
+
+    with patch("app.core.telemetry.taskiq.logger") as logger:
+        await queue_task_with_trace(
+            task, export_id="abc", reference_ids=list(range(1000)), otel_enabled=False
+        )
+
+    log_kwargs = logger.info.call_args.kwargs
+    assert log_kwargs["export_id"] == "abc"
+    assert log_kwargs["reference_ids"] == "1000 items"
+    task.kiq.assert_awaited_once_with(export_id="abc", reference_ids=list(range(1000)))

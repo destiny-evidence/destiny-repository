@@ -685,7 +685,7 @@ class GenericAsyncSqlRepository(
 
         Args:
         - filter_conditions (dict[str, object]): The conditions to filter records.
-          None values will be matched using SQL IS NULL.
+          None values will be matched using SQL IS NULL, and sets using SQL IN.
         - kwargs (object): The attributes to update. Can include None values.
 
         Returns:
@@ -724,6 +724,8 @@ class GenericAsyncSqlRepository(
                 field = getattr(self._persistence_cls, field_name)
                 if value is None:
                     stmt = stmt.where(field.is_(None))
+                elif isinstance(value, set | frozenset):
+                    stmt = stmt.where(field.in_(value))
                 else:
                     stmt = stmt.where(field == value)
 

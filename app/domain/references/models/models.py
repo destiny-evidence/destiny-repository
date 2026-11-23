@@ -75,7 +75,7 @@ class EnhancementRequestStatus(StrEnum):
     """All enhancements have been created."""
 
 
-class ExportStatus(StrEnum):
+class ExportStatus(StateMachineMixin, StrEnum):
     """The status of an export job."""
 
     PENDING = auto()
@@ -86,6 +86,20 @@ class ExportStatus(StrEnum):
     """Export job has completed and the file is available."""
     FAILED = auto()
     """Export job failed before producing a file."""
+
+    @classmethod
+    def transitions(cls) -> dict["ExportStatus", set["ExportStatus"]]:
+        """
+        Define the allowed state transitions for exports.
+
+        A running export can be claimed again by a redelivered task.
+        """
+        return {
+            cls.PENDING: {cls.RUNNING, cls.FAILED},
+            cls.RUNNING: {cls.RUNNING, cls.COMPLETED, cls.FAILED},
+            cls.COMPLETED: set(),
+            cls.FAILED: set(),
+        }
 
 
 # Retained for backward compatibility; export status is not search-specific.
@@ -756,14 +770,6 @@ class SearchExport(Export):
     sort: list[str] | None = Field(
         default=None,
         description="Sort fields, in the same form `/references/search/` accepts.",
-    )
-    truncated: bool = Field(
-        default=False,
-        description=(
-            "Whether the matching result set was larger than the server's "
-            "result-window cap. When true, the JSONL contains only the first "
-            "window's worth of matches."
-        ),
     )
     chunks: list[ReferenceExport] | None = Field(
         default=None,

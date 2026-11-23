@@ -97,7 +97,10 @@ async def queue_task_with_trace(
         "Queueing task",
         task_name=task.task_name,
         priority=priority.name,
-        **{k: str(v) for k, v in kwargs.items()},
+        **{
+            k: f"{len(v)} items" if isinstance(v, list) else str(v)
+            for k, v in kwargs.items()
+        },
     )
     if not otel_enabled:
         # If OpenTelemetry is not enabled, just queue the task normally
