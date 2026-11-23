@@ -287,7 +287,7 @@ class ExportReadBase(BaseModel):
     )
     n_references: int | None = Field(
         default=None,
-        description="The number of references included in the produced file.",
+        description="The number of references requested for export.",
     )
     error: str | None = Field(
         default=None,
