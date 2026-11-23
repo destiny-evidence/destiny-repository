@@ -7,7 +7,40 @@ import pytest
 from opentelemetry.trace import Link, SpanContext, SpanKind
 from taskiq import TaskiqMessage, TaskiqResult
 
-from app.core.telemetry.taskiq import TaskiqTracingMiddleware, queue_task_with_trace
+from app.core.telemetry.taskiq import (
+    DefaultTaskPriorityMiddleware,
+    TaskiqTracingMiddleware,
+    TaskPriority,
+    queue_task_with_trace,
+)
+
+
+@pytest.mark.asyncio
+async def test_default_priority_middleware_sets_normal_when_missing():
+    """Test that a message without a priority label is labelled NORMAL."""
+    message = TaskiqMessage(
+        task_id="test-task", task_name="test_task", args=(), kwargs={}, labels={}
+    )
+
+    processed_message = await DefaultTaskPriorityMiddleware().pre_send(message)
+
+    assert processed_message.labels["priority"] == TaskPriority.NORMAL.value
+
+
+@pytest.mark.asyncio
+async def test_default_priority_middleware_keeps_existing_priority():
+    """Test that an existing priority label is not overwritten."""
+    message = TaskiqMessage(
+        task_id="test-task",
+        task_name="test_task",
+        args=(),
+        kwargs={},
+        labels={"priority": TaskPriority.LOW.value},
+    )
+
+    processed_message = await DefaultTaskPriorityMiddleware().pre_send(message)
+
+    assert processed_message.labels["priority"] == TaskPriority.LOW.value
 
 
 @pytest.mark.asyncio
