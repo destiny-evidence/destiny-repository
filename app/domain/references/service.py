@@ -197,6 +197,8 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         self,
         reference_ids: Sequence[UUID] | None = None,
         references: Collection[Reference] | None = None,
+        *,
+        fail_on_missing: bool = True,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
@@ -207,6 +209,9 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
         :type references: Collection[Reference] | None
+        :param fail_on_missing: Whether to raise if any of ``reference_ids`` don't
+            exist, rather than skip them.
+        :type fail_on_missing: bool
         :return: The deduplicated reference.
         :rtype: Reference
         """
@@ -223,7 +228,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     "duplicate_decision",
                     "duplicate_references",
                 ],
+                fail_on_missing=fail_on_missing,
             )
+            if missing := set(reference_ids) - {ref.id for ref in references}:
+                logger.warning(
+                    "Skipping missing references",
+                    reference_ids=[str(pk) for pk in missing],
+                )
         if not references:
             return []
         return [
@@ -263,11 +274,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         path: str,
         filename: str,
         chunk_size: int,
+        fail_on_missing: bool = True,
     ) -> BlobStorageFile:
         """
         Stream deduplicated, redacted references to blob storage in the given format.
 
-        References are written in the order of ``reference_ids``.
+        References are written in the order of ``reference_ids``. Missing references
+        raise, or are skipped if not ``fail_on_missing``.
 
         Rides the caller's active SQL unit of work (the per-chunk fetch is
         undecorated), so the caller's ``@sql_unit_of_work`` method owns the
@@ -280,6 +293,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     "reference_ids": chunk,
                     "export_format": export_format,
                     "access_control_service": access_control_service,
+                    "fail_on_missing": fail_on_missing,
                 }
                 for chunk in list_chunker(reference_ids, chunk_size)
             ],
@@ -295,10 +309,12 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         reference_ids: list[UUID],
         export_format: ExportFormat,
         access_control_service: ReferenceAccessControlService,
+        *,
+        fail_on_missing: bool,
     ) -> list[str]:
         """Fetch, redact and serialize one chunk of references, in the given order."""
         references = await self._get_deduplicated_references(
-            reference_ids=reference_ids
+            reference_ids=reference_ids, fail_on_missing=fail_on_missing
         )
         return [
             await self._serialize_reference(

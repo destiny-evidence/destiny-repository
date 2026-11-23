@@ -247,6 +247,7 @@ async def test_stream_export_file_uses_format_extension_and_path() -> None:
     assert kwargs["filename"] == f"{export_id}.ris"
     assert kwargs["export_format"] == ExportFormat.RIS
     assert kwargs["path"] == "exports"
+    assert kwargs["fail_on_missing"] is False
 
 
 async def test_request_reference_export_rejects_unknown_ids() -> None:

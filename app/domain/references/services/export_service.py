@@ -142,6 +142,7 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
             path="exports",
             filename=f"{export_id}.{export_format.extension}",
             chunk_size=chunk_size,
+            fail_on_missing=False,
         )
 
     async def run(

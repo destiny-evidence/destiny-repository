@@ -66,14 +66,18 @@ class FakeRepository:
         return self.repository[pk]
 
     async def get_by_pks(
-        self, pks: list[UUID], preload: list[str] | None = None
+        self,
+        pks: list[UUID],
+        preload: list[str] | None = None,
+        *,
+        fail_on_missing: bool = True,
     ) -> list[DummyDomainSQLModel]:
         # Currently just ignoring preloading in favour of creating
         # models with the data needed.
         if not pks:
             return []
         records = [self.repository[pk] for pk in pks if pk in self.repository]
-        if len(records) != len(pks):
+        if fail_on_missing and len(records) != len(pks):
             missing_pks = set(pks) - set(self.repository.keys())
             raise SQLNotFoundError(
                 detail=f"{missing_pks} not in repository",
