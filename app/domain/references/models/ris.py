@@ -67,7 +67,7 @@ class RisRecord(ProjectedBaseModel):
             if isinstance(meta, RisTag)
         }
 
-    def render(self, *, exclude: Collection[str] = frozenset({"abstract"})) -> str:
+    def render(self, *, exclude: Collection[str] = ()) -> str:
         r"""
         Render the record as an RIS string.
 
