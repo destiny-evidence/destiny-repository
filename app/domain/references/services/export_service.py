@@ -99,22 +99,26 @@ class ReferenceExportService(GenericService[ReferenceAntiCorruptionService]):
         export_id: UUID,
         result_file: BlobStorageFile,
     ) -> ReferenceExport:
-        """Mark a reference export as completed."""
-        completed = await self.sql_uow.reference_exports.update_by_pk(
-            pk=export_id,
+        """Mark a running reference export as completed with the given file."""
+        updated = await self.sql_uow.reference_exports.bulk_update_by_filter(
+            filter_conditions={
+                "id": export_id,
+                "status": ExportStatus.sources_of(ExportStatus.COMPLETED),
+            },
             status=ExportStatus.COMPLETED,
             result_file=result_file.to_uri(),
         )
-        if completed.search_export_id is not None:
+        export = await self.sql_uow.reference_exports.get_by_pk(export_id)
+        if updated and export.search_export_id is not None:
             chunks = await self.sql_uow.reference_exports.find(
-                search_export_id=completed.search_export_id, limit=2
+                search_export_id=export.search_export_id, limit=2
             )
             # A sole chunk is the whole search export.
             if len(chunks) == 1:
                 await self.sql_uow.search_exports.update_by_pk(
-                    pk=completed.search_export_id, result_file=result_file.to_uri()
+                    pk=export.search_export_id, result_file=result_file.to_uri()
                 )
-        return completed
+        return export
 
     @sql_unit_of_work
     async def stream_export_file(

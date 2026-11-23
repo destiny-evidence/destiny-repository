@@ -389,6 +389,31 @@ async def test_fail_reference_export_leaves_finished_exports(
     assert failed.status == expected
 
 
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        pytest.param(ExportStatus.RUNNING, ExportStatus.COMPLETED, id="running"),
+        pytest.param(ExportStatus.FAILED, ExportStatus.FAILED, id="failed"),
+    ],
+)
+async def test_complete_reference_export_leaves_finished_exports(
+    session: AsyncSession, status: ExportStatus, expected: ExportStatus
+) -> None:
+    """A late completion can't revive an export that has since failed."""
+    export = SQLReferenceExport(reference_ids=[uuid7()], status=status)
+    session.add(export)
+    await session.commit()
+    service = ReferenceExportService(
+        MagicMock(), AsyncSqlUnitOfWork(session), MagicMock(), MagicMock(), MagicMock()
+    )
+
+    completed = await service._complete(  # noqa: SLF001
+        export.id, BlobStorageFileFactory.build()
+    )
+
+    assert completed.status == expected
+
+
 def _chunk(status: ExportStatus, error: str | None = None) -> ReferenceExport:
     return ReferenceExport(
         search_export_id=uuid7(), chunk_index=0, status=status, error=error
