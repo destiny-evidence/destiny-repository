@@ -732,7 +732,7 @@ class Export(DomainBaseModel, SQLAttributeMixin):
     )
     n_references: int | None = Field(
         default=None,
-        description="The number of references in the produced file.",
+        description="The number of references requested for export.",
     )
     error: str | None = Field(
         default=None,

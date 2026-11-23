@@ -599,3 +599,38 @@ async def test_stream_references_to_blob_jsonl_flattens_duplicates(
         duplicate_ref.identifiers
     )
     assert "duplicate_references" not in data
+
+
+async def test_stream_references_to_blob_skips_missing_references(
+    fake_repository, fake_uow
+):
+    """Missing references are left out of the file, rather than failing it."""
+    first = ReferenceFactory(duplicate_references=[])
+    second = ReferenceFactory(duplicate_references=[])
+    reference_service = ReferenceService(
+        ReferenceAntiCorruptionService(fake_repository()),
+        fake_uow(references=fake_repository(init_entries=[first, second])),
+        fake_uow(),
+    )
+    blob_repository = MagicMock()
+    blob_repository.upload_file_to_blob_storage = AsyncMock(
+        return_value=BlobStorageFileFactory.build()
+    )
+
+    await reference_service.stream_references_to_blob(
+        reference_ids=[first.id, uuid7(), second.id],
+        export_format=ExportFormat.JSONL,
+        access_control_service=_identity_access_control(),
+        blob_repository=blob_repository,
+        path="exports",
+        filename="export.jsonl",
+        chunk_size=100,
+        fail_on_missing=False,
+    )
+
+    content = blob_repository.upload_file_to_blob_storage.await_args.kwargs["content"]
+    body = b"".join([chunk async for chunk in content.stream()]).decode()
+    assert [json.loads(line)["id"] for line in body.splitlines()] == [
+        str(first.id),
+        str(second.id),
+    ]
