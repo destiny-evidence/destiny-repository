@@ -30,7 +30,7 @@ def test_render_full_record():
         urls=["https://example.org/a"],
     )
 
-    lines = record.render(exclude=()).split("\n")
+    lines = record.render().split("\n")
 
     assert lines[0] == "TY  - JOUR"
     assert lines[-1] == "ER  - "
@@ -67,7 +67,7 @@ def test_render_flattens_internal_newlines():
     """Newlines inside a value are flattened so one tag stays on one line."""
     record = RisRecord(reference_type=RisType.JOURNAL, abstract="Line one\nline two")
 
-    assert record.render(exclude=()).split("\n") == [
+    assert record.render().split("\n") == [
         "TY  - JOUR",
         "AB  - Line one line two",
         "ER  - ",
@@ -83,12 +83,11 @@ def test_render_demojibakes_display_text():
     assert f"TI  - {clean}" in record.render().split("\n")
 
 
-def test_render_excludes_abstract_by_default():
-    """The abstract is omitted by default and included only when not excluded."""
+def test_render_excludes_requested_fields():
+    """Fields are included by default and omitted only when excluded."""
     record = RisRecord(reference_type=RisType.JOURNAL, abstract="An abstract.")
 
-    assert "AB  - " not in record.render()
-    assert "AB  - An abstract." in record.render(exclude=()).split("\n")
+    assert "AB  - An abstract." in record.render().split("\n")
     assert "AB  - " not in record.render(exclude={"abstract"})
 
 
