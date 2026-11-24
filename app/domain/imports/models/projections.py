@@ -26,6 +26,11 @@ class ImportBatchStatusProjection(GenericProjection[ImportBatch]):
         elif import_batch.distribution_status == ImportDistributionStatus.INTERRUPTED:
             import_batch.status = ImportBatchStatus.FAILED
 
+        # Not yet claimed -> created, whatever the results say: they are read after
+        # the batch, so they can include lines queued by a claim this read missed
+        elif import_batch.distribution_status == ImportDistributionStatus.PENDING:
+            import_batch.status = ImportBatchStatus.CREATED
+
         # Distributed to EOF with nothing to import -> completed
         elif (
             import_batch.distribution_status == ImportDistributionStatus.COMPLETED

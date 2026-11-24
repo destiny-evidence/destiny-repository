@@ -988,6 +988,11 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
             [ImportResultStatus.COMPLETED],
             ImportBatchStatus.FAILED,
         ),
+        (
+            ImportDistributionStatus.PENDING,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.CREATED,
+        ),
         (ImportDistributionStatus.COMPLETED, [], ImportBatchStatus.COMPLETED),
         (
             ImportDistributionStatus.COMPLETED,
@@ -1204,6 +1209,7 @@ async def test_multiple_import_batch_status_projection(
         id=batch1_id,
         import_record_id=record_id,
         storage_url="https://example.com/bucket1",
+        distribution_status=ImportDistributionStatus.COMPLETED,
     )
     session.add(batch1)
 
@@ -1212,6 +1218,7 @@ async def test_multiple_import_batch_status_projection(
         id=batch2_id,
         import_record_id=record_id,
         storage_url="https://example.com/bucket2",
+        distribution_status=ImportDistributionStatus.COMPLETED,
     )
     session.add(batch2)
 
