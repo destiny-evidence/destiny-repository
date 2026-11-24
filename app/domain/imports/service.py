@@ -295,7 +295,9 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
         )
 
     @sql_unit_of_work
-    async def _complete_distribution(self, import_batch_id: UUID) -> None:
+    async def _complete_distribution(
+        self, import_batch_id: UUID, last_processed_line: int
+    ) -> None:
         """Mark distribution completed, clearing an overlapping interruption."""
         await self.sql_uow.imports.batches.bulk_update_by_filter(
             filter_conditions={
@@ -306,11 +308,12 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             },
             distribution_status=ImportDistributionStatus.COMPLETED,
             distribution_failure_details=None,
+            distribution_last_processed_line=last_processed_line,
         )
 
     @sql_unit_of_work
     async def _interrupt_distribution(
-        self, import_batch_id: UUID, failure_details: str
+        self, import_batch_id: UUID, last_processed_line: int, reason: str
     ) -> None:
         """Mark a started distribution interrupted, never overwriting a completion."""
         await self.sql_uow.imports.batches.bulk_update_by_filter(
@@ -321,7 +324,10 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 ),
             },
             distribution_status=ImportDistributionStatus.INTERRUPTED,
-            distribution_failure_details=failure_details,
+            distribution_failure_details=(
+                f"Distribution stopped after line {last_processed_line} ({reason})."
+            ),
+            distribution_last_processed_line=last_processed_line,
         )
 
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
@@ -339,12 +345,10 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 else type(cause).__name__
             )
             await self._interrupt_distribution(
-                import_batch.id,
-                f"Distribution stopped after line {progress.last_processed_line} "
-                f"({reason}).",
+                import_batch.id, progress.last_processed_line, reason
             )
             raise
-        await self._complete_distribution(import_batch.id)
+        await self._complete_distribution(import_batch.id, progress.last_processed_line)
 
     async def _queue_lines(
         self, import_batch: ImportBatch, progress: _DistributionProgress

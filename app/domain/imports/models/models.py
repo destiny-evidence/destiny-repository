@@ -168,6 +168,11 @@ The URL at which the set of references for this batch are stored.
     distribution_failure_details: str | None = Field(
         default=None, description="Where and why distribution stopped."
     )
+    distribution_last_processed_line: int | None = Field(
+        default=None,
+        description="The file's last line a distributor reached, when it stopped or "
+        "finished.",
+    )
 
 
 class ImportResult(DomainBaseModel, SQLAttributeMixin):

@@ -106,6 +106,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
         String, nullable=False, default=ImportDistributionStatus.PENDING
     )
     distribution_failure_details: Mapped[str | None] = mapped_column(String)
+    distribution_last_processed_line: Mapped[int | None] = mapped_column(Integer)
 
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
@@ -132,6 +133,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             storage_url=str(domain_obj.storage_url),
             distribution_status=domain_obj.distribution_status,
             distribution_failure_details=domain_obj.distribution_failure_details,
+            distribution_last_processed_line=domain_obj.distribution_last_processed_line,
         )
 
     def to_domain(
@@ -145,6 +147,7 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             storage_url=HttpUrl(self.storage_url),
             distribution_status=self.distribution_status,
             distribution_failure_details=self.distribution_failure_details,
+            distribution_last_processed_line=self.distribution_last_processed_line,
             import_record=self.import_record.to_domain()
             if "import_record" in (preload or [])
             else None,

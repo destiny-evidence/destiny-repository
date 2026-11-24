@@ -401,6 +401,8 @@ async def test_throttled_distribution_fails_after_its_last_committed_line(
     assert summary["failure_details"] == [
         "Distribution stopped after line 26 (ServiceBusServerBusyError)."
     ]
+    await session.refresh(batch)
+    assert batch.distribution_last_processed_line == 26
 
 
 async def test_throttled_distribution_completes_when_a_retry_succeeds(
@@ -430,6 +432,8 @@ async def test_throttled_distribution_completes_when_a_retry_succeeds(
     assert queued["import_batch_status"] == ImportBatchStatus.STARTED
     assert summary["import_batch_status"] == ImportBatchStatus.COMPLETED
     assert summary["results"][ImportResultStatus.COMPLETED] == 30
+    await session.refresh(batch)
+    assert batch.distribution_last_processed_line == 30
 
 
 async def test_download_failure_fails_the_batch_with_its_status_code(
