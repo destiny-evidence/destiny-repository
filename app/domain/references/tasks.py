@@ -259,13 +259,16 @@ async def run_search_export_task(
 
 @broker.task
 async def run_reference_export_task(
-    reference_export_id: UUID, entitlements: list[str]
+    reference_export_id: UUID,
+    entitlements: list[str],
+    reference_ids: list[UUID] | None = None,
 ) -> None:
     """
     Run a reference (id-list) export job and write its result to blob storage.
 
     ``entitlements`` is the caller's entitlement snapshot, taken at enqueue
     time, used to redact references before they're streamed to blob storage.
+    ``reference_ids`` overrides the ids stored on the export.
     """
     name_span("Run reference export")
     trace_attribute(Attributes.REFERENCE_EXPORT_ID, str(reference_export_id))
@@ -291,7 +294,9 @@ async def run_reference_export_task(
             access_control_service=access_control_service,
             reference_service=reference_service,
         )
-        await reference_export_service.run(reference_export_id, blob_repository)
+        await reference_export_service.run(
+            reference_export_id, blob_repository, reference_ids=reference_ids
+        )
 
 
 @broker.task

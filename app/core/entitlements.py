@@ -10,3 +10,4 @@ class Entitlement(StrEnum):
     RAW_ENHANCEMENT_WRITER = auto()
     ROBOT_ENTITLEMENT_WRITER = auto()
     ENHANCEMENT_SUPERSESSION_WRITER = auto()
+    LARGE_EXPORT_REQUESTER = auto()

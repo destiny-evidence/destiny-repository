@@ -195,18 +195,23 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
 
     async def _get_deduplicated_references(
         self,
-        reference_ids: Collection[UUID] | None = None,
+        reference_ids: Sequence[UUID] | None = None,
         references: Collection[Reference] | None = None,
+        *,
+        fail_on_missing: bool = True,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
-        :type reference_ids: Collection[UUID] | None
+        :type reference_ids: Sequence[UUID] | None
         :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
         :type references: Collection[Reference] | None
+        :param fail_on_missing: Whether to raise if any of ``reference_ids`` don't
+            exist, rather than skip them.
+        :type fail_on_missing: bool
         :return: The deduplicated reference.
         :rtype: Reference
         """
@@ -223,7 +228,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     "duplicate_decision",
                     "duplicate_references",
                 ],
+                fail_on_missing=fail_on_missing,
             )
+            if missing := set(reference_ids) - {ref.id for ref in references}:
+                logger.warning(
+                    "Skipping missing references",
+                    reference_ids=[str(pk) for pk in missing],
+                )
         if not references:
             return []
         return [
@@ -234,14 +245,14 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
     @sql_unit_of_work
     async def get_deduplicated_references(
         self,
-        reference_ids: Collection[UUID] | None = None,
+        reference_ids: Sequence[UUID] | None = None,
         references: Collection[Reference] | None = None,
     ) -> list[Reference]:
         """
         Get the deduplicated reference for a given reference.
 
         :param reference_ids: The ID of the references to get the deduplicated view for.
-        :type reference_ids: Collection[UUID] | None
+        :type reference_ids: Sequence[UUID] | None
         :param references: The references to get the deduplicated view for. Must have
             identifiers, enhancements, duplicate_decision and duplicate_references
             preloaded.
@@ -263,9 +274,13 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
         path: str,
         filename: str,
         chunk_size: int,
-    ) -> tuple[BlobStorageFile, int]:
+        fail_on_missing: bool = True,
+    ) -> BlobStorageFile:
         """
         Stream deduplicated, redacted references to blob storage in the given format.
+
+        References are written in the order of ``reference_ids``. Missing references
+        raise, or are skipped if not ``fail_on_missing``.
 
         Rides the caller's active SQL unit of work (the per-chunk fetch is
         undecorated), so the caller's ``@sql_unit_of_work`` method owns the
@@ -278,26 +293,28 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                     "reference_ids": chunk,
                     "export_format": export_format,
                     "access_control_service": access_control_service,
+                    "fail_on_missing": fail_on_missing,
                 }
                 for chunk in list_chunker(reference_ids, chunk_size)
             ],
         )
-        result_file = await blob_repository.upload_file_to_blob_storage(
+        return await blob_repository.upload_file_to_blob_storage(
             content=file_stream,
             path=path,
             filename=filename,
         )
-        return result_file, len(reference_ids)
 
     async def _serialize_references(
         self,
         reference_ids: list[UUID],
         export_format: ExportFormat,
         access_control_service: ReferenceAccessControlService,
+        *,
+        fail_on_missing: bool,
     ) -> list[str]:
-        """Fetch, redact and serialize one chunk of references."""
+        """Fetch, redact and serialize one chunk of references, in the given order."""
         references = await self._get_deduplicated_references(
-            reference_ids=reference_ids
+            reference_ids=reference_ids, fail_on_missing=fail_on_missing
         )
         return [
             await self._serialize_reference(
@@ -1707,7 +1724,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
                 expires_at=apply_positive_timedelta(lease_duration),
             )
 
-        reference_data_file, _ = await self.stream_references_to_blob(
+        reference_data_file = await self.stream_references_to_blob(
             reference_ids=[pe.reference_id for pe in pending_enhancements],
             export_format=ExportFormat.JSONL,
             access_control_service=access_control_service,

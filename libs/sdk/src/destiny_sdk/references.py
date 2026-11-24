@@ -287,7 +287,7 @@ class ExportReadBase(BaseModel):
     )
     n_references: int | None = Field(
         default=None,
-        description="The number of references included in the produced file.",
+        description="The number of references requested for export.",
     )
     error: str | None = Field(
         default=None,
@@ -295,18 +295,32 @@ class ExportReadBase(BaseModel):
     )
 
 
-class SearchExportRead(ExportReadBase):
-    """A search export job, used to poll for status and a signed URL."""
+class ReferenceExportRead(ExportReadBase):
+    """A reference (id-list) export job, used to poll for status and a signed URL."""
 
-    truncated: bool = Field(
-        default=False,
-        description=(
-            "Whether the matching result set exceeded the server's result-window "
-            "cap. When true, the JSONL contains only the first window's worth of "
-            "matches."
-        ),
+
+class SearchExportChunkRead(ReferenceExportRead):
+    """A chunk of a search export."""
+
+    chunk_index: int = Field(
+        description="The position of this chunk within the search export."
     )
 
 
-class ReferenceExportRead(ExportReadBase):
-    """A reference (id-list) export job, used to poll for status and a signed URL."""
+class SearchExportRead(ExportReadBase):
+    """A search export job, used to poll for status and a signed URL."""
+
+    result_url: HttpUrl | None = Field(
+        default=None,
+        description=(
+            "Signed download URL for the full export as a single file, if one "
+            "exists. Otherwise, download each of ``chunks``."
+        ),
+    )
+    chunks: list[SearchExportChunkRead] = Field(
+        default_factory=list,
+        description=(
+            "The chunks of the export, in order. Each chunk's file is available "
+            "once that chunk completes."
+        ),
+    )

@@ -538,17 +538,25 @@ class Settings(BaseSettings):
     message_broker_namespace: str | None = None
     message_broker_queue_name: str = "taskiq"
     message_broker_priority_queue_name: str = "taskiq-priority"
-    message_broker_queue_max_wait: int = Field(
-        default=2,
+    message_broker_low_priority_queue_name: str = "taskiq-low-priority"
+    message_broker_queue_max_wait: float = Field(
+        default=0.2,
         description=(
             "Max time to wait to receive messages on the normal priority task queue "
             "(in seconds)."
         ),
     )
-    message_broker_priority_queue_max_wait: int = Field(
-        default=1,
+    message_broker_priority_queue_max_wait: float = Field(
+        default=0.2,
         description=(
             "Max time to wait to receive messages on the high priority task queue "
+            "(in seconds)."
+        ),
+    )
+    message_broker_low_priority_queue_max_wait: float = Field(
+        default=2,
+        description=(
+            "Max time to wait to receive messages on the low priority task queue "
             "(in seconds)."
         ),
     )
@@ -592,6 +600,33 @@ class Settings(BaseSettings):
         description=(
             "Maximum number of reference IDs allowed in a single reference export "
             "request. Requests exceeding this are rejected."
+        ),
+    )
+
+    max_single_file_search_export_size: int = Field(
+        default=10_000,
+        description=(
+            "Maximum number of references a search export may match to be produced "
+            "as a single file. Also the most a caller not entitled to large exports "
+            "may export."
+        ),
+    )
+
+    max_search_export_size: int = Field(
+        default=1_000_000,
+        description=(
+            "Maximum number of references a search export may match, for callers "
+            "entitled to large exports. Requests exceeding this are rejected."
+        ),
+    )
+
+    search_export_chunk_size: int = Field(
+        default=1000,
+        gt=0,
+        le=10_000,
+        description=(
+            "Number of references in each chunk of a search export too large to "
+            "export as one file."
         ),
     )
 

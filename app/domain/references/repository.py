@@ -327,6 +327,13 @@ class ReferenceESRepository(
     _RELEVANCE_SORT_KEY: ClassVar[str] = "relevance"
     """Public sort token for ES's built-in ``_score``; the default sort."""
 
+    # The unique doc id as a final tie-breaker so equal-sort-value hits have a
+    # deterministic order. unmapped_type allows it to work prior to the migration
+    # that adds the id field, this can optionally be removed later
+    _ID_TIEBREAKER: ClassVar[dict[str, Any]] = {
+        "id": {"order": "desc", "unmapped_type": "keyword"}
+    }
+
     def __init__(self, client: AsyncElasticsearch) -> None:
         """Initialize the repository with the Elasticsearch client."""
         super().__init__(
@@ -414,12 +421,6 @@ class ReferenceESRepository(
         track_total_hits: bool = False,
     ) -> ESSearchResult:
         """Search references matching ``query``; structured filters AND with q."""
-        # Append the unique doc id as a final tie-breaker so equal-sort-value hits
-        # have a deterministic order. unmapped_type allows it to work prior to the
-        # migration that adds the id field, this can optionally be removed later
-        tiebreaker: dict[str, Any] = {
-            "id": {"order": "desc", "unmapped_type": "keyword"}
-        }
         sort_keys = [
             self._normalize_sort_key(key)
             for key in (sort or [self._RELEVANCE_SORT_KEY])
@@ -429,7 +430,7 @@ class ReferenceESRepository(
             fields=self.default_search_fields,
             page=page,
             page_size=page_size,
-            sort=[*sort_keys, tiebreaker],
+            sort=[*sort_keys, self._ID_TIEBREAKER],
             filter_clauses=self._build_filter_clauses(query),
             parse_document=False,
             track_total_hits=track_total_hits,
@@ -448,13 +449,13 @@ class ReferenceESRepository(
         """
         Scan references matching ``query`` in pages.
 
-        ``scan_with_query_string`` appends the ``id`` tiebreaker, so unlike
-        :meth:`search` this method doesn't add one itself. With ``score=False`` the
-        query runs non-scoring and, absent an explicit ``sort``, ordering is purely
-        that tiebreaker.
+        Sorted scans use the same ``id`` tiebreaker as :meth:`search`. With
+        ``score=False`` and no ``sort``, the scan is unordered.
         """
         default_sort = [self._RELEVANCE_SORT_KEY] if score else []
         sort_keys = [self._normalize_sort_key(key) for key in (sort or default_sort)]
+        if sort_keys:
+            sort_keys.append(self._ID_TIEBREAKER)
         async for page in self.scan_with_query_string(
             query.query_string,
             fields=self.default_search_fields,
@@ -1229,7 +1230,7 @@ class SearchExportRepositoryBase(
 
 
 class SearchExportSQLRepository(
-    GenericAsyncSqlRepository[DomainSearchExport, SQLSearchExport, Literal["__none__"]],
+    GenericAsyncSqlRepository[DomainSearchExport, SQLSearchExport, Literal["chunks"]],
     SearchExportRepositoryBase,
 ):
     """Concrete implementation of a repository for search exports using SQL."""

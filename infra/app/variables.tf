@@ -160,6 +160,12 @@ variable "priority_queue_active_jobs_scaling_threshold" {
   default     = 20
 }
 
+variable "low_priority_queue_active_jobs_scaling_threshold" {
+  description = "Active jobs threshold for scaling the tasks container app for low priority tasks."
+  type        = number
+  default     = 100
+}
+
 
 variable "created_by" {
   description = "Who created this infrastructure. Required tag for resource groups"
@@ -390,6 +396,24 @@ variable "max_reference_export_size" {
   description = "Maximum number of reference IDs to allow in a single reference export request"
   type        = number
   default     = 10000
+}
+
+variable "max_single_file_search_export_size" {
+  description = "Maximum number of references a search export may match to be produced as a single file, and the most a caller without the large export entitlement may export"
+  type        = number
+  default     = 10000
+}
+
+variable "max_search_export_size" {
+  description = "Maximum number of references a search export may match, for callers with the large export entitlement"
+  type        = number
+  default     = 1000000
+}
+
+variable "search_export_chunk_size" {
+  description = "Number of references in each chunk of a search export too large to produce as a single file"
+  type        = number
+  default     = 1000
 }
 
 variable "expire_pending_enhancements_batch_size" {

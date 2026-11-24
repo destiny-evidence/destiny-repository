@@ -29,11 +29,31 @@ class TaskPriority(IntEnum):
     Priority levels for queued tasks.
 
     May be used to set on-wire priority header, or to route to different
-    queues depending on broker implementation.
+    queues depending on broker implementation. Values must be non-negative
+    to be valid AMQP priorities.
     """
 
-    NORMAL = 0
+    LOW = 0
+    NORMAL = 1
     HIGH = 5
+
+
+class DefaultTaskPriorityMiddleware(TaskiqMiddleware):
+    """Set the ``priority`` label to ``TaskPriority.NORMAL`` when it is missing."""
+
+    async def pre_send(self, message: TaskiqMessage) -> TaskiqMessage:
+        """
+        Set a missing priority label before the broker sends the message.
+
+        Args:
+            message: The outgoing TaskIQ message
+
+        Returns:
+            The message with a ``priority`` label.
+
+        """
+        message.labels.setdefault("priority", TaskPriority.NORMAL.value)
+        return message
 
 
 async def queue_task_with_trace(
@@ -77,7 +97,10 @@ async def queue_task_with_trace(
         "Queueing task",
         task_name=task.task_name,
         priority=priority.name,
-        **{k: str(v) for k, v in kwargs.items()},
+        **{
+            k: f"{len(v)} items" if isinstance(v, list) else str(v)
+            for k, v in kwargs.items()
+        },
     )
     if not otel_enabled:
         # If OpenTelemetry is not enabled, just queue the task normally

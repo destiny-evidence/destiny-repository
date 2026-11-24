@@ -583,7 +583,6 @@ class ExportSQLMixin:
     export_format: Mapped[ExportFormat] = mapped_column(
         String, nullable=False, server_default=ExportFormat.JSONL.value
     )
-    status: Mapped[ExportStatus] = mapped_column(String, nullable=False)
     result_file: Mapped[str | None] = mapped_column(String, nullable=True)
     n_references: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -594,7 +593,22 @@ class ReferenceExport(ExportSQLMixin, GenericSQLPersistence[DomainReferenceExpor
 
     __tablename__ = "reference_export"
 
-    reference_ids: Mapped[list[UUID]] = mapped_column(ARRAY(SQL_UUID), nullable=False)
+    status: Mapped[ExportStatus] = mapped_column(String, nullable=False)
+    reference_ids: Mapped[list[UUID] | None] = mapped_column(
+        ARRAY(SQL_UUID), nullable=True
+    )
+    search_export_id: Mapped[UUID | None] = mapped_column(
+        SQL_UUID, ForeignKey("search_export.id"), nullable=True
+    )
+    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "search_export_id",
+            "chunk_index",
+            name="uix_reference_export_chunk",
+        ),
+    )
 
     @classmethod
     def from_domain(cls, domain_obj: DomainReferenceExport) -> Self:
@@ -602,6 +616,8 @@ class ReferenceExport(ExportSQLMixin, GenericSQLPersistence[DomainReferenceExpor
         return cls(
             id=domain_obj.id,
             reference_ids=domain_obj.reference_ids,
+            search_export_id=domain_obj.search_export_id,
+            chunk_index=domain_obj.chunk_index,
             status=domain_obj.status,
             export_format=domain_obj.export_format,
             result_file=domain_obj.result_file.to_uri()
@@ -619,6 +635,8 @@ class ReferenceExport(ExportSQLMixin, GenericSQLPersistence[DomainReferenceExpor
         return DomainReferenceExport(
             id=self.id,
             reference_ids=self.reference_ids,
+            search_export_id=self.search_export_id,
+            chunk_index=self.chunk_index,
             status=self.status,
             export_format=self.export_format,
             result_file=BlobStorageFile.from_uri(self.result_file)
@@ -653,8 +671,9 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
     start_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     end_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
     sort: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
-    truncated: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, default=False, server_default="false"
+
+    chunks: Mapped[list[ReferenceExport]] = relationship(
+        ReferenceExport, order_by=ReferenceExport.chunk_index
     )
 
     @classmethod
@@ -687,19 +706,17 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
             start_year=year_range.start if year_range else None,
             end_year=year_range.end if year_range else None,
             sort=domain_obj.sort,
-            status=domain_obj.status,
             export_format=domain_obj.export_format,
             result_file=domain_obj.result_file.to_uri()
             if domain_obj.result_file
             else None,
             n_references=domain_obj.n_references,
-            truncated=domain_obj.truncated,
             error=domain_obj.error,
         )
 
     def to_domain(
         self,
-        preload: list[GenericSQLPreloadableType] | None = None,  # noqa: ARG002
+        preload: list[GenericSQLPreloadableType] | None = None,
     ) -> DomainSearchExport:
         """Convert the persistence model into a Domain SearchExport object."""
         publication_year_range = (
@@ -734,14 +751,15 @@ class SearchExport(ExportSQLMixin, GenericSQLPersistence[DomainSearchExport]):
                 ],
             ),
             sort=self.sort,
-            status=self.status,
             export_format=self.export_format,
             result_file=BlobStorageFile.from_uri(self.result_file)
             if self.result_file
             else None,
             n_references=self.n_references,
-            truncated=self.truncated,
             error=self.error,
+            chunks=[chunk.to_domain() for chunk in self.chunks]
+            if "chunks" in (preload or [])
+            else None,
         )
 
 

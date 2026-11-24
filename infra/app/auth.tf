@@ -3,6 +3,7 @@ resource "random_uuid" "administrator_role" {}
 resource "random_uuid" "importer_role" {}
 resource "random_uuid" "reference_reader_role" {}
 resource "random_uuid" "reference_full_text_reader_role" {}
+resource "random_uuid" "reference_large_export_requester_role" {}
 resource "random_uuid" "reference_deduplicator_role" {}
 resource "random_uuid" "robot_writer_role" {}
 resource "random_uuid" "robot_entitlement_writer_role" {}
@@ -60,6 +61,15 @@ resource "azuread_application_app_role" "reference_full_text_reader" {
   display_name         = "Reference Full Text Reader"
   role_id              = random_uuid.reference_full_text_reader_role.result
   value                = "reference.full_text.reader"
+}
+
+resource "azuread_application_app_role" "reference_large_export_requester" {
+  application_id       = azuread_application.destiny_repository.id
+  allowed_member_types = ["Application"]
+  description          = "Can export searches of more than 10,000 references"
+  display_name         = "Reference Large Export Requester"
+  role_id              = random_uuid.reference_large_export_requester_role.result
+  value                = "reference.large_export.requester"
 }
 
 resource "azuread_application_app_role" "reference_deduplicator" {

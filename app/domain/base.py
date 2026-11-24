@@ -118,6 +118,24 @@ class StateMachineMixin:
         msg = "Subclasses must implement transitions()"
         raise NotImplementedError(msg)
 
+    @classmethod
+    def sources_of(
+        cls: type[StateMachineType], new_status: StateMachineType
+    ) -> set[StateMachineType]:
+        """Get the statuses allowed to transition to the given status."""
+        return {
+            status
+            for status, allowed in cls.transitions().items()
+            if new_status in allowed
+        }
+
+    @classmethod
+    def get_terminal_statuses(
+        cls: type[StateMachineType],
+    ) -> set[StateMachineType]:
+        """Get the statuses that allow no further transitions."""
+        return {status for status, allowed in cls.transitions().items() if not allowed}
+
     def can_transition_to(self: StateMachineType, new_status: StateMachineType) -> bool:
         """
         Check if transition from current status to new status is allowed.

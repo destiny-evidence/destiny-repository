@@ -2,7 +2,7 @@
 
 import datetime
 from collections.abc import AsyncGenerator
-from unittest.mock import ANY, AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, MagicMock, patch
 from uuid import UUID, uuid7
 
 import pytest
@@ -62,7 +62,10 @@ from app.domain.references.models.sql import (
     SearchExport as SQLSearchExport,
 )
 from app.domain.references.service import ReferenceService
-from app.domain.references.services.export_service import SearchExportService
+from app.domain.references.services.export_service import (
+    ReferenceExportService,
+    SearchExportService,
+)
 from app.domain.references.services.search_service import SearchService
 from app.domain.robots.models.sql import Robot as SQLRobot
 from app.persistence.blob.models import BlobSignedUrlType, BlobStorageFile
@@ -1004,43 +1007,6 @@ async def test_robot_enhancement_batch_renew_lease_empty_response(
     )
 
 
-async def test_search_references_preserves_es_order(
-    client: AsyncClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Test that search results preserve the order from Elasticsearch."""
-    ref_a = ReferenceFactory.build()
-    ref_b = ReferenceFactory.build()
-    ref_c = ReferenceFactory.build()
-
-    # ES returns results in order: A, B, C (by score)
-    mock_search_result = ESSearchResult(
-        hits=[
-            ESHit(id=ref_a.id, score=3.0),
-            ESHit(id=ref_b.id, score=2.0),
-            ESHit(id=ref_c.id, score=1.0),
-        ],
-        total=ESSearchTotal(value=3, relation="eq"),
-        page=1,
-    )
-
-    mock_search = AsyncMock(return_value=mock_search_result)
-    monkeypatch.setattr(ReferenceService, "search_references", mock_search)
-
-    # SQL returns references in different order: C, A, B
-    mock_get_dedup = AsyncMock(return_value=[ref_c, ref_a, ref_b])
-    monkeypatch.setattr(ReferenceService, "get_deduplicated_references", mock_get_dedup)
-
-    response = await client.get("/v1/references/search/", params={"q": "test"})
-
-    assert response.status_code == status.HTTP_200_OK
-    data = response.json()
-    returned_ids = [ref["id"] for ref in data["references"]]
-
-    # Order should match ES order (A, B, C), not SQL order (C, A, B)
-    assert returned_ids == [str(ref_a.id), str(ref_b.id), str(ref_c.id)]
-
-
 @pytest.mark.parametrize("match_count", [0, 10_001])
 async def test_search_references_reports_the_exact_total_and_the_window(
     client: AsyncClient,
@@ -1232,6 +1198,14 @@ async def test_search_references_with_annotation_filters(
     assert search_query.annotation_filters[3].score is None
 
 
+def _patch_search_scan(monkeypatch: pytest.MonkeyPatch, *pages: ESSearchResult) -> None:
+    async def scan(*_: object, **__: object) -> AsyncGenerator[ESSearchResult, None]:
+        for page in pages:
+            yield page
+
+    monkeypatch.setattr(SearchService, "scan", scan)
+
+
 async def test_request_search_export_happy_path(
     session: AsyncSession,  # noqa: ARG001
     client: AsyncClient,
@@ -1247,15 +1221,19 @@ async def test_request_search_export_happy_path(
         filename="fake.jsonl",
     )
 
-    monkeypatch.setattr(
-        SearchExportService,
-        "_collect_search_export_ids",
-        AsyncMock(return_value=([fake_reference_id], False)),
+    _patch_search_scan(
+        monkeypatch,
+        ESSearchResult(
+            hits=[ESHit(id=fake_reference_id, score=1.0)],
+            total=ESSearchTotal(value=1, relation="eq"),
+            page=1,
+        ),
     )
+    monkeypatch.setattr(SearchExportService, "count", AsyncMock(return_value=1))
     monkeypatch.setattr(
-        SearchExportService,
+        ReferenceExportService,
         "stream_export_file",
-        AsyncMock(return_value=(fake_result_file, 1)),
+        AsyncMock(return_value=fake_result_file),
     )
 
     response = await client.post(
@@ -1266,8 +1244,9 @@ async def test_request_search_export_happy_path(
     body = response.json()
     export_id = body["id"]
     assert body["status"] == "pending"
+    assert body["n_references"] == 1
     assert body["result_url"] is None
-    assert body["truncated"] is False
+    assert body["chunks"] == []
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()
@@ -1277,9 +1256,13 @@ async def test_request_search_export_happy_path(
     status_body = status_response.json()
     assert status_body["status"] == "completed"
     assert status_body["n_references"] == 1
-    assert status_body["truncated"] is False
     assert status_body["result_url"] is not None
     assert status_body["error"] is None
+    [chunk] = status_body["chunks"]
+    assert chunk["status"] == "completed"
+    assert chunk["chunk_index"] == 0
+    assert chunk["n_references"] == 1
+    assert chunk["result_url"] is not None
 
 
 async def test_request_search_export_marks_failed_on_error(
@@ -1290,9 +1273,7 @@ async def test_request_search_export_marks_failed_on_error(
 ) -> None:
     """Test that a failure during the export job is reflected via the status API."""
     monkeypatch.setattr(
-        SearchExportService,
-        "_collect_search_export_ids",
-        AsyncMock(side_effect=RuntimeError("kaboom")),
+        SearchService, "scan", MagicMock(side_effect=RuntimeError("kaboom"))
     )
 
     response = await client.post(
@@ -1309,6 +1290,80 @@ async def test_request_search_export_marks_failed_on_error(
     assert status_body["status"] == "failed"
     assert status_body["result_url"] is None
     assert "kaboom" in status_body["error"]
+
+
+async def test_search_export_chunk_failure_points_to_chunks(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    mock_blob_repository: None,  # noqa: ARG001
+) -> None:
+    """Test that a failed chunk fails the export and carries the real error."""
+    _patch_search_scan(monkeypatch)
+    monkeypatch.setattr(
+        ReferenceExportService,
+        "stream_export_file",
+        AsyncMock(side_effect=RuntimeError("kaboom")),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+    export_id = response.json()["id"]
+
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    status_body = (
+        await client.get(f"/v1/references/search/exports/{export_id}/")
+    ).json()
+    assert status_body["status"] == "failed"
+    assert "see chunks" in status_body["error"]
+    assert "kaboom" in status_body["chunks"][0]["error"]
+
+
+async def test_request_search_export_over_single_file_requires_entitlement(
+    session: AsyncSession,
+    app: FastAPI,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers without the entitlement can't export more than a single file."""
+    app.dependency_overrides[references.reference_reader_auth] = lambda: frozenset()
+    monkeypatch.setattr(
+        SearchExportService,
+        "count",
+        AsyncMock(
+            return_value=references.settings.max_single_file_search_export_size + 1
+        ),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert not (await session.execute(select(SQLSearchExport))).scalars().all()
+
+
+async def test_request_search_export_rejects_over_max_size(
+    session: AsyncSession,
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Entitled callers still can't export more than the configured maximum."""
+    monkeypatch.setattr(
+        SearchExportService,
+        "count",
+        AsyncMock(return_value=references.settings.max_search_export_size + 1),
+    )
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert not (await session.execute(select(SQLSearchExport))).scalars().all()
 
 
 async def test_request_search_export_rejects_empty_query(
@@ -1391,7 +1446,6 @@ async def test_request_search_export_marks_failed_when_enqueue_fails(
 
     rows = (await session.execute(select(SQLSearchExport))).scalars().all()
     assert len(rows) == 1
-    assert rows[0].status == "failed"
     assert "broker down" in rows[0].error
 
 
@@ -1401,10 +1455,7 @@ async def test_get_search_export_pending_has_no_url(
     mock_blob_repository: None,  # noqa: ARG001
 ) -> None:
     """A pending export exposes no signed URL until the file is ready."""
-    export = SQLSearchExport(
-        query="climate",
-        status="pending",
-    )
+    export = SQLSearchExport(query="climate")
     session.add(export)
     await session.commit()
 
@@ -1414,6 +1465,7 @@ async def test_get_search_export_pending_has_no_url(
     assert body["status"] == "pending"
     assert body["result_url"] is None
     assert body["n_references"] is None
+    assert body["chunks"] == []
 
 
 async def test_make_duplicate_decisions_mark_canonical_and_duplicate(

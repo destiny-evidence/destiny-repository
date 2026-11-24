@@ -23,6 +23,8 @@ from pydantic import (
     PositiveInt,
     StringConstraints,
     TypeAdapter,
+    computed_field,
+    field_serializer,
     field_validator,
     model_validator,
 )
@@ -73,7 +75,7 @@ class EnhancementRequestStatus(StrEnum):
     """All enhancements have been created."""
 
 
-class ExportStatus(StrEnum):
+class ExportStatus(StateMachineMixin, StrEnum):
     """The status of an export job."""
 
     PENDING = auto()
@@ -84,6 +86,20 @@ class ExportStatus(StrEnum):
     """Export job has completed and the file is available."""
     FAILED = auto()
     """Export job failed before producing a file."""
+
+    @classmethod
+    def transitions(cls) -> dict["ExportStatus", set["ExportStatus"]]:
+        """
+        Define the allowed state transitions for exports.
+
+        A running export can be claimed again by a redelivered task.
+        """
+        return {
+            cls.PENDING: {cls.RUNNING, cls.FAILED},
+            cls.RUNNING: {cls.RUNNING, cls.COMPLETED, cls.FAILED},
+            cls.COMPLETED: set(),
+            cls.FAILED: set(),
+        }
 
 
 # Retained for backward compatibility; export status is not search-specific.
@@ -710,17 +726,13 @@ class Export(DomainBaseModel, SQLAttributeMixin):
         default=ExportFormat.JSONL,
         description="The serialization format of the produced file.",
     )
-    status: ExportStatus = Field(
-        default=ExportStatus.PENDING,
-        description="The current status of the export job.",
-    )
     result_file: BlobStorageFile | None = Field(
         default=None,
         description="The file produced by the job, once completed.",
     )
     n_references: int | None = Field(
         default=None,
-        description="The number of references in the produced file.",
+        description="The number of references requested for export.",
     )
     error: str | None = Field(
         default=None,
@@ -731,7 +743,22 @@ class Export(DomainBaseModel, SQLAttributeMixin):
 class ReferenceExport(Export):
     """A queued job that produces a file of an explicit list of references."""
 
-    reference_ids: list[UUID] = Field(description="The references to export.")
+    status: ExportStatus = Field(
+        default=ExportStatus.PENDING,
+        description="The current status of the export job.",
+    )
+    reference_ids: list[UUID] | None = Field(
+        default=None,
+        description="The references to export.",
+    )
+    search_export_id: UUID | None = Field(
+        default=None,
+        description="The search export this is a chunk of, if any.",
+    )
+    chunk_index: int | None = Field(
+        default=None,
+        description="The position of this chunk within its search export.",
+    )
 
 
 class SearchExport(Export):
@@ -744,14 +771,36 @@ class SearchExport(Export):
         default=None,
         description="Sort fields, in the same form `/references/search/` accepts.",
     )
-    truncated: bool = Field(
-        default=False,
-        description=(
-            "Whether the matching result set was larger than the server's "
-            "result-window cap. When true, the JSONL contains only the first "
-            "window's worth of matches."
-        ),
+    chunks: list[ReferenceExport] | None = Field(
+        default=None,
+        description="The chunks of this export, in order.",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def status(self) -> ExportStatus:
+        """The status of the export, derived from its chunks."""
+        if self.error is not None:
+            return ExportStatus.FAILED
+        if self.chunks is None:
+            msg = "Search export chunks must be preloaded to derive status."
+            raise ValueError(msg)
+        chunk_statuses = {chunk.status for chunk in self.chunks}
+        if ExportStatus.FAILED in chunk_statuses:
+            return ExportStatus.FAILED
+        if not chunk_statuses:
+            return ExportStatus.PENDING
+        if chunk_statuses & {ExportStatus.PENDING, ExportStatus.RUNNING}:
+            return ExportStatus.RUNNING
+        return ExportStatus.COMPLETED
+
+    @field_serializer("error")
+    def _serialize_error(self, error: str | None) -> str | None:
+        if error is None and any(
+            chunk.status == ExportStatus.FAILED for chunk in self.chunks or []
+        ):
+            return "One or more chunks failed; see chunks for details."
+        return error
 
 
 class RobotResultValidationEntry(DomainBaseModel):

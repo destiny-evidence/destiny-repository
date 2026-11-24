@@ -1,5 +1,6 @@
 """Integration tests for the reference export endpoints."""
 
+import json
 from collections.abc import AsyncGenerator
 from uuid import uuid7
 
@@ -17,8 +18,10 @@ from app.api.exception_handlers import (
     not_found_exception_handler,
     parse_error_exception_handler,
 )
+from app.core.config import get_settings
 from app.core.exceptions import ESQueryError, NotFoundError, ParseError
 from app.domain.references import routes as references
+from app.domain.references.models.models import Reference
 from app.domain.references.models.sql import Reference as SQLReference
 from app.domain.references.repository import ReferenceESRepository
 from app.persistence.blob.models import (
@@ -169,9 +172,10 @@ async def test_search_export_end_to_end(
     body = get_response.json()
     assert body["status"] == "completed"
     assert body["n_references"] == 2
-    assert body["truncated"] is False
     assert body["result_url"] is not None
     assert body["error"] is None
+    [chunk] = body["chunks"]
+    assert chunk["result_url"] == body["result_url"]
 
     lines = [line for line in captured.decode("utf-8").splitlines() if line]
     assert len(lines) == 2
@@ -179,6 +183,91 @@ async def test_search_export_end_to_end(
         destiny_sdk.references.Reference.from_jsonl(line).id for line in lines
     }
     assert parsed_ids == {matching_one.id, matching_two.id}
+
+
+async def _add_references(
+    session: AsyncSession,
+    es_reference_repository: ReferenceESRepository,
+    references: list[Reference],
+) -> None:
+    session.add_all([SQLReference.from_domain(r) for r in references])
+    await session.commit()
+    for reference in references:
+        await es_reference_repository.add(to_indexable(reference))
+    await es_reference_repository._client.indices.refresh(  # noqa: SLF001
+        index=es_reference_repository._persistence_cls.Index.name,  # noqa: SLF001
+    )
+
+
+async def test_search_export_distributes_sorted_chunks(
+    session: AsyncSession,
+    client: AsyncClient,
+    es_reference_repository: ReferenceESRepository,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Beyond the single file size, the sorted matches are exported in chunks."""
+    references = [
+        ReferenceFactory.build(
+            enhancements=[
+                EnhancementFactory.build(
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="Climate", publication_year=year
+                    )
+                )
+            ]
+        )
+        for year in (2004, 2001, 2003, 2002, 2005)
+    ]
+    await _add_references(session, es_reference_repository, references)
+    files = _patch_blob_storage_files(monkeypatch)
+    monkeypatch.setattr(get_settings(), "max_single_file_search_export_size", 3)
+    monkeypatch.setattr(get_settings(), "search_export_chunk_size", 2)
+
+    post_response = await client.post(
+        "/v1/references/search/exports/",
+        params={"q": "Climate", "sort": "-publication_year"},
+    )
+    assert post_response.status_code == status.HTTP_202_ACCEPTED
+    export_id = post_response.json()["id"]
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+    # Chunk tasks are queued by the search export task.
+    await broker.wait_all()
+
+    body = (await client.get(f"/v1/references/search/exports/{export_id}/")).json()
+    assert body["status"] == "completed"
+    assert body["n_references"] == 5
+    assert body["result_url"] is None
+    assert [chunk["n_references"] for chunk in body["chunks"]] == [2, 2, 1]
+
+    years = [
+        json.loads(line)["enhancements"][0]["content"]["publication_year"]
+        for chunk in body["chunks"]
+        for line in files[f"{chunk['id']}.jsonl"].decode().splitlines()
+    ]
+    assert years == [2005, 2004, 2003, 2002, 2001]
+
+
+async def test_search_export_with_no_matches_completes_empty(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A search with no matches produces an empty file rather than failing."""
+    captured = _patch_blob_storage(monkeypatch)
+
+    post_response = await client.post(
+        "/v1/references/search/exports/", params={"q": "nothingmatchesthis"}
+    )
+    export_id = post_response.json()["id"]
+    assert isinstance(broker, InMemoryBroker)
+    await broker.wait_all()
+
+    body = (await client.get(f"/v1/references/search/exports/{export_id}/")).json()
+    assert body["status"] == "completed"
+    assert body["n_references"] == 0
+    assert body["result_url"] is not None
+    assert len(body["chunks"]) == 1
+    assert captured == b""
 
 
 async def test_search_export_ris_end_to_end(
@@ -313,6 +402,30 @@ def _patch_blob_storage(monkeypatch: pytest.MonkeyPatch) -> bytearray:
     return captured
 
 
+def _patch_blob_storage_files(monkeypatch: pytest.MonkeyPatch) -> dict[str, bytes]:
+    """Capture each file streamed to blob storage, keyed by filename."""
+    _patch_blob_storage(monkeypatch)
+    files: dict[str, bytes] = {}
+
+    async def fake_upload(
+        self: BlobRepository,  # noqa: ARG001
+        content: FileStream,
+        path: str,
+        filename: str,
+        **_: object,
+    ) -> BlobStorageFile:
+        files[filename] = b"".join([chunk async for chunk in content.stream()])
+        return BlobStorageFile(
+            location="azure",
+            container="destiny-repository",
+            path=path,
+            filename=filename,
+        )
+
+    monkeypatch.setattr(BlobRepository, "upload_file_to_blob_storage", fake_upload)
+    return files
+
+
 async def test_reference_export_end_to_end(
     session: AsyncSession,
     client: AsyncClient,
@@ -341,8 +454,6 @@ async def test_reference_export_end_to_end(
     assert post_response.status_code == status.HTTP_202_ACCEPTED
     body = post_response.json()
     export_id = body["id"]
-    # Reference exports never truncate.
-    assert "truncated" not in body
 
     assert isinstance(broker, InMemoryBroker)
     await broker.wait_all()

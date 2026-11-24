@@ -4,7 +4,7 @@ from collections.abc import Sequence
 from uuid import UUID
 
 import destiny_sdk
-from pydantic import ValidationError
+from pydantic import HttpUrl, ValidationError
 
 from app.core.exceptions import DomainToSDKError, SDKToDomainError
 from app.domain.references.models.models import (
@@ -16,6 +16,7 @@ from app.domain.references.models.models import (
     EnhancementRequest,
     EnhancementRequestSearchStatus,
     EnhancementType,
+    Export,
     ExternalIdentifierAdapter,
     FacetResult,
     FacetTotals,
@@ -343,14 +344,14 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         """Convert the search export to the SDK model."""
         try:
             return destiny_sdk.references.SearchExportRead.model_validate(
-                search_export.model_dump()
+                search_export.model_dump(exclude={"chunks"})
                 | {
-                    "result_url": await self._sign_url(
-                        search_export.result_file,
-                        BlobSignedUrlType.DOWNLOAD,
-                    )
-                    if search_export.result_file
-                    else None,
+                    "result_url": await self._export_result_url(search_export),
+                    "chunks": [
+                        chunk.model_dump()
+                        | {"result_url": await self._export_result_url(chunk)}
+                        for chunk in search_export.chunks or []
+                    ],
                 },
             )
         except ValidationError as exception:
@@ -364,17 +365,15 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
         try:
             return destiny_sdk.references.ReferenceExportRead.model_validate(
                 reference_export.model_dump()
-                | {
-                    "result_url": await self._sign_url(
-                        reference_export.result_file,
-                        BlobSignedUrlType.DOWNLOAD,
-                    )
-                    if reference_export.result_file
-                    else None,
-                },
+                | {"result_url": await self._export_result_url(reference_export)},
             )
         except ValidationError as exception:
             raise DomainToSDKError(errors=exception.errors()) from exception
+
+    async def _export_result_url(self, export: Export) -> HttpUrl | None:
+        if not export.result_file:
+            return None
+        return await self._sign_url(export.result_file, BlobSignedUrlType.DOWNLOAD)
 
     async def enhancement_request_to_sdk_robot(
         self,
@@ -613,11 +612,8 @@ class ReferenceAntiCorruptionService(GenericAntiCorruptionService):
     ) -> destiny_sdk.references.ReferenceSearchResult:
         """Convert a search result and retrieved references to the SDK model."""
         try:
-            hit_order = {hit.id: i for i, hit in enumerate(search_result.hits)}
             sdk_references = [
-                await self.reference_to_sdk(reference)
-                # Sort references according to search order
-                for reference in sorted(references, key=lambda r: hit_order[r.id])
+                await self.reference_to_sdk(reference) for reference in references
             ]
             return destiny_sdk.references.ReferenceSearchResult(
                 total={
