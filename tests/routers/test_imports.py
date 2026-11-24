@@ -436,6 +436,31 @@ async def test_throttled_distribution_completes_when_a_retry_succeeds(
     assert batch.distribution_last_processed_line == 30
 
 
+async def test_an_interrupted_batch_fails_while_its_queued_lines_wait(
+    client: AsyncClient,
+    thirty_line_batch: SQLImportBatch,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Line 1 is queued but not yet imported when line 2's retries run out."""
+    batch = thirty_line_batch
+    kicks = 0
+
+    async def kick(_message: BrokerMessage) -> None:
+        nonlocal kicks
+        kicks += 1
+        if kicks > 1:
+            raise ServiceBusServerBusyError
+
+    monkeypatch.setattr(broker, "kick", kick)
+
+    with pytest.raises(SendTaskError):
+        await import_tasks.distribute_import_batch(batch.import_record_id, batch.id)
+
+    summary = (await client.get(summary_url(batch))).json()
+    assert summary["results"][ImportResultStatus.CREATED] == 1
+    assert summary["import_batch_status"] == ImportBatchStatus.FAILED
+
+
 async def test_download_failure_fails_the_batch_with_its_status_code(
     client: AsyncClient,
     registered_batch: SQLImportBatch,
