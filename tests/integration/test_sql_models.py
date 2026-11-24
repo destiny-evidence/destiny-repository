@@ -934,11 +934,19 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
 @pytest.mark.parametrize(
     ("distribution_status", "result_statuses", "expected_status"),
     [
-        (None, [], ImportBatchStatus.CREATED),
-        (None, [ImportResultStatus.CREATED], ImportBatchStatus.CREATED),
-        (None, [ImportResultStatus.STARTED], ImportBatchStatus.STARTED),
+        (ImportDistributionStatus.UNTRACKED, [], ImportBatchStatus.CREATED),
         (
-            None,
+            ImportDistributionStatus.UNTRACKED,
+            [ImportResultStatus.CREATED],
+            ImportBatchStatus.CREATED,
+        ),
+        (
+            ImportDistributionStatus.UNTRACKED,
+            [ImportResultStatus.STARTED],
+            ImportBatchStatus.STARTED,
+        ),
+        (
+            ImportDistributionStatus.UNTRACKED,
             [
                 ImportResultStatus.FAILED,
                 ImportResultStatus.FAILED,
@@ -950,19 +958,23 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
             ],
             ImportBatchStatus.FAILED,
         ),
-        (None, [ImportResultStatus.COMPLETED], ImportBatchStatus.COMPLETED),
         (
-            None,
+            ImportDistributionStatus.UNTRACKED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.COMPLETED,
+        ),
+        (
+            ImportDistributionStatus.UNTRACKED,
             [ImportResultStatus.STARTED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.STARTED,
         ),
         (
-            None,
+            ImportDistributionStatus.UNTRACKED,
             [ImportResultStatus.FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,
         ),
         (
-            None,
+            ImportDistributionStatus.UNTRACKED,
             [ImportResultStatus.PARTIALLY_FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,
         ),
@@ -972,7 +984,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
             ImportBatchStatus.STARTED,
         ),
         (
-            ImportDistributionStatus.FAILED,
+            ImportDistributionStatus.INTERRUPTED,
             [ImportResultStatus.COMPLETED],
             ImportBatchStatus.FAILED,
         ),
@@ -991,7 +1003,7 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
 )
 async def test_import_batch_status_projection(
     session: AsyncSession,
-    distribution_status: ImportDistributionStatus | None,
+    distribution_status: ImportDistributionStatus,
     result_statuses: list[ImportResultStatus],
     expected_status: ImportBatchStatus,
 ):

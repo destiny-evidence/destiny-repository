@@ -41,7 +41,11 @@ def import_result():
 @pytest.fixture
 def unrecorded_distribution(monkeypatch):
     """These tests cover queuing; the router tests cover the recorded status."""
-    monkeypatch.setattr(ImportService, "_record_distribution", AsyncMock())
+    monkeypatch.setattr(
+        ImportService, "_claim_distribution", AsyncMock(return_value=True)
+    )
+    monkeypatch.setattr(ImportService, "_complete_distribution", AsyncMock())
+    monkeypatch.setattr(ImportService, "_interrupt_distribution", AsyncMock())
 
 
 @pytest.mark.asyncio

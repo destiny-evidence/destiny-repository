@@ -102,7 +102,9 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     )
 
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
-    distribution_status: Mapped[ImportDistributionStatus | None] = mapped_column(String)
+    distribution_status: Mapped[ImportDistributionStatus] = mapped_column(
+        String, nullable=False, default=ImportDistributionStatus.PENDING
+    )
     distribution_failure_details: Mapped[str | None] = mapped_column(String)
 
     import_record: Mapped["ImportRecord"] = relationship(

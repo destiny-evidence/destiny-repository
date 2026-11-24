@@ -23,7 +23,7 @@ class ImportBatchStatusProjection(GenericProjection[ImportBatch]):
         # Distribution still running or stopped short -> results can't complete it
         if import_batch.distribution_status == ImportDistributionStatus.STARTED:
             import_batch.status = ImportBatchStatus.STARTED
-        elif import_batch.distribution_status == ImportDistributionStatus.FAILED:
+        elif import_batch.distribution_status == ImportDistributionStatus.INTERRUPTED:
             import_batch.status = ImportBatchStatus.FAILED
 
         # Distributed to EOF with nothing to import -> completed

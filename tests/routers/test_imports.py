@@ -455,10 +455,11 @@ async def test_download_failure_fails_the_batch_with_its_status_code(
 @pytest.mark.parametrize(
     ("before", "after", "fetches"),
     [
-        (None, ImportDistributionStatus.COMPLETED, 1),
+        (ImportDistributionStatus.PENDING, ImportDistributionStatus.COMPLETED, 1),
         (ImportDistributionStatus.STARTED, ImportDistributionStatus.COMPLETED, 1),
+        (ImportDistributionStatus.INTERRUPTED, ImportDistributionStatus.COMPLETED, 1),
         (ImportDistributionStatus.COMPLETED, ImportDistributionStatus.COMPLETED, 0),
-        (ImportDistributionStatus.FAILED, ImportDistributionStatus.COMPLETED, 1),
+        (ImportDistributionStatus.UNTRACKED, ImportDistributionStatus.UNTRACKED, 0),
     ],
 )
 async def test_a_delivery_distributes_only_an_unfinished_batch(  # noqa: PLR0913
@@ -466,11 +467,11 @@ async def test_a_delivery_distributes_only_an_unfinished_batch(  # noqa: PLR0913
     registered_batch: SQLImportBatch,
     httpx2_mock: HTTPXMock,
     monkeypatch: pytest.MonkeyPatch,
-    before: ImportDistributionStatus | None,
+    before: ImportDistributionStatus,
     after: ImportDistributionStatus,
     fetches: int,
 ) -> None:
-    """A redelivery replays a started or failed batch, never a completed one."""
+    """A delivery replays a started or interrupted batch, never a final one."""
     registered_batch.distribution_status = before
     await session.commit()
     httpx2_mock.add_response(
@@ -487,7 +488,7 @@ async def test_a_delivery_distributes_only_an_unfinished_batch(  # noqa: PLR0913
     assert len(httpx2_mock.get_requests()) == fetches
 
 
-async def test_a_failure_does_not_overwrite_an_overlapping_completion(
+async def test_an_interruption_does_not_overwrite_an_overlapping_completion(
     session: AsyncSession,
     thirty_line_batch: SQLImportBatch,
     monkeypatch: pytest.MonkeyPatch,
@@ -514,12 +515,12 @@ async def test_a_failure_does_not_overwrite_an_overlapping_completion(
     assert batch.distribution_status == ImportDistributionStatus.COMPLETED
 
 
-async def test_reaching_eof_overrides_an_overlapping_failure(
+async def test_reaching_eof_overrides_an_overlapping_interruption(
     session: AsyncSession,
     thirty_line_batch: SQLImportBatch,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Another delivery fails while this one queues every line."""
+    """Another delivery is interrupted while this one queues every line."""
     batch = thirty_line_batch
     kicks = 0
 
@@ -527,7 +528,8 @@ async def test_reaching_eof_overrides_an_overlapping_failure(
         nonlocal kicks
         kicks += 1
         if kicks == 10:
-            batch.distribution_status = ImportDistributionStatus.FAILED
+            batch.distribution_status = ImportDistributionStatus.INTERRUPTED
+            batch.distribution_failure_details = "Distribution stopped after line 9."
             await session.commit()
 
     monkeypatch.setattr(broker, "kick", kick)
@@ -536,6 +538,7 @@ async def test_reaching_eof_overrides_an_overlapping_failure(
 
     await session.refresh(batch)
     assert batch.distribution_status == ImportDistributionStatus.COMPLETED
+    assert batch.distribution_failure_details is None
 
 
 async def test_an_empty_file_completes(
@@ -543,14 +546,16 @@ async def test_an_empty_file_completes(
     registered_batch: SQLImportBatch,
     httpx2_mock: HTTPXMock,
 ) -> None:
-    """A file with only blank lines has nothing to import, so the batch is done."""
+    """A new batch reads created, and a file of blank lines completes at EOF."""
     httpx2_mock.add_response(url=registered_batch.storage_url, text="\n \n")
+    registered = (await client.get(summary_url(registered_batch))).json()
 
     await import_tasks.distribute_import_batch(
         registered_batch.import_record_id, registered_batch.id
     )
 
     summary = (await client.get(summary_url(registered_batch))).json()
+    assert registered["import_batch_status"] == ImportBatchStatus.CREATED
     assert summary["import_batch_status"] == ImportBatchStatus.COMPLETED
 
 

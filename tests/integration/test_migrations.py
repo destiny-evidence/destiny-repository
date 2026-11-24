@@ -95,6 +95,25 @@ async def insert_pending_enhancements(
     return pending_enhancement_ids
 
 
+async def insert_import_batch(conn: AsyncConnection, import_record_id: str) -> str:
+    """Insert an import batch without naming its distribution status."""
+    import_batch_id = str(uuid7())
+    await conn.execute(
+        sa.text(
+            "INSERT INTO import_batch (id, import_record_id, storage_url, "
+            "created_at, updated_at) "
+            "VALUES (:id, :import_record_id, :storage_url, :now, :now)"
+        ),
+        {
+            "id": import_batch_id,
+            "import_record_id": import_record_id,
+            "storage_url": f"https://example.org/{import_batch_id}.jsonl",
+            "now": datetime.datetime.now(datetime.UTC),
+        },
+    )
+    return import_batch_id
+
+
 @pytest_asyncio.fixture
 async def db_at_migration(migration_id: str):
     """Create temporary database and applies migrations up to the migration id."""
@@ -801,4 +820,39 @@ async def test_lowercase_pending_enhancement_statuses_migration(
         current_processing: "processing",
         current_pending: "pending",
     }
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("migration_id", ["2a40c90eb734"])
+async def test_import_batch_distribution_migration(db_at_migration: str) -> None:
+    """Only batches existing at migration are untracked; new ones must name one."""
+    engine = create_async_engine(db_at_migration, future=True)
+    now = datetime.datetime.now(datetime.UTC)
+    import_record_id = str(uuid7())
+
+    async with engine.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO import_record (id, searched_at, processor_name, "
+                "processor_version, expected_reference_count, source_name, status, "
+                "created_at, updated_at) "
+                "VALUES (:id, :now, 'p', '1', -1, 's', 'started', :now, :now)"
+            ),
+            {"id": import_record_id, "now": now},
+        )
+        existing = await insert_import_batch(conn, import_record_id)
+
+    await run_migration(db_at_migration, "4cff7b0c0931")
+
+    async with engine.begin() as conn:
+        result = await conn.execute(
+            sa.text("SELECT id, distribution_status FROM import_batch")
+        )
+        stored = {str(row.id): row.distribution_status for row in result}
+    with pytest.raises(sa.exc.IntegrityError):
+        async with engine.begin() as conn:
+            await insert_import_batch(conn, import_record_id)
+
+    assert stored == {existing: "untracked"}
     await engine.dispose()

@@ -280,34 +280,53 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             )
 
     @sql_unit_of_work
-    async def _record_distribution(
-        self,
-        import_batch_id: UUID,
-        status: ImportDistributionStatus,
-        from_statuses: tuple[ImportDistributionStatus | None, ...],
-        failure_details: str | None = None,
-    ) -> bool:
-        """Change status only from the given ones, so overlaps can't undo it."""
-        for from_status in from_statuses:
-            if await self.sql_uow.imports.batches.bulk_update_by_filter(
-                {"id": import_batch_id, "distribution_status": from_status},
-                distribution_status=status,
-                distribution_failure_details=failure_details,
-            ):
-                return True
-        return False
+    async def _claim_distribution(self, import_batch_id: UUID) -> bool:
+        """Mark an unfinished distribution started, or return False if it is final."""
+        return bool(
+            await self.sql_uow.imports.batches.bulk_update_by_filter(
+                filter_conditions={
+                    "id": import_batch_id,
+                    "distribution_status": ImportDistributionStatus.sources_of(
+                        ImportDistributionStatus.STARTED
+                    ),
+                },
+                distribution_status=ImportDistributionStatus.STARTED,
+            )
+        )
+
+    @sql_unit_of_work
+    async def _complete_distribution(self, import_batch_id: UUID) -> None:
+        """Mark distribution completed, clearing an overlapping interruption."""
+        await self.sql_uow.imports.batches.bulk_update_by_filter(
+            filter_conditions={
+                "id": import_batch_id,
+                "distribution_status": ImportDistributionStatus.sources_of(
+                    ImportDistributionStatus.COMPLETED
+                ),
+            },
+            distribution_status=ImportDistributionStatus.COMPLETED,
+            distribution_failure_details=None,
+        )
+
+    @sql_unit_of_work
+    async def _interrupt_distribution(
+        self, import_batch_id: UUID, failure_details: str
+    ) -> None:
+        """Mark a started distribution interrupted, never overwriting a completion."""
+        await self.sql_uow.imports.batches.bulk_update_by_filter(
+            filter_conditions={
+                "id": import_batch_id,
+                "distribution_status": ImportDistributionStatus.sources_of(
+                    ImportDistributionStatus.INTERRUPTED
+                ),
+            },
+            distribution_status=ImportDistributionStatus.INTERRUPTED,
+            distribution_failure_details=failure_details,
+        )
 
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
         """Distribute an import batch, recording whether it reached the end."""
-        if not await self._record_distribution(
-            import_batch.id,
-            ImportDistributionStatus.STARTED,
-            (
-                None,
-                ImportDistributionStatus.STARTED,
-                ImportDistributionStatus.FAILED,
-            ),
-        ):
+        if not await self._claim_distribution(import_batch.id):
             return
         progress = _DistributionProgress()
         try:
@@ -319,20 +338,13 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 if isinstance(cause, httpx2.HTTPStatusError)
                 else type(cause).__name__
             )
-            await self._record_distribution(
+            await self._interrupt_distribution(
                 import_batch.id,
-                ImportDistributionStatus.FAILED,
-                (ImportDistributionStatus.STARTED,),
                 f"Distribution stopped after line {progress.last_processed_line} "
                 f"({reason}).",
             )
             raise
-        # Reaching EOF proves every line was queued, whatever an overlap recorded
-        await self._record_distribution(
-            import_batch.id,
-            ImportDistributionStatus.COMPLETED,
-            (ImportDistributionStatus.STARTED, ImportDistributionStatus.FAILED),
-        )
+        await self._complete_distribution(import_batch.id)
 
     async def _queue_lines(
         self, import_batch: ImportBatch, progress: _DistributionProgress
