@@ -333,6 +333,11 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
         """Distribute an import batch, recording whether it reached the end."""
         if not await self._claim_distribution(import_batch.id):
+            logger.info(
+                "Skipping import batch distribution, status is final",
+                import_batch_id=str(import_batch.id),
+                distribution_status=import_batch.distribution_status,
+            )
             return
         progress = _DistributionProgress()
         try:
