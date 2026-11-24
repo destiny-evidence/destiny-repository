@@ -336,7 +336,6 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
             logger.info(
                 "Skipping import batch distribution, status is final",
                 import_batch_id=str(import_batch.id),
-                distribution_status=import_batch.distribution_status,
             )
             return
         progress = _DistributionProgress()
