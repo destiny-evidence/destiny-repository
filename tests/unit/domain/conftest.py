@@ -397,6 +397,7 @@ def fake_enhancement_data():
     return {
         "source": "test_source",
         "visibility": "public",
+        "created_at": "2026-01-01T00:00:00Z",
         "enhancement_type": "annotation",
         "content": {
             "enhancement_type": "annotation",

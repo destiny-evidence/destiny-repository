@@ -68,6 +68,8 @@ from app.persistence.es.persistence import ESHit, ESSearchResult, ESSearchTotal
 from app.utils.time_and_date import utc_now
 from tests.factories import (
     AbstractContentEnhancementFactory,
+    BibliographicMetadataEnhancementFactory,
+    EnhancementFactory,
     SearchEnhancementRequestFactory,
 )
 from tests.unit.domain.conftest import FakeRepository
@@ -1494,20 +1496,15 @@ async def test_detect_robot_automations(
 @pytest.fixture
 def canonical_reference():
     canonical_id = uuid7()
-    content = BibliographicMetadataEnhancement(
-        title="Test Title",
-        authorship=[],
-        publication_year=2024,
-        publication_date=None,
-    )
-    enhancement = Enhancement(
-        id=uuid7(),
+    enhancement = EnhancementFactory.build(
         reference_id=canonical_id,
         source="unit-test",
-        visibility="public",
-        robot_version=None,
-        derived_from=None,
-        content=content,
+        content=BibliographicMetadataEnhancementFactory.build(
+            title="Test Title",
+            authorship=[],
+            publication_year=2024,
+            publication_date=None,
+        ),
     )
     return Reference(
         id=canonical_id,

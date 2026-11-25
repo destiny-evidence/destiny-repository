@@ -35,6 +35,7 @@ def _priority_sorted_enhancements(
     Priority is defined as
     * Firstly, we prioritize enhancements on the canonical reference
     * Secondly, we prioritize most recent enhancements
+    * Finally, we prioritize the highest id
 
     Concretely
     * If there's an abstract on the canonical, use that
@@ -47,13 +48,14 @@ def _priority_sorted_enhancements(
     if not enhancements:
         return []
 
-    def _sort_key(enhancement: Enhancement) -> tuple[bool, float]:
+    def _sort_key(enhancement: Enhancement) -> tuple[bool, float, UUID]:
         if not enhancement.created_at:
             msg = "We should never try to project an enhancement without created_at"
             raise RuntimeError(msg)
         return (
             enhancement.reference_id == canonical_id,
             enhancement.created_at.timestamp(),
+            enhancement.id,
         )
 
     return sorted(enhancements, key=_sort_key)
@@ -555,6 +557,9 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
     duplicates, and is flattened to remove its duplicates. This makes it compatible
     with a SDK reference.
 
+    Enhancements are ordered by those on the canonical
+    reference first, then most recent first, then highest id first.
+
     TODO: Handle reference-level visibility.
 
     :param reference: The reference to project from.
@@ -579,11 +584,23 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
         )
 
         if deduplicated_reference.enhancements is not None:
-            deduplicated_reference.enhancements += [
-                enhancement
-                for ref in reference.duplicate_references
-                for enhancement in ref.enhancements or []
-            ]
+            try:
+                deduplicated_reference.enhancements = list(
+                    reversed(
+                        _priority_sorted_enhancements(
+                            reference.id,
+                            deduplicated_reference.enhancements
+                            + [
+                                enhancement
+                                for ref in reference.duplicate_references
+                                for enhancement in ref.enhancements or []
+                            ],
+                        )
+                    )
+                )
+            except RuntimeError as exc:
+                msg = "Failed to order enhancements of deduplicated Reference"
+                raise ProjectionError(msg) from exc
         if deduplicated_reference.identifiers is not None:
             deduplicated_reference.identifiers += [
                 identifier

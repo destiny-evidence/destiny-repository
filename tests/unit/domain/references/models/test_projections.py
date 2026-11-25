@@ -13,9 +13,7 @@ from app.core.exceptions import ProjectionError
 from app.domain.references.models.models import (
     Enhancement,
     EnhancementType,
-    ExternalIdentifierType,
     LinkedDataProjection,
-    LinkedExternalIdentifier,
     Reference,
     Visibility,
 )
@@ -313,6 +311,30 @@ class TestReferenceSearchFieldsProjection:
 
         reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
         assert reference_proj.title == most_recent_bibliography.content.title
+
+    def test_reference_sorting_prioritises_highest_id_on_equal_created_date(self):
+        """Test that we prioritize the highest id when created dates are equal"""
+        reference_id = uuid7()
+        created_at = datetime(2026, 1, 1, tzinfo=UTC)
+        lower_id, higher_id = uuid7(), uuid7()
+
+        enhancements = [
+            EnhancementFactory.build(
+                id=enhancement_id,
+                reference_id=reference_id,
+                created_at=created_at,
+                content=AbstractContentEnhancementFactory.build(abstract=abstract),
+            )
+            for enhancement_id, abstract in [
+                (higher_id, "We get this abstract, it has the highest id"),
+                (lower_id, "We should not get this abstract"),
+            ]
+        ]
+
+        reference = ReferenceFactory.build(id=reference_id, enhancements=enhancements)
+
+        reference_proj = ReferenceSearchFieldsProjection.get_from_reference(reference)
+        assert reference_proj.abstract == enhancements[0].content.abstract
 
     def test_reference_sorting_prioritizes_canonical_over_most_recent(
         self, bibliographic_enhancement, sample_authorship
@@ -1008,33 +1030,27 @@ class TestDeduplicatedReferenceProjection:
 
     def test_get_from_reference_with_duplicates(self, complete_reference):
         """Test deduplication with duplicate references."""
-        # Create duplicate reference
-        duplicate_enhancement = Enhancement(
-            id=uuid7(),
-            source="duplicate_source",
-            visibility=Visibility.PUBLIC,
-            content=destiny_sdk.enhancements.BibliographicMetadataEnhancement(
-                enhancement_type=EnhancementType.BIBLIOGRAPHIC,
-                title="Duplicate Title",
-            ),
-            reference_id=uuid7(),
-        )
-
-        duplicate_identifier = LinkedExternalIdentifier(
-            id=uuid7(),
-            identifier=destiny_sdk.identifiers.DOIIdentifier(
-                identifier="10.1000/duplicate",
-                identifier_type=ExternalIdentifierType.DOI,
-            ),
-            reference_id=uuid7(),
-        )
-
-        duplicate_reference = Reference(
-            id=uuid7(),
-            visibility=Visibility.PUBLIC,
-            enhancements=[duplicate_enhancement],
-            identifiers=[duplicate_identifier],
-            duplicate_references=[],  # No nested duplicates
+        duplicate_reference_id = uuid7()
+        duplicate_reference = ReferenceFactory.build(
+            id=duplicate_reference_id,
+            enhancements=[
+                EnhancementFactory.build(
+                    source="duplicate_source",
+                    content=BibliographicMetadataEnhancementFactory.build(
+                        title="Duplicate Title"
+                    ),
+                    reference_id=duplicate_reference_id,
+                )
+            ],
+            identifiers=[
+                LinkedExternalIdentifierFactory.build(
+                    identifier=DOIIdentifierFactory.build(
+                        identifier="10.1000/duplicate"
+                    ),
+                    reference_id=duplicate_reference_id,
+                )
+            ],
+            duplicate_references=[],
         )
 
         complete_reference.duplicate_references = [duplicate_reference]
@@ -1066,13 +1082,8 @@ class TestDeduplicatedReferenceProjection:
 
     def test_get_from_reference_none_enhancements_preserved(self):
         """Test that None enhancements are preserved (not preloaded)."""
-        reference = Reference(
-            id=uuid7(),
-            visibility=Visibility.PUBLIC,
-            enhancements=None,  # Not preloaded
-            identifiers=[],
-            duplicate_references=[],
-        )
+        reference = ReferenceFactory.build(duplicate_references=[])
+        reference.enhancements = None
 
         result = DeduplicatedReferenceProjection.get_from_reference(reference)
 
@@ -1080,17 +1091,177 @@ class TestDeduplicatedReferenceProjection:
 
     def test_get_from_reference_none_identifiers_preserved(self):
         """Test that None identifiers are preserved (not preloaded)."""
-        reference = Reference(
-            id=uuid7(),
-            visibility=Visibility.PUBLIC,
-            enhancements=[],
-            identifiers=None,  # Not preloaded
-            duplicate_references=[],
-        )
+        reference = ReferenceFactory.build(duplicate_references=[])
+        reference.identifiers = None
 
         result = DeduplicatedReferenceProjection.get_from_reference(reference)
 
         assert result.identifiers is None
+
+    _base_time = datetime(2026, 1, 1, tzinfo=UTC)
+
+    @staticmethod
+    def _abstract(reference_id, abstract, **kwargs):
+        return EnhancementFactory.build(
+            reference_id=reference_id,
+            content=AbstractContentEnhancementFactory.build(abstract=abstract),
+            **kwargs,
+        )
+
+    @staticmethod
+    def _deduplicate(
+        canonical_id, canonical_enhancements, duplicate_id, duplicate_enhancements
+    ):
+        duplicate_reference = ReferenceFactory.build(
+            id=duplicate_id, duplicate_references=[]
+        )
+        duplicate_reference.enhancements = duplicate_enhancements
+        return DeduplicatedReferenceProjection.get_from_reference(
+            ReferenceFactory.build(
+                id=canonical_id,
+                enhancements=canonical_enhancements,
+                duplicate_references=[duplicate_reference],
+            )
+        )
+
+    def test_enhancements_canonical_before_newer_duplicate(self):
+        """Test that a canonical enhancement precedes a newer duplicate one."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        canonical_abstract = self._abstract(
+            canonical_id, "canonical", created_at=self._base_time
+        )
+        duplicate_abstract = self._abstract(
+            duplicate_id, "duplicate", created_at=self._base_time + timedelta(days=1)
+        )
+
+        result = self._deduplicate(
+            canonical_id, [canonical_abstract], duplicate_id, [duplicate_abstract]
+        )
+
+        assert [e.id for e in result.enhancements] == [
+            canonical_abstract.id,
+            duplicate_abstract.id,
+        ]
+
+    def test_enhancements_newest_canonical_first(self):
+        """Test that the newer of two canonical enhancements comes first."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        older = self._abstract(canonical_id, "older", created_at=self._base_time)
+        newer = self._abstract(
+            canonical_id, "newer", created_at=self._base_time + timedelta(days=1)
+        )
+
+        result = self._deduplicate(canonical_id, [older, newer], duplicate_id, [])
+
+        assert [e.id for e in result.enhancements] == [newer.id, older.id]
+
+    def test_enhancements_newest_duplicate_first_without_canonical(self):
+        """Test that the newest duplicate abstract leads when the canonical has none."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        bibliographic = EnhancementFactory.build(
+            reference_id=canonical_id,
+            content=BibliographicMetadataEnhancementFactory.build(),
+            created_at=self._base_time,
+        )
+        older = self._abstract(duplicate_id, "older", created_at=self._base_time)
+        newer = self._abstract(
+            duplicate_id, "newer", created_at=self._base_time + timedelta(days=1)
+        )
+
+        result = self._deduplicate(
+            canonical_id, [bibliographic], duplicate_id, [older, newer]
+        )
+
+        assert [e.id for e in result.enhancements] == [
+            bibliographic.id,
+            newer.id,
+            older.id,
+        ]
+
+    def test_enhancements_equal_created_at_highest_id_first(self):
+        """Test that enhancements created at the same time order by id."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        lower_id, higher_id = uuid7(), uuid7()
+        lower = self._abstract(
+            canonical_id, "lower", id=lower_id, created_at=self._base_time
+        )
+        higher = self._abstract(
+            canonical_id, "higher", id=higher_id, created_at=self._base_time
+        )
+
+        result = self._deduplicate(canonical_id, [lower, higher], duplicate_id, [])
+
+        assert [e.id for e in result.enhancements] == [higher_id, lower_id]
+
+    def test_enhancements_order_independent_of_input_order(self):
+        """Test that the projected order does not depend on the loaded order."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        canonical_enhancements = [
+            self._abstract(canonical_id, f"canonical {i}", created_at=self._base_time)
+            for i in range(3)
+        ] + [
+            self._abstract(
+                canonical_id,
+                "canonical newest",
+                created_at=self._base_time + timedelta(days=1),
+            )
+        ]
+        duplicate_enhancements = [
+            self._abstract(
+                duplicate_id,
+                f"duplicate {i}",
+                created_at=self._base_time + timedelta(days=i),
+            )
+            for i in range(3)
+        ]
+
+        expected = self._deduplicate(
+            canonical_id, canonical_enhancements, duplicate_id, duplicate_enhancements
+        )
+        shuffle(canonical_enhancements)
+        shuffle(duplicate_enhancements)
+        result = self._deduplicate(
+            canonical_id, canonical_enhancements, duplicate_id, duplicate_enhancements
+        )
+
+        assert [e.id for e in result.enhancements] == [
+            e.id for e in expected.enhancements
+        ]
+
+    def test_first_abstract_matches_search_fields_abstract(self):
+        """Test that the first abstract is the one projected for search."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        canonical_abstracts = [
+            self._abstract(canonical_id, "older", created_at=self._base_time),
+            self._abstract(
+                canonical_id, "newer", created_at=self._base_time + timedelta(days=1)
+            ),
+        ]
+        duplicate_abstract = self._abstract(
+            duplicate_id, "duplicate", created_at=self._base_time + timedelta(days=2)
+        )
+
+        result = self._deduplicate(
+            canonical_id, canonical_abstracts, duplicate_id, [duplicate_abstract]
+        )
+        search_fields = ReferenceSearchFieldsProjection.get_from_reference(result)
+
+        first_abstract = next(
+            e
+            for e in result.enhancements
+            if e.content.enhancement_type == EnhancementType.ABSTRACT
+        )
+        assert first_abstract.content.abstract == search_fields.abstract == "newer"
+
+    def test_enhancement_without_created_at_raises_error(self):
+        """Test that an enhancement without created_at raises ProjectionError."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        undated = self._abstract(canonical_id, "undated", created_at=None)
+
+        with pytest.raises(
+            ProjectionError, match="Failed to order enhancements of deduplicated"
+        ):
+            self._deduplicate(canonical_id, [undated], duplicate_id, [])
 
 
 def _reference_with_bibliographic(**content_kwargs):
