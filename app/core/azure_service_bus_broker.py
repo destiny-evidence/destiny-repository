@@ -409,8 +409,8 @@ class AzureServiceBusBroker(AsyncBroker):
             for receiver, max_wait, priority in configured
             if priority not in settings.message_broker_paused_queues
         )
-        # A paused queue's wait leaves the cycle; the last queue polled makes it up so
-        # an idle worker sends no more receives per second than with nothing paused.
+        # Pausing shortens the cycle. If an idle worker would then receive more often
+        # than with nothing paused, the last queue polled waits the difference.
         mean_wait = sum(max_wait for _, max_wait, _ in configured) / len(configured)
         shortfall = mean_wait * len(queues) - sum(max_wait for _, max_wait, _ in queues)
         if shortfall > 0:
