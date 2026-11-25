@@ -254,11 +254,13 @@ async def test_get_batches(
     batch1 = SQLImportBatch(
         import_record_id=valid_import.id,
         storage_url="https://some.url/file.json",
+        distribution_status=ImportDistributionStatus.PENDING,
     )
     session.add(batch1)
     batch2 = SQLImportBatch(
         import_record_id=valid_import.id,
         storage_url="https://files.storage/something.json",
+        distribution_status=ImportDistributionStatus.PENDING,
     )
     session.add(batch2)
     await session.commit()
@@ -278,6 +280,7 @@ async def test_get_import_batch_summary(
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
         storage_url="https://some.url/file.json",
+        distribution_status=ImportDistributionStatus.PENDING,
     )
     session.add(batch)
     await session.commit()
@@ -329,6 +332,7 @@ async def registered_batch(
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
         storage_url="https://example.org/batch.jsonl",
+        distribution_status=ImportDistributionStatus.PENDING,
     )
     session.add(batch)
     await session.commit()
@@ -597,6 +601,7 @@ async def test_get_import_results(
     batch = SQLImportBatch(
         import_record_id=valid_import.id,
         storage_url="https://some.url/file.json",
+        distribution_status=ImportDistributionStatus.PENDING,
     )
     session.add(batch)
     await session.commit()
