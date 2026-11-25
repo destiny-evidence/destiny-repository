@@ -472,8 +472,11 @@ async def test_listen_skips_paused_queue(
         await maybe_awaitable(ackable.ack())
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(anext(listener), timeout=1)
+    monkeypatch.setattr(broker_module.settings, "message_broker_paused_queues", set())
+    unpaused = await asyncio.wait_for(anext(broker.listen()), timeout=5)
+    yielded.append(unpaused.data)
 
-    assert yielded == [b"priority-1", b"normal-1"]
+    assert yielded == [b"priority-1", b"normal-1", b"low-1"]
 
 
 @pytest.mark.anyio
