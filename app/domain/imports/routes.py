@@ -15,7 +15,7 @@ from app.api.auth import (
 )
 from app.core.config import get_settings
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportResultStatus,
 )
@@ -186,6 +186,7 @@ async def enqueue_batch(
     await queue_task_with_trace(
         distribute_import_batch,
         long_running=True,
+        priority=TaskPriority.LOW,
         import_record_id=import_record_id,
         import_batch_id=import_batch.id,
         otel_enabled=settings.otel_enabled,

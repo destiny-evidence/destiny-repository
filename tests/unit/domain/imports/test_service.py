@@ -8,6 +8,7 @@ import httpx2
 import pytest
 
 from app.core.exceptions import MessageTooLargeError
+from app.core.telemetry.taskiq import TaskPriority
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportBatchStatus,
@@ -260,13 +261,15 @@ class TestDistributeImportBatch:
 
         created_results = []
         queued_tasks = []
+        queued_priorities = set()
 
         async def fake_register_result(result):
             created_results.append(result)
             return result
 
-        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+        async def fake_queue_task_with_trace(*args, priority, otel_enabled):  # noqa: ARG001
             queued_tasks.append(args)
+            queued_priorities.add(priority)
 
         service = ImportService(ImportAntiCorruptionService(), fake_uow())
         monkeypatch.setattr(service, "register_result", fake_register_result)
@@ -279,6 +282,7 @@ class TestDistributeImportBatch:
 
         assert len(created_results) == len(lines)
         assert len(queued_tasks) == len(lines)
+        assert queued_priorities == {TaskPriority.LOW}
         assert client.streamed_url == str(import_batch.storage_url)
 
     @pytest.mark.asyncio
@@ -302,7 +306,7 @@ class TestDistributeImportBatch:
         async def fake_register_result(result):
             return result
 
-        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+        async def fake_queue_task_with_trace(*args, priority, otel_enabled):  # noqa: ARG001
             queued_lines.append(args[2])
 
         service = ImportService(ImportAntiCorruptionService(), fake_uow())
@@ -348,7 +352,7 @@ class TestDistributeImportBatch:
             update_result_calls.append({"import_result_id": import_result_id, **kwargs})
             return import_result_id
 
-        async def fake_queue_task_with_trace(*args, otel_enabled):  # noqa: ARG001
+        async def fake_queue_task_with_trace(*args, priority, otel_enabled):  # noqa: ARG001
             if args[2] == real_big_reference:
                 raise MessageTooLargeError(detail="message size limit exceeded.")
             queued_lines.append(args[2])

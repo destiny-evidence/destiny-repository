@@ -16,6 +16,7 @@ from taskiq import InMemoryBroker
 from app.api.exception_handlers import not_found_exception_handler
 from app.core.config import Environment
 from app.core.exceptions import NotFoundError
+from app.core.telemetry.taskiq import TaskPriority
 from app.domain.imports import routes as imports
 from app.domain.imports.models.models import (
     ImportBatch,
@@ -467,3 +468,6 @@ async def test_deduplicate_references(
     assert {r.reference_id for r in results} == ref_ids
     assert {r.duplicate_determination for r in results} == {"pending"}
     assert {r.id for r in results} == called_ids
+    assert {call.kwargs["priority"] for call in mock_queue.call_args_list} == {
+        TaskPriority.LOW
+    }

@@ -14,6 +14,7 @@ from app.core.exceptions import (
     DeduplicationValueError,
     SQLIntegrityError,
 )
+from app.core.telemetry.taskiq import TaskPriority
 from app.domain.references.models.models import (
     DuplicateDetermination,
     EnhancementRequest,
@@ -511,6 +512,7 @@ class TestActiveDecisionRace:
         mock_queue.assert_awaited_once()
         call_kwargs = mock_queue.call_args.kwargs
         assert call_kwargs["remaining_retries"] == 0
+        assert call_kwargs["priority"] == TaskPriority.LOW
 
         sql_uow = mock_sql_uow_cm.__aenter__.return_value
         sql_uow.rollback.assert_awaited_once()
