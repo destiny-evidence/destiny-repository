@@ -387,29 +387,38 @@ class AzureServiceBusBroker(AsyncBroker):
         ):
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
+        configured = (
+            (
+                self.priority_receiver,
+                settings.message_broker_priority_queue_max_wait,
+                "high",
+            ),
+            (
+                self.receiver,
+                settings.message_broker_queue_max_wait,
+                "normal",
+            ),
+            (
+                self.low_priority_receiver,
+                settings.message_broker_low_priority_queue_max_wait,
+                "low",
+            ),
+        )
         queues = tuple(
             (receiver, max_wait, priority)
-            for receiver, max_wait, priority in (
-                (
-                    self.priority_receiver,
-                    settings.message_broker_priority_queue_max_wait,
-                    "high",
-                ),
-                (
-                    self.receiver,
-                    settings.message_broker_queue_max_wait,
-                    "normal",
-                ),
-                (
-                    self.low_priority_receiver,
-                    settings.message_broker_low_priority_queue_max_wait,
-                    "low",
-                ),
-            )
+            for receiver, max_wait, priority in configured
             if priority not in settings.message_broker_paused_queues
         )
+        # A paused queue's wait leaves the cycle; the last queue polled makes it up so
+        # an idle worker sends no more receives per second than with nothing paused.
+        mean_wait = sum(max_wait for _, max_wait, _ in configured) / len(configured)
+        shortfall = mean_wait * len(queues) - sum(max_wait for _, max_wait, _ in queues)
+        if shortfall > 0:
+            *higher, (receiver, max_wait, priority) = queues
+            queues = (*higher, (receiver, max_wait + shortfall, priority))
         logger.info(
-            "Receiving from queues", queues=[priority for _, _, priority in queues]
+            "Receiving from queues",
+            queues={priority: round(max_wait, 2) for _, max_wait, priority in queues},
         )
         if not queues:
             # Unpausing deploys a new revision, so this worker never resumes.

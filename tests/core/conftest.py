@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from azure.servicebus import ServiceBusReceiveMode
@@ -243,3 +244,20 @@ async def broker(
     yield broker
 
     await broker.shutdown()
+
+
+@pytest.fixture
+def receiver_spies(
+    broker: AzureServiceBusBroker, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, AsyncMock]:
+    """Wrap each receiver to record which queues are polled and with what wait."""
+    spies = {}
+    for name, receiver in (
+        ("high", broker.priority_receiver),
+        ("normal", broker.receiver),
+        ("low", broker.low_priority_receiver),
+    ):
+        assert receiver is not None
+        spies[name] = AsyncMock(wraps=receiver.receive_messages)
+        monkeypatch.setattr(receiver, "receive_messages", spies[name])
+    return spies

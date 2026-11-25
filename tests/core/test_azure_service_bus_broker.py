@@ -479,6 +479,7 @@ async def test_listen_skips_paused_queue(
 @pytest.mark.anyio
 async def test_listen_receives_nothing_when_all_queues_paused(
     broker: AzureServiceBusBroker,
+    receiver_spies: dict[str, AsyncMock],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """With every queue paused the listener waits without calling any receiver."""
@@ -487,22 +488,49 @@ async def test_listen_receives_nothing_when_all_queues_paused(
         "message_broker_paused_queues",
         {"high", "normal", "low"},
     )
-    spies = []
-    for receiver in (
-        broker.priority_receiver,
-        broker.receiver,
-        broker.low_priority_receiver,
-    ):
-        assert receiver is not None
-        spy = AsyncMock(wraps=receiver.receive_messages)
-        monkeypatch.setattr(receiver, "receive_messages", spy)
-        spies.append(spy)
 
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(anext(broker.listen()), timeout=0.5)
 
-    for spy in spies:
+    for spy in receiver_spies.values():
         spy.assert_not_awaited()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("paused", "expected_waits"),
+    [
+        (set(), {"high": 0.2, "normal": 0.2, "low": 2}),
+        ({"low"}, {"high": 0.2, "normal": 1.4}),
+        ({"normal"}, {"high": 0.2, "low": 2}),
+        ({"normal", "low"}, {"high": 0.8}),
+    ],
+)
+async def test_listen_keeps_the_mean_wait_per_receive_when_paused(
+    broker: AzureServiceBusBroker,
+    receiver_spies: dict[str, AsyncMock],
+    monkeypatch: pytest.MonkeyPatch,
+    paused: set[str],
+    expected_waits: dict[str, float],
+) -> None:
+    """The last polled queue's wait makes up for paused queues, up to the mean wait."""
+    for setting, wait in (
+        ("message_broker_priority_queue_max_wait", 0.2),
+        ("message_broker_queue_max_wait", 0.2),
+        ("message_broker_low_priority_queue_max_wait", 2),
+    ):
+        monkeypatch.setattr(broker_module.settings, setting, wait)
+    monkeypatch.setattr(broker_module.settings, "message_broker_paused_queues", paused)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(anext(broker.listen()), timeout=1)
+
+    waits = {
+        name: spy.await_args.kwargs["max_wait_time"]
+        for name, spy in receiver_spies.items()
+        if spy.await_args is not None
+    }
+    assert waits == pytest.approx(expected_waits)
 
 
 @pytest.mark.anyio
