@@ -901,4 +901,3 @@ class TestAutomaticDecisionRetries:
         await process_reference_duplicate_decision(decision_id)
 
         assert queue.await_args.args == (repair_reference_index_subset, [reference_id])
-        assert queue.await_args.kwargs["priority"] == TaskPriority.LOW

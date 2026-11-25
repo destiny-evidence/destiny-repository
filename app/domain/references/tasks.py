@@ -441,7 +441,6 @@ async def _reproject_or_queue_repair(
         await queue_task_with_trace(
             repair_reference_index_subset,
             reference_ids,
-            priority=TaskPriority.LOW,
             otel_enabled=settings.otel_enabled,
         )
 
