@@ -374,7 +374,7 @@ class AzureServiceBusBroker(AsyncBroker):
 
         If messages are received from a queue, restart the iteration so that
         every higher priority queue is fully consumed before polling a lower
-        priority queue.
+        priority queue. Queues in ``message_broker_paused_queues`` are skipped.
 
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
@@ -387,23 +387,33 @@ class AzureServiceBusBroker(AsyncBroker):
         ):
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
-        queues = (
-            (
-                self.priority_receiver,
-                settings.message_broker_priority_queue_max_wait,
-                "high",
-            ),
-            (
-                self.receiver,
-                settings.message_broker_queue_max_wait,
-                "normal",
-            ),
-            (
-                self.low_priority_receiver,
-                settings.message_broker_low_priority_queue_max_wait,
-                "low",
-            ),
+        queues = tuple(
+            (receiver, max_wait, priority)
+            for receiver, max_wait, priority in (
+                (
+                    self.priority_receiver,
+                    settings.message_broker_priority_queue_max_wait,
+                    "high",
+                ),
+                (
+                    self.receiver,
+                    settings.message_broker_queue_max_wait,
+                    "normal",
+                ),
+                (
+                    self.low_priority_receiver,
+                    settings.message_broker_low_priority_queue_max_wait,
+                    "low",
+                ),
+            )
+            if priority not in settings.message_broker_paused_queues
         )
+        logger.info(
+            "Receiving from queues", queues=[priority for _, _, priority in queues]
+        )
+        if not queues:
+            # Unpausing deploys a new revision, so this worker never resumes.
+            await asyncio.Event().wait()
 
         while True:
             try:

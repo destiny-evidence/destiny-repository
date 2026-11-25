@@ -22,6 +22,7 @@ from azure.servicebus.exceptions import MessageSizeExceededError
 from taskiq import BrokerMessage
 from taskiq.utils import maybe_awaitable
 
+from app.core import azure_service_bus_broker as broker_module
 from app.core.azure_service_bus_broker import (
     _COMPRESSION_THRESHOLD_BYTES,
     AzureServiceBusBroker,
@@ -444,6 +445,64 @@ async def test_listen_drains_default_before_low_priority(
             break
 
     assert yielded == [b"priority-1", b"normal-1", b"low-1"]
+
+
+@pytest.mark.anyio
+async def test_listen_skips_paused_queue(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A paused queue's messages wait while the other queues are still received."""
+    monkeypatch.setattr(broker_module.settings, "message_broker_paused_queues", {"low"})
+    for task_id, priority in (("low-1", "0"), ("normal-1", "1"), ("priority-1", "5")):
+        await broker.kick(
+            BrokerMessage(
+                task_id=task_id,
+                task_name=task_id,
+                message=task_id.encode(),
+                labels={"priority": priority},
+            )
+        )
+
+    listener = broker.listen()
+    yielded: list[bytes] = []
+    for _ in range(2):
+        ackable = await anext(listener)
+        yielded.append(ackable.data)
+        await maybe_awaitable(ackable.ack())
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(anext(listener), timeout=1)
+
+    assert yielded == [b"priority-1", b"normal-1"]
+
+
+@pytest.mark.anyio
+async def test_listen_receives_nothing_when_all_queues_paused(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With every queue paused the listener waits without calling any receiver."""
+    monkeypatch.setattr(
+        broker_module.settings,
+        "message_broker_paused_queues",
+        {"high", "normal", "low"},
+    )
+    spies = []
+    for receiver in (
+        broker.priority_receiver,
+        broker.receiver,
+        broker.low_priority_receiver,
+    ):
+        assert receiver is not None
+        spy = AsyncMock(wraps=receiver.receive_messages)
+        monkeypatch.setattr(receiver, "receive_messages", spy)
+        spies.append(spy)
+
+    with pytest.raises(TimeoutError):
+        await asyncio.wait_for(anext(broker.listen()), timeout=0.5)
+
+    for spy in spies:
+        spy.assert_not_awaited()
 
 
 @pytest.mark.anyio

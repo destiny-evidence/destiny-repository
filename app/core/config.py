@@ -560,6 +560,13 @@ class Settings(BaseSettings):
             "(in seconds)."
         ),
     )
+    message_broker_paused_queues: set[Literal["high", "normal", "low"]] = Field(
+        default_factory=set,
+        description=(
+            "Task queues the workers stop receiving from. Messages sent to a paused "
+            "queue wait on it until it is unpaused."
+        ),
+    )
 
     cli_client_id: str | None = None
     app_name: str
