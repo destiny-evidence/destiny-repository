@@ -166,6 +166,12 @@ variable "low_priority_queue_active_jobs_scaling_threshold" {
   default     = 100
 }
 
+variable "paused_task_queues" {
+  description = "Task queues (high, normal, low) the workers stop receiving from. A paused queue keeps its messages and loses its scale rule until unpaused."
+  type        = set(string)
+  default     = []
+}
+
 
 variable "created_by" {
   description = "Who created this infrastructure. Required tag for resource groups"

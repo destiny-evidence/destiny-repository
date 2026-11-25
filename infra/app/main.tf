@@ -320,13 +320,18 @@ module "container_app_tasks" {
       name  = "APP_NAME"
       value = "${var.app_name}-task"
     },
+    {
+      name  = "MESSAGE_BROKER_PAUSED_QUEUES"
+      value = jsonencode(var.paused_task_queues)
+    },
   ])
   secrets = local.secrets
 
   command = ["taskiq", "worker", "app.tasks:broker", "--fs-discover", "--tasks-pattern", "app/**/tasks.py", "--max-async-tasks", var.container_app_tasks_n_concurrent_jobs]
 
   # Unfortunately the Azure terraform provider doesn't support setting up managed identity auth for scaling rules.
-  custom_scale_rules = [
+  # A paused queue loses its rule, or its backlog would scale out workers that never poll it.
+  custom_scale_rules = [for rule in [
     {
       name             = "queue-length-scale-rule"
       custom_rule_type = "azure-servicebus"
@@ -366,7 +371,7 @@ module "container_app_tasks" {
         trigger_parameter = "connection"
       }
     },
-  ]
+  ] : rule if !contains(local.paused_task_queue_names, rule.metadata.queueName)]
 }
 
 module "container_app_ui" {
@@ -426,6 +431,11 @@ locals {
   active_servicebus_queue              = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_premium[0] : azurerm_servicebus_queue.taskiq
   active_servicebus_priority_queue     = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_priority_premium[0] : azurerm_servicebus_queue.taskiq_priority
   active_servicebus_low_priority_queue = local.servicebus_is_premium ? azurerm_servicebus_queue.taskiq_low_priority_premium[0] : azurerm_servicebus_queue.taskiq_low_priority
+  paused_task_queue_names = [for queue in var.paused_task_queues : {
+    high   = local.active_servicebus_priority_queue.name
+    normal = local.active_servicebus_queue.name
+    low    = local.active_servicebus_low_priority_queue.name
+  }[queue]]
 }
 
 resource "azurerm_servicebus_namespace" "this" {
