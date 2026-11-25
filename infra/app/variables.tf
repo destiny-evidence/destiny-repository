@@ -170,6 +170,11 @@ variable "paused_task_queues" {
   description = "Task queues (high, normal, low) the workers stop receiving from. A paused queue keeps its messages and loses its scale rule until unpaused."
   type        = set(string)
   default     = []
+
+  validation {
+    condition     = alltrue([for queue in var.paused_task_queues : contains(["high", "normal", "low"], queue)])
+    error_message = "paused_task_queues may contain only high, normal and low."
+  }
 }
 
 
