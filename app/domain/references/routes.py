@@ -897,6 +897,7 @@ async def _enqueue_export_task(
     export_id: destiny_sdk.UUID,
     task_kwargs: dict[str, object],
     fail: Callable[[destiny_sdk.UUID, str], Awaitable[object]],
+    priority: TaskPriority = TaskPriority.HIGH,
 ) -> None:
     """
     Enqueue an export task, failing the job row and returning 503 if the broker is down.
@@ -908,7 +909,7 @@ async def _enqueue_export_task(
         await queue_task_with_trace(
             task,
             long_running=True,
-            priority=TaskPriority.HIGH,
+            priority=priority,
             otel_enabled=settings.otel_enabled,
             **task_kwargs,
         )
@@ -988,6 +989,11 @@ async def request_search_export(
             "entitlements": entitlements,
         },
         fail=search_export_service.fail,
+        priority=(
+            TaskPriority.HIGH
+            if n_references <= settings.max_single_file_search_export_size
+            else TaskPriority.NORMAL
+        ),
     )
     return await anti_corruption_service.search_export_to_sdk(search_export)
 
@@ -1491,7 +1497,6 @@ async def request_search_enhancement(
         await queue_task_with_trace(
             run_search_enhancement_request_task,
             long_running=True,
-            priority=TaskPriority.HIGH,
             otel_enabled=settings.otel_enabled,
             enhancement_request_id=enhancement_request.id,
         )

@@ -29,7 +29,7 @@ from app.core.exceptions import (
 )
 from app.core.telemetry.attributes import Attributes, trace_attribute
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     CandidateSelectionRequest,
     CandidateSelectionResult,
@@ -1797,6 +1797,7 @@ class ReferenceService(GenericService[ReferenceAntiCorruptionService]):
             await queue_task_with_trace(
                 ("app.domain.references.tasks", "process_reference_duplicate_decision"),
                 reference_duplicate_decision_id=decision.id,
+                priority=TaskPriority.LOW,
                 otel_enabled=settings.otel_enabled,
             )
 

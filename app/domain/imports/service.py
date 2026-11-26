@@ -14,7 +14,7 @@ from app.core.exceptions import MessageTooLargeError, SQLIntegrityError
 from app.core.telemetry.attributes import Attributes, sample_trace, trace_attribute
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.otel import new_linked_trace
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportBatch,
     ImportRecord,
@@ -256,6 +256,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 line,
                 line_number,
                 settings.import_reference_retry_count,
+                priority=TaskPriority.LOW,
                 otel_enabled=settings.otel_enabled,
             )
         except MessageTooLargeError as exc:

@@ -13,7 +13,7 @@ from app.core.telemetry.attributes import (
     trace_attribute,
 )
 from app.core.telemetry.logger import get_logger
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.imports.models.models import ImportResultStatus
 from app.domain.imports.service import ImportService
 from app.domain.imports.services.anti_corruption_service import (
@@ -144,6 +144,7 @@ async def import_reference(
                     content,
                     line_number,
                     remaining_retries - 1,
+                    priority=TaskPriority.LOW,
                     otel_enabled=settings.otel_enabled,
                 )
             else:
@@ -156,5 +157,6 @@ async def import_reference(
             await queue_task_with_trace(
                 process_reference_duplicate_decision,
                 duplicate_decision_id,
+                priority=TaskPriority.LOW,
                 otel_enabled=settings.otel_enabled,
             )

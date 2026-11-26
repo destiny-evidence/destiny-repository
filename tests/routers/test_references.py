@@ -31,6 +31,7 @@ from app.core.exceptions import (
     ParseError,
     SDKToDomainError,
 )
+from app.core.telemetry.taskiq import TaskPriority
 from app.domain.references import routes as references
 from app.domain.references.models.models import (
     DuplicateDecisionAuthority,
@@ -348,11 +349,19 @@ async def test_request_search_enhancement_enqueues(
     app.dependency_overrides[references.reference_service] = lambda: service
     app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
 
-    with patch.object(references, "queue_task_with_trace", AsyncMock()) as enqueue:
+    task = references.run_search_enhancement_request_task
+    with (
+        # Let the real queueing helper run so its default priority is applied.
+        patch.object(task, "kiq", AsyncMock()) as kiq,
+        # The task object is shared across tests; clear any priority an earlier
+        # test set.
+        patch.dict(task.labels, {"priority": None}),
+    ):
         response = await client.post(
             "/v1/enhancement-requests/search/",
             json={"robot_id": str(request.robot_id), "search_query": "title:climate"},
         )
+        queued_priority = task.labels["priority"]
 
     assert response.status_code == status.HTTP_202_ACCEPTED
     body = response.json()
@@ -360,9 +369,10 @@ async def test_request_search_enhancement_enqueues(
     assert body["search_status"] == EnhancementRequestSearchStatus.PENDING
     # Match count is not known until the collection task runs.
     assert body["n_matched"] is None
-    enqueue.assert_awaited_once()
-    assert enqueue.await_args
-    assert enqueue.await_args.kwargs["enhancement_request_id"] == request.id
+    kiq.assert_awaited_once()
+    assert kiq.await_args
+    assert kiq.await_args.kwargs["enhancement_request_id"] == request.id
+    assert queued_priority == TaskPriority.NORMAL.value
 
 
 async def test_request_search_enhancement_broker_down_fails_request(
@@ -1447,6 +1457,39 @@ async def test_request_search_export_marks_failed_when_enqueue_fails(
     rows = (await session.execute(select(SQLSearchExport))).scalars().all()
     assert len(rows) == 1
     assert "broker down" in rows[0].error
+
+
+@pytest.mark.parametrize(
+    ("over_single_file_size", "expected_priority"),
+    [(0, TaskPriority.HIGH), (1, TaskPriority.NORMAL)],
+)
+async def test_request_search_export_priority_depends_on_size(
+    session: AsyncSession,  # noqa: ARG001
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    over_single_file_size: int,
+    expected_priority: TaskPriority,
+) -> None:
+    """Only exports that fit in a single file are queued at high priority."""
+    monkeypatch.setattr(
+        SearchExportService,
+        "count",
+        AsyncMock(
+            return_value=references.settings.max_single_file_search_export_size
+            + over_single_file_size
+        ),
+    )
+    enqueue = AsyncMock()
+    monkeypatch.setattr(references, "queue_task_with_trace", enqueue)
+
+    response = await client.post(
+        "/v1/references/search/exports/", params={"q": "climate"}
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    enqueue.assert_awaited_once()
+    assert enqueue.await_args
+    assert enqueue.await_args.kwargs["priority"] == expected_priority
 
 
 async def test_get_search_export_pending_has_no_url(
