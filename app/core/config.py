@@ -542,22 +542,14 @@ class Settings(BaseSettings):
     message_broker_queue_max_wait: float = Field(
         default=0.2,
         description=(
-            "Max time to wait to receive messages on the normal priority task queue "
-            "(in seconds)."
+            "Max time to wait to receive messages on each task queue (in seconds)."
         ),
     )
-    message_broker_priority_queue_max_wait: float = Field(
-        default=0.2,
-        description=(
-            "Max time to wait to receive messages on the high priority task queue "
-            "(in seconds)."
-        ),
-    )
-    message_broker_low_priority_queue_max_wait: float = Field(
+    message_broker_idle_sleep: float = Field(
         default=2,
         description=(
-            "Max time to wait to receive messages on the low priority task queue "
-            "(in seconds)."
+            "Time to sleep after polling every task queue without receiving a "
+            "message (in seconds)."
         ),
     )
     message_broker_paused_queues: set[Literal["high", "normal", "low"]] = Field(
