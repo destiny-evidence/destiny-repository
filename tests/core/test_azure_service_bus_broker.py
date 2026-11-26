@@ -548,6 +548,28 @@ async def test_listen_does_not_sleep_after_receiving(
 
 
 @pytest.mark.anyio
+async def test_listen_resumes_after_idle_sleep(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A message queued while the listener sleeps is received once the sleep ends."""
+    monkeypatch.setattr(broker_module.settings, "message_broker_queue_max_wait", 0.1)
+    monkeypatch.setattr(broker_module.settings, "message_broker_idle_sleep", 0.5)
+    received = asyncio.create_task(asyncio.wait_for(anext(broker.listen()), timeout=2))
+    await asyncio.sleep(0.4)
+    await broker.kick(
+        BrokerMessage(
+            task_id="normal-1",
+            task_name="normal-1",
+            message=b"normal-1",
+            labels={},
+        )
+    )
+
+    assert (await received).data == b"normal-1"
+
+
+@pytest.mark.anyio
 async def test_raise_custom_exception_on_oversized_message(
     broker: AzureServiceBusBroker,
     monkeypatch: pytest.MonkeyPatch,
