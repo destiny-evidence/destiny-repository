@@ -369,12 +369,12 @@ class AzureServiceBusBroker(AsyncBroker):
         """
         Listen on the priority, default and low priority queues in that order.
 
-        Each iteration drains the priority queue with a short wait, then
-        polls the default queue, then the low priority queue, with longer waits.
+        Each iteration polls each queue with the same short wait, and sleeps
+        if none of them returned messages.
 
         If messages are received from a queue, restart the iteration so that
         every higher priority queue is fully consumed before polling a lower
-        priority queue.
+        priority queue. Queues in ``message_broker_paused_queues`` are skipped.
 
         :yields: parsed broker message.
         :raises MessageBrokerError:detail= if startup wasn't called.
@@ -387,35 +387,36 @@ class AzureServiceBusBroker(AsyncBroker):
         ):
             raise MessageBrokerError(detail="Call startup before starting listening.")
 
-        queues = (
-            (
-                self.priority_receiver,
-                settings.message_broker_priority_queue_max_wait,
-                "high",
-            ),
-            (
-                self.receiver,
-                settings.message_broker_queue_max_wait,
-                "normal",
-            ),
-            (
-                self.low_priority_receiver,
-                settings.message_broker_low_priority_queue_max_wait,
-                "low",
-            ),
+        queues = tuple(
+            (receiver, priority)
+            for receiver, priority in (
+                (self.priority_receiver, "high"),
+                (self.receiver, "normal"),
+                (self.low_priority_receiver, "low"),
+            )
+            if priority not in settings.message_broker_paused_queues
         )
+        if settings.message_broker_paused_queues:
+            logger.warning(
+                "Task queues paused",
+                paused=sorted(settings.message_broker_paused_queues),
+            )
 
         while True:
             try:
-                for receiver, max_wait, priority in queues:
+                for receiver, priority in queues:
                     async with self._receive_lock:
-                        batch = await receiver.receive_messages(max_wait_time=max_wait)
+                        batch = await receiver.receive_messages(
+                            max_wait_time=settings.message_broker_queue_max_wait
+                        )
                     for sb_message in batch:
                         logger.debug("Yielding %s priority message", priority)
                         yield self._build_ackable(sb_message, receiver)
                     if batch:
                         # Restart from the highest priority queue
                         break
+                else:
+                    await asyncio.sleep(settings.message_broker_idle_sleep)
             except Exception:
                 logger.exception("Error receiving messages")
                 # Wait a bit before retrying
