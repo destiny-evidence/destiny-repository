@@ -22,7 +22,7 @@ from app.core.telemetry.attributes import (
 )
 from app.core.telemetry.logger import get_logger
 from app.core.telemetry.otel import new_linked_trace
-from app.core.telemetry.taskiq import queue_task_with_trace
+from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.references.models.models import (
     DuplicateDetermination,
     PendingEnhancementStatus,
@@ -529,6 +529,7 @@ async def process_reference_duplicate_decision(
                         process_reference_duplicate_decision,
                         reference_duplicate_decision_id,
                         remaining_retries=remaining_retries - 1,
+                        priority=TaskPriority.LOW,
                         otel_enabled=settings.otel_enabled,
                     )
                     return
@@ -577,6 +578,7 @@ async def process_reference_duplicate_decision(
                         process_reference_duplicate_decision,
                         reference_duplicate_decision_id,
                         remaining_retries=remaining_retries - 1,
+                        priority=TaskPriority.LOW,
                         otel_enabled=settings.otel_enabled,
                     )
                     return
