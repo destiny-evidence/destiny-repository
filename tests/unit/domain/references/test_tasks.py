@@ -835,6 +835,7 @@ class TestAutomaticDecisionRetries:
         await process_reference_duplicate_decision(decision_id, remaining_retries=1)
 
         assert queue.await_args.kwargs["remaining_retries"] == 0
+        assert queue.await_args.kwargs["priority"] == TaskPriority.LOW
         reference_service.mark_duplicate_decision_unsearchable.assert_not_awaited()
 
     @pytest.mark.usefixtures("mock_sql_uow_cm", "mock_es_uow_cm", "automatic")

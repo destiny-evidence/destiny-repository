@@ -349,11 +349,19 @@ async def test_request_search_enhancement_enqueues(
     app.dependency_overrides[references.reference_service] = lambda: service
     app.dependency_overrides[references.robot_service] = lambda: AsyncMock()
 
-    with patch.object(references, "queue_task_with_trace", AsyncMock()) as enqueue:
+    task = references.run_search_enhancement_request_task
+    with (
+        # Let the real queueing helper run so its default priority is applied.
+        patch.object(task, "kiq", AsyncMock()) as kiq,
+        # The task object is shared across tests; clear any priority an earlier
+        # test set.
+        patch.dict(task.labels, {"priority": None}),
+    ):
         response = await client.post(
             "/v1/enhancement-requests/search/",
             json={"robot_id": str(request.robot_id), "search_query": "title:climate"},
         )
+        queued_priority = task.labels["priority"]
 
     assert response.status_code == status.HTTP_202_ACCEPTED
     body = response.json()
@@ -361,10 +369,10 @@ async def test_request_search_enhancement_enqueues(
     assert body["search_status"] == EnhancementRequestSearchStatus.PENDING
     # Match count is not known until the collection task runs.
     assert body["n_matched"] is None
-    enqueue.assert_awaited_once()
-    assert enqueue.await_args
-    assert enqueue.await_args.kwargs["enhancement_request_id"] == request.id
-    assert "priority" not in enqueue.await_args.kwargs
+    kiq.assert_awaited_once()
+    assert kiq.await_args
+    assert kiq.await_args.kwargs["enhancement_request_id"] == request.id
+    assert queued_priority == TaskPriority.NORMAL.value
 
 
 async def test_request_search_enhancement_broker_down_fails_request(

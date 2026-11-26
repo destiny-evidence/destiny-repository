@@ -218,6 +218,29 @@ async def test_create_batch_for_import(
     )
 
 
+async def test_create_batch_queues_distribution_on_the_low_priority_queue(
+    client: AsyncClient,
+    session: AsyncSession,
+    valid_import: SQLImportRecord,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Batch distribution goes on the low priority queue."""
+    session.add(valid_import)
+    await session.commit()
+    enqueue = AsyncMock()
+    monkeypatch.setattr("app.domain.imports.routes.queue_task_with_trace", enqueue)
+
+    response = await client.post(
+        f"/v1/imports/records/{valid_import.id}/batches/",
+        json={"storage_url": "https://example.com/batch_data.json"},
+    )
+
+    assert response.status_code == status.HTTP_202_ACCEPTED
+    enqueue.assert_awaited_once()
+    assert enqueue.await_args
+    assert enqueue.await_args.kwargs["priority"] == TaskPriority.LOW
+
+
 async def test_enqueue_batch_rejects_disallowed_domain(
     client: AsyncClient,
     session: AsyncSession,
