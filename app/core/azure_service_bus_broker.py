@@ -396,9 +396,11 @@ class AzureServiceBusBroker(AsyncBroker):
             )
             if priority not in settings.message_broker_paused_queues
         )
-        logger.info(
-            "Receiving from queues", queues=[priority for _, priority in queues]
-        )
+        if settings.message_broker_paused_queues:
+            logger.warning(
+                "Task queues paused",
+                paused=sorted(settings.message_broker_paused_queues),
+            )
 
         while True:
             try:
