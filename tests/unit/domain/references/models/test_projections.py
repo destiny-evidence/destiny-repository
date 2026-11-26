@@ -1018,6 +1018,7 @@ class TestDeduplicatedReferenceProjection:
                 title="Duplicate Title",
             ),
             reference_id=uuid7(),
+            created_at=datetime.now(tz=UTC),
         )
 
         duplicate_identifier = LinkedExternalIdentifier(
@@ -1054,6 +1055,52 @@ class TestDeduplicatedReferenceProjection:
         identifier_values = [i.identifier.identifier for i in result.identifiers]
         assert "10.1000/abc123" in identifier_values
         assert "10.1000/duplicate" in identifier_values
+
+    def test_get_from_reference_orders_canonical_then_newest_first(self):
+        """The first enhancement is the one the search projection would project."""
+        canonical_id, duplicate_id = uuid7(), uuid7()
+        now = datetime.now(tz=UTC)
+
+        def abstract(reference_id, age_days):
+            return EnhancementFactory.build(
+                reference_id=reference_id,
+                created_at=now - timedelta(days=age_days),
+                content=AbstractContentEnhancementFactory.build(),
+            )
+
+        canonical_newer = abstract(canonical_id, 1)
+        canonical_older = abstract(canonical_id, 2)
+        duplicate_newest = abstract(duplicate_id, 0)
+        duplicate_older = abstract(duplicate_id, 3)
+        canonical_enhancements = [canonical_older, canonical_newer]
+        duplicate_enhancements = [duplicate_older, duplicate_newest]
+        shuffle(canonical_enhancements)
+        shuffle(duplicate_enhancements)
+
+        reference = ReferenceFactory.build(
+            id=canonical_id,
+            enhancements=canonical_enhancements,
+            duplicate_references=[
+                ReferenceFactory.build(
+                    id=duplicate_id,
+                    enhancements=duplicate_enhancements,
+                    duplicate_references=[],
+                )
+            ],
+        )
+
+        result = DeduplicatedReferenceProjection.get_from_reference(reference)
+
+        assert result.enhancements == [
+            canonical_newer,
+            canonical_older,
+            duplicate_newest,
+            duplicate_older,
+        ]
+        assert (
+            ReferenceSearchFieldsProjection.get_from_reference(result).abstract
+            == result.enhancements[0].content.abstract
+        )
 
     def test_get_from_reference_none_duplicates_raises_error(self, complete_reference):
         """Test that None duplicate_references raises ProjectionError."""

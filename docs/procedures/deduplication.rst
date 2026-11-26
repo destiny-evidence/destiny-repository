@@ -292,6 +292,8 @@ The end product of deduplication is a rich database with each individual referen
 
 The deduplication projection is simply a consolidated :class:`Reference <libs.sdk.src.destiny_sdk.references.Reference>` object, with enhancements and identifiers of its duplicates included in the canonical reference. This is the view that is indexed into Elasticsearch, and likely the view that most robots and users will interact with.
 
+Enhancements in the projection are ordered by priority: those on the canonical reference first, then most recent first. Consumers that take the first enhancement matching their conditions (e.g. the first abstract) therefore get the same one the search projection uses.
+
 Also note this projected view is reversible, data provenance is preserved through the ``reference_id`` field on each enhancement and identifier.
 
 See also:
