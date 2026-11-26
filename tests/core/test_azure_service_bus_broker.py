@@ -521,6 +521,33 @@ async def test_listen_polls_active_queues_once_then_sleeps_when_idle(
 
 
 @pytest.mark.anyio
+async def test_listen_does_not_sleep_after_receiving(
+    broker: AzureServiceBusBroker,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A pass that yields a message starts the next pass without the idle sleep."""
+    monkeypatch.setattr(broker_module.settings, "message_broker_idle_sleep", 5)
+    for task_id, priority in (("normal-1", "1"), ("priority-1", "5")):
+        await broker.kick(
+            BrokerMessage(
+                task_id=task_id,
+                task_name=task_id,
+                message=task_id.encode(),
+                labels={"priority": priority},
+            )
+        )
+
+    listener = broker.listen()
+    yielded: list[bytes] = []
+    for _ in range(2):
+        ackable = await asyncio.wait_for(anext(listener), timeout=2)
+        yielded.append(ackable.data)
+        await maybe_awaitable(ackable.ack())
+
+    assert yielded == [b"priority-1", b"normal-1"]
+
+
+@pytest.mark.anyio
 async def test_raise_custom_exception_on_oversized_message(
     broker: AzureServiceBusBroker,
     monkeypatch: pytest.MonkeyPatch,
