@@ -42,6 +42,19 @@ async def get_first_task(broker: AzureServiceBusBroker):
     return None
 
 
+async def kick_tasks(broker: AzureServiceBusBroker, *tasks: tuple[str, str]) -> None:
+    """Kick each (task id, priority label) pair, with the task id as its body."""
+    for task_id, priority in tasks:
+        await broker.kick(
+            BrokerMessage(
+                task_id=task_id,
+                task_name=task_id,
+                message=task_id.encode(),
+                labels={"priority": priority},
+            )
+        )
+
+
 @pytest.mark.asyncio
 async def test_startup_with_connection_string():
     """
@@ -454,15 +467,7 @@ async def test_listen_skips_paused_queue(
 ) -> None:
     """A paused queue's messages wait while the other queues are still received."""
     monkeypatch.setattr(broker_module.settings, "message_broker_paused_queues", {"low"})
-    for task_id, priority in (("low-1", "0"), ("normal-1", "1"), ("priority-1", "5")):
-        await broker.kick(
-            BrokerMessage(
-                task_id=task_id,
-                task_name=task_id,
-                message=task_id.encode(),
-                labels={"priority": priority},
-            )
-        )
+    await kick_tasks(broker, ("low-1", "0"), ("normal-1", "1"), ("priority-1", "5"))
 
     listener = broker.listen()
     yielded: list[bytes] = []
@@ -473,7 +478,7 @@ async def test_listen_skips_paused_queue(
     with pytest.raises(TimeoutError):
         await asyncio.wait_for(anext(listener), timeout=1)
     monkeypatch.setattr(broker_module.settings, "message_broker_paused_queues", set())
-    unpaused = await asyncio.wait_for(anext(broker.listen()), timeout=5)
+    unpaused = await asyncio.wait_for(get_first_task(broker), timeout=5)
     yielded.append(unpaused.data)
 
     assert yielded == [b"priority-1", b"normal-1", b"low-1"]
@@ -510,7 +515,7 @@ async def test_listen_polls_active_queues_once_then_sleeps_when_idle(
     monkeypatch.setattr(broker_module.settings, "message_broker_paused_queues", paused)
 
     with pytest.raises(TimeoutError):
-        await asyncio.wait_for(anext(broker.listen()), timeout=1)
+        await asyncio.wait_for(get_first_task(broker), timeout=1)
 
     polls = {
         name: [call.kwargs["max_wait_time"] for call in spy.await_args_list]
@@ -527,15 +532,7 @@ async def test_listen_does_not_sleep_after_receiving(
 ) -> None:
     """A pass that yields a message starts the next pass without the idle sleep."""
     monkeypatch.setattr(broker_module.settings, "message_broker_idle_sleep", 5)
-    for task_id, priority in (("normal-1", "1"), ("priority-1", "5")):
-        await broker.kick(
-            BrokerMessage(
-                task_id=task_id,
-                task_name=task_id,
-                message=task_id.encode(),
-                labels={"priority": priority},
-            )
-        )
+    await kick_tasks(broker, ("normal-1", "1"), ("priority-1", "5"))
 
     listener = broker.listen()
     yielded: list[bytes] = []
@@ -555,16 +552,9 @@ async def test_listen_resumes_after_idle_sleep(
     """A message queued while the listener sleeps is received once the sleep ends."""
     monkeypatch.setattr(broker_module.settings, "message_broker_queue_max_wait", 0.1)
     monkeypatch.setattr(broker_module.settings, "message_broker_idle_sleep", 0.5)
-    received = asyncio.create_task(asyncio.wait_for(anext(broker.listen()), timeout=2))
+    received = asyncio.create_task(asyncio.wait_for(get_first_task(broker), timeout=2))
     await asyncio.sleep(0.4)
-    await broker.kick(
-        BrokerMessage(
-            task_id="normal-1",
-            task_name="normal-1",
-            message=b"normal-1",
-            labels={},
-        )
-    )
+    await kick_tasks(broker, ("normal-1", "1"))
 
     assert (await received).data == b"normal-1"
 
