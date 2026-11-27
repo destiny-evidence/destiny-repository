@@ -1,0 +1,21 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.models.FacetResult
+
+Per&#45;facet term counts with their totals.
+" alt="" coords="5,31,345,121"/>
+<area shape="rect" id="node2" title="app.domain.references.models.models.FacetTotals
+
+Reference totals for a set of facet counts.
+" alt="" coords="489,144,723,234"/>
+<area shape="rect" id="node3" title="app.persistence.es.persistence.ESFacetBucket
+
+A single bucket from a terms aggregation.
+" alt="" coords="543,5,669,95"/>
+<area shape="rect" id="node4" title="app.persistence.es.persistence.ESSearchTotal
+
+Class for total results in Elasticsearch search results.
+
+Unless otherwise specified in the request, Elasticsearch will stop counting after
+10,000 and return a lower bound with relation &quot;gte&quot;.
+" alt="" coords="867,189,1059,279"/>
+</map>

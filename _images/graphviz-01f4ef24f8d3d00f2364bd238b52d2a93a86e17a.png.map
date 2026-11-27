@@ -1,0 +1,152 @@
+<map id="Entity Relationship Diagram created by erdantic" name="Entity Relationship Diagram created by erdantic">
+<area shape="rect" id="node1" title="app.domain.references.models.validators.EnhancementResultValidator
+
+Result of a batch enhancement request.
+" alt="" coords="5,1066,361,1186"/>
+<area shape="rect" id="node2" title="destiny_sdk.enhancements.Enhancement
+
+Core enhancement class.
+" alt="" coords="505,936,2469,1236"/>
+<area shape="rect" id="node3" title="destiny_sdk.robots.LinkedRobotError
+
+A record of something going wrong when processing an individual reference.
+
+Used in results for batch requests &#45; in single requests, the reference
+id is derived from the request id.
+" alt="" coords="1382,1284,1592,1374"/>
+<area shape="rect" id="node4" title="destiny_sdk.enhancements.AbstractContentEnhancement
+
+An enhancement which is specific to the abstract of a reference.
+
+This is separate from the `BibliographicMetadata` for two reasons:
+
+1. Abstracts are increasingly missing from sources like OpenAlex, and may be
+backfilled from other sources, without the bibliographic metadata.
+2. They are also subject to copyright limitations in ways which metadata are
+not, and thus need separate visibility controls.
+" alt="" coords="3017,45,3463,165"/>
+<area shape="rect" id="node5" title="destiny_sdk.enhancements.AnnotationEnhancement
+
+An enhancement which is composed of a list of Annotations.
+" alt="" coords="3006,213,3474,303"/>
+<area shape="rect" id="node9" title="destiny_sdk.enhancements.BibliographicMetadataEnhancement
+
+An enhancement which is made up of bibliographic metadata.
+
+Generally this will be sourced from a database such as OpenAlex or similar.
+For directly contributed references, these may not be complete.
+" alt="" coords="2995,360,3486,720"/>
+<area shape="rect" id="node12" title="destiny_sdk.enhancements.FullTextEnhancement
+
+An enhancement for storing a link to the full text and its metadata.
+
+Full texts are not for the sharing of copyrighted material without a license.
+They are to maintain files for validation and to allow permitted text and data
+mining activities.
+" alt="" coords="3014,768,3466,1128"/>
+<area shape="rect" id="node13" title="destiny_sdk.enhancements.LinkedDataEnhancement
+
+An enhancement for storing structured data in a linked data format.
+
+The content is a JSON&#45;LD document conforming to the vocabulary and
+context specified. This enhancement type is produced by mapping robots
+that transform RawEnhancement data into the shared vocabulary.
+" alt="" coords="3003,1176,3478,1296"/>
+<area shape="rect" id="node14" title="destiny_sdk.enhancements.LocationEnhancement
+
+An enhancement which describes locations where this reference can be found.
+
+This maps closely (almost exactly) to OpenAlex&#39;s locations.
+" alt="" coords="3019,1344,3461,1434"/>
+<area shape="rect" id="node15" title="destiny_sdk.enhancements.RawEnhancement
+
+An enhancement for storing raw/arbitrary/unstructured data.
+
+Data in these enhancements is intended for future conversion into structured form.
+
+This enhancement accepts any fields passed in to `data`. These enhancements can
+only be created by robots granted the ``raw_enhancement_writer`` entitlement.
+" alt="" coords="3041,1482,3440,1662"/>
+<area shape="rect" id="node16" title="destiny_sdk.enhancements.ReferenceAssociationEnhancement
+
+An enhancement for storing associations between references.
+" alt="" coords="2613,1710,3867,1830"/>
+<area shape="rect" id="node17" title="destiny_sdk.enhancements.TombstoneEnhancement
+
+An enhancement which withdraws the supersession chain it heads.
+
+It must supersede a chain head that is not a tombstone, and only an enhancement of
+the withdrawn type may supersede it. Import files cannot carry one.
+" alt="" coords="3009,1879,3472,1969"/>
+<area shape="rect" id="node6" title="destiny_sdk.enhancements.BooleanAnnotation
+
+An annotation is a way of tagging the content with a label of some kind.
+
+This class will probably be broken up in the future, but covers most of our
+initial cases.
+" alt="" coords="4044,5,4444,215"/>
+<area shape="rect" id="node7" title="destiny_sdk.enhancements.ScoreAnnotation
+
+An annotation which represents the score for a label.
+
+This is similar to a BooleanAnnotation, but lacks a boolean determination
+as to the application of the label.
+" alt="" coords="4058,263,4430,443"/>
+<area shape="rect" id="node8" title="destiny_sdk.enhancements.Authorship
+
+Represents a single author and their association with a reference.
+
+This is a simplification of the OpenAlex [Authorship
+object](https://docs.openalex.org/api&#45;entities/works/work&#45;object/authorship&#45;object)
+for our purposes.
+" alt="" coords="4131,492,4358,612"/>
+<area shape="rect" id="node10" title="destiny_sdk.enhancements.Pagination
+
+Pagination information for journal articles.
+
+Maps to OpenAlex&#39;s work.biblio object. All fields are strings to match
+OpenAlex&#39;s format, which may include non&#45;numeric values like &quot;Spring&quot; or &quot;A1&quot;.
+" alt="" coords="4165,659,4324,809"/>
+<area shape="rect" id="node11" title="destiny_sdk.enhancements.PublicationVenue
+
+A publication venue (journal, repository, conference, etc.).
+" alt="" coords="4039,858,4449,1038"/>
+<area shape="rect" id="node18" title="destiny_sdk.enhancements.Location
+
+A location where a reference can be found.
+
+This maps almost completely to the OpenAlex
+[Location object](https://docs.openalex.org/api&#45;entities/works/work&#45;object/location&#45;object)
+" alt="" coords="4096,1164,4393,1374"/>
+<area shape="rect" id="node19" title="destiny_sdk.identifiers.DOIIdentifier
+
+An external identifier representing a DOI.
+" alt="" coords="4053,1423,4436,1513"/>
+<area shape="rect" id="node20" title="destiny_sdk.identifiers.ERICIdentifier
+
+An external identifier representing an ERIC Number.
+
+An ERIC Number is defined as a unique identifying number preceded by
+ED (for a non&#45;journal document) or EJ (for a journal article).
+" alt="" coords="4048,1561,4440,1651"/>
+<area shape="rect" id="node21" title="destiny_sdk.identifiers.OpenAlexIdentifier
+
+An external identifier representing an OpenAlex ID.
+" alt="" coords="4017,1700,4472,1790"/>
+<area shape="rect" id="node22" title="destiny_sdk.identifiers.OtherIdentifier
+
+An external identifier not otherwise defined by the repository.
+" alt="" coords="4011,1838,4477,1958"/>
+<area shape="rect" id="node23" title="destiny_sdk.identifiers.ProQuestIdentifier
+
+An external identifier representing a ProQuest ID.
+" alt="" coords="4018,2007,4471,2097"/>
+<area shape="rect" id="node24" title="destiny_sdk.identifiers.PubMedIdentifier
+
+An external identifier representing a PubMed ID.
+" alt="" coords="4041,2145,4447,2235"/>
+<area shape="rect" id="node25" title="destiny_sdk.identifiers.URLIdentifier
+
+An external identifier representing the web address of a document.
+" alt="" coords="4051,2284,4438,2374"/>
+</map>
