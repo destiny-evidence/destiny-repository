@@ -38,6 +38,7 @@ def _priority_sorted_enhancements(
     Priority is defined as
     * Firstly, we prioritize enhancements on the canonical reference
     * Secondly, we prioritize most recent enhancements
+    * Finally, we prioritize the highest id, so ties never depend on load order
 
     Concretely
     * If there's an abstract on the canonical, use that
@@ -51,13 +52,14 @@ def _priority_sorted_enhancements(
     if not enhancements:
         return []
 
-    def _sort_key(enhancement: Enhancement) -> tuple[bool, float]:
+    def _sort_key(enhancement: Enhancement) -> tuple[bool, float, UUID]:
         if not enhancement.created_at:
             msg = "We should never try to project an enhancement without created_at"
             raise RuntimeError(msg)
         return (
             enhancement.reference_id == canonical_id,
             enhancement.created_at.timestamp(),
+            enhancement.id,
         )
 
     return sorted(enhancements, key=_sort_key, reverse=highest_first)

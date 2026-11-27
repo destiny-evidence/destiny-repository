@@ -1102,6 +1102,31 @@ class TestDeduplicatedReferenceProjection:
             == result.enhancements[0].content.abstract
         )
 
+    def test_get_from_reference_breaks_created_at_ties_by_highest_id(self):
+        """Tied enhancements order by id, so robots and search agree on the winner."""
+        reference_id = uuid7()
+        created_at = datetime.now(tz=UTC)
+        lower, higher = (
+            EnhancementFactory.build(
+                id=uuid7(),
+                reference_id=reference_id,
+                created_at=created_at,
+                content=AbstractContentEnhancementFactory.build(),
+            )
+            for _ in range(2)
+        )
+        reference = ReferenceFactory.build(
+            id=reference_id, enhancements=[lower, higher], duplicate_references=[]
+        )
+
+        result = DeduplicatedReferenceProjection.get_from_reference(reference)
+
+        assert result.enhancements == [higher, lower]
+        assert (
+            ReferenceSearchFieldsProjection.get_from_reference(result).abstract
+            == higher.content.abstract
+        )
+
     def test_get_from_reference_none_duplicates_raises_error(self, complete_reference):
         """Test that None duplicate_references raises ProjectionError."""
         complete_reference.duplicate_references = None
