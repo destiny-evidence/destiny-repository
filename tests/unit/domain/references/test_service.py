@@ -1436,7 +1436,11 @@ async def test_detect_robot_automations(
     reference_id = uuid7()
     robot_id = uuid7()
 
-    enhancement = Enhancement(reference_id=reference_id, **fake_enhancement_data)
+    enhancement = Enhancement(
+        reference_id=reference_id,
+        created_at=datetime.datetime.now(tz=datetime.UTC),
+        **fake_enhancement_data,
+    )
     reference = Reference(
         id=reference_id,
         visibility="public",
@@ -1508,6 +1512,7 @@ def canonical_reference():
         robot_version=None,
         derived_from=None,
         content=content,
+        created_at=datetime.datetime.now(tz=datetime.UTC),
     )
     return Reference(
         id=canonical_id,

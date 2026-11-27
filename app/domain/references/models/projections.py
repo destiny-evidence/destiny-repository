@@ -27,14 +27,18 @@ from app.domain.references.models.ris import RisRecord, RisType
 
 
 def _priority_sorted_enhancements(
-    canonical_id: UUID, enhancements: list[Enhancement] | None
+    canonical_id: UUID,
+    enhancements: list[Enhancement] | None,
+    *,
+    highest_first: bool = False,
 ) -> list[Enhancement]:
     """
-    Order a references enhancements by priority for projecting in increasing order.
+    Order a reference's enhancements by priority, lowest first by default.
 
     Priority is defined as
     * Firstly, we prioritize enhancements on the canonical reference
     * Secondly, we prioritize most recent enhancements
+    * Finally, we prioritize the highest id, so ties never depend on load order
 
     Concretely
     * If there's an abstract on the canonical, use that
@@ -42,21 +46,23 @@ def _priority_sorted_enhancements(
     * If there's no abstracts on the canonical, use the most recent
     abstract from all duplicates.
 
-    So this function places the highest priority enhancement at the end of the list.
+    Lowest first suits projections that coalesce by overwriting; highest first suits
+    consumers that take the first match.
     """
     if not enhancements:
         return []
 
-    def _sort_key(enhancement: Enhancement) -> tuple[bool, float]:
+    def _sort_key(enhancement: Enhancement) -> tuple[bool, float, UUID]:
         if not enhancement.created_at:
             msg = "We should never try to project an enhancement without created_at"
             raise RuntimeError(msg)
         return (
             enhancement.reference_id == canonical_id,
             enhancement.created_at.timestamp(),
+            enhancement.id,
         )
 
-    return sorted(enhancements, key=_sort_key)
+    return sorted(enhancements, key=_sort_key, reverse=highest_first)
 
 
 def _order_authorship_by_position(
@@ -555,6 +561,10 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
     duplicates, and is flattened to remove its duplicates. This makes it compatible
     with a SDK reference.
 
+    Enhancements are ordered highest priority first (see
+    ``_priority_sorted_enhancements``), so the first enhancement matching a
+    consumer's conditions is the most relevant one.
+
     TODO: Handle reference-level visibility.
 
     :param reference: The reference to project from.
@@ -579,11 +589,16 @@ class DeduplicatedReferenceProjection(GenericProjection[Reference]):
         )
 
         if deduplicated_reference.enhancements is not None:
-            deduplicated_reference.enhancements += [
-                enhancement
-                for ref in reference.duplicate_references
-                for enhancement in ref.enhancements or []
-            ]
+            deduplicated_reference.enhancements = _priority_sorted_enhancements(
+                reference.id,
+                deduplicated_reference.enhancements
+                + [
+                    enhancement
+                    for ref in reference.duplicate_references
+                    for enhancement in ref.enhancements or []
+                ],
+                highest_first=True,
+            )
         if deduplicated_reference.identifiers is not None:
             deduplicated_reference.identifiers += [
                 identifier
