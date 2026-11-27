@@ -20,6 +20,7 @@ from app.core.exceptions import (
 )
 from app.domain.imports.models.models import (
     ImportBatchStatus,
+    ImportDistributionStatus,
     ImportResultStatus,
 )
 from app.domain.imports.models.sql import (
@@ -931,12 +932,21 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
 
 
 @pytest.mark.parametrize(
-    ("result_statuses", "expected_status"),
+    ("distribution_status", "result_statuses", "expected_status"),
     [
-        ([], ImportBatchStatus.CREATED),
-        ([ImportResultStatus.CREATED], ImportBatchStatus.CREATED),
-        ([ImportResultStatus.STARTED], ImportBatchStatus.STARTED),
+        (ImportDistributionStatus.UNTRACKED, [], ImportBatchStatus.CREATED),
         (
+            ImportDistributionStatus.UNTRACKED,
+            [ImportResultStatus.CREATED],
+            ImportBatchStatus.CREATED,
+        ),
+        (
+            ImportDistributionStatus.UNTRACKED,
+            [ImportResultStatus.STARTED],
+            ImportBatchStatus.STARTED,
+        ),
+        (
+            ImportDistributionStatus.UNTRACKED,
             [
                 ImportResultStatus.FAILED,
                 ImportResultStatus.FAILED,
@@ -948,23 +958,57 @@ async def test_reference_get_with_duplicates(session: AsyncSession):
             ],
             ImportBatchStatus.FAILED,
         ),
-        ([ImportResultStatus.COMPLETED], ImportBatchStatus.COMPLETED),
         (
+            ImportDistributionStatus.UNTRACKED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.COMPLETED,
+        ),
+        (
+            ImportDistributionStatus.UNTRACKED,
             [ImportResultStatus.STARTED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.STARTED,
         ),
         (
+            ImportDistributionStatus.UNTRACKED,
             [ImportResultStatus.FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,
         ),
         (
+            ImportDistributionStatus.UNTRACKED,
             [ImportResultStatus.PARTIALLY_FAILED, ImportResultStatus.COMPLETED],
             ImportBatchStatus.PARTIALLY_FAILED,
+        ),
+        (
+            ImportDistributionStatus.STARTED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.STARTED,
+        ),
+        (
+            ImportDistributionStatus.INTERRUPTED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.FAILED,
+        ),
+        (
+            ImportDistributionStatus.PENDING,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.CREATED,
+        ),
+        (ImportDistributionStatus.COMPLETED, [], ImportBatchStatus.COMPLETED),
+        (
+            ImportDistributionStatus.COMPLETED,
+            [ImportResultStatus.CREATED],
+            ImportBatchStatus.STARTED,
+        ),
+        (
+            ImportDistributionStatus.COMPLETED,
+            [ImportResultStatus.COMPLETED],
+            ImportBatchStatus.COMPLETED,
         ),
     ],
 )
 async def test_import_batch_status_projection(
     session: AsyncSession,
+    distribution_status: ImportDistributionStatus,
     result_statuses: list[ImportResultStatus],
     expected_status: ImportBatchStatus,
 ):
@@ -985,6 +1029,7 @@ async def test_import_batch_status_projection(
         id=batch_id,
         import_record_id=record_id,
         storage_url="https://example.com/bucket",
+        distribution_status=distribution_status,
     )
     session.add(batch)
     for status in result_statuses:
@@ -1164,6 +1209,7 @@ async def test_multiple_import_batch_status_projection(
         id=batch1_id,
         import_record_id=record_id,
         storage_url="https://example.com/bucket1",
+        distribution_status=ImportDistributionStatus.COMPLETED,
     )
     session.add(batch1)
 
@@ -1172,6 +1218,7 @@ async def test_multiple_import_batch_status_projection(
         id=batch2_id,
         import_record_id=record_id,
         storage_url="https://example.com/bucket2",
+        distribution_status=ImportDistributionStatus.COMPLETED,
     )
     session.add(batch2)
 

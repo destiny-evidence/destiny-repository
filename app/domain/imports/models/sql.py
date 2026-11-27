@@ -22,11 +22,12 @@ from app.domain.imports.models.models import (
     ImportBatch as DomainImportBatch,
 )
 from app.domain.imports.models.models import (
-    ImportRecord as DomainImportRecord,
-)
-from app.domain.imports.models.models import (
+    ImportDistributionStatus,
     ImportRecordStatus,
     ImportResultStatus,
+)
+from app.domain.imports.models.models import (
+    ImportRecord as DomainImportRecord,
 )
 from app.domain.imports.models.models import (
     ImportResult as DomainImportResult,
@@ -101,6 +102,11 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
     )
 
     storage_url: Mapped[str] = mapped_column(String, nullable=False)
+    distribution_status: Mapped[ImportDistributionStatus] = mapped_column(
+        String, nullable=False
+    )
+    distribution_failure_details: Mapped[str | None] = mapped_column(String)
+    distribution_last_processed_line: Mapped[int | None] = mapped_column(Integer)
 
     import_record: Mapped["ImportRecord"] = relationship(
         "ImportRecord", back_populates="batches"
@@ -125,6 +131,9 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             id=domain_obj.id,
             import_record_id=domain_obj.import_record_id,
             storage_url=str(domain_obj.storage_url),
+            distribution_status=domain_obj.distribution_status,
+            distribution_failure_details=domain_obj.distribution_failure_details,
+            distribution_last_processed_line=domain_obj.distribution_last_processed_line,
         )
 
     def to_domain(
@@ -136,6 +145,9 @@ class ImportBatch(GenericSQLPersistence[DomainImportBatch]):
             id=self.id,
             import_record_id=self.import_record_id,
             storage_url=HttpUrl(self.storage_url),
+            distribution_status=self.distribution_status,
+            distribution_failure_details=self.distribution_failure_details,
+            distribution_last_processed_line=self.distribution_last_processed_line,
             import_record=self.import_record.to_domain()
             if "import_record" in (preload or [])
             else None,

@@ -1,5 +1,6 @@
 """The service for interacting with and managing imports."""
 
+from dataclasses import dataclass
 from uuid import UUID
 
 import httpx2
@@ -8,6 +9,7 @@ from asyncpg.exceptions import DeadlockDetectedError  # type: ignore[import-unty
 from opentelemetry import trace
 from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
 from sqlalchemy.exc import DBAPIError
+from taskiq import SendTaskError
 
 from app.core.config import get_settings
 from app.core.exceptions import MessageTooLargeError, SQLIntegrityError
@@ -17,6 +19,7 @@ from app.core.telemetry.otel import new_linked_trace
 from app.core.telemetry.taskiq import TaskPriority, queue_task_with_trace
 from app.domain.imports.models.models import (
     ImportBatch,
+    ImportDistributionStatus,
     ImportRecord,
     ImportRecordStatus,
     ImportResult,
@@ -34,6 +37,13 @@ from app.persistence.sql.uow import unit_of_work as sql_unit_of_work
 logger = get_logger(__name__)
 tracer = trace.get_tracer(__name__)
 settings = get_settings()
+
+
+@dataclass
+class _DistributionProgress:
+    """The last physical line committed, carried across retries."""
+
+    last_processed_line: int = 0
 
 
 class ImportService(GenericService[ImportAntiCorruptionService]):
@@ -259,25 +269,106 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                 priority=TaskPriority.LOW,
                 otel_enabled=settings.otel_enabled,
             )
-        except MessageTooLargeError as exc:
+        except SendTaskError as exc:
+            # taskiq wraps every broker error, so the cause says which one this is
+            if not isinstance(exc.__cause__, MessageTooLargeError):
+                raise
             sample_trace()
             await self._update_import_result(
                 import_result_id=import_result.id,
                 status=ImportResultStatus.FAILED,
-                failure_details=exc.detail,
+                failure_details=exc.__cause__.detail,
             )
 
+    @sql_unit_of_work
+    async def _claim_distribution(self, import_batch_id: UUID) -> bool:
+        """Mark an unfinished distribution started, or return False if it is final."""
+        return bool(
+            await self.sql_uow.imports.batches.bulk_update_by_filter(
+                filter_conditions={
+                    "id": import_batch_id,
+                    "distribution_status": ImportDistributionStatus.sources_of(
+                        ImportDistributionStatus.STARTED
+                    ),
+                },
+                distribution_status=ImportDistributionStatus.STARTED,
+            )
+        )
+
+    @sql_unit_of_work
+    async def _complete_distribution(
+        self, import_batch_id: UUID, last_processed_line: int
+    ) -> None:
+        """Mark distribution completed, clearing an overlapping interruption."""
+        await self.sql_uow.imports.batches.bulk_update_by_filter(
+            filter_conditions={
+                "id": import_batch_id,
+                "distribution_status": ImportDistributionStatus.sources_of(
+                    ImportDistributionStatus.COMPLETED
+                ),
+            },
+            distribution_status=ImportDistributionStatus.COMPLETED,
+            distribution_failure_details=None,
+            distribution_last_processed_line=last_processed_line,
+        )
+
+    @sql_unit_of_work
+    async def _interrupt_distribution(
+        self, import_batch_id: UUID, last_processed_line: int, reason: str
+    ) -> None:
+        """Mark a started distribution interrupted, never overwriting a completion."""
+        await self.sql_uow.imports.batches.bulk_update_by_filter(
+            filter_conditions={
+                "id": import_batch_id,
+                "distribution_status": ImportDistributionStatus.sources_of(
+                    ImportDistributionStatus.INTERRUPTED
+                ),
+            },
+            distribution_status=ImportDistributionStatus.INTERRUPTED,
+            distribution_failure_details=(
+                f"Distribution stopped after line {last_processed_line} ({reason})."
+            ),
+            distribution_last_processed_line=last_processed_line,
+        )
+
     async def distribute_import_batch(self, import_batch: ImportBatch) -> None:
-        """Distribute an import batch, retrying on connection errors."""
-        last_processed_line = 0
+        """Distribute an import batch, recording whether it reached the end."""
+        if not await self._claim_distribution(import_batch.id):
+            logger.info(
+                "Skipping import batch distribution, status is final",
+                import_batch_id=str(import_batch.id),
+            )
+            return
+        progress = _DistributionProgress()
+        try:
+            await self._queue_lines(import_batch, progress)
+        except Exception as exc:
+            cause = exc.__cause__ or exc
+            reason = (
+                f"HTTP {cause.response.status_code}"
+                if isinstance(cause, httpx2.HTTPStatusError)
+                else type(cause).__name__
+            )
+            await self._interrupt_distribution(
+                import_batch.id, progress.last_processed_line, reason
+            )
+            raise
+        await self._complete_distribution(import_batch.id, progress.last_processed_line)
+
+    async def _queue_lines(
+        self, import_batch: ImportBatch, progress: _DistributionProgress
+    ) -> None:
+        """Queue the batch's lines, retrying stream errors and failed sends."""
         async for attempt in tenacity.AsyncRetrying(
-            retry=tenacity.retry_if_exception_type(httpx2.TransportError),
+            retry=tenacity.retry_if_exception_type(
+                (httpx2.TransportError, SendTaskError)
+            ),
             before_sleep=lambda rs: logger.warning(
                 "Retrying import batch stream",
                 extra={
                     "import_batch_id": str(import_batch.id),
                     "attempt": rs.attempt_number,
-                    "last_processed_line": last_processed_line,  # noqa: B023
+                    "last_processed_line": progress.last_processed_line,
                     "exc": repr(rs.outcome.exception()),
                 },
             ),
@@ -310,7 +401,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                         line_number = 0
                         async for line in response.aiter_lines():
                             line_number += 1
-                            if line_number <= last_processed_line:
+                            if line_number <= progress.last_processed_line:
                                 continue
                             if line := line.strip():
                                 with new_linked_trace(
@@ -325,7 +416,7 @@ class ImportService(GenericService[ImportAntiCorruptionService]):
                                     await self._queue_import_line(
                                         import_batch.id, line, line_number
                                     )
-                            last_processed_line = line_number
+                            progress.last_processed_line = line_number
 
     @sql_unit_of_work
     async def get_import_results(

@@ -6,7 +6,12 @@ from uuid import UUID
 
 from pydantic import Field, HttpUrl
 
-from app.domain.base import DomainBaseModel, ProjectedBaseModel, SQLAttributeMixin
+from app.domain.base import (
+    DomainBaseModel,
+    ProjectedBaseModel,
+    SQLAttributeMixin,
+    StateMachineMixin,
+)
 
 
 class ImportRecordStatus(StrEnum):
@@ -33,6 +38,38 @@ class ImportBatchStatus(StrEnum):
     """Some references succeeded while others failed."""
     COMPLETED = auto()
     """Processing has been completed."""
+
+
+class ImportDistributionStatus(StateMachineMixin, StrEnum):
+    """How far a batch's distributor got through its file."""
+
+    PENDING = auto()
+    """No distributor has started."""
+    STARTED = auto()
+    """A distributor is queuing the file's lines."""
+    INTERRUPTED = auto()
+    """Distribution stopped before the end of the file."""
+    COMPLETED = auto()
+    """A distributor reached the end of the file."""
+    UNTRACKED = auto()
+    """Registered before distribution was tracked, so only results say how it went."""
+
+    @classmethod
+    def transitions(
+        cls,
+    ) -> dict["ImportDistributionStatus", set["ImportDistributionStatus"]]:
+        """
+        Define the allowed state transitions for distribution.
+
+        A redelivery reclaims a started or interrupted batch; EOF completes either.
+        """
+        return {
+            cls.PENDING: {cls.STARTED},
+            cls.STARTED: {cls.STARTED, cls.INTERRUPTED, cls.COMPLETED},
+            cls.INTERRUPTED: {cls.STARTED, cls.COMPLETED},
+            cls.COMPLETED: set(),
+            cls.UNTRACKED: set(),
+        }
 
 
 class ImportResultStatus(StrEnum):
@@ -123,6 +160,18 @@ The URL at which the set of references for this batch are stored.
     )
     import_results: list["ImportResult"] | None = Field(
         default=None, description="The results from processing the batch."
+    )
+    distribution_status: ImportDistributionStatus = Field(
+        default=ImportDistributionStatus.PENDING,
+        description="How far a distributor got through the batch's file.",
+    )
+    distribution_failure_details: str | None = Field(
+        default=None, description="Where and why distribution stopped."
+    )
+    distribution_last_processed_line: int | None = Field(
+        default=None,
+        description="The file's last line a distributor reached, when it stopped or "
+        "finished.",
     )
 
 
