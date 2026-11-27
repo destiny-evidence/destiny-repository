@@ -157,7 +157,7 @@ variable "queue_active_jobs_scaling_threshold" {
 variable "priority_queue_active_jobs_scaling_threshold" {
   description = "Active jobs threshold for scaling the tasks container app for high priority tasks."
   type        = number
-  default     = 20
+  default     = 1
 }
 
 variable "low_priority_queue_active_jobs_scaling_threshold" {
